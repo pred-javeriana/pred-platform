@@ -44,3 +44,8 @@ uv run pre-commit install
 ## Dependencies
 
 See [DEPENDENCIES.md](DEPENDENCIES.md) for the pred-engine git dependency and CI auth approach.
+
+## UI/frontend work
+
+Before building or changing any screen, read [docs/DESIGN.md](docs/DESIGN.md) — palette,
+typography, spacing, and component conventions, with the requirement each decision satisfies.
