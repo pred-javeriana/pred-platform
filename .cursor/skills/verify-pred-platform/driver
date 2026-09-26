@@ -1,0 +1,416 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+LATEST_LINK="/tmp/pred-platform-verify-latest"
+
+usage() {
+  cat <<'EOF'
+Usage: driver <command> [arguments...]
+
+Commands:
+  launch [--port <port>]    Start an isolated pred-platform instance in the background
+  doctor                    Perform read-only diagnostic check on running instance
+  http <method> <path> ...  Issue HTTP request with curl against the instance
+  browser <cmd> [args...]   Drive browser session using chrome-devtools-axi
+  cleanup                   Shut down server and browser; preserve evidence artifacts
+  status                    Print connection details and active run info
+  help                      Show this help message
+
+Environment variables:
+  PRED_PLATFORM_RUN_ID        Custom run identifier (default: unix epoch-pid)
+  PRED_PLATFORM_PORT          Port to bind server (default: random available port)
+  PRED_PLATFORM_STATE_DIR     Directory for runtime state/pid files (default: /tmp/pred-platform-verify-$RUN_ID)
+  PRED_PLATFORM_EVIDENCE_DIR  Directory for proof artifacts (default: /tmp/pred-platform-evidence-$RUN_ID)
+EOF
+  exit 1
+}
+
+find_free_port() {
+  python3 -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.close()"
+}
+
+resolve_state_dir() {
+  if [[ -n "${PRED_PLATFORM_STATE_DIR:-}" && -f "${PRED_PLATFORM_STATE_DIR}/state.env" ]]; then
+    echo "$PRED_PLATFORM_STATE_DIR"
+  elif [[ -L "$LATEST_LINK" && -e "$LATEST_LINK" ]]; then
+    readlink -f "$LATEST_LINK"
+  else
+    echo ""
+  fi
+}
+
+load_state() {
+  local state_dir
+  state_dir="$(resolve_state_dir)"
+  if [[ -z "$state_dir" || ! -f "$state_dir/state.env" ]]; then
+    echo "error: no active verification instance found. Run 'driver launch' first." >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$state_dir/state.env"
+}
+
+cmd_launch() {
+  local port="${PRED_PLATFORM_PORT:-}"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --port)
+        port="$2"
+        shift 2
+        ;;
+      *)
+        echo "error: unknown launch argument: $1" >&2
+        usage
+        ;;
+    esac
+  done
+
+  local run_id="${PRED_PLATFORM_RUN_ID:-$(date +%s)-$$}"
+  local state_dir="${PRED_PLATFORM_STATE_DIR:-/tmp/pred-platform-verify-$run_id}"
+  local evidence_dir="${PRED_PLATFORM_EVIDENCE_DIR:-/tmp/pred-platform-evidence-$run_id}"
+
+  if [[ -d "$state_dir" ]]; then
+    echo "error: state directory $state_dir already exists. Run cleanup first or use unique RUN_ID." >&2
+    exit 1
+  fi
+
+  mkdir -p -m 700 "$state_dir"
+  mkdir -p -m 700 "$evidence_dir"
+
+  if [[ -z "$port" ]]; then
+    port="$(find_free_port)"
+  fi
+  local cdp_port
+  cdp_port="$(find_free_port)"
+
+  local url="http://127.0.0.1:$port"
+
+  local python_bin="$REPO_ROOT/.venv/bin/python"
+  if [[ ! -x "$python_bin" ]]; then
+    python_bin="$(uv run which python)"
+  fi
+
+  # Start uvicorn in background with setsid and detached stdin
+  cd "$REPO_ROOT"
+  setsid "$python_bin" -m uvicorn pred_platform.app.main:app --host 127.0.0.1 --port "$port" </dev/null > "$state_dir/uvicorn.log" 2>&1 &
+  local server_pid=$!
+
+  # Record initial state
+  cat > "$state_dir/state.env" <<EOF
+RUN_ID='$run_id'
+PORT='$port'
+URL='$url'
+CDP_PORT='$cdp_port'
+SERVER_PID='$server_pid'
+CHROME_PID=''
+STATE_DIR='$state_dir'
+EVIDENCE_DIR='$evidence_dir'
+EOF
+
+  ln -sfn "$state_dir" "$LATEST_LINK"
+
+  # Wait for readiness
+  local ready=0
+  for _ in {1..30}; do
+    if ! kill -0 "$server_pid" 2>/dev/null; then
+      echo "error: uvicorn server exited unexpectedly during launch" >&2
+      cat "$state_dir/uvicorn.log" >&2
+      rm -f "$LATEST_LINK"
+      rm -rf "$state_dir"
+      exit 1
+    fi
+    if curl -s -f "$url/health" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 0.2
+  done
+
+  if [[ "$ready" -ne 1 ]]; then
+    echo "error: timed out waiting for server at $url to become ready" >&2
+    kill -TERM "$server_pid" 2>/dev/null || true
+    cat "$state_dir/uvicorn.log" >&2
+    rm -f "$LATEST_LINK"
+    rm -rf "$state_dir"
+    exit 1
+  fi
+
+  echo "READY: $url (PID $server_pid)"
+  echo "State directory: $state_dir"
+  echo "Evidence directory: $evidence_dir"
+}
+
+cmd_doctor() {
+  load_state
+
+  echo "Checking verification instance (RUN_ID: $RUN_ID)..."
+
+  # Check PID
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "FAIL: Server process PID $SERVER_PID is not running" >&2
+    return 1
+  fi
+  echo "OK: Server process PID $SERVER_PID is alive"
+
+  # Check /health endpoint
+  local health_code
+  local health_body
+  health_code="$(curl -s -o /tmp/doc-health-$$.json -w "%{http_code}" "$URL/health" 2>/dev/null || echo "000")"
+  health_body="$(cat /tmp/doc-health-$$.json 2>/dev/null || echo "")"
+  rm -f /tmp/doc-health-$$.json
+
+  if [[ "$health_code" != "200" ]]; then
+    echo "FAIL: GET /health returned HTTP $health_code (expected 200)" >&2
+    return 1
+  fi
+  if [[ "$health_body" != '{"status":"ok"}' ]]; then
+    echo "FAIL: GET /health returned body '$health_body' (expected '{\"status\":\"ok\"}')" >&2
+    return 1
+  fi
+  echo "OK: /health endpoint answered HTTP 200 with status 'ok'"
+
+  # Check / endpoint
+  local root_code
+  local root_body
+  root_code="$(curl -s -o /tmp/doc-root-$$.html -w "%{http_code}" "$URL/" 2>/dev/null || echo "000")"
+  root_body="$(cat /tmp/doc-root-$$.html 2>/dev/null || echo "")"
+  rm -f /tmp/doc-root-$$.html
+
+  if [[ "$root_code" != "200" ]]; then
+    echo "FAIL: GET / returned HTTP $root_code (expected 200)" >&2
+    return 1
+  fi
+  if ! echo "$root_body" | grep -q "PRED"; then
+    echo "FAIL: GET / does not contain expected title/heading 'PRED'" >&2
+    return 1
+  fi
+  if ! echo "$root_body" | grep -q "construcción"; then
+    echo "FAIL: GET / does not contain expected placeholder 'construcción'" >&2
+    return 1
+  fi
+  echo "OK: / endpoint returned HTTP 200 with PRED landing page"
+
+  echo "DOCTOR STATUS: HEALTHY (URL: $URL, PID: $SERVER_PID)"
+  return 0
+}
+
+cmd_http() {
+  load_state
+  if [[ $# -lt 2 ]]; then
+    echo "error: http requires <method> <path> [curl-args...]" >&2
+    exit 1
+  fi
+  local method="$1"
+  local path="$2"
+  shift 2
+
+  local target_url
+  if [[ "$path" == http://* || "$path" == https://* ]]; then
+    target_url="$path"
+  elif [[ "$path" == /* ]]; then
+    target_url="$URL$path"
+  else
+    target_url="$URL/$path"
+  fi
+
+  curl -X "$method" "$@" "$target_url"
+}
+
+ensure_browser() {
+  if [[ -n "${CHROME_PID:-}" ]] && kill -0 "$CHROME_PID" 2>/dev/null; then
+    return 0
+  fi
+
+  local browser_bin=""
+  if command -v chromium >/dev/null 2>&1; then
+    browser_bin="$(command -v chromium)"
+  elif command -v google-chrome >/dev/null 2>&1; then
+    browser_bin="$(command -v google-chrome)"
+  elif command -v chromium-browser >/dev/null 2>&1; then
+    browser_bin="$(command -v chromium-browser)"
+  else
+    echo "error: neither chromium nor google-chrome found in PATH" >&2
+    exit 1
+  fi
+
+  setsid "$browser_bin" --headless --remote-debugging-port="$CDP_PORT" --disable-gpu about:blank </dev/null >/dev/null 2>&1 &
+  local c_pid=$!
+
+  # Wait for CDP port
+  local ready=0
+  for _ in {1..25}; do
+    if curl -s -f "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 0.2
+  done
+
+  if [[ "$ready" -ne 1 ]]; then
+    echo "error: failed to start headless browser on CDP port $CDP_PORT" >&2
+    kill -TERM "$c_pid" 2>/dev/null || true
+    exit 1
+  fi
+
+  # Update state
+  CHROME_PID="$c_pid"
+  cat > "$STATE_DIR/state.env" <<EOF
+RUN_ID='$RUN_ID'
+PORT='$PORT'
+URL='$URL'
+CDP_PORT='$CDP_PORT'
+SERVER_PID='$SERVER_PID'
+CHROME_PID='$CHROME_PID'
+STATE_DIR='$STATE_DIR'
+EVIDENCE_DIR='$EVIDENCE_DIR'
+EOF
+}
+
+cmd_browser() {
+  load_state
+  if [[ $# -lt 1 ]]; then
+    echo "error: browser requires a command (e.g., open, snapshot, screenshot, eval, stop)" >&2
+    exit 1
+  fi
+
+  local subcmd="$1"
+  shift
+
+  if [[ "$subcmd" == "stop" ]]; then
+    export CHROME_DEVTOOLS_AXI_SESSION="verify-$RUN_ID"
+    export CHROME_DEVTOOLS_AXI_PORT="$((CDP_PORT + 1))"
+    chrome-devtools-axi stop >/dev/null 2>&1 || true
+    if [[ -n "${CHROME_PID:-}" ]] && kill -0 "$CHROME_PID" 2>/dev/null; then
+      kill -TERM "$CHROME_PID" 2>/dev/null || kill -9 "$CHROME_PID" 2>/dev/null || true
+    fi
+    CHROME_PID=""
+    cat > "$STATE_DIR/state.env" <<EOF
+RUN_ID='$RUN_ID'
+PORT='$PORT'
+URL='$URL'
+CDP_PORT='$CDP_PORT'
+SERVER_PID='$SERVER_PID'
+CHROME_PID=''
+STATE_DIR='$STATE_DIR'
+EVIDENCE_DIR='$EVIDENCE_DIR'
+EOF
+    echo "Browser session stopped."
+    return 0
+  fi
+
+  ensure_browser
+
+  export CHROME_DEVTOOLS_AXI_BROWSER_URL="http://127.0.0.1:$CDP_PORT"
+  export CHROME_DEVTOOLS_AXI_SESSION="verify-$RUN_ID"
+  export CHROME_DEVTOOLS_AXI_PORT="$((CDP_PORT + 1))"
+
+  case "$subcmd" in
+    open)
+      local target="${1:-/}"
+      if [[ "$target" == /* ]]; then
+        target="$URL$target"
+      fi
+      chrome-devtools-axi open "$target"
+      ;;
+    *)
+      chrome-devtools-axi "$subcmd" "$@"
+      ;;
+  esac
+}
+
+cmd_cleanup() {
+  local state_dir
+  state_dir="$(resolve_state_dir)"
+  if [[ -z "$state_dir" || ! -f "$state_dir/state.env" ]]; then
+    echo "No active verification instance to clean up."
+    return 0
+  fi
+
+  # shellcheck source=/dev/null
+  source "$state_dir/state.env"
+
+  echo "Tearing down verification instance (RUN_ID: $RUN_ID)..."
+
+  # Stop browser if active
+  if [[ -n "${CHROME_PID:-}" ]] && kill -0 "$CHROME_PID" 2>/dev/null; then
+    export CHROME_DEVTOOLS_AXI_SESSION="verify-$RUN_ID"
+    export CHROME_DEVTOOLS_AXI_PORT="$((CDP_PORT + 1))"
+    chrome-devtools-axi stop >/dev/null 2>&1 || true
+    kill -TERM "$CHROME_PID" 2>/dev/null || kill -9 "$CHROME_PID" 2>/dev/null || true
+  fi
+
+  # Stop server
+  if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+    kill -TERM "$SERVER_PID" 2>/dev/null || true
+    for _ in {1..20}; do
+      if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if kill -0 "$SERVER_PID" 2>/dev/null; then
+      kill -9 "$SERVER_PID" 2>/dev/null || true
+    fi
+  fi
+
+  # Remove state directory and symlink
+  rm -f "$LATEST_LINK"
+  rm -rf "$state_dir"
+
+  echo "Instance teardown complete."
+
+  # Confirm evidence directory
+  if [[ -d "$EVIDENCE_DIR" ]]; then
+    echo "Proof artifacts preserved in: $EVIDENCE_DIR"
+    echo "Artifact listing:"
+    ls -la "$EVIDENCE_DIR"
+  else
+    echo "Notice: no evidence directory found at $EVIDENCE_DIR"
+  fi
+}
+
+cmd_status() {
+  load_state
+  echo "RUN_ID:        $RUN_ID"
+  echo "URL:           $URL"
+  echo "SERVER_PID:    $SERVER_PID"
+  echo "CHROME_PID:    ${CHROME_PID:-none}"
+  echo "STATE_DIR:     $STATE_DIR"
+  echo "EVIDENCE_DIR:  $EVIDENCE_DIR"
+}
+
+case "${1:-}" in
+  launch)
+    shift
+    cmd_launch "$@"
+    ;;
+  doctor)
+    shift
+    cmd_doctor "$@"
+    ;;
+  http)
+    shift
+    cmd_http "$@"
+    ;;
+  browser)
+    shift
+    cmd_browser "$@"
+    ;;
+  cleanup)
+    shift
+    cmd_cleanup "$@"
+    ;;
+  status)
+    shift
+    cmd_status "$@"
+    ;;
+  help|--help|-h|"")
+    usage
+    ;;
+  *)
+    echo "error: unknown command '$1'" >&2
+    usage
+    ;;
+esac
