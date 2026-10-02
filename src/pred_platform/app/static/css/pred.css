@@ -1,0 +1,122 @@
+/*
+ * PRED brand layer on top of Pico.css (vendored base in pico.min.css).
+ *
+ * Scope of this layer: tokens, local typography and the mapping onto Pico's variables.
+ * Components (button tiers, states, tables, alerts) belong to the design system (TASK-UI-1.1-B2).
+ * Reference: docs/DESIGN.md and pred-docs/diseno/lenguaje-visual.md.
+ */
+
+/* ---------------------------------------------------------------- Typography */
+/* Self-hosted: the application has no internet access at runtime. */
+@font-face {
+  font-family: "Archivo";
+  src: url("../fonts/Archivo-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Archivo";
+  src: url("../fonts/Archivo-Italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* -------------------------------------------------------------------- Tokens */
+:root {
+  --canvas: #efefec;
+  --surface: #ffffff;
+  --ink: #14161a;
+  --ink-soft: #2c2f34;
+  --muted: #6b6f76;
+  --border: #dbdcd7;
+  --border-strong: #c7c9c5;
+  --primary: #1f5c54;
+  --primary-dark: #164740;
+  --ok: #3e6b4f;
+  --err: #a3402f;
+  --warn: #a0741f;
+  --info: #2e6e9e;
+  --data: #1b7a8c;
+
+  --font-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* 4 px spacing scale. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+
+  /* Sharp controls: 0-2 px radius, no default elevation. */
+  --radius: 2px;
+}
+
+/* ------------------------------------------------------- Mapping to Pico variables */
+/* Pico declares its light theme under `:root:not([data-theme=dark])` (specificity 0,2,0).
+   The same specificity is matched here, and this sheet loads after Pico's. */
+:root,
+:root[data-theme="light"] {
+  --pico-font-family: var(--font-body);
+  --pico-font-family-sans-serif: var(--font-body);
+  --pico-font-family-monospace: var(--font-mono);
+  --pico-border-radius: var(--radius);
+
+  --pico-background-color: var(--canvas);
+  --pico-color: var(--ink-soft);
+  --pico-muted-color: var(--muted);
+  --pico-muted-border-color: var(--border);
+  --pico-border-color: var(--border);
+  --pico-form-element-border-color: var(--border-strong);
+
+  --pico-h1-color: var(--ink);
+  --pico-h2-color: var(--ink-soft);
+  --pico-h3-color: var(--ink-soft);
+  --pico-h4-color: var(--ink-soft);
+
+  --pico-primary: var(--primary);
+  --pico-primary-background: var(--primary);
+  --pico-primary-hover: var(--primary-dark);
+  --pico-primary-hover-background: var(--primary-dark);
+  --pico-primary-underline: var(--primary);
+  --pico-primary-focus: var(--primary);
+
+  --pico-card-box-shadow: none;
+}
+
+/* ---------------------------------------------------------------- Base type */
+/* Large, heavy headings with tight tracking; small, dense body text. */
+h1,
+h2 {
+  font-weight: 800;
+}
+
+h1 {
+  letter-spacing: -0.025em;
+}
+
+h2 {
+  letter-spacing: -0.02em;
+}
+
+/* JetBrains Mono only for figures, metrics and codes; never decorative. */
+code,
+kbd,
+samp,
+.mono {
+  font-family: var(--font-mono);
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}

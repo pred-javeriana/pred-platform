@@ -21,10 +21,13 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --locked
 
       - name: Lint and format check
         run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Type check
+        run: uv run pyright
 
       - name: Run tests
         run: uv run pytest

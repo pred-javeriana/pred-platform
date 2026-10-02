@@ -1,0 +1,45 @@
+{
+  "note": "Activos de terceros vendorizados. Cada archivo debe coincidir con su sha256; las pruebas lo verifican. Para actualizar uno, reemplace el archivo y este registro.",
+  "files": {
+    "css/pico.min.css": {
+      "name": "Pico.css",
+      "version": "2.1.1",
+      "source": "npm @picocss/pico@2.1.1 (css/pico.min.css)",
+      "license": "MIT",
+      "license_file": "licenses/pico-css.LICENSE.md",
+      "sha256": "fbc9a63fc9fc9f72d12fd7fc9806e11fa9f77ae4f9cad146b27003a1119ba3db"
+    },
+    "js/htmx.min.js": {
+      "name": "htmx",
+      "version": "2.0.11",
+      "source": "npm htmx.org@2.0.11 (dist/htmx.min.js)",
+      "license": "0BSD",
+      "license_file": "licenses/htmx.LICENSE",
+      "sha256": "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717"
+    },
+    "fonts/Archivo-Variable.woff2": {
+      "name": "Archivo",
+      "version": "variable",
+      "source": "pred-docs/diseno/fonts (referencia de diseno del proyecto)",
+      "license": "OFL-1.1",
+      "license_file": "licenses/archivo.OFL.txt",
+      "sha256": "7c59b09511f172d20fbf5feaf7aff9e844460cdb286d8930a1f546b39ed1a5e1"
+    },
+    "fonts/Archivo-Italic.woff2": {
+      "name": "Archivo Italic",
+      "version": "variable",
+      "source": "pred-docs/diseno/fonts (referencia de diseno del proyecto)",
+      "license": "OFL-1.1",
+      "license_file": "licenses/archivo.OFL.txt",
+      "sha256": "22c60ea0f47fbb358ffac9604e3b0304f9cec91faf5d1d47e7e0f610c002d3d6"
+    },
+    "fonts/JetBrainsMono-Variable.woff2": {
+      "name": "JetBrains Mono",
+      "version": "variable",
+      "source": "pred-docs/diseno/fonts (referencia de diseno del proyecto)",
+      "license": "OFL-1.1",
+      "license_file": "licenses/jetbrains-mono.OFL.txt",
+      "sha256": "18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e"
+    }
+  }
+}
