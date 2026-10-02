@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}PRED{% endblock %}</title>
+  <link rel="stylesheet" href="{{ static_url('css/pico.min.css') }}">
+  <link rel="stylesheet" href="{{ static_url('css/pred.css') }}">
+  <script src="{{ static_url('js/htmx.min.js') }}" defer></script>
+</head>
+<body>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
