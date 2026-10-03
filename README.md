@@ -32,12 +32,17 @@ Environment variables (see `.env.example`):
 ## Checks
 
 ```bash
-make check       # lint + type check + tests: the same steps CI runs
+make check       # lockfile + lint + type check + tests: every CI job except Smoke
+make lock        # uv.lock matches pyproject.toml (uv lock --check)
 make lint        # ruff check + ruff format --check
 make typecheck   # pyright
 make test        # pytest (coverage must stay at or above 80%)
 make format      # apply ruff fixes and formatting
 ```
+
+CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
+Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
+runtime dependencies only and requests `/health` and `/`.
 
 ## Pre-commit hooks
 

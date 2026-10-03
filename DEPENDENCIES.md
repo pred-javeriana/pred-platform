@@ -57,21 +57,28 @@ runtime: `brew install libomp`.
 
 ### CI auth approach
 
-GitHub Actions authenticates via `GITHUB_TOKEN` using the built-in token for
-same-org private repos. No extra secrets are needed when both repos belong to
-`pred-javeriana`. The workflow step that runs `uv sync` will resolve the git
-dependency automatically once it is uncommented.
+The built-in `GITHUB_TOKEN` cannot install `pred-engine`: GitHub scopes it to the repository that
+runs the workflow, even inside the same org. CI needs its own read-only credential for the engine
+repo. The narrowest one is a deploy key:
 
-> To confirm when wiring: the built-in `GITHUB_TOKEN` is normally scoped to the repository
-> running the workflow, so reading a second private repo may need a PAT or deploy key anyway.
-
-If external collaborators or forks need access, a personal access token (PAT)
-or deploy key should be added as a repository secret and configured in the
-workflow via:
+1. Create an SSH key pair. Add the public key to `pred-engine` as a read-only deploy key.
+2. Store the private key in `pred-platform` as the repository secret `PRED_ENGINE_DEPLOY_KEY`.
+3. In every job of `.github/workflows/ci.yml` that runs `uv sync` or `uv lock`, add this step
+   first. It loads the key and routes the HTTPS dependency URL through SSH (uv fetches git
+   dependencies with `git`):
 
 ```yaml
-- name: Configure git credentials
-  run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+- name: Configure pred-engine access
+  env:
+    PRED_ENGINE_DEPLOY_KEY: ${{ secrets.PRED_ENGINE_DEPLOY_KEY }}
+  run: |
+    eval "$(ssh-agent -s)"
+    echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+    ssh-add - <<< "$PRED_ENGINE_DEPLOY_KEY"
+    git config --global url."git@github.com:pred-javeriana/pred-engine".insteadOf \
+      "https://github.com/pred-javeriana/pred-engine"
 ```
 
-Add this step before `uv sync` in `.github/workflows/ci.yml`.
+Pull requests from forks do not receive repository secrets, so this step fails there. A GitHub
+App installation token or a fine-grained token from an org-owned account also works, but GitHub
+ranks deploy keys first for read access to a single repository.

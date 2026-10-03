@@ -1,4 +1,4 @@
-.PHONY: run test lint format typecheck check
+.PHONY: run test lint format typecheck lock check
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
@@ -23,5 +23,8 @@ format:
 typecheck:
 	uv run pyright
 
-# The same checks CI runs.
-check: lint typecheck test
+lock:
+	uv lock --check
+
+# The same checks CI runs, except its smoke job that boots the server (see .github/workflows/ci.yml).
+check: lock lint typecheck test
