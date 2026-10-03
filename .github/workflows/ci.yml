@@ -6,28 +6,133 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+# A newer push to the same pull request cancels the run in progress; runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.11.21"
+
 jobs:
-  ci:
+  lock:
+    name: Lockfile
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: "latest"
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - name: uv.lock matches pyproject.toml
+        run: uv lock --check
 
-      - name: Set up Python
-        run: uv python install 3.12
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - name: ruff check
+        run: uv run --frozen ruff check --output-format=github .
 
-      - name: Install dependencies
-        run: uv sync --extra dev --locked
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - name: ruff format (fix locally with `make format`)
+        run: uv run --frozen ruff format --check --diff .
 
-      - name: Lint and format check
-        run: uv run ruff check . && uv run ruff format --check .
+  types:
+    name: Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - name: pyright
+        run: uv run --frozen pyright
 
-      - name: Type check
-        run: uv run pyright
+  test:
+    name: Tests (coverage >= 80%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - name: pytest
+        run: uv run --frozen pytest -ra
 
-      - name: Run tests
-        run: uv run pytest
+  # Boots the real server with runtime dependencies only (no dev extras), so a runtime import of
+  # a dev-only package, a broken uvicorn install or a startup crash fails here.
+  smoke:
+    name: Smoke (boot + home page)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          cache-suffix: runtime
+      - run: uv sync --frozen
+      - name: Start server
+        run: |
+          uv run --frozen --no-sync uvicorn pred_platform.app.main:app \
+            --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/server.log" 2>&1 &
+      - name: GET /health
+        run: >-
+          curl --fail-with-body --silent --show-error --max-time 5
+          --retry 30 --retry-delay 1 --retry-connrefused
+          http://127.0.0.1:8000/health
+      - name: GET / renders the home page
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 5 \
+            -o "$RUNNER_TEMP/index.html" http://127.0.0.1:8000/
+          grep -q '<html lang="es"' "$RUNNER_TEMP/index.html" \
+            || { echo "::error::GET / did not return the PRED home page"; cat "$RUNNER_TEMP/index.html"; exit 1; }
+      - name: Server log
+        if: always()
+        run: cat "$RUNNER_TEMP/server.log"
