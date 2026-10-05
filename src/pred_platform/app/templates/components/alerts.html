@@ -1,0 +1,10 @@
+{# variant: info | success | warning | error. Ícono + texto + color. #}
+{% macro alert(message, variant="info", icon=none) %}
+{% if icon is none %}
+  {% set icon = {"info": "i-info", "success": "i-check-circle", "warning": "i-warn", "error": "i-x-circle"}[variant] %}
+{% endif %}
+<div class="pred-alert pred-alert--{{ variant }}" role="{{ 'alert' if variant in ['error', 'warning'] else 'status' }}">
+  <svg aria-hidden="true"><use href="#{{ icon }}"></use></svg>
+  <div>{{ message }}</div>
+</div>
+{% endmacro %}

@@ -7,7 +7,7 @@
       "source": "npm @picocss/pico@2.1.1 (css/pico.min.css)",
       "license": "MIT",
       "license_file": "licenses/pico-css.LICENSE.md",
-      "sha256": "fbc9a63fc9fc9f72d12fd7fc9806e11fa9f77ae4f9cad146b27003a1119ba3db"
+      "sha256": "378a5374d6f1bd5a718ed8fb2382323b012d344254ede00908e72fffc8e19e13"
     },
     "js/htmx.min.js": {
       "name": "htmx",

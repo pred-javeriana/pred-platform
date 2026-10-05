@@ -66,16 +66,18 @@ def test_vendored_file_matches_lock(path: str) -> None:
 
 
 def test_lock_covers_every_third_party_file() -> None:
-    own_files = {"css/pred.css"}
+    own_files = {"css/pred.css", "js/pred.js"}
     shipped = {
-        str(p.relative_to(_STATIC_DIR))
+        p.relative_to(_STATIC_DIR).as_posix()
         for p in _STATIC_DIR.rglob("*")
         if p.is_file() and p.suffix in {".css", ".js", ".woff2"}
     }
     assert shipped - own_files == set(_LOCK)
 
 
-@pytest.mark.parametrize("path", ["css/pico.min.css", "css/pred.css", "js/htmx.min.js"])
+@pytest.mark.parametrize(
+    "path", ["css/pico.min.css", "css/pred.css", "js/htmx.min.js", "js/pred.js"]
+)
 def test_static_code_has_no_external_references(path: str) -> None:
     text = (_STATIC_DIR / path).read_text(encoding="utf-8")
     assert not _EXTERNAL_URL.search(text), f"{path} references an external resource"

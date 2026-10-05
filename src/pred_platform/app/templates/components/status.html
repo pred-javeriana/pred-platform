@@ -1,0 +1,7 @@
+{# status es un StatusPresentation (icon, label, modifier). Nunca solo color. #}
+{% macro status_indicator(status) %}
+<span class="pred-status pred-status--{{ status.modifier }}">
+  <svg class="pred-status__icon" aria-hidden="true"><use href="#{{ status.icon }}"></use></svg>
+  <span class="pred-status__label">{{ status.label }}</span>
+</span>
+{% endmacro %}

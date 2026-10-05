@@ -1,0 +1,11 @@
+{# Fila plana de KPI. tone opcional: ok | warn | err | info | data. #}
+{% macro metrics_row(items) %}
+<div class="pred-metrics">
+  {% for item in items %}
+  <div class="pred-metrics__item">
+    <p class="pred-metrics__label">{{ item.label }}</p>
+    <p class="pred-metrics__value{% if item.tone %} is-{{ item.tone }}{% endif %}">{{ item.value }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}

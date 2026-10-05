@@ -1,0 +1,12 @@
+{% macro progress_bar(completed, total, percent, label="", status_label="") %}
+<div class="pred-progress" data-pred-progress="{{ percent }}"{% if status_label %} data-pred-progress-status="{{ status_label }}"{% endif %}>
+  <div class="pred-progress__meta">
+    {% if label %}<span class="pred-progress__label">{{ label }}</span>{% endif %}
+    <span class="pred-progress__counts">{{ completed }} / {{ total }} tareas</span>
+    <span class="pred-progress__pct">{{ percent }} %</span>
+  </div>
+  <div class="pred-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}">
+    <span class="pred-progress__fill"></span>
+  </div>
+</div>
+{% endmacro %}

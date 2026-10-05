@@ -1,0 +1,7 @@
+{% macro tabs(items, active) %}
+<nav class="pred-tabs" aria-label="Secciones">
+  {% for item in items %}
+  <a href="{{ item.href }}" class="{% if item.id == active %}is-active{% endif %}"{% if item.id == active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+  {% endfor %}
+</nav>
+{% endmacro %}

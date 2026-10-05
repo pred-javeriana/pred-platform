@@ -1,0 +1,27 @@
+{% macro table_start(headers) %}
+<div class="pred-table-wrap">
+  <table class="pred-table">
+    <thead>
+      <tr>
+        {% for header in headers %}
+        <th>{{ header }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+{% endmacro %}
+
+{% macro table_end() %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro table_empty(colspan, title, description) %}
+<tr>
+  <td colspan="{{ colspan }}" class="pred-table__empty">
+    <strong>{{ title }}</strong>
+    <p>{{ description }}</p>
+  </td>
+</tr>
+{% endmacro %}

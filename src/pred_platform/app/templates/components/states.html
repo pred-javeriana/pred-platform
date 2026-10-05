@@ -1,0 +1,39 @@
+{% from "components/buttons.html" import button %}
+
+{% macro empty_state(title, description, action_label=none, action_href=none) %}
+<div class="pred-state">
+  <h2>{{ title }}</h2>
+  <p>{{ description }}</p>
+  {% if action_label and action_href %}
+  {{ button(action_label, variant="primary", href=action_href) }}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro error_state(title, message, error_code=none, retry_label=none, retry_href=none) %}
+<div class="pred-state">
+  <h2>{{ title }}</h2>
+  <p>{{ message }}</p>
+  {% if error_code %}<span class="pred-state__code">{{ error_code }}</span>{% endif %}
+  {% if retry_label and retry_href %}
+  {{ button(retry_label, variant="secondary", href=retry_href, icon="i-rotate") }}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro unavailable_state(title, detail, reason_code, blocked_by) %}
+<section class="pred-unavailable">
+  <h2>{{ title }}</h2>
+  <p>{{ detail }}</p>
+  <p class="pred-unavailable__meta">
+    {{ reason_code }}{% if blocked_by %} · {{ blocked_by | join(", ") }}{% endif %}
+  </p>
+</section>
+{% endmacro %}
+
+{% macro loading_state(label="Cargando…") %}
+<div class="pred-loading" role="status">
+  <span class="pred-loading__mark" aria-hidden="true"></span>
+  <span>{{ label }}</span>
+</div>
+{% endmacro %}
