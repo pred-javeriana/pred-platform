@@ -13,9 +13,10 @@ palette, typography, and the component patterns below. No CDN, no build toolchai
 ships as local static assets. Keep the brand layer small; lean on Pico's own element defaults
 (forms, tables, buttons) wherever the brand layer doesn't need to override them.
 
-Polish is not spent evenly. Concentrate it on the screens an evaluator actually sees — Panel de
-pronósticos, Resultados, and Monitoreo. Admin/utility screens (Configuración, Administración)
-stay plain and functional; a plain admin screen is correct, not unfinished.
+Polish is not spent evenly. Concentrate it on the three operational surfaces an evaluator
+actually sees — Datos, Ejecución, and Resultados (`docs/UI_FLOW.md`). There is no login, no
+role switch and no administration screen in the product. Utility chrome stays plain and
+functional; a plain supporting block is correct, not unfinished.
 
 ## Palette
 
@@ -32,10 +33,15 @@ for exactly one primary action per view — don't spend it on borders, backgroun
 --border-strong: #C7C9C5;
 --primary: #1F5C54;
 --primary-dark: #164740;
+--primary-soft: #E2EDEA;
 --ok: #3E6B4F;
+--ok-soft: #E3EDE6;
 --err: #A3402F;
+--err-soft: #F4E4E0;
 --warn: #A0741F;
+--warn-soft: #F3E9D4;
 --info: #2E6E9E;
+--info-soft: #E4EEF4;
 --data: #1B7A8C;          /* numeric/metric values */
 ```
 

@@ -13,3 +13,4 @@ htmlcov/
 *.bak
 .agents/
 .env
+project/
