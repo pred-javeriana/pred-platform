@@ -27,7 +27,7 @@ Environment variables (see `.env.example`):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PRED_DATA_ROOT` | `data` | Data tree shared with pred-engine (`raw/`, `processed/`, `logs/`) |
-| `PRED_DB_PATH` | `<PRED_DATA_ROOT>/pred.db` | SQLite file behind the DAL |
+| `PRED_DB_PATH` | `<PRED_DATA_ROOT>/pred.db` | SQLite file behind the DAL (created and migrated on start with `dal`) |
 | `PRED_DATA_SOURCE` | `dal` | Where the views read from: `dal` (real) or `fixture` (sample data) |
 | `PRED_FIXTURE_SCENARIO` | `normal` | Sample data served by `fixture`: `normal`, `vacio` or `errores` |
 
@@ -78,6 +78,44 @@ make sync-contract ARGS=--check    # only report differences
 
 `contract.lock.json` pins the SHA-256 of every copied file and the tests verify it, so an edited
 copy fails the build. The sync also checks that the source is consistent before it writes.
+
+## Database migrations
+
+The DAL schema is versioned with SQLite's `PRAGMA user_version` and changed only through numbered
+SQL scripts in `src/pred_platform/dal/migrations/` (decision: `pred-docs/diseno/ADRs/ADR 05-002`).
+Version 1 is the original eleven tables. The current schema is what applying every script produces.
+
+- **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
+  folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.
+  Reading views never migrate. To migrate without starting the server:
+
+  ```bash
+  make migrate                                   # PRED_DB_PATH, or <PRED_DATA_ROOT>/pred.db
+  make migrate ARGS=--status                     # only report the version; changes nothing
+  make migrate ARGS="--db path/to/other.db"
+  ```
+
+- **Each migration is atomic.** It runs in its own transaction together with the `user_version`
+  update, so it is applied whole or rolled back; a failure names the script and later ones do not
+  run. There are no down migrations: to go back, restore a backup.
+- **Backup before migrating.** If the database already has tables, a consistent copy is saved next
+  to it as `pred.db.antes-de-v000N.bak` (N = target version) before anything changes; if the copy
+  fails, nothing is migrated. A new, empty database is not backed up. `*.bak` is git-ignored.
+- **Newer than the code.** A database whose version is higher than the last script (for example, a
+  backup from a newer platform) makes the app refuse to start, and the file is left untouched.
+
+### Adding a migration
+
+1. Create `NNNN_description.sql` (next number, four digits, lowercase `snake_case`) with plain
+   SQL statements. Do not use `BEGIN`/`COMMIT` or set `user_version`/`foreign_keys`: the runner
+   does. To change a table's constraints, rebuild it (create new, copy, drop old, rename); the
+   runner switches foreign keys off while applying and runs `foreign_key_check` before committing.
+2. Add its SHA-256 to `RELEASED` in `tests/test_dal_migrations_files.py` (the test prints how).
+3. Add a test that builds a database at the previous version with sample rows, migrates, and checks
+   the data is kept and the new schema is as expected (see `tests/test_dal_migrate.py`).
+4. Ask the author of the schema to review (decision D5 of the data contract).
+
+A released migration is never edited: the test pins its hash. A mistake is fixed by a new migration.
 
 ## Checks
 

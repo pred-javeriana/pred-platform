@@ -1,4 +1,4 @@
-.PHONY: run test lint format typecheck lock check sync-contract
+.PHONY: run test lint format typecheck lock check sync-contract migrate
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
@@ -31,6 +31,11 @@ lock:
 CONTRACT_SRC ?= ../pred-docs/diseno/contratos
 sync-contract:
 	uv run python scripts/sync_contract.py --source $(CONTRACT_SRC) $(ARGS)
+
+# Bring the database to the latest schema (the app also does this on start with PRED_DATA_SOURCE=dal).
+# `make migrate ARGS=--status` only reports; `ARGS="--db path/to/file.db"` targets another file.
+migrate:
+	uv run python -m pred_platform.dal.migrate $(ARGS)
 
 # The same checks CI runs, except its smoke job that boots the server (see .github/workflows/ci.yml).
 check: lock lint typecheck test
