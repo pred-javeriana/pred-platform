@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% from "components/buttons.html" import button %}
+{% from "components/forms.html" import field, upload_zone %}
+{% from "components/alerts.html" import alert %}
+{% from "components/status.html" import status_indicator %}
+{% from "components/progress.html" import progress_bar %}
+{% from "components/tables.html" import table_start, table_end, table_empty %}
+{% from "components/metrics.html" import metrics_row %}
+{% from "components/tabs.html" import tabs %}
+{% from "components/states.html" import empty_state, error_state, unavailable_state, loading_state %}
+
+{% block title %}PRED — catálogo de componentes{% endblock %}
+
+{% block content %}
+  <header class="pred-page-header">
+    <div>
+      <h1>Catálogo de componentes</h1>
+      <p>Herramienta interna. No forma parte del flujo Datos · Ejecución · Resultados.</p>
+    </div>
+  </header>
+
+  <section class="pred-section" id="botones">
+    <h2>Botones</h2>
+    {{ button("Lanzar ejecución", variant="primary", icon="i-play") }}
+    {{ button("Exportar", variant="secondary", icon="i-download") }}
+    {{ button("Filtrar", variant="subtle", icon="i-filter") }}
+    {{ button("Detener", variant="danger", icon="i-stop") }}
+    {{ button("No disponible", variant="primary", disabled=true) }}
+  </section>
+
+  <section class="pred-section" id="formularios">
+    <h2>Formularios</h2>
+    {{ field("sku", "SKU", value="FLT-1042", hint="Identificador de la serie") }}
+    {{ field("horizonte", "Horizonte", value="12", input_type="number") }}
+    {{ field("familia", "Familia", input_type="select", value="classical", options=[("classical", "Clásica"), ("ml", "ML")]) }}
+    {{ field("archivo", "Archivo", input_type="file") }}
+    {{ field("semilla", "Semilla", value="x", error="La semilla debe ser un entero.", disabled=false) }}
+    {{ field("bloqueado", "Campo inactivo", value="—", disabled=true) }}
+    {{ upload_zone("Arrastre un archivo CSV o Parquet") }}
+  </section>
+
+  <section class="pred-section" id="alertas">
+    <h2>Alertas</h2>
+    {{ alert("La corrida continúa en segundo plano.", variant="info") }}
+    {{ alert("Ingesta aceptada.", variant="success") }}
+    {{ alert("Hay series demasiado cortas.", variant="warning") }}
+    {{ alert("No se pudo leer el informe.", variant="error") }}
+  </section>
+
+  <section class="pred-section" id="estados-tarea">
+    <h2>Estados de tarea</h2>
+    {% for item in task_statuses %}
+      {{ status_indicator(item) }}
+    {% endfor %}
+  </section>
+
+  <section class="pred-section" id="estados-trial">
+    <h2>Estados de trial HPO</h2>
+    {% for item in trial_statuses %}
+      {{ status_indicator(item) }}
+    {% endfor %}
+  </section>
+
+  <section class="pred-section" id="veredictos">
+    <h2>Veredictos</h2>
+    {% for item in verdict_statuses %}
+      {{ status_indicator(item) }}
+    {% endfor %}
+  </section>
+
+  <section class="pred-section" id="progreso">
+    <h2>Progreso</h2>
+    {{ progress_bar(completed=progress_completed, total=progress_total, percent=progress_percent, label="Corrida activa") }}
+  </section>
+
+  <section class="pred-section" id="metricas">
+    <h2>Métricas</h2>
+    {{ metrics_row(metric_items) }}
+  </section>
+
+  <section class="pred-section" id="tabs">
+    <h2>Tabs</h2>
+    {{ tabs(tab_items, active="sku") }}
+  </section>
+
+  <section class="pred-section" id="tabla">
+    <h2>Tabla</h2>
+    {{ table_start(["SKU", "Modelo", "Clase", "Corte", "Métrica", "Tiempo", "Seed", "Estado"]) }}
+    <tr>
+      <td class="mono">FLT-1042</td>
+      <td>Prophet</td>
+      <td>intermitente</td>
+      <td class="mono">2026-06-29</td>
+      <td class="mono">0.72</td>
+      <td class="mono">12.4 s</td>
+      <td class="mono">42</td>
+      <td>{{ status_indicator(task_statuses[2]) }}</td>
+    </tr>
+    {{ table_end() }}
+    {{ table_start(["SKU"]) }}
+    {{ table_empty(1, "Sin filas", "Aún no hay resultados para mostrar.") }}
+    {{ table_end() }}
+  </section>
+
+  <section class="pred-section" id="vacios">
+    <h2>Estados de página</h2>
+    {{ empty_state("Aún no se han cargado datos.", "Cargue un archivo de transacciones para continuar.", "Ir a Datos", "/datos") }}
+    {{ loading_state() }}
+    {{ error_state("No se pudo leer la corrida.", "El repositorio rechazó el documento.", "platform.contract_invalid", "Reintentar", "/ejecucion") }}
+    {{ unavailable_state("La orquestación todavía no está disponible.", "El worker no escribe ejecuciones ni tareas.", "not_implemented", ["G3"]) }}
+  </section>
+{% endblock %}

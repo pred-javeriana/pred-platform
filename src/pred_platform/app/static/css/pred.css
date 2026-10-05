@@ -1,13 +1,12 @@
 /*
- * PRED brand layer on top of Pico.css (vendored base in pico.min.css).
+ * Capa de marca PRED sobre Pico.css (pico.min.css vendorizado).
  *
- * Scope of this layer: tokens, local typography and the mapping onto Pico's variables.
- * Components (button tiers, states, tables, alerts) belong to the design system (TASK-UI-1.1-B2).
- * Reference: docs/DESIGN.md and pred-docs/diseno/lenguaje-visual.md.
+ * Alcance: tokens, tipografía local y componentes reutilizables (B2).
+ * Referencia: docs/DESIGN.md, docs/UI_FLOW.md, pred-docs/diseno/lenguaje-visual.md.
  */
 
-/* ---------------------------------------------------------------- Typography */
-/* Self-hosted: the application has no internet access at runtime. */
+/* ---------------------------------------------------------------- Tipografía */
+/* Autoalojada: la aplicación no tiene red en tiempo de ejecución. */
 @font-face {
   font-family: "Archivo";
   src: url("../fonts/Archivo-Variable.woff2") format("woff2");
@@ -43,28 +42,32 @@
   --border-strong: #c7c9c5;
   --primary: #1f5c54;
   --primary-dark: #164740;
+  --primary-soft: #e2edea;
+  --primary-on: #ffffff;
   --ok: #3e6b4f;
+  --ok-soft: #e3ede6;
   --err: #a3402f;
+  --err-soft: #f4e4e0;
   --warn: #a0741f;
+  --warn-soft: #f3e9d4;
   --info: #2e6e9e;
+  --info-soft: #e4eef4;
   --data: #1b7a8c;
 
   --font-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* 4 px spacing scale. */
+  /* Escala de 4 px. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 16px;
   --space-4: 24px;
 
-  /* Sharp controls: 0-2 px radius, no default elevation. */
+  /* Controles afilados: radio 0-2 px, sin elevación por defecto. */
   --radius: 2px;
 }
 
-/* ------------------------------------------------------- Mapping to Pico variables */
-/* Pico declares its light theme under `:root:not([data-theme=dark])` (specificity 0,2,0).
-   The same specificity is matched here, and this sheet loads after Pico's. */
+/* ---------------------------------------------- Correspondencia con Pico */
 :root,
 :root[data-theme="light"] {
   --pico-font-family: var(--font-body);
@@ -94,8 +97,21 @@
   --pico-card-box-shadow: none;
 }
 
-/* ---------------------------------------------------------------- Base type */
-/* Large, heavy headings with tight tracking; small, dense body text. */
+/* ---------------------------------------------------------------- Base */
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--surface);
+}
+
 h1,
 h2 {
   font-weight: 800;
@@ -109,14 +125,596 @@ h2 {
   letter-spacing: -0.02em;
 }
 
-/* JetBrains Mono only for figures, metrics and codes; never decorative. */
+/* JetBrains Mono solo para cifras, métricas e identificadores. */
 code,
 kbd,
 samp,
 .mono {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .mono {
+  color: var(--data);
+}
+
+/* ---------------------------------------------------------------- Shell */
+.pred-shell {
+  min-height: 100vh;
+  background: var(--canvas);
+}
+
+.pred-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 50px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.pred-nav__brand {
+  margin-right: 14px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--primary-dark);
+  text-decoration: none;
+}
+
+.pred-nav__link {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pred-nav__link:hover {
+  color: var(--ink-soft);
+}
+
+.pred-nav__link.is-active,
+.pred-nav__link[aria-current="page"] {
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-weight: 500;
+}
+
+.pred-main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3);
+}
+
+.pred-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.pred-page-header h1 {
+  margin-bottom: var(--space-1);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pred-page-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pred-section {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.pred-section:last-child {
+  border-bottom: 0;
+}
+
+/* ---------------------------------------------------------------- Botones */
+.pred-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.pred-btn svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.pred-btn--primary {
+  background: var(--primary);
+  color: var(--primary-on);
+}
+
+.pred-btn--primary:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--primary-dark);
+}
+
+.pred-btn--secondary {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  border-color: var(--primary);
+}
+
+.pred-btn--subtle {
+  background: var(--surface);
+  color: var(--ink-soft);
+  border-color: var(--border-strong);
+}
+
+.pred-btn--danger {
+  background: var(--err);
+  color: var(--primary-on);
+}
+
+.pred-btn:disabled,
+.pred-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pred-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------- Formularios */
+.pred-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.pred-field__label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pred-field__control {
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-family: var(--font-body);
+  font-size: 13px;
+  box-shadow: none;
+}
+
+.pred-field__control:focus {
+  border-color: var(--primary);
+  box-shadow: none;
+}
+
+.pred-field__control:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.pred-field__control:disabled {
+  background: var(--canvas);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.pred-field.is-error .pred-field__control {
+  border-color: var(--err);
+}
+
+.pred-field__hint,
+.pred-field__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.pred-field__hint {
+  color: var(--muted);
+}
+
+.pred-field__error {
+  color: var(--err);
+}
+
+.pred-field__error svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.pred-upload {
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+}
+
+.pred-upload svg {
+  width: 26px;
+  height: 26px;
+  color: var(--primary);
+}
+
+.pred-upload p {
+  margin: var(--space-2) 0;
+  font-size: 14px;
+}
+
+/* --------------------------------------------------------------- Alertas */
+.pred-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.pred-alert svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.pred-alert--info {
+  background: var(--info-soft);
+  border-color: var(--info);
+  color: var(--ink);
+}
+
+.pred-alert--info svg {
+  color: var(--info);
+}
+
+.pred-alert--success {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ink);
+}
+
+.pred-alert--success svg {
+  color: var(--ok);
+}
+
+.pred-alert--warning {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--ink);
+}
+
+.pred-alert--warning svg {
+  color: var(--warn);
+}
+
+.pred-alert--error {
+  background: var(--err-soft);
+  border-color: var(--err);
+  color: var(--ink);
+}
+
+.pred-alert--error svg {
+  color: var(--err);
+}
+
+/* ------------------------------------------------- Indicador de estado */
+.pred-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.pred-status svg,
+.pred-status__icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.pred-status--neutral {
+  color: var(--muted);
+}
+
+.pred-status--info {
+  color: var(--info);
+}
+
+.pred-status--ok {
+  color: var(--ok);
+}
+
+.pred-status--err {
+  color: var(--err);
+}
+
+.pred-status--warn {
+  color: var(--warn);
+}
+
+/* Poda: tono atenuado propio, nunca el de fallo. */
+.pred-status--pruned {
+  color: var(--ink-soft);
+}
+
+/* -------------------------------------------------------- Progreso */
+.pred-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pred-progress__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 13px;
+}
+
+.pred-progress__label {
+  color: var(--muted);
+}
+
+.pred-progress__counts,
+.pred-progress__pct {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  color: var(--data);
+  font-weight: 600;
+}
+
+.pred-progress__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--border);
+}
+
+.pred-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius);
+  background: var(--info);
+}
+
+/* -------------------------------------------------------- Tabla densa */
+.pred-table-wrap {
+  overflow-x: auto;
+}
+
+.pred-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.pred-table th {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pred-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.pred-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pred-table tbody tr:hover td {
+  background: var(--canvas);
+}
+
+.pred-table .mono {
+  color: var(--data);
+}
+
+.pred-table__empty {
+  padding: var(--space-4);
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ----------------------------------------------------- Fila de métricas */
+.pred-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.pred-metrics__item {
+  min-width: 8rem;
+}
+
+.pred-metrics__label {
+  margin: 0 0 var(--space-1);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pred-metrics__value {
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pred-metrics__value.is-ok {
+  color: var(--ok);
+}
+
+.pred-metrics__value.is-warn {
+  color: var(--warn);
+}
+
+.pred-metrics__value.is-err {
+  color: var(--err);
+}
+
+.pred-metrics__value.is-info {
+  color: var(--info);
+}
+
+.pred-metrics__value.is-data {
+  color: var(--data);
+}
+
+/* --------------------------------------------------------------- Tabs */
+.pred-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.pred-tabs a,
+.pred-tabs button {
+  margin: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.pred-tabs a.is-active,
+.pred-tabs a[aria-current="page"],
+.pred-tabs button[aria-selected="true"] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 500;
+}
+
+/* ------------------------------------------- Estados de página */
+.pred-state {
+  max-width: 28rem;
+  margin: var(--space-4) auto;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+.pred-state h2 {
+  margin-bottom: var(--space-2);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.pred-state p {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.pred-state__code {
+  display: block;
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.pred-unavailable {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.pred-unavailable h2 {
+  margin-bottom: var(--space-2);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pred-unavailable p {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.pred-unavailable__meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.pred-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pred-loading__mark {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--info);
+  border-radius: 50%;
+}
+
+/* Sprite de íconos: oculto, referenciado con <use href="#…">. */
+.pred-icon-sprite {
+  display: none;
 }

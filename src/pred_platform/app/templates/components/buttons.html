@@ -1,0 +1,20 @@
+{# Botones. variant: primary | secondary | subtle | danger. Una acción primaria por vista. #}
+{% macro button(label, variant="primary", type="button", disabled=false, href=none, icon=none, extra="") %}
+{% set cls = "pred-btn pred-btn--" ~ variant ~ (" " ~ extra if extra else "") %}
+{% if href and not disabled %}
+<a class="{{ cls }}" href="{{ href }}">
+  {% if icon %}<svg aria-hidden="true"><use href="#{{ icon }}"></use></svg>{% endif %}
+  {{ label }}
+</a>
+{% elif href and disabled %}
+<a class="{{ cls }}" role="link" aria-disabled="true">
+  {% if icon %}<svg aria-hidden="true"><use href="#{{ icon }}"></use></svg>{% endif %}
+  {{ label }}
+</a>
+{% else %}
+<button class="{{ cls }}" type="{{ type }}"{% if disabled %} disabled{% endif %}>
+  {% if icon %}<svg aria-hidden="true"><use href="#{{ icon }}"></use></svg>{% endif %}
+  {{ label }}
+</button>
+{% endif %}
+{% endmacro %}

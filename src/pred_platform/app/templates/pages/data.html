@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "components/states.html" import empty_state %}
+
+{% block title %}PRED — Datos{% endblock %}
+
+{% block content %}
+  <header class="pred-page-header">
+    <div>
+      <h1>Datos</h1>
+      <p>Carga, validación y caracterización de la demanda. El flujo operativo se completará en las tareas C.</p>
+    </div>
+  </header>
+  {{ empty_state(
+    "Aún no se han cargado datos.",
+    "Cuando la carga esté conectada, el diagnóstico y la topología aparecerán en esta misma superficie."
+  ) }}
+{% endblock %}

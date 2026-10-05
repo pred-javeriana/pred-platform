@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}PRED — Ejecución{% endblock %}
+
+{% block content %}
+  <header class="pred-page-header">
+    <div>
+      <h1>Ejecución</h1>
+      <p>Configuración, avance y recuperación de la corrida en una sola superficie.</p>
+    </div>
+  </header>
+  {# hx-trigger queda en none: el polling real depende de G3. #}
+  <div id="ejecucion-cuerpo"
+       hx-get="/ejecucion/estado"
+       hx-trigger="none"
+       hx-swap="innerHTML"
+       hx-target="this">
+    {% include "partials/execution_body.html" %}
+  </div>
+{% endblock %}

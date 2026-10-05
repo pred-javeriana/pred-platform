@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "components/states.html" import empty_state %}
+{% from "components/tabs.html" import tabs %}
+
+{% block title %}PRED — Resultados{% endblock %}
+
+{% block content %}
+  <header class="pred-page-header">
+    <div>
+      <h1>Resultados</h1>
+      <p>Campeones, evidencia por SKU y validación retrospectiva. La interfaz no recalcula métricas.</p>
+    </div>
+  </header>
+  {{ tabs(
+    [
+      {"id": "resumen", "label": "Resumen", "href": "/resultados"},
+      {"id": "clase", "label": "Por clase", "href": "/resultados"},
+      {"id": "sku", "label": "Por SKU", "href": "/resultados"}
+    ],
+    "resumen"
+  ) }}
+  {{ empty_state(
+    "Todavía no hay resultados disponibles.",
+    "Los campeones y veredictos aparecerán aquí cuando la corrida los persista en el repositorio."
+  ) }}
+{% endblock %}

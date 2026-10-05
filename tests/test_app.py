@@ -28,25 +28,27 @@ def test_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_index_returns_html(client: TestClient) -> None:
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-    assert "PRED" in response.text
-    assert "construcción" in response.text
+def test_root_redirects_to_datos(client: TestClient) -> None:
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/datos"
 
 
-def test_index_is_spanish_light_themed_page(client: TestClient) -> None:
-    html = client.get("/").text
+def test_datos_is_spanish_light_themed_page(client: TestClient) -> None:
+    html = client.get("/datos").text
     assert '<html lang="es" data-theme="light">' in html
 
 
-def test_index_links_only_host_relative_local_assets(client: TestClient) -> None:
-    html = client.get("/").text
+def test_datos_links_only_host_relative_local_assets(client: TestClient) -> None:
+    html = client.get("/datos").text
     references = re.findall(r'(?:href|src)="([^"]+)"', html)
     assert references, "the page should link its stylesheets and script"
     for ref in references:
         url = urlparse(ref)
+        if url.path in {"/datos", "/ejecucion", "/resultados"}:
+            continue
+        if url.path.startswith("#") or not url.path:
+            continue
         assert not url.scheme and not url.netloc, f"{ref} is not host-relative"
         assert url.path.startswith("/static/"), ref
         assert client.get(url.path).status_code == 200, ref

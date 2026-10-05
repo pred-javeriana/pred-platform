@@ -130,7 +130,7 @@ make format      # apply ruff fixes and formatting
 
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
-runtime dependencies only and requests `/health` and `/`.
+runtime dependencies only and requests `/health` and `/` (which redirects to `/datos`).
 
 ## Pre-commit hooks
 

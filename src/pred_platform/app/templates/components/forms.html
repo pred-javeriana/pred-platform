@@ -1,0 +1,34 @@
+{% from "components/buttons.html" import button %}
+{# Campo de formulario. El error nunca va solo por color: ícono + texto. #}
+{% macro field(name, label, value="", input_type="text", placeholder="", hint="", error="", disabled=false, options=none) %}
+<div class="pred-field{% if error %} is-error{% endif %}">
+  <label class="pred-field__label" for="{{ name }}">{{ label }}</label>
+  {% if input_type == "select" %}
+  <select class="pred-field__control" id="{{ name }}" name="{{ name }}"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
+    {% for opt_value, opt_label in options %}
+    <option value="{{ opt_value }}"{% if opt_value == value %} selected{% endif %}>{{ opt_label }}</option>
+    {% endfor %}
+  </select>
+  {% elif input_type == "file" %}
+  <input class="pred-field__control" id="{{ name }}" name="{{ name }}" type="file"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
+  {% else %}
+  <input class="pred-field__control" id="{{ name }}" name="{{ name }}" type="{{ input_type }}" value="{{ value }}" placeholder="{{ placeholder }}"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
+  {% endif %}
+  {% if error %}
+  <p class="pred-field__error" id="{{ name }}-error">
+    <svg aria-hidden="true"><use href="#i-x-circle"></use></svg>
+    <span>{{ error }}</span>
+  </p>
+  {% elif hint %}
+  <p class="pred-field__hint" id="{{ name }}-hint">{{ hint }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro upload_zone(title, button_label="Seleccionar archivo") %}
+<div class="pred-upload">
+  <svg aria-hidden="true"><use href="#i-upload"></use></svg>
+  <p>{{ title }}</p>
+  {{ button(button_label, variant="secondary", type="button", icon="i-upload") }}
+</div>
+{% endmacro %}
