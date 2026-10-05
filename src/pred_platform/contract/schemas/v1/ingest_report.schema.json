@@ -1,0 +1,522 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/ingest_report.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "Deposit": {
+      "additionalProperties": false,
+      "properties": {
+        "raw_path": {
+          "title": "Raw Path",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "deposited",
+            "already_present_identical",
+            "already_present_different"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "would_overwrite": {
+          "title": "Would Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "raw_path",
+        "status",
+        "would_overwrite"
+      ],
+      "title": "Deposit",
+      "type": "object"
+    },
+    "DiagnosticEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "severity": {
+          "default": "error",
+          "enum": [
+            "info",
+            "advertencia",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action"
+        }
+      },
+      "required": [
+        "field",
+        "message"
+      ],
+      "title": "DiagnosticEntry",
+      "type": "object"
+    },
+    "ErrorInfo": {
+      "additionalProperties": false,
+      "description": "Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`.",
+      "properties": {
+        "code": {
+          "pattern": "^[a-z_]+\\.[a-z_]+$",
+          "title": "Code",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "platform"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "severity": {
+          "default": "error",
+          "enum": [
+            "info",
+            "advertencia",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "row_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Index"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        },
+        "source_exception": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Exception"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "stage"
+      ],
+      "title": "ErrorInfo",
+      "type": "object"
+    },
+    "HeaderDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "accepted",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "HeaderDiagnostic",
+      "type": "object"
+    },
+    "PublishedArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "parquet_path": {
+          "title": "Parquet Path",
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "n_skus": {
+          "minimum": 0,
+          "title": "N Skus",
+          "type": "integer"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "parquet_path",
+        "rows",
+        "n_skus",
+        "columns"
+      ],
+      "title": "PublishedArtifact",
+      "type": "object"
+    },
+    "QualityEntry": {
+      "additionalProperties": false,
+      "description": "Espejo de una fila de `bitacora_calidad`.",
+      "properties": {
+        "severity": {
+          "enum": [
+            "info",
+            "advertencia",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "code": {
+          "pattern": "^[a-z_]+\\.[a-z_]+$",
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "row_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Index"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        }
+      },
+      "required": [
+        "severity",
+        "code",
+        "message"
+      ],
+      "title": "QualityEntry",
+      "type": "object"
+    },
+    "SourceFile": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "row_count": {
+          "minimum": 0,
+          "title": "Row Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "sha256",
+        "row_count"
+      ],
+      "title": "SourceFile",
+      "type": "object"
+    },
+    "ValidationSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "rows_validated": {
+          "minimum": 0,
+          "title": "Rows Validated",
+          "type": "integer"
+        },
+        "rows_daily_panel": {
+          "minimum": 0,
+          "title": "Rows Daily Panel",
+          "type": "integer"
+        },
+        "n_skus": {
+          "minimum": 0,
+          "title": "N Skus",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows_validated",
+        "rows_daily_panel",
+        "n_skus"
+      ],
+      "title": "ValidationSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "ingest_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Ingest Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "accepted",
+        "rejected",
+        "failed",
+        "needs_confirmation"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "source_file": {
+      "$ref": "#/$defs/SourceFile"
+    },
+    "deposit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Deposit"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "header_diagnostic": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HeaderDiagnostic"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "validation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ValidationSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "published": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PublishedArtifact"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "quality_log": {
+      "items": {
+        "$ref": "#/$defs/QualityEntry"
+      },
+      "title": "Quality Log",
+      "type": "array"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ErrorInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "ingest_id",
+    "status",
+    "source_file"
+  ],
+  "title": "IngestReport",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

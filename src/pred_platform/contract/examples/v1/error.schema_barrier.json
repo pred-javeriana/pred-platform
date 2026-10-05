@@ -1,0 +1,10 @@
+{
+  "code": "ingest.schema_barrier",
+  "stage": "L1",
+  "severity": "error",
+  "detail": "lead_time_days debe ser entero >= 1",
+  "column": "lead_time_days",
+  "row_index": 41,
+  "source_exception": "SchemaBarrierError",
+  "retryable": false
+}

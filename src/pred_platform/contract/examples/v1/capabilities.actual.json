@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "items": [
+    {
+      "id": "parquet_read",
+      "available": true
+    },
+    {
+      "id": "ingest_report_persisted",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G1"
+      ]
+    },
+    {
+      "id": "topology_persisted",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G1"
+      ]
+    },
+    {
+      "id": "run_orchestration",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G3"
+      ]
+    },
+    {
+      "id": "family_comparison",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G2",
+        "G3"
+      ]
+    },
+    {
+      "id": "selection_results_persisted",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G4"
+      ]
+    },
+    {
+      "id": "trial_detail_persisted",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G2",
+        "G4"
+      ]
+    },
+    {
+      "id": "walkforward_evidence_persisted",
+      "available": false,
+      "reason_code": "not_implemented",
+      "blocked_by": [
+        "G3",
+        "G4"
+      ]
+    },
+    {
+      "id": "champion_selection",
+      "available": false,
+      "reason_code": "stage_not_implemented",
+      "blocked_by": []
+    },
+    {
+      "id": "retrospective_validation",
+      "available": false,
+      "reason_code": "stage_not_implemented",
+      "blocked_by": []
+    },
+    {
+      "id": "synthetic_log_read",
+      "available": true
+    }
+  ]
+}

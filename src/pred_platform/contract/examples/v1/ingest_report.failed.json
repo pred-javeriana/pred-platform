@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "962673a533b53ce2229d5b3947e1f27df2135ef050ce86c835ac7d9dc1d26bb4",
+  "status": "failed",
+  "source_file": {
+    "name": "ventas_2025.csv",
+    "sha256": "962673a533b53ce2229d5b3947e1f27df2135ef050ce86c835ac7d9dc1d26bb4",
+    "row_count": 15340
+  },
+  "deposit": {
+    "raw_path": "data/raw/ventas_2025.csv",
+    "status": "deposited",
+    "would_overwrite": false
+  },
+  "header_diagnostic": {
+    "status": "accepted",
+    "entries": []
+  },
+  "quality_log": [
+    {
+      "severity": "error",
+      "code": "ingest.schema_barrier",
+      "message": "lead_time_days debe ser entero >= 1",
+      "row_index": 41,
+      "column": "lead_time_days"
+    },
+    {
+      "severity": "advertencia",
+      "code": "ingest.schema_barrier",
+      "message": "Se omitieron 3 filas posteriores sin revisar."
+    }
+  ],
+  "error": {
+    "code": "ingest.schema_barrier",
+    "stage": "L1",
+    "severity": "error",
+    "detail": "lead_time_days debe ser entero >= 1",
+    "column": "lead_time_days",
+    "row_index": 41,
+    "source_exception": "SchemaBarrierError"
+  }
+}

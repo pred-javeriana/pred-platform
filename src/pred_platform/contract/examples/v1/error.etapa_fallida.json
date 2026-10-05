@@ -1,0 +1,7 @@
+{
+  "code": "pipeline.stage_failed",
+  "stage": "L3",
+  "detail": "No complete finite walk-forward evidence for FIL-0002",
+  "source_exception": "PipelineExecutionError",
+  "retryable": true
+}

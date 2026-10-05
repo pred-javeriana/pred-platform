@@ -1,0 +1,1103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/sku_selection.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "Champion": {
+      "additionalProperties": false,
+      "description": "Fila de `resultados_comparativos`. Hoy nadie la escribe (M3 no existe).",
+      "properties": {
+        "modelo": {
+          "pattern": "^(classical|ml|dl|foundation):[a-z0-9][a-z0-9._-]*$",
+          "title": "Modelo",
+          "type": "string"
+        },
+        "family": {
+          "anyOf": [
+            {
+              "enum": [
+                "classical",
+                "ml",
+                "dl",
+                "foundation"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Family"
+        },
+        "metrica_seleccion": {
+          "title": "Metrica Seleccion",
+          "type": "string"
+        },
+        "valor_seleccion": {
+          "title": "Valor Seleccion",
+          "type": "number"
+        }
+      },
+      "required": [
+        "modelo",
+        "metrica_seleccion",
+        "valor_seleccion"
+      ],
+      "title": "Champion",
+      "type": "object"
+    },
+    "ErrorInfo": {
+      "additionalProperties": false,
+      "description": "Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`.",
+      "properties": {
+        "code": {
+          "pattern": "^[a-z_]+\\.[a-z_]+$",
+          "title": "Code",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "platform"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "severity": {
+          "default": "error",
+          "enum": [
+            "info",
+            "advertencia",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "row_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Index"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        },
+        "source_exception": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Exception"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "stage"
+      ],
+      "title": "ErrorInfo",
+      "type": "object"
+    },
+    "EvidenciaClasica": {
+      "additionalProperties": false,
+      "properties": {
+        "metrica_objetivo": {
+          "title": "Metrica Objetivo",
+          "type": "string"
+        },
+        "valor": {
+          "title": "Valor",
+          "type": "number"
+        },
+        "n_ventanas": {
+          "minimum": 0,
+          "title": "N Ventanas",
+          "type": "integer"
+        },
+        "n_trials": {
+          "minimum": 0,
+          "title": "N Trials",
+          "type": "integer"
+        },
+        "n_completados": {
+          "minimum": 0,
+          "title": "N Completados",
+          "type": "integer"
+        },
+        "n_podados": {
+          "minimum": 0,
+          "title": "N Podados",
+          "type": "integer"
+        },
+        "n_fallidos": {
+          "minimum": 0,
+          "title": "N Fallidos",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "estudio_hpo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estudio Hpo"
+        },
+        "family": {
+          "const": "classical",
+          "title": "Family",
+          "type": "string"
+        },
+        "order": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "title": "Order",
+          "type": "array"
+        },
+        "seasonal_order": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "title": "Seasonal Order",
+          "type": "array"
+        }
+      },
+      "required": [
+        "metrica_objetivo",
+        "valor",
+        "n_ventanas",
+        "n_trials",
+        "n_completados",
+        "n_podados",
+        "n_fallidos",
+        "seed",
+        "family",
+        "order",
+        "seasonal_order"
+      ],
+      "title": "EvidenciaClasica",
+      "type": "object"
+    },
+    "EvidenciaDL": {
+      "additionalProperties": false,
+      "properties": {
+        "metrica_objetivo": {
+          "title": "Metrica Objetivo",
+          "type": "string"
+        },
+        "valor": {
+          "title": "Valor",
+          "type": "number"
+        },
+        "n_ventanas": {
+          "minimum": 0,
+          "title": "N Ventanas",
+          "type": "integer"
+        },
+        "n_trials": {
+          "minimum": 0,
+          "title": "N Trials",
+          "type": "integer"
+        },
+        "n_completados": {
+          "minimum": 0,
+          "title": "N Completados",
+          "type": "integer"
+        },
+        "n_podados": {
+          "minimum": 0,
+          "title": "N Podados",
+          "type": "integer"
+        },
+        "n_fallidos": {
+          "minimum": 0,
+          "title": "N Fallidos",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "estudio_hpo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estudio Hpo"
+        },
+        "family": {
+          "const": "dl",
+          "title": "Family",
+          "type": "string"
+        },
+        "hiperparametros": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Hiperparametros",
+          "type": "object"
+        }
+      },
+      "required": [
+        "metrica_objetivo",
+        "valor",
+        "n_ventanas",
+        "n_trials",
+        "n_completados",
+        "n_podados",
+        "n_fallidos",
+        "seed",
+        "family",
+        "hiperparametros"
+      ],
+      "title": "EvidenciaDL",
+      "type": "object"
+    },
+    "EvidenciaFundacional": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "const": "foundation",
+          "title": "Family",
+          "type": "string"
+        },
+        "configuracion": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Configuracion",
+          "type": "object"
+        },
+        "optimizado": {
+          "const": false,
+          "default": false,
+          "title": "Optimizado",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "family",
+        "configuracion"
+      ],
+      "title": "EvidenciaFundacional",
+      "type": "object"
+    },
+    "EvidenciaML": {
+      "additionalProperties": false,
+      "properties": {
+        "metrica_objetivo": {
+          "title": "Metrica Objetivo",
+          "type": "string"
+        },
+        "valor": {
+          "title": "Valor",
+          "type": "number"
+        },
+        "n_ventanas": {
+          "minimum": 0,
+          "title": "N Ventanas",
+          "type": "integer"
+        },
+        "n_trials": {
+          "minimum": 0,
+          "title": "N Trials",
+          "type": "integer"
+        },
+        "n_completados": {
+          "minimum": 0,
+          "title": "N Completados",
+          "type": "integer"
+        },
+        "n_podados": {
+          "minimum": 0,
+          "title": "N Podados",
+          "type": "integer"
+        },
+        "n_fallidos": {
+          "minimum": 0,
+          "title": "N Fallidos",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "estudio_hpo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estudio Hpo"
+        },
+        "family": {
+          "const": "ml",
+          "title": "Family",
+          "type": "string"
+        },
+        "hiperparametros": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Hiperparametros",
+          "type": "object"
+        }
+      },
+      "required": [
+        "metrica_objetivo",
+        "valor",
+        "n_ventanas",
+        "n_trials",
+        "n_completados",
+        "n_podados",
+        "n_fallidos",
+        "seed",
+        "family",
+        "hiperparametros"
+      ],
+      "title": "EvidenciaML",
+      "type": "object"
+    },
+    "Exclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "enum": [
+            "not_in_policy_matrix",
+            "not_configured",
+            "series_too_short",
+            "execution_failed"
+          ],
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "reason_code"
+      ],
+      "title": "Exclusion",
+      "type": "object"
+    },
+    "FamilyEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "enum": [
+            "classical",
+            "ml",
+            "dl",
+            "foundation"
+          ],
+          "title": "Family",
+          "type": "string"
+        },
+        "estado": {
+          "enum": [
+            "pendiente",
+            "ejecutando",
+            "exitosa",
+            "fallida",
+            "no_ejecutable",
+            "excluida"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "exclusion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Exclusion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "modelo": {
+          "anyOf": [
+            {
+              "pattern": "^(classical|ml|dl|foundation):[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modelo"
+        },
+        "produced_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Produced By"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "classical": "#/$defs/EvidenciaClasica",
+                  "dl": "#/$defs/EvidenciaDL",
+                  "foundation": "#/$defs/EvidenciaFundacional",
+                  "ml": "#/$defs/EvidenciaML"
+                },
+                "propertyName": "family"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EvidenciaClasica"
+                },
+                {
+                  "$ref": "#/$defs/EvidenciaML"
+                },
+                {
+                  "$ref": "#/$defs/EvidenciaDL"
+                },
+                {
+                  "$ref": "#/$defs/EvidenciaFundacional"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence"
+        },
+        "forecast_config": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forecast Config"
+        },
+        "forecast_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forecast Seed"
+        },
+        "trials": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/TrialRow"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trials"
+        },
+        "walk_forward": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WalkForwardSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "family",
+        "estado"
+      ],
+      "title": "FamilyEntry",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "TopologyMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "sku_id": {
+          "minLength": 1,
+          "title": "Sku Id",
+          "type": "string"
+        },
+        "n_periods": {
+          "minimum": 1,
+          "title": "N Periods",
+          "type": "integer"
+        },
+        "n_positive": {
+          "minimum": 0,
+          "title": "N Positive",
+          "type": "integer"
+        },
+        "adi": {
+          "exclusiveMinimum": 0,
+          "title": "Adi",
+          "type": "number"
+        },
+        "cv2": {
+          "minimum": 0,
+          "title": "Cv2",
+          "type": "number"
+        },
+        "sku_class": {
+          "enum": [
+            "smooth",
+            "intermittent",
+            "erratic",
+            "lumpy"
+          ],
+          "title": "Sku Class",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sku_id",
+        "n_periods",
+        "n_positive",
+        "adi",
+        "cv2",
+        "sku_class"
+      ],
+      "title": "TopologyMetrics",
+      "type": "object"
+    },
+    "TrialRow": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "configuracion": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Configuracion",
+          "type": "object"
+        },
+        "estado": {
+          "enum": [
+            "pendiente",
+            "corriendo",
+            "completado",
+            "podado",
+            "fallido"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "valor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valor"
+        },
+        "n_ventanas": {
+          "minimum": 0,
+          "title": "N Ventanas",
+          "type": "integer"
+        },
+        "motivo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Motivo"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timestamp"
+        }
+      },
+      "required": [
+        "id",
+        "configuracion",
+        "estado",
+        "n_ventanas"
+      ],
+      "title": "TrialRow",
+      "type": "object"
+    },
+    "WalkForwardSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "metrica_objetivo": {
+          "enum": [
+            "mae",
+            "rmse",
+            "smape",
+            "mase"
+          ],
+          "title": "Metrica Objetivo",
+          "type": "string"
+        },
+        "valor_agregado": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valor Agregado"
+        },
+        "completo": {
+          "title": "Completo",
+          "type": "boolean"
+        },
+        "n_ventanas_evaluadas": {
+          "minimum": 0,
+          "title": "N Ventanas Evaluadas",
+          "type": "integer"
+        },
+        "n_ventanas_totales": {
+          "minimum": 0,
+          "title": "N Ventanas Totales",
+          "type": "integer"
+        },
+        "selection_scope": {
+          "const": "same_history",
+          "default": "same_history",
+          "title": "Selection Scope",
+          "type": "string"
+        },
+        "statistical_comparison_available": {
+          "default": false,
+          "title": "Statistical Comparison Available",
+          "type": "boolean"
+        },
+        "windows": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/WindowResult"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Windows"
+        }
+      },
+      "required": [
+        "metrica_objetivo",
+        "completo",
+        "n_ventanas_evaluadas",
+        "n_ventanas_totales"
+      ],
+      "title": "WalkForwardSummary",
+      "type": "object"
+    },
+    "WindowResult": {
+      "additionalProperties": false,
+      "properties": {
+        "indice": {
+          "minimum": 0,
+          "title": "Indice",
+          "type": "integer"
+        },
+        "corte": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Corte",
+          "type": "string"
+        },
+        "inicio_train": {
+          "title": "Inicio Train",
+          "type": "integer"
+        },
+        "fin_train": {
+          "title": "Fin Train",
+          "type": "integer"
+        },
+        "inicio_val": {
+          "title": "Inicio Val",
+          "type": "integer"
+        },
+        "fin_val": {
+          "title": "Fin Val",
+          "type": "integer"
+        },
+        "metricas": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Metricas",
+          "type": "object"
+        },
+        "duracion_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duracion S"
+        },
+        "fallo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fallo"
+        }
+      },
+      "required": [
+        "indice",
+        "corte",
+        "inicio_train",
+        "fin_train",
+        "inicio_val",
+        "fin_val",
+        "metricas"
+      ],
+      "title": "WindowResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "ingest_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ingest Id"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "sku_id": {
+      "title": "Sku Id",
+      "type": "string"
+    },
+    "sku_class": {
+      "enum": [
+        "smooth",
+        "intermittent",
+        "erratic",
+        "lumpy"
+      ],
+      "title": "Sku Class",
+      "type": "string"
+    },
+    "profile": {
+      "enum": [
+        "dense_stable",
+        "dense_variable",
+        "sparse_stable",
+        "sparse_variable"
+      ],
+      "title": "Profile",
+      "type": "string"
+    },
+    "policy_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Version"
+    },
+    "topology": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TopologyMetrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "families": {
+      "items": {
+        "$ref": "#/$defs/FamilyEntry"
+      },
+      "title": "Families",
+      "type": "array"
+    },
+    "champion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Champion"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "sku_id",
+    "sku_class",
+    "profile",
+    "families"
+  ],
+  "title": "SkuSelection",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

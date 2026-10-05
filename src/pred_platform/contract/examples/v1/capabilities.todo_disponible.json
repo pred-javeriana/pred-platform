@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "items": [
+    {
+      "id": "parquet_read",
+      "available": true
+    },
+    {
+      "id": "ingest_report_persisted",
+      "available": true
+    },
+    {
+      "id": "topology_persisted",
+      "available": true
+    },
+    {
+      "id": "run_orchestration",
+      "available": true
+    },
+    {
+      "id": "family_comparison",
+      "available": true
+    },
+    {
+      "id": "selection_results_persisted",
+      "available": true
+    },
+    {
+      "id": "trial_detail_persisted",
+      "available": true
+    },
+    {
+      "id": "walkforward_evidence_persisted",
+      "available": true
+    },
+    {
+      "id": "champion_selection",
+      "available": true
+    },
+    {
+      "id": "retrospective_validation",
+      "available": true
+    },
+    {
+      "id": "synthetic_log_read",
+      "available": true
+    }
+  ]
+}

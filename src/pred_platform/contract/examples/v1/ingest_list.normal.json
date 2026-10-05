@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "items": [
+    {
+      "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+      "name": "demo_canonico.csv",
+      "status": "accepted",
+      "parquet_path": "data/processed/demo_canonico.parquet",
+      "rows": 900,
+      "n_skus": 4,
+      "published_at": "2026-10-02T06:28:40Z"
+    },
+    {
+      "ingest_id": "962673a533b53ce2229d5b3947e1f27df2135ef050ce86c835ac7d9dc1d26bb4",
+      "name": "ventas_2025.csv",
+      "status": "rejected"
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 2
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "unavailable",
+    "reason_code": "stage_not_implemented",
+    "detail": "La validacion retrospectiva (L4) no esta implementada."
+  },
+  "items": []
+}

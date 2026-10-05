@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "run_id": "1",
+  "items": [
+    {
+      "sku_id": "FIL-0001",
+      "sku_class": "smooth",
+      "profile": "dense_stable",
+      "families": [
+        {
+          "family": "classical",
+          "estado": "exitosa",
+          "metrica_objetivo": "mae",
+          "valor": 1.5458468339979268
+        }
+      ],
+      "champion": {
+        "modelo": "classical:sarima",
+        "family": "classical",
+        "metrica_seleccion": "mae",
+        "valor_seleccion": 1.5458468339979268
+      }
+    },
+    {
+      "sku_id": "FIL-0002",
+      "sku_class": "erratic",
+      "profile": "dense_variable",
+      "families": [
+        {
+          "family": "classical",
+          "estado": "exitosa",
+          "metrica_objetivo": "mae",
+          "valor": 13.300069523292503
+        }
+      ],
+      "champion": null
+    },
+    {
+      "sku_id": "FIL-0003",
+      "sku_class": "intermittent",
+      "profile": "sparse_stable",
+      "families": [
+        {
+          "family": "classical",
+          "estado": "exitosa",
+          "metrica_objetivo": "mae",
+          "valor": 1.7921735193914163
+        }
+      ],
+      "champion": null
+    },
+    {
+      "sku_id": "FIL-0004",
+      "sku_class": "lumpy",
+      "profile": "sparse_variable",
+      "families": [
+        {
+          "family": "classical",
+          "estado": "exitosa",
+          "metrica_objetivo": "mae",
+          "valor": 8.045086070278296
+        }
+      ],
+      "champion": null
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 4
+  }
+}

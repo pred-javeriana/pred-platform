@@ -1,0 +1,6 @@
+{
+  "code": "run.incompatible_config",
+  "stage": "L2",
+  "detail": "La configuracion no coincide con la huella del manifiesto existente.",
+  "source_exception": "IncompatibilidadCorridaError"
+}

@@ -1,0 +1,6 @@
+{
+  "code": "platform.contract_invalid",
+  "stage": "platform",
+  "detail": "El documento topology_report no cumple el esquema 1.x: items.0.adi",
+  "field": "items.0.adi"
+}

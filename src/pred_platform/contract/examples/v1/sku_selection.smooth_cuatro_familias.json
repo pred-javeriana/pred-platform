@@ -1,0 +1,412 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "run_id": "1",
+  "sku_id": "FIL-0001",
+  "sku_class": "smooth",
+  "profile": "dense_stable",
+  "policy_version": "2.2.0-initial",
+  "topology": {
+    "sku_id": "FIL-0001",
+    "n_periods": 180,
+    "n_positive": 180,
+    "adi": 1.0,
+    "cv2": 0.008278477753912966,
+    "sku_class": "smooth"
+  },
+  "families": [
+    {
+      "family": "classical",
+      "estado": "exitosa",
+      "modelo": "classical:sarima",
+      "produced_by": "ClassicalSelectionStrategy",
+      "evidence": {
+        "family": "classical",
+        "order": [
+          1,
+          2,
+          2
+        ],
+        "seasonal_order": [
+          1,
+          0,
+          0,
+          7
+        ],
+        "metrica_objetivo": "mae",
+        "valor": 1.5458468339979268,
+        "n_ventanas": 9,
+        "n_trials": 3,
+        "n_completados": 1,
+        "n_podados": 2,
+        "n_fallidos": 0,
+        "seed": 42,
+        "estudio_hpo": "classical-FIL-0001-demo"
+      },
+      "forecast_config": {
+        "p": 1,
+        "d": 2,
+        "q": 2,
+        "P": 1,
+        "D": 0,
+        "Q": 0,
+        "m": 7
+      },
+      "forecast_seed": 42,
+      "trials": [
+        {
+          "id": "classical-FIL-0001-0000",
+          "configuracion": {
+            "p": 1,
+            "d": 2,
+            "q": 2,
+            "P": 1,
+            "D": 0,
+            "Q": 0
+          },
+          "estado": "completado",
+          "valor": 1.5458468339979268,
+          "n_ventanas": 9,
+          "motivo": null,
+          "timestamp": "2026-10-02T06:31:01.177785+00:00"
+        },
+        {
+          "id": "classical-FIL-0001-0001",
+          "configuracion": {
+            "p": 0,
+            "d": 2,
+            "q": 2,
+            "P": 2,
+            "D": 0,
+            "Q": 2
+          },
+          "estado": "podado",
+          "valor": 2.046568003479828,
+          "n_ventanas": 4,
+          "motivo": "escalon=4 valor=2.04657 umbral_top_1=1.56029",
+          "timestamp": "2026-10-02T06:31:02.241703+00:00"
+        },
+        {
+          "id": "classical-FIL-0001-0002",
+          "configuracion": {
+            "p": 3,
+            "d": 0,
+            "q": 0,
+            "P": 0,
+            "D": 0,
+            "Q": 1
+          },
+          "estado": "podado",
+          "valor": 1.891101103055444,
+          "n_ventanas": 4,
+          "motivo": "escalon=4 valor=1.8911 umbral_top_1=1.56029",
+          "timestamp": "2026-10-02T06:31:02.958042+00:00"
+        }
+      ],
+      "walk_forward": {
+        "metrica_objetivo": "mae",
+        "valor_agregado": 1.5458468339979268,
+        "completo": true,
+        "n_ventanas_evaluadas": 9,
+        "n_ventanas_totales": 9,
+        "selection_scope": "same_history",
+        "statistical_comparison_available": false,
+        "windows": [
+          {
+            "indice": 0,
+            "inicio_train": 0,
+            "fin_train": 60,
+            "inicio_val": 60,
+            "fin_val": 67,
+            "metricas": {
+              "mae": 1.4580596011142646,
+              "rmse": 1.711515477705372,
+              "smape": 7.271598639983721,
+              "mase": 0.6661824039573795
+            },
+            "duracion_s": 0.027544958000362385,
+            "fallo": null,
+            "corte": "2026-03-02"
+          },
+          {
+            "indice": 1,
+            "inicio_train": 0,
+            "fin_train": 74,
+            "inicio_val": 74,
+            "fin_val": 81,
+            "metricas": {
+              "mae": 1.6667389294217412,
+              "rmse": 2.474424091952592,
+              "smape": 8.135101565966226,
+              "mase": 0.7754965852170601
+            },
+            "duracion_s": 0.030383083001652267,
+            "fallo": null,
+            "corte": "2026-03-16"
+          },
+          {
+            "indice": 2,
+            "inicio_train": 0,
+            "fin_train": 88,
+            "inicio_val": 88,
+            "fin_val": 95,
+            "metricas": {
+              "mae": 1.2661013964079366,
+              "rmse": 1.4763783896063234,
+              "smape": 6.189685105834252,
+              "mase": 0.6032600771120169
+            },
+            "duracion_s": 0.050401959000737406,
+            "fallo": null,
+            "corte": "2026-03-30"
+          },
+          {
+            "indice": 3,
+            "inicio_train": 0,
+            "fin_train": 102,
+            "inicio_val": 102,
+            "fin_val": 109,
+            "metricas": {
+              "mae": 1.8502700123392988,
+              "rmse": 2.4222570744559917,
+              "smape": 9.198150000200812,
+              "mase": 0.896814546797109
+            },
+            "duracion_s": 0.0753961669979617,
+            "fallo": null,
+            "corte": "2026-04-13"
+          },
+          {
+            "indice": 4,
+            "inicio_train": 0,
+            "fin_train": 116,
+            "inicio_val": 116,
+            "fin_val": 123,
+            "metricas": {
+              "mae": 0.9849306376983711,
+              "rmse": 1.2237194453395255,
+              "smape": 4.937567332416881,
+              "mase": 0.4729402621547244
+            },
+            "duracion_s": 0.0845745420010644,
+            "fallo": null,
+            "corte": "2026-04-27"
+          },
+          {
+            "indice": 5,
+            "inicio_train": 0,
+            "fin_train": 130,
+            "inicio_val": 130,
+            "fin_val": 137,
+            "metricas": {
+              "mae": 1.9271966149505262,
+              "rmse": 2.213442166479761,
+              "smape": 9.606474339179803,
+              "mase": 0.9369374847387932
+            },
+            "duracion_s": 0.07434620799904224,
+            "fallo": null,
+            "corte": "2026-05-11"
+          },
+          {
+            "indice": 6,
+            "inicio_train": 0,
+            "fin_train": 144,
+            "inicio_val": 144,
+            "fin_val": 151,
+            "metricas": {
+              "mae": 1.4993015699594616,
+              "rmse": 1.8808957321636786,
+              "smape": 7.491775071196964,
+              "mase": 0.7156944776461541
+            },
+            "duracion_s": 0.06863854200128117,
+            "fallo": null,
+            "corte": "2026-05-25"
+          },
+          {
+            "indice": 7,
+            "inicio_train": 0,
+            "fin_train": 158,
+            "inicio_val": 158,
+            "fin_val": 165,
+            "metricas": {
+              "mae": 1.9253793081195383,
+              "rmse": 2.3029397451137026,
+              "smape": 9.578282829283923,
+              "mase": 0.9258989666434723
+            },
+            "duracion_s": 0.11003374999927473,
+            "fallo": null,
+            "corte": "2026-06-08"
+          },
+          {
+            "indice": 8,
+            "inicio_train": 0,
+            "fin_train": 172,
+            "inicio_val": 172,
+            "fin_val": 179,
+            "metricas": {
+              "mae": 1.3346434359702037,
+              "rmse": 1.6636055639867546,
+              "smape": 6.685245318598216,
+              "mase": 0.6401632759740803
+            },
+            "duracion_s": 0.0925439999991795,
+            "fallo": null,
+            "corte": "2026-06-22"
+          }
+        ]
+      }
+    },
+    {
+      "family": "ml",
+      "estado": "exitosa",
+      "modelo": "ml:lightgbm",
+      "produced_by": "MLSelectionStrategy",
+      "evidence": {
+        "family": "ml",
+        "hiperparametros": {
+          "lags": 14,
+          "n_estimators": 120,
+          "max_depth": 4,
+          "learning_rate": 0.08
+        },
+        "metrica_objetivo": "mae",
+        "seed": 42,
+        "valor": 1.62,
+        "n_ventanas": 9,
+        "n_trials": 3,
+        "n_completados": 1,
+        "n_podados": 1,
+        "n_fallidos": 1,
+        "estudio_hpo": "ml-FIL-0001-demo"
+      },
+      "forecast_config": {
+        "lags": 14,
+        "n_estimators": 120,
+        "max_depth": 4,
+        "learning_rate": 0.08,
+        "m": 7
+      },
+      "forecast_seed": 42,
+      "trials": [
+        {
+          "id": "ml-FIL-0001-0000",
+          "configuracion": {
+            "lags": 14,
+            "n_estimators": 120,
+            "max_depth": 4,
+            "learning_rate": 0.08
+          },
+          "estado": "completado",
+          "valor": 1.62,
+          "n_ventanas": 9,
+          "motivo": null,
+          "timestamp": "2026-10-02T06:12:01Z"
+        },
+        {
+          "id": "ml-FIL-0001-0001",
+          "configuracion": {
+            "lags": 14,
+            "n_estimators": 120,
+            "max_depth": 8,
+            "learning_rate": 0.08
+          },
+          "estado": "podado",
+          "valor": 2.31,
+          "n_ventanas": 4,
+          "motivo": "escalon=4 valor=2.31 umbral_top_1=1.62",
+          "timestamp": "2026-10-02T06:12:09Z"
+        },
+        {
+          "id": "ml-FIL-0001-0002",
+          "configuracion": {
+            "lags": 14,
+            "n_estimators": 300,
+            "max_depth": 4,
+            "learning_rate": 0.08
+          },
+          "estado": "fallido",
+          "valor": null,
+          "n_ventanas": 2,
+          "motivo": "ajuste: LightGBMError (fixture)",
+          "timestamp": "2026-10-02T06:12:14Z"
+        }
+      ]
+    },
+    {
+      "family": "dl",
+      "estado": "exitosa",
+      "modelo": "dl:mlp",
+      "produced_by": "DLSelectionStrategy",
+      "evidence": {
+        "family": "dl",
+        "hiperparametros": {
+          "lags": 14,
+          "capas": 2,
+          "unidades": 16,
+          "epochs": 40,
+          "batch_size": 32,
+          "learning_rate": 0.003,
+          "dropout": 0.1,
+          "l2": 0.0001
+        },
+        "metrica_objetivo": "mae",
+        "seed": 42,
+        "valor": 1.71,
+        "n_ventanas": 9,
+        "n_trials": 3,
+        "n_completados": 3,
+        "n_podados": 0,
+        "n_fallidos": 0,
+        "estudio_hpo": "dl-cf93031a20c9363bdd03a7bd008a57ab813a699db62519bbe0acfd539082758e"
+      },
+      "forecast_config": {
+        "lags": 14,
+        "capas": 2,
+        "unidades": 16,
+        "epochs": 40,
+        "batch_size": 32,
+        "learning_rate": 0.003,
+        "dropout": 0.1,
+        "l2": 0.0001
+      },
+      "forecast_seed": 42
+    },
+    {
+      "family": "foundation",
+      "estado": "exitosa",
+      "modelo": "foundation:chronos2",
+      "produced_by": "FoundationSelectionStrategy",
+      "evidence": {
+        "family": "foundation",
+        "configuracion": {
+          "model_id": "amazon/chronos-2",
+          "revision": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+          "version_libreria": "2.3.2",
+          "device": "cpu",
+          "dtype": "float32",
+          "cuantil_puntual": 0.5,
+          "aprendizaje_cruzado": false,
+          "max_contexto": 8192,
+          "n_hilos": 1
+        },
+        "optimizado": false
+      },
+      "forecast_config": {},
+      "forecast_seed": 0
+    }
+  ],
+  "champion": {
+    "modelo": "classical:sarima",
+    "family": "classical",
+    "metrica_seleccion": "mae",
+    "valor_seleccion": 1.5458468339979268
+  }
+}
