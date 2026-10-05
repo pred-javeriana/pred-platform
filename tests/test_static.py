@@ -76,7 +76,13 @@ def test_lock_covers_every_third_party_file() -> None:
 
 
 @pytest.mark.parametrize(
-    "path", ["css/pico.min.css", "css/pred.css", "js/htmx.min.js", "js/pred.js"]
+    "path",
+    [
+        "css/pico.min.css",
+        "css/pred.css",
+        "js/htmx.min.js",
+        "js/pred.js",
+    ],
 )
 def test_static_code_has_no_external_references(path: str) -> None:
     text = (_STATIC_DIR / path).read_text(encoding="utf-8")
