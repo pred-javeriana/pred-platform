@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ejecucion": {
+    "id": "2",
+    "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+    "configuracion_id": "1",
+    "seed": 42,
+    "estado": "ejecutando",
+    "iniciada_en": "2026-10-02T06:00:00Z"
+  },
+  "settings": {
+    "schema_version": 1,
+    "configuracion_version": 1,
+    "families": [
+      "classical",
+      "ml"
+    ],
+    "policy_version": "2.2.0-initial:configured:classical",
+    "min_train": 60,
+    "horizon": 7,
+    "step": 14,
+    "metric": "mae",
+    "seasonality": 7,
+    "aggregation": "media_recortada",
+    "trim": 0.1
+  },
+  "reserve": {
+    "fraction": 0.2,
+    "t_star": "2026-06-29",
+    "first_reserved": "2026-06-30",
+    "last_observed": "2026-08-13",
+    "reserved_days": 45
+  },
+  "progress": {
+    "tareas_total": 5,
+    "tareas_por_estado": {
+      "pendiente": 1,
+      "ejecutando": 1,
+      "exitosa": 1,
+      "fallida": 1,
+      "no_ejecutable": 1
+    },
+    "avance_pct": 60.0
+  },
+  "tasks": [
+    {
+      "id": "t-0001",
+      "sku": "FIL-0001",
+      "modelo": "classical:sarima",
+      "family": "classical",
+      "corte": "2026-06-29",
+      "estado": "pendiente",
+      "seed": 42
+    },
+    {
+      "id": "t-0002",
+      "sku": "FIL-0001",
+      "modelo": "ml:lightgbm",
+      "family": "ml",
+      "corte": "2026-06-29",
+      "estado": "ejecutando",
+      "seed": 42,
+      "iniciada_en": "2026-10-02T06:05:00Z"
+    },
+    {
+      "id": "t-0003",
+      "sku": "FIL-0002",
+      "modelo": "classical:sarima",
+      "family": "classical",
+      "corte": "2026-06-29",
+      "estado": "exitosa",
+      "seed": 42,
+      "tiempo_pared_s": 4.1,
+      "iniciada_en": "2026-10-02T06:01:00Z",
+      "finalizada_en": "2026-10-02T06:02:00Z"
+    },
+    {
+      "id": "t-0004",
+      "sku": "FIL-0002",
+      "modelo": "ml:lightgbm",
+      "family": "ml",
+      "corte": "2026-06-29",
+      "estado": "fallida",
+      "seed": 42,
+      "tiempo_pared_s": 1.2,
+      "iniciada_en": "2026-10-02T06:02:00Z",
+      "finalizada_en": "2026-10-02T06:03:00Z",
+      "error": {
+        "code": "model.fit_failed",
+        "stage": "L2",
+        "detail": "AjusteModeloError: el ajuste no convergio",
+        "source_exception": "AjusteModeloError",
+        "retryable": true
+      }
+    },
+    {
+      "id": "t-0005",
+      "sku": "FIL-0003",
+      "modelo": "ml:lightgbm",
+      "family": "ml",
+      "corte": "2026-06-29",
+      "estado": "no_ejecutable",
+      "seed": 42,
+      "finalizada_en": "2026-10-02T06:03:00Z",
+      "error": {
+        "code": "model.series_too_short",
+        "stage": "L2",
+        "severity": "advertencia",
+        "detail": "historia admisible insuficiente: 30 dias, se requieren 47 (min_train + horizonte)",
+        "source_exception": "SerieCortaError"
+      }
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 5
+  }
+}

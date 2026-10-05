@@ -1,0 +1,441 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/synthetic_list.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "SyntheticArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "file_name": {
+          "title": "File Name",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "media_type": {
+          "const": "text/csv",
+          "default": "text/csv",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Columns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file_name",
+        "sha256",
+        "rows",
+        "columns"
+      ],
+      "title": "SyntheticArtifact",
+      "type": "object"
+    },
+    "SyntheticLog": {
+      "additionalProperties": false,
+      "description": "Espejo de `BitacoraCorrida` (aumentacion/bitacora.py del motor).",
+      "properties": {
+        "semilla_ruta": {
+          "title": "Semilla Ruta",
+          "type": "string"
+        },
+        "semilla_aleatoria": {
+          "title": "Semilla Aleatoria",
+          "type": "integer"
+        },
+        "contract_version": {
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "period": {
+          "title": "Period",
+          "type": "integer"
+        },
+        "n_series_por_sku": {
+          "title": "N Series Por Sku",
+          "type": "integer"
+        },
+        "skus_procesados": {
+          "title": "Skus Procesados",
+          "type": "integer"
+        },
+        "skus_omitidos": {
+          "title": "Skus Omitidos",
+          "type": "integer"
+        },
+        "tolerancia_divergencia": {
+          "title": "Tolerancia Divergencia",
+          "type": "number"
+        },
+        "tasa_rechazo": {
+          "title": "Tasa Rechazo",
+          "type": "number"
+        },
+        "intentos_bootstrap": {
+          "title": "Intentos Bootstrap",
+          "type": "integer"
+        },
+        "n_demanda_rectificada": {
+          "title": "N Demanda Rectificada",
+          "type": "integer"
+        },
+        "n_lead_time_acotado": {
+          "title": "N Lead Time Acotado",
+          "type": "integer"
+        },
+        "row_count": {
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "artefacto_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Artefacto Sha256",
+          "type": "string"
+        },
+        "artefacto_path": {
+          "title": "Artefacto Path",
+          "type": "string"
+        },
+        "iniciada_en": {
+          "format": "date-time",
+          "title": "Iniciada En",
+          "type": "string"
+        },
+        "finalizada_en": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finalizada En"
+        },
+        "metodo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metodo"
+        },
+        "block_size": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block Size"
+        },
+        "ruido_relativo": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ruido Relativo"
+        },
+        "max_reintentos": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Reintentos"
+        },
+        "mapeo_columnas": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapeo Columnas"
+        },
+        "semilla_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semilla Sha256"
+        },
+        "huella_corrida": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Huella Corrida"
+        },
+        "configuracion": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Configuracion"
+        }
+      },
+      "required": [
+        "semilla_ruta",
+        "semilla_aleatoria",
+        "contract_version",
+        "period",
+        "n_series_por_sku",
+        "skus_procesados",
+        "skus_omitidos",
+        "tolerancia_divergencia",
+        "tasa_rechazo",
+        "intentos_bootstrap",
+        "n_demanda_rectificada",
+        "n_lead_time_acotado",
+        "row_count",
+        "artefacto_sha256",
+        "artefacto_path",
+        "iniciada_en"
+      ],
+      "title": "SyntheticLog",
+      "type": "object"
+    },
+    "SyntheticRun": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "dal",
+            "fixture"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "availability": {
+          "$ref": "#/$defs/Availability"
+        },
+        "run_ref": {
+          "minLength": 1,
+          "title": "Run Ref",
+          "type": "string"
+        },
+        "log_file": {
+          "title": "Log File",
+          "type": "string"
+        },
+        "log": {
+          "$ref": "#/$defs/SyntheticLog"
+        },
+        "artifact": {
+          "$ref": "#/$defs/SyntheticArtifact"
+        }
+      },
+      "required": [
+        "schema_version",
+        "generated_at",
+        "source",
+        "availability",
+        "run_ref",
+        "log_file",
+        "log",
+        "artifact"
+      ],
+      "title": "SyntheticRun",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/SyntheticRun"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/Page"
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "items",
+    "page"
+  ],
+  "title": "SyntheticList",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

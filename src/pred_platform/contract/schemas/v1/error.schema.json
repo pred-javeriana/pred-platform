@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/error.schema.json",
+  "additionalProperties": false,
+  "description": "Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`.",
+  "properties": {
+    "code": {
+      "pattern": "^[a-z_]+\\.[a-z_]+$",
+      "title": "Code",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "L0",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "platform"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "severity": {
+      "default": "error",
+      "enum": [
+        "info",
+        "advertencia",
+        "error"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Detail"
+    },
+    "field": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Field"
+    },
+    "row_index": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Row Index"
+    },
+    "column": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Column"
+    },
+    "source_exception": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Exception"
+    },
+    "retryable": {
+      "default": false,
+      "title": "Retryable",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "stage"
+  ],
+  "title": "ErrorInfo",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

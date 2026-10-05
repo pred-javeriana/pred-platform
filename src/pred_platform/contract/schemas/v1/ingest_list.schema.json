@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/ingest_list.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "IngestSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "ingest_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ingest Id"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "accepted",
+                "rejected",
+                "failed",
+                "needs_confirmation"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "parquet_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parquet Path"
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rows"
+        },
+        "n_skus": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "N Skus"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "IngestSummary",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/IngestSummary"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/Page"
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "items",
+    "page"
+  ],
+  "title": "IngestList",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/sku_selection_list.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "Champion": {
+      "additionalProperties": false,
+      "description": "Fila de `resultados_comparativos`. Hoy nadie la escribe (M3 no existe).",
+      "properties": {
+        "modelo": {
+          "pattern": "^(classical|ml|dl|foundation):[a-z0-9][a-z0-9._-]*$",
+          "title": "Modelo",
+          "type": "string"
+        },
+        "family": {
+          "anyOf": [
+            {
+              "enum": [
+                "classical",
+                "ml",
+                "dl",
+                "foundation"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Family"
+        },
+        "metrica_seleccion": {
+          "title": "Metrica Seleccion",
+          "type": "string"
+        },
+        "valor_seleccion": {
+          "title": "Valor Seleccion",
+          "type": "number"
+        }
+      },
+      "required": [
+        "modelo",
+        "metrica_seleccion",
+        "valor_seleccion"
+      ],
+      "title": "Champion",
+      "type": "object"
+    },
+    "FamilyBrief": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "enum": [
+            "classical",
+            "ml",
+            "dl",
+            "foundation"
+          ],
+          "title": "Family",
+          "type": "string"
+        },
+        "estado": {
+          "enum": [
+            "pendiente",
+            "ejecutando",
+            "exitosa",
+            "fallida",
+            "no_ejecutable",
+            "excluida"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "metrica_objetivo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metrica Objetivo"
+        },
+        "valor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valor"
+        }
+      },
+      "required": [
+        "family",
+        "estado"
+      ],
+      "title": "FamilyBrief",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "SkuSelectionRow": {
+      "additionalProperties": false,
+      "properties": {
+        "sku_id": {
+          "title": "Sku Id",
+          "type": "string"
+        },
+        "sku_class": {
+          "enum": [
+            "smooth",
+            "intermittent",
+            "erratic",
+            "lumpy"
+          ],
+          "title": "Sku Class",
+          "type": "string"
+        },
+        "profile": {
+          "enum": [
+            "dense_stable",
+            "dense_variable",
+            "sparse_stable",
+            "sparse_variable"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "families": {
+          "items": {
+            "$ref": "#/$defs/FamilyBrief"
+          },
+          "title": "Families",
+          "type": "array"
+        },
+        "champion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Champion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "sku_id",
+        "sku_class",
+        "profile",
+        "families"
+      ],
+      "title": "SkuSelectionRow",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "ingest_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ingest Id"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/SkuSelectionRow"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/Page"
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "items",
+    "page"
+  ],
+  "title": "SkuSelectionList",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

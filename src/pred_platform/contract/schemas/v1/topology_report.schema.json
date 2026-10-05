@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/topology_report.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "Thresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "adi": {
+          "title": "Adi",
+          "type": "number"
+        },
+        "cv2": {
+          "title": "Cv2",
+          "type": "number"
+        }
+      },
+      "required": [
+        "adi",
+        "cv2"
+      ],
+      "title": "Thresholds",
+      "type": "object"
+    },
+    "TopologyMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "sku_id": {
+          "minLength": 1,
+          "title": "Sku Id",
+          "type": "string"
+        },
+        "n_periods": {
+          "minimum": 1,
+          "title": "N Periods",
+          "type": "integer"
+        },
+        "n_positive": {
+          "minimum": 0,
+          "title": "N Positive",
+          "type": "integer"
+        },
+        "adi": {
+          "exclusiveMinimum": 0,
+          "title": "Adi",
+          "type": "number"
+        },
+        "cv2": {
+          "minimum": 0,
+          "title": "Cv2",
+          "type": "number"
+        },
+        "sku_class": {
+          "enum": [
+            "smooth",
+            "intermittent",
+            "erratic",
+            "lumpy"
+          ],
+          "title": "Sku Class",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sku_id",
+        "n_periods",
+        "n_positive",
+        "adi",
+        "cv2",
+        "sku_class"
+      ],
+      "title": "TopologyMetrics",
+      "type": "object"
+    },
+    "TopologySummary": {
+      "additionalProperties": false,
+      "properties": {
+        "n_skus": {
+          "minimum": 0,
+          "title": "N Skus",
+          "type": "integer"
+        },
+        "by_class": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "propertyNames": {
+            "enum": [
+              "smooth",
+              "intermittent",
+              "erratic",
+              "lumpy"
+            ]
+          },
+          "title": "By Class",
+          "type": "object"
+        }
+      },
+      "required": [
+        "n_skus",
+        "by_class"
+      ],
+      "title": "TopologySummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "ingest_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Ingest Id",
+      "type": "string"
+    },
+    "t_star": {
+      "anyOf": [
+        {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "T Star"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/Thresholds"
+    },
+    "summary": {
+      "$ref": "#/$defs/TopologySummary"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/TopologyMetrics"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/Page"
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "ingest_id",
+    "thresholds",
+    "summary",
+    "items",
+    "page"
+  ],
+  "title": "TopologyReport",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

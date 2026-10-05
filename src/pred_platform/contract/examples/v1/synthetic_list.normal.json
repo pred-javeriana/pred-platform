@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "items": [
+    {
+      "schema_version": "1.0.0",
+      "generated_at": "2026-10-02T06:30:00Z",
+      "source": "fixture",
+      "availability": {
+        "status": "available"
+      },
+      "run_ref": "fase0_20261001T221000123456_seed42",
+      "log_file": "fase0_20261001T221000123456_seed42.json",
+      "log": {
+        "semilla_ruta": "semilla_kaggle.csv",
+        "semilla_aleatoria": 42,
+        "contract_version": "1.0.0",
+        "period": 7,
+        "n_series_por_sku": 40,
+        "skus_procesados": 50,
+        "skus_omitidos": 0,
+        "tolerancia_divergencia": 0.05,
+        "tasa_rechazo": 0.12,
+        "intentos_bootstrap": 2260,
+        "n_demanda_rectificada": 0,
+        "n_lead_time_acotado": 3,
+        "row_count": 52000,
+        "artefacto_sha256": "2318e928d0ee46f5181932f8630f800a013493aa6a2b9cbcddb2f16caaa68aa4",
+        "artefacto_path": "data/raw/panel_sintetico_fase0.csv",
+        "iniciada_en": "2026-10-01T22:10:00+00:00",
+        "finalizada_en": "2026-10-01T22:14:31+00:00",
+        "metodo": "mbb-directo",
+        "block_size": 3,
+        "ruido_relativo": 0.0,
+        "max_reintentos": 20,
+        "mapeo_columnas": {
+          "sku_id": "Item_ID",
+          "timestamp": "Date",
+          "demand_qty": "Avg_Usage_Per_Day",
+          "lead_time_days": "Restock_Lead_Time"
+        },
+        "semilla_sha256": "1f94adc6f606f3483d3c78bc33f3161a664b65efa7f69e4f6063b2608df72ed6",
+        "huella_corrida": "b398f32193b742d77c43240fe66f62e9",
+        "configuracion": {
+          "period": 7,
+          "n_series_por_sku": 40,
+          "tolerancia_divergencia": 0.05,
+          "metodo": "mbb-directo"
+        }
+      },
+      "artifact": {
+        "file_name": "panel_sintetico_fase0.csv",
+        "sha256": "2318e928d0ee46f5181932f8630f800a013493aa6a2b9cbcddb2f16caaa68aa4",
+        "rows": 52000,
+        "media_type": "text/csv",
+        "columns": [
+          "sku_id",
+          "timestamp",
+          "demand_qty",
+          "lead_time_days"
+        ]
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "generated_at": "2026-10-02T06:30:00Z",
+      "source": "fixture",
+      "availability": {
+        "status": "available"
+      },
+      "run_ref": "fase0_20260901T101500_seed7",
+      "log_file": "fase0_20260901T101500_seed7.json",
+      "log": {
+        "semilla_ruta": "semilla_kaggle.csv",
+        "semilla_aleatoria": 7,
+        "contract_version": "1.0.0",
+        "period": 7,
+        "n_series_por_sku": 40,
+        "skus_procesados": 50,
+        "skus_omitidos": 0,
+        "tolerancia_divergencia": 0.05,
+        "tasa_rechazo": 0.12,
+        "intentos_bootstrap": 2260,
+        "n_demanda_rectificada": 0,
+        "n_lead_time_acotado": 3,
+        "row_count": 52000,
+        "artefacto_sha256": "2318e928d0ee46f5181932f8630f800a013493aa6a2b9cbcddb2f16caaa68aa4",
+        "artefacto_path": "data/raw/panel_sintetico_fase0.csv",
+        "iniciada_en": "2026-10-01T22:10:00+00:00",
+        "finalizada_en": "2026-10-01T22:14:31+00:00"
+      },
+      "artifact": {
+        "file_name": "panel_sintetico_fase0.csv",
+        "sha256": "2318e928d0ee46f5181932f8630f800a013493aa6a2b9cbcddb2f16caaa68aa4",
+        "rows": 52000,
+        "media_type": "text/csv",
+        "columns": [
+          "sku_id",
+          "timestamp",
+          "demand_qty",
+          "lead_time_days"
+        ]
+      }
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 2
+  }
+}

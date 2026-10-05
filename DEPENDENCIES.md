@@ -9,6 +9,7 @@
 | `uvicorn` | ASGI server |
 | `bcrypt` | Password hashing for session auth |
 | `itsdangerous` | Signed session cookies |
+| `pydantic` | Models of the data contract (declared directly; `>=2.13`, the version the contract's JSON Schemas were exported with) |
 
 ## Development dependencies
 
@@ -18,6 +19,7 @@ Installed with `uv sync --extra dev --locked`.
 |---------|---------|
 | `pytest`, `pytest-cov` | Tests and the 80% coverage gate |
 | `httpx` | Client used by FastAPI's `TestClient` |
+| `jsonschema` | Validates the contract's examples against its published JSON Schemas (tests and `scripts/sync_contract.py`) |
 | `ruff` | Lint and formatting |
 | `pyright` | Type checking |
 | `pre-commit` | Local git hooks |

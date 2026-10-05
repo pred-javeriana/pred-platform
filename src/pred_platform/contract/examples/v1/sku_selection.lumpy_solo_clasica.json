@@ -1,0 +1,293 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "run_id": "1",
+  "sku_id": "FIL-0004",
+  "sku_class": "lumpy",
+  "profile": "sparse_variable",
+  "policy_version": "2.2.0-initial:configured:classical",
+  "topology": {
+    "sku_id": "FIL-0004",
+    "n_periods": 180,
+    "n_positive": 45,
+    "adi": 4.0,
+    "cv2": 1.366397031539889,
+    "sku_class": "lumpy"
+  },
+  "families": [
+    {
+      "family": "classical",
+      "estado": "exitosa",
+      "modelo": "classical:sarima",
+      "produced_by": "ClassicalSelectionStrategy",
+      "evidence": {
+        "family": "classical",
+        "order": [
+          0,
+          2,
+          2
+        ],
+        "seasonal_order": [
+          2,
+          0,
+          2,
+          7
+        ],
+        "metrica_objetivo": "mae",
+        "valor": 8.045086070278296,
+        "n_ventanas": 9,
+        "n_trials": 3,
+        "n_completados": 1,
+        "n_podados": 2,
+        "n_fallidos": 0,
+        "seed": 42,
+        "estudio_hpo": "classical-FIL-0004-demo"
+      },
+      "forecast_config": {
+        "p": 0,
+        "d": 2,
+        "q": 2,
+        "P": 2,
+        "D": 0,
+        "Q": 2,
+        "m": 7
+      },
+      "forecast_seed": 42,
+      "trials": [
+        {
+          "id": "classical-FIL-0004-0000",
+          "configuracion": {
+            "p": 1,
+            "d": 2,
+            "q": 2,
+            "P": 1,
+            "D": 0,
+            "Q": 0
+          },
+          "estado": "podado",
+          "valor": 6.671353454829703,
+          "n_ventanas": 3,
+          "motivo": "ventana=3 valor=6.67135 poda_semantica:prediccion_nula",
+          "timestamp": "2026-10-02T06:31:03.032648+00:00"
+        },
+        {
+          "id": "classical-FIL-0004-0001",
+          "configuracion": {
+            "p": 0,
+            "d": 2,
+            "q": 2,
+            "P": 2,
+            "D": 0,
+            "Q": 2
+          },
+          "estado": "completado",
+          "valor": 8.045086070278296,
+          "n_ventanas": 9,
+          "motivo": null,
+          "timestamp": "2026-10-02T06:31:03.188179+00:00"
+        },
+        {
+          "id": "classical-FIL-0004-0002",
+          "configuracion": {
+            "p": 3,
+            "d": 0,
+            "q": 0,
+            "P": 0,
+            "D": 0,
+            "Q": 1
+          },
+          "estado": "podado",
+          "valor": 4.030797476933897,
+          "n_ventanas": 4,
+          "motivo": "ventana=4 valor=4.0308 poda_semantica:prediccion_nula",
+          "timestamp": "2026-10-02T06:31:05.424313+00:00"
+        }
+      ],
+      "walk_forward": {
+        "metrica_objetivo": "mae",
+        "valor_agregado": 8.045086070278296,
+        "completo": true,
+        "n_ventanas_evaluadas": 9,
+        "n_ventanas_totales": 9,
+        "selection_scope": "same_history",
+        "statistical_comparison_available": false,
+        "windows": [
+          {
+            "indice": 0,
+            "inicio_train": 0,
+            "fin_train": 60,
+            "inicio_val": 60,
+            "fin_val": 67,
+            "metricas": {
+              "mae": 12.733538202224992,
+              "rmse": 14.52636322162113,
+              "smape": 174.1041132609749,
+              "mase": 1.3661488354613858
+            },
+            "duracion_s": 0.1300110419979319,
+            "fallo": null,
+            "corte": "2026-03-02"
+          },
+          {
+            "indice": 1,
+            "inicio_train": 0,
+            "fin_train": 74,
+            "inicio_val": 74,
+            "fin_val": 81,
+            "metricas": {
+              "mae": 5.108996891929842,
+              "rmse": 5.322271554022614,
+              "smape": 200.0,
+              "mase": 0.5424766905852606
+            },
+            "duracion_s": 0.1498183749972668,
+            "fallo": null,
+            "corte": "2026-03-16"
+          },
+          {
+            "indice": 2,
+            "inicio_train": 0,
+            "fin_train": 88,
+            "inicio_val": 88,
+            "fin_val": 95,
+            "metricas": {
+              "mae": 7.189621075693737,
+              "rmse": 12.811317798465588,
+              "smape": 194.37272595634903,
+              "mase": 0.89318912136686
+            },
+            "duracion_s": 0.1682411250003497,
+            "fallo": null,
+            "corte": "2026-03-30"
+          },
+          {
+            "indice": 3,
+            "inicio_train": 0,
+            "fin_train": 102,
+            "inicio_val": 102,
+            "fin_val": 109,
+            "metricas": {
+              "mae": 4.992242055326358,
+              "rmse": 7.048147304311675,
+              "smape": 192.12716065483414,
+              "mase": 0.6340414375080268
+            },
+            "duracion_s": 0.23406495800008997,
+            "fallo": null,
+            "corte": "2026-04-13"
+          },
+          {
+            "indice": 4,
+            "inicio_train": 0,
+            "fin_train": 116,
+            "inicio_val": 116,
+            "fin_val": 123,
+            "metricas": {
+              "mae": 5.1940570083212085,
+              "rmse": 5.738679242654851,
+              "smape": 178.7511131396697,
+              "mase": 0.6389979840936927
+            },
+            "duracion_s": 0.23663612499876763,
+            "fallo": null,
+            "corte": "2026-04-27"
+          },
+          {
+            "indice": 5,
+            "inicio_train": 0,
+            "fin_train": 130,
+            "inicio_val": 130,
+            "fin_val": 137,
+            "metricas": {
+              "mae": 4.458144403943563,
+              "rmse": 6.814465747634251,
+              "smape": 170.41628129366717,
+              "mase": 0.5522172826637042
+            },
+            "duracion_s": 0.2683882499986794,
+            "fallo": null,
+            "corte": "2026-05-11"
+          },
+          {
+            "indice": 6,
+            "inicio_train": 0,
+            "fin_train": 144,
+            "inicio_val": 144,
+            "fin_val": 151,
+            "metricas": {
+              "mae": 7.953605998156674,
+              "rmse": 9.265913276114349,
+              "smape": 189.545271769599,
+              "mase": 0.9905854743158767
+            },
+            "duracion_s": 0.3337997920025373,
+            "fallo": null,
+            "corte": "2026-05-25"
+          },
+          {
+            "indice": 7,
+            "inicio_train": 0,
+            "fin_train": 158,
+            "inicio_val": 158,
+            "fin_val": 165,
+            "metricas": {
+              "mae": 8.550198626324908,
+              "rmse": 11.631036113127344,
+              "smape": 151.64114270142508,
+              "mase": 1.0142026650236144
+            },
+            "duracion_s": 0.3317230419997941,
+            "fallo": null,
+            "corte": "2026-06-08"
+          },
+          {
+            "indice": 8,
+            "inicio_train": 0,
+            "fin_train": 172,
+            "inicio_val": 172,
+            "fin_val": 179,
+            "metricas": {
+              "mae": 16.225370370583388,
+              "rmse": 28.873415850056688,
+              "smape": 164.89661763734708,
+              "mase": 1.9934371639212651
+            },
+            "duracion_s": 0.38040041600106633,
+            "fallo": null,
+            "corte": "2026-06-22"
+          }
+        ]
+      }
+    },
+    {
+      "family": "foundation",
+      "estado": "excluida",
+      "exclusion": {
+        "reason_code": "not_configured",
+        "detail": "La corrida se configuro solo con la familia classical."
+      }
+    },
+    {
+      "family": "ml",
+      "estado": "excluida",
+      "exclusion": {
+        "reason_code": "not_in_policy_matrix",
+        "detail": "La politica 2.2.0-initial no asigna ml a la clase lumpy."
+      }
+    },
+    {
+      "family": "dl",
+      "estado": "excluida",
+      "exclusion": {
+        "reason_code": "not_in_policy_matrix",
+        "detail": "La politica 2.2.0-initial no asigna dl a la clase lumpy."
+      }
+    }
+  ],
+  "champion": null
+}

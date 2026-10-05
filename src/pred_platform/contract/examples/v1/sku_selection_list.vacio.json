@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "unavailable",
+    "reason_code": "not_implemented",
+    "blocked_by": [
+      "G4"
+    ],
+    "detail": "La plataforma aun no guarda resultados de seleccion por SKU."
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "items": [],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 0
+  }
+}

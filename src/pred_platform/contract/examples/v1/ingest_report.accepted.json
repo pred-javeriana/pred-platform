@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "status": "accepted",
+  "source_file": {
+    "name": "demo_canonico.csv",
+    "sha256": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+    "row_count": 900
+  },
+  "deposit": {
+    "raw_path": "data/raw/demo_canonico.csv",
+    "status": "deposited",
+    "would_overwrite": false
+  },
+  "header_diagnostic": {
+    "status": "accepted",
+    "entries": []
+  },
+  "validation": {
+    "rows_validated": 900,
+    "rows_daily_panel": 900,
+    "n_skus": 4
+  },
+  "published": {
+    "parquet_path": "data/processed/demo_canonico.parquet",
+    "rows": 900,
+    "n_skus": 4,
+    "columns": [
+      "sku_id",
+      "timestamp",
+      "demand_qty",
+      "lead_time_days",
+      "sku_class"
+    ]
+  },
+  "quality_log": []
+}

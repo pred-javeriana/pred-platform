@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "run_id": "1",
+  "items": [
+    {
+      "sku_id": "FIL-0001",
+      "modelo_campeon": "classical:sarima",
+      "veredicto": "mantiene",
+      "detalle": {
+        "error_relativo": 0.08
+      }
+    },
+    {
+      "sku_id": "FIL-0003",
+      "modelo_campeon": "ml:lightgbm",
+      "veredicto": "parcial",
+      "detalle": {
+        "error_relativo": 0.21
+      }
+    },
+    {
+      "sku_id": "FIL-0004",
+      "modelo_campeon": "classical:sarima",
+      "veredicto": "falla",
+      "detalle": {
+        "error_relativo": 0.64
+      }
+    }
+  ],
+  "audit_bundle": {
+    "referencia": "fixture"
+  }
+}

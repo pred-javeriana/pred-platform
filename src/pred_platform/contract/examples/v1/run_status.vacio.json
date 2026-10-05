@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "unavailable",
+    "reason_code": "not_implemented",
+    "blocked_by": [
+      "G3"
+    ],
+    "detail": "Aun no hay ejecuciones: la orquestacion de corridas no esta implementada."
+  },
+  "tasks": []
+}

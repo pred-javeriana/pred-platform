@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "t_star": "2026-06-29",
+  "thresholds": {
+    "adi": 1.32,
+    "cv2": 0.49
+  },
+  "summary": {
+    "n_skus": 4,
+    "by_class": {
+      "smooth": 1,
+      "intermittent": 1,
+      "erratic": 1,
+      "lumpy": 1
+    }
+  },
+  "items": [
+    {
+      "sku_id": "FIL-0001",
+      "n_periods": 180,
+      "n_positive": 180,
+      "adi": 1.0,
+      "cv2": 0.008278477753912966,
+      "sku_class": "smooth"
+    },
+    {
+      "sku_id": "FIL-0002",
+      "n_periods": 180,
+      "n_positive": 180,
+      "adi": 1.0,
+      "cv2": 0.9697302861155696,
+      "sku_class": "erratic"
+    },
+    {
+      "sku_id": "FIL-0003",
+      "n_periods": 180,
+      "n_positive": 29,
+      "adi": 6.206896551724138,
+      "cv2": 0.020742994846804363,
+      "sku_class": "intermittent"
+    },
+    {
+      "sku_id": "FIL-0004",
+      "n_periods": 180,
+      "n_positive": 45,
+      "adi": 4.0,
+      "cv2": 1.366397031539889,
+      "sku_class": "lumpy"
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 4
+  }
+}

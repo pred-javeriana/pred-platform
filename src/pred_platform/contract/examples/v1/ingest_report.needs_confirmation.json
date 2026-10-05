@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "962673a533b53ce2229d5b3947e1f27df2135ef050ce86c835ac7d9dc1d26bb4",
+  "status": "needs_confirmation",
+  "source_file": {
+    "name": "ventas_2025.csv",
+    "sha256": "962673a533b53ce2229d5b3947e1f27df2135ef050ce86c835ac7d9dc1d26bb4",
+    "row_count": 15340
+  },
+  "deposit": {
+    "raw_path": "data/raw/ventas_2025.csv",
+    "status": "already_present_different",
+    "would_overwrite": true
+  }
+}

@@ -1,0 +1,691 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v1/run_status.schema.json",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "description": "Si el dato existe hoy. Sostiene estados vacios y acciones deshabilitadas.",
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_implemented",
+                "stage_not_implemented",
+                "prerequisite_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason Code"
+        },
+        "blocked_by": {
+          "items": {
+            "pattern": "^G[1-8]$",
+            "type": "string"
+          },
+          "title": "Blocked By",
+          "type": "array"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "Ejecucion": {
+      "additionalProperties": false,
+      "description": "Fila de `ejecuciones`.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "ingest_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ingest Id"
+        },
+        "configuracion_id": {
+          "title": "Configuracion Id",
+          "type": "string"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "estado": {
+          "enum": [
+            "pendiente",
+            "ejecutando",
+            "completada",
+            "completada_con_fallos",
+            "detenida"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "iniciada_en": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Iniciada En"
+        },
+        "finalizada_en": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finalizada En"
+        }
+      },
+      "required": [
+        "id",
+        "configuracion_id",
+        "seed",
+        "estado"
+      ],
+      "title": "Ejecucion",
+      "type": "object"
+    },
+    "ErrorInfo": {
+      "additionalProperties": false,
+      "description": "Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`.",
+      "properties": {
+        "code": {
+          "pattern": "^[a-z_]+\\.[a-z_]+$",
+          "title": "Code",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3",
+            "L4",
+            "platform"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "severity": {
+          "default": "error",
+          "enum": [
+            "info",
+            "advertencia",
+            "error"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "row_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Index"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        },
+        "source_exception": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Exception"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "stage"
+      ],
+      "title": "ErrorInfo",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "Progress": {
+      "additionalProperties": false,
+      "properties": {
+        "tareas_total": {
+          "minimum": 0,
+          "title": "Tareas Total",
+          "type": "integer"
+        },
+        "tareas_por_estado": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "propertyNames": {
+            "enum": [
+              "pendiente",
+              "ejecutando",
+              "exitosa",
+              "fallida",
+              "no_ejecutable"
+            ]
+          },
+          "title": "Tareas Por Estado",
+          "type": "object"
+        },
+        "avance_pct": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Avance Pct",
+          "type": "number"
+        }
+      },
+      "required": [
+        "tareas_total",
+        "tareas_por_estado",
+        "avance_pct"
+      ],
+      "title": "Progress",
+      "type": "object"
+    },
+    "Reserve": {
+      "additionalProperties": false,
+      "description": "Reserva cronologica para M3 (ADR-03-003 del motor): el 20 % final del calendario.",
+      "properties": {
+        "fraction": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Fraction",
+          "type": "number"
+        },
+        "t_star": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "T Star",
+          "type": "string"
+        },
+        "first_reserved": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "First Reserved",
+          "type": "string"
+        },
+        "last_observed": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Last Observed",
+          "type": "string"
+        },
+        "reserved_days": {
+          "minimum": 1,
+          "title": "Reserved Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "fraction",
+        "t_star",
+        "first_reserved",
+        "last_observed",
+        "reserved_days"
+      ],
+      "title": "Reserve",
+      "type": "object"
+    },
+    "RunSettings": {
+      "additionalProperties": false,
+      "description": "Contenido de `configuraciones.parametros` (JSON) que la interfaz necesita mostrar.",
+      "properties": {
+        "schema_version": {
+          "minimum": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "configuracion_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Configuracion Version"
+        },
+        "families": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "classical",
+                  "ml",
+                  "dl",
+                  "foundation"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Families"
+        },
+        "policy_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Version"
+        },
+        "min_train": {
+          "minimum": 1,
+          "title": "Min Train",
+          "type": "integer"
+        },
+        "horizon": {
+          "minimum": 1,
+          "title": "Horizon",
+          "type": "integer"
+        },
+        "step": {
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "metric": {
+          "enum": [
+            "mae",
+            "rmse",
+            "smape",
+            "mase"
+          ],
+          "title": "Metric",
+          "type": "string"
+        },
+        "seasonality": {
+          "minimum": 1,
+          "title": "Seasonality",
+          "type": "integer"
+        },
+        "aggregation": {
+          "enum": [
+            "media",
+            "mediana",
+            "media_recortada"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "trim": {
+          "exclusiveMaximum": 0.5,
+          "minimum": 0,
+          "title": "Trim",
+          "type": "number"
+        }
+      },
+      "required": [
+        "schema_version",
+        "min_train",
+        "horizon",
+        "step",
+        "metric",
+        "seasonality",
+        "aggregation",
+        "trim"
+      ],
+      "title": "RunSettings",
+      "type": "object"
+    },
+    "Tarea": {
+      "additionalProperties": false,
+      "description": "Fila de `tareas`: una por unidad del motor, es decir, por SKU x modelo (decision D6).\n\nEl estado resume las etapas L2 y L3 de esa unidad; la traza por etapa queda en el motor.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "sku": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sku"
+        },
+        "modelo": {
+          "pattern": "^(classical|ml|dl|foundation):[a-z0-9][a-z0-9._-]*$",
+          "title": "Modelo",
+          "type": "string"
+        },
+        "family": {
+          "anyOf": [
+            {
+              "enum": [
+                "classical",
+                "ml",
+                "dl",
+                "foundation"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Family"
+        },
+        "corte": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Corte",
+          "type": "string"
+        },
+        "estado": {
+          "enum": [
+            "pendiente",
+            "ejecutando",
+            "exitosa",
+            "fallida",
+            "no_ejecutable"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "tiempo_pared_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tiempo Pared S"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "iniciada_en": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Iniciada En"
+        },
+        "finalizada_en": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finalizada En"
+        }
+      },
+      "required": [
+        "id",
+        "modelo",
+        "corte",
+        "estado",
+        "seed"
+      ],
+      "title": "Tarea",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "ejecucion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Ejecucion"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "settings": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunSettings"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reserve": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reserve"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "progress": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Progress"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/Tarea"
+      },
+      "title": "Tasks",
+      "type": "array"
+    },
+    "page": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Page"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "tasks"
+  ],
+  "title": "RunStatus",
+  "type": "object",
+  "x-contract-version": "1.0.0"
+}

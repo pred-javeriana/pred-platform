@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available"
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "run_id": "1",
+  "sku_id": "FIL-0001",
+  "sku_class": "smooth",
+  "profile": "dense_stable",
+  "policy_version": "2.2.0-initial",
+  "families": [
+    {
+      "family": "dl",
+      "estado": "fallida",
+      "modelo": "dl:mlp",
+      "error": {
+        "code": "selection.no_viable_trial",
+        "stage": "L2",
+        "detail": "ningun trial de HPO completo para sku_id='FIL-0001' (1 fallidos, 2 podados)",
+        "source_exception": "SelectionContractError"
+      }
+    },
+    {
+      "family": "ml",
+      "estado": "no_ejecutable",
+      "modelo": "ml:lightgbm",
+      "exclusion": {
+        "reason_code": "series_too_short",
+        "detail": "La serie no alcanza el minimo de la familia."
+      }
+    }
+  ]
+}

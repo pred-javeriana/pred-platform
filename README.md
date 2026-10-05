@@ -28,6 +28,56 @@ Environment variables (see `.env.example`):
 |----------|---------|---------|
 | `PRED_DATA_ROOT` | `data` | Data tree shared with pred-engine (`raw/`, `processed/`, `logs/`) |
 | `PRED_DB_PATH` | `<PRED_DATA_ROOT>/pred.db` | SQLite file behind the DAL |
+| `PRED_DATA_SOURCE` | `dal` | Where the views read from: `dal` (real) or `fixture` (sample data) |
+| `PRED_FIXTURE_SCENARIO` | `normal` | Sample data served by `fixture`: `normal`, `vacio` or `errores` |
+
+An unknown `PRED_DATA_SOURCE` or `PRED_FIXTURE_SCENARIO` stops the app at startup with the valid options.
+
+## Data access
+
+Views never touch SQLite or the engine's files. They read through a `DataRepository`
+(`pred_platform.data`) that returns documents of the frontend <-> engine data contract
+(`pred_platform.contract`, v1.0.0, authored in `pred-docs/diseno/contratos/`).
+
+```python
+from fastapi import Depends
+from pred_platform.data.deps import get_repository
+from pred_platform.data.repository import DataRepository
+
+@router.get("/ingestas")
+def ingests(repository: DataRepository = Depends(get_repository)):
+    listing = repository.list_ingests()          # IngestList, already validated
+    if listing.availability.status == "unavailable":
+        ...  # show the empty state; availability.reason_code / blocked_by say why
+```
+
+- **Two sources, one switch.** `PRED_DATA_SOURCE=fixture` serves the contract's examples (scenarios
+  `normal`, `vacio`, `errores`); `dal` reads the platform's database. Views do not change.
+- **`dal` is honest.** The engine's results do not reach the DAL yet (gaps G1 to G4, G8), so only
+  the list of ingests is real. The rest answers `availability.status == "unavailable"` with the gap
+  in `blocked_by`, or raises `ArtifactMissing` naming it. When a gap closes, its entry in
+  `data/capabilities.py` changes and its read is implemented in `data/dal.py`.
+- **Invalid data is rejected.** Every document is validated by the contract's Pydantic models.
+  Failures raise explicit errors with the contract's codes (`pred_platform.contract.errors`):
+  `ContractInvalid`, `SchemaVersionUnsupported`, `ArtifactMissing`, `EngineUnavailable`; call
+  `.to_error_info()` for the normalized `ErrorInfo`. A bad parameter (page, size, sort key) raises
+  `InvalidQuery`, which is a bug in the caller.
+- **Server-side lists.** Every list is filtered, sorted and paged by the repository
+  (`page`/`size`, default 50, maximum 500).
+
+### The contract copy
+
+`src/pred_platform/contract/` holds a byte-for-byte copy of the contract's reference models, JSON
+Schemas and examples (the examples are the fixtures). Do not edit it: change the contract in
+`pred-docs` first, then
+
+```bash
+make sync-contract                 # copies from ../pred-docs and rewrites contract.lock.json
+make sync-contract ARGS=--check    # only report differences
+```
+
+`contract.lock.json` pins the SHA-256 of every copied file and the tests verify it, so an edited
+copy fails the build. The sync also checks that the source is consistent before it writes.
 
 ## Checks
 
