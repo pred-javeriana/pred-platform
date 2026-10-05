@@ -23,7 +23,10 @@ _ASSETS = [
     "fonts/JetBrainsMono-Variable.woff2",
 ]
 
-_TEMPLATES = sorted(p.name for p in (_APP_DIR / "templates").glob("*.html"))
+_TEMPLATES = sorted(
+    p.relative_to(_APP_DIR / "templates").as_posix()
+    for p in (_APP_DIR / "templates").rglob("*.html")
+)
 
 # A network fetch: an absolute (or protocol-relative) URL used as a resource reference.
 _EXTERNAL_URL = re.compile(

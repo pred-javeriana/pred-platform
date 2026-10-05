@@ -129,10 +129,12 @@ jobs:
           http://127.0.0.1:8000/health
       - name: GET / renders the home page
         run: |
-          curl --fail-with-body --silent --show-error --max-time 5 \
+          curl --fail-with-body --silent --show-error --max-time 5 -L \
             -o "$RUNNER_TEMP/index.html" http://127.0.0.1:8000/
           grep -q '<html lang="es"' "$RUNNER_TEMP/index.html" \
             || { echo "::error::GET / did not return the PRED home page"; cat "$RUNNER_TEMP/index.html"; exit 1; }
+          grep -q 'Datos' "$RUNNER_TEMP/index.html" \
+            || { echo "::error::GET / did not land on Datos"; cat "$RUNNER_TEMP/index.html"; exit 1; }
       - name: Server log
         if: always()
         run: cat "$RUNNER_TEMP/server.log"
