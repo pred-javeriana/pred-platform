@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}PRED{% endblock %}</title>
+  <title>{% block title %}{{ page_title | default("PRED") }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ static_url('css/pico.min.css') }}">
   <link rel="stylesheet" href="{{ static_url('css/pred.css') }}">
   <script src="{{ static_url('js/htmx.min.js') }}" defer></script>
+  <script src="{{ static_url('js/pred.js') }}" defer></script>
+  {% block head %}{% endblock %}
 </head>
-<body>
-  <main class="container">
+<body class="pred-shell">
+  {% include "partials/icons.html" %}
+  {% include "partials/navigation.html" %}
+  <main class="pred-main">
     {% block content %}{% endblock %}
   </main>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

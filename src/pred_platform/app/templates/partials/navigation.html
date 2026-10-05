@@ -1,0 +1,6 @@
+<nav class="pred-nav" aria-label="Principal">
+  <a class="pred-nav__brand" href="/datos">PRED</a>
+  <a class="pred-nav__link{% if active_surface == 'datos' %} is-active{% endif %}" href="/datos"{% if active_surface == "datos" %} aria-current="page"{% endif %}>Datos</a>
+  <a class="pred-nav__link{% if active_surface == 'ejecucion' %} is-active{% endif %}" href="/ejecucion"{% if active_surface == "ejecucion" %} aria-current="page"{% endif %}>Ejecución</a>
+  <a class="pred-nav__link{% if active_surface == 'resultados' %} is-active{% endif %}" href="/resultados"{% if active_surface == "resultados" %} aria-current="page"{% endif %}>Resultados</a>
+</nav>

@@ -1,0 +1,15 @@
+{% from "components/states.html" import empty_state, unavailable_state %}
+
+{% if orchestration.available %}
+  {{ empty_state(
+    "No existe una ejecución activa.",
+    "Cuando el worker esté conectado, el progreso y las tareas se actualizarán aquí sin recargar el shell."
+  ) }}
+{% else %}
+  {{ unavailable_state(
+    "La orquestación todavía no está disponible.",
+    "El lanzamiento, el progreso en vivo y detener o reanudar dependen del worker de plataforma.",
+    orchestration.reason_code,
+    orchestration.blocked_by
+  ) }}
+{% endif %}
