@@ -1,6 +1,8 @@
 """Tests for the FastAPI application factory."""
 
 import re
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
+from pred_platform.dal.migrate import SchemaTooNew
 from pred_platform.data.deps import get_repository
 from pred_platform.data.repository import DataRepository
 
@@ -88,3 +91,55 @@ def test_a_view_can_depend_on_the_repository(tmp_path: Path) -> None:
 
     body = TestClient(application).get("/_probe").json()
     assert body == {"source": "fixture", "total": 2}
+
+
+# ------------------------------------------------------------------ schema migration on start
+def _user_version(path: Path) -> int:
+    with closing(sqlite3.connect(path)) as conn:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+
+
+def test_starting_the_server_with_the_real_source_creates_and_migrates_the_database(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "not_yet" / "pred.db"
+    application = create_app(Settings(data_root=tmp_path, db_path=db))
+    assert not db.exists()  # building the app is not starting it
+
+    with TestClient(application) as client:  # entering the client runs the lifespan
+        assert client.get("/health").status_code == 200
+
+    assert _user_version(db) == 1
+    assert [p.name for p in db.parent.glob("*.bak")] == []  # a new database is not backed up
+
+
+def test_starting_with_fixtures_never_touches_the_disk(tmp_path: Path) -> None:
+    db = tmp_path / "not_yet" / "pred.db"
+    settings = Settings(data_root=tmp_path, db_path=db, data_source="fixture")
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/health").status_code == 200
+    assert not db.parent.exists()
+
+
+def test_starting_with_a_database_newer_than_the_code_fails_clearly(tmp_path: Path) -> None:
+    db = tmp_path / "pred.db"
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("PRAGMA user_version = 99")
+    before = db.read_bytes()
+
+    with (
+        pytest.raises(SchemaTooNew, match="version 99"),
+        TestClient(create_app(Settings(data_root=tmp_path, db_path=db))),
+    ):
+        pass
+
+    assert db.read_bytes() == before
+
+
+def test_starting_twice_does_not_migrate_or_back_up_again(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path, db_path=tmp_path / "pred.db")
+    for _ in range(2):
+        with TestClient(create_app(settings)):
+            pass
+    assert _user_version(settings.db_path) == 1
+    assert list(tmp_path.glob("*.bak")) == []

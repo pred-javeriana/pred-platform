@@ -10,5 +10,6 @@ htmlcov/
 *.db
 *.db-shm
 *.db-wal
+*.bak
 .agents/
 .env
