@@ -6,10 +6,21 @@ No calcula métricas ni decide campeones: solo nombra estados que el motor ya pr
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
-StatusKind = Literal["task", "trial", "verdict", "run"]
+StatusKind = Literal["task", "trial", "verdict", "run", "ingest", "severity"]
 StatusModifier = Literal["neutral", "info", "ok", "err", "warn", "pruned"]
+
+# Orden de lectura de las clases de demanda en el resumen (no es un recálculo).
+SKU_CLASS_ORDER: tuple[str, ...] = ("smooth", "erratic", "intermittent", "lumpy")
+
+_SKU_CLASS_LABELS: dict[str, str] = {
+    "smooth": "Smooth",
+    "erratic": "Erratic",
+    "intermittent": "Intermittent",
+    "lumpy": "Lumpy",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,11 +66,28 @@ _RUN: dict[str, StatusPresentation] = {
     "detenida": StatusPresentation("i-stop", "detenida", "err"),
 }
 
+# Ingesta: claves del contrato; frases de A1 para el diagnóstico.
+_INGEST: dict[str, StatusPresentation] = {
+    "accepted": StatusPresentation("i-check-circle", "Datos válidos", "ok"),
+    "rejected": StatusPresentation("i-warn", "El archivo necesita correcciones", "warn"),
+    "failed": StatusPresentation("i-x-circle", "No fue posible procesar el archivo", "err"),
+    "needs_confirmation": StatusPresentation("i-info", "Se requiere confirmación", "info"),
+}
+
+# Severidad de diagnósticos y bitácora de calidad.
+_SEVERITY: dict[str, StatusPresentation] = {
+    "info": StatusPresentation("i-info", "info", "info"),
+    "advertencia": StatusPresentation("i-warn", "advertencia", "warn"),
+    "error": StatusPresentation("i-x-circle", "error", "err"),
+}
+
 _VOCABULARIES: dict[StatusKind, dict[str, StatusPresentation]] = {
     "task": _TASK,
     "trial": _TRIAL,
     "verdict": _VERDICT,
     "run": _RUN,
+    "ingest": _INGEST,
+    "severity": _SEVERITY,
 }
 
 
@@ -76,6 +104,30 @@ def describe_status(kind: StatusKind, code: str) -> StatusPresentation:
         raise UnknownStatus(f"estado {code!r} no pertenece al vocabulario {kind}") from exc
 
 
+def sku_class_label(code: str) -> str:
+    """Etiqueta de clase de demanda; el código del contrato si aún no hay traducción."""
+    return _SKU_CLASS_LABELS.get(code, code)
+
+
 def format_count(value: int) -> str:
     """Separador de miles al estilo español, para barras y métricas."""
     return f"{value:,}".replace(",", ".")
+
+
+def format_decimal(value: float, digits: int = 2) -> str:
+    """Decimal con coma, para umbrales y métricas ADI/CV²."""
+    return f"{value:.{digits}f}".replace(".", ",")
+
+
+def abbreviate_id(value: str, width: int = 12) -> str:
+    """Hash o identificador recortado para trazabilidad compacta."""
+    if len(value) <= width:
+        return value
+    return value[:width]
+
+
+def format_when(value: datetime | None) -> str:
+    """Marca temporal compacta; em dash si el contrato no trae fecha."""
+    if value is None:
+        return "—"
+    return value.strftime("%Y-%m-%d %H:%M")

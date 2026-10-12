@@ -1,5 +1,8 @@
 {% extends "base.html" %}
-{% from "components/states.html" import empty_state %}
+{% from "components/forms.html" import field %}
+{% from "components/buttons.html" import button %}
+{% from "components/alerts.html" import alert %}
+{% from "components/states.html" import unavailable_state %}
 
 {% block title %}PRED — Datos{% endblock %}
 
@@ -7,11 +10,73 @@
   <header class="pred-page-header">
     <div>
       <h1>Datos</h1>
-      <p>Carga, validación y caracterización de la demanda. El flujo operativo se completará en las tareas C.</p>
+      <p>Cargue un CSV, revise el diagnóstico y, si la ingesta es válida, consulte la topología de demanda antes de ejecutar.</p>
     </div>
   </header>
-  {{ empty_state(
-    "Aún no se han cargado datos.",
-    "Cuando la carga esté conectada, el diagnóstico y la topología aparecerán en esta misma superficie."
-  ) }}
+
+  {% if source == "fixture" %}
+  <p class="pred-meta">Datos de prueba</p>
+  {% endif %}
+
+  <section class="pred-section" id="carga">
+    <h2>Cargar archivo</h2>
+    <form method="post" action="/datos/cargar" enctype="multipart/form-data">
+      {{ field(
+        "archivo",
+        "Archivo CSV",
+        input_type="file",
+        accept=".csv",
+        hint=csv_hint,
+        error=form_error or ""
+      ) }}
+      {{ button("Cargar y validar", variant="primary", type="submit", icon="i-upload") }}
+    </form>
+    {% if not has_ingest %}
+    <p class="pred-meta">Carga un archivo para comenzar.</p>
+    {% endif %}
+  </section>
+
+  {% if query_error %}
+  <section class="pred-section">
+    {{ alert(query_error, variant="warning") }}
+  </section>
+  {% endif %}
+
+  {% if report_error and not report %}
+  <section class="pred-section" id="diagnostico">
+    {{ unavailable_state(
+      report_error.title,
+      report_error.detail or "La integración con el motor todavía no está habilitada.",
+      report_error.code,
+      report_error.blocked_by
+    ) }}
+    {% if report_error.retryable %}
+    <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if report %}
+    {% include "partials/data_diagnosis.html" %}
+  {% endif %}
+
+  {% if report and report.status == "accepted" %}
+    {% include "partials/data_topology.html" %}
+  {% endif %}
+
+  <section class="pred-section" id="historial">
+    <h2>Ingestas</h2>
+    {% if list_error %}
+      {{ unavailable_state(
+        list_error.title,
+        list_error.detail or "",
+        list_error.code,
+        list_error.blocked_by
+      ) }}
+    {% elif listing and listing.items %}
+      {% include "partials/data_history.html" %}
+    {% else %}
+      <p class="pred-meta">Todavía no hay ingestas registradas.</p>
+    {% endif %}
+  </section>
 {% endblock %}

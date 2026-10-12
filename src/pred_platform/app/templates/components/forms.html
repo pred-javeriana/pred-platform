@@ -1,8 +1,10 @@
 {% from "components/buttons.html" import button %}
 {# Campo de formulario. El error nunca va solo por color: ícono + texto. #}
-{% macro field(name, label, value="", input_type="text", placeholder="", hint="", error="", disabled=false, options=none) %}
+{% macro field(name, label, value="", input_type="text", placeholder="", hint="", error="", disabled=false, options=none, accept="") %}
 <div class="pred-field{% if error %} is-error{% endif %}">
+  {% if input_type != "checkbox" %}
   <label class="pred-field__label" for="{{ name }}">{{ label }}</label>
+  {% endif %}
   {% if input_type == "select" %}
   <select class="pred-field__control" id="{{ name }}" name="{{ name }}"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
     {% for opt_value, opt_label in options %}
@@ -10,7 +12,12 @@
     {% endfor %}
   </select>
   {% elif input_type == "file" %}
-  <input class="pred-field__control" id="{{ name }}" name="{{ name }}" type="file"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
+  <input class="pred-field__control" id="{{ name }}" name="{{ name }}" type="file"{% if accept %} accept="{{ accept }}"{% endif %}{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
+  {% elif input_type == "checkbox" %}
+  <label class="pred-field__check" for="{{ name }}">
+    <input id="{{ name }}" name="{{ name }}" type="checkbox" value="1"{% if value %} checked{% endif %}{% if disabled %} disabled{% endif %}>
+    <span>{{ label }}</span>
+  </label>
   {% else %}
   <input class="pred-field__control" id="{{ name }}" name="{{ name }}" type="{{ input_type }}" value="{{ value }}" placeholder="{{ placeholder }}"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% elif hint %} aria-describedby="{{ name }}-hint"{% endif %}>
   {% endif %}
