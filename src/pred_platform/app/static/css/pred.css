@@ -718,3 +718,114 @@ samp,
 .pred-icon-sprite {
   display: none;
 }
+
+/* ----------------------------------------------------------- Superficie Datos */
+.pred-meta {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pred-section h2 {
+  margin-bottom: var(--space-2);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.pred-section h3 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pred-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.pred-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: end;
+  margin: var(--space-3) 0;
+}
+
+.pred-filters .pred-field {
+  margin-bottom: 0;
+  min-width: 10rem;
+}
+
+.pred-field__check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.pred-field__check input {
+  margin: 0;
+  width: auto;
+}
+
+.pred-log {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.pred-log p {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+}
+
+.pred-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pred-pager a {
+  color: var(--primary-dark);
+  text-decoration: none;
+}
+
+.pred-chart {
+  margin: var(--space-3) 0;
+  overflow-x: auto;
+}
+
+.pred-chart__svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: var(--surface);
+}
+
+.pred-chart__axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.pred-chart__threshold {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.pred-chart__axis-label,
+.pred-chart__tick,
+.pred-chart__threshold-label,
+.pred-chart__legend-label {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}

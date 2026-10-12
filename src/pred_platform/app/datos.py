@@ -7,7 +7,7 @@ errores de interacción y se arma la consulta server-side del reporte.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -16,7 +16,7 @@ from starlette.datastructures import UploadFile
 
 from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_class_label
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import IngestReport, Page, TopologyReport
+from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
 from pred_platform.data.query import DEFAULT_SIZE
 
 _PENDING_ATTR = "pending_uploads"
@@ -168,7 +168,7 @@ def topology_summary_metrics(report: TopologyReport) -> list[dict[str, str | Non
         items.append(
             {
                 "label": sku_class_label(code),
-                "value": format_count(report.summary.by_class.get(code, 0)),
+                "value": format_count(report.summary.by_class.get(cast(SkuClass, code), 0)),
                 "tone": None,
             }
         )

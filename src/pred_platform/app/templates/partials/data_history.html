@@ -1,0 +1,26 @@
+{% from "components/status.html" import status_indicator %}
+{% from "components/tables.html" import table_start, table_end %}
+
+{{ table_start(["Nombre", "Estado", "Filas", "SKU", "Fecha"]) }}
+{% for item in listing.items %}
+<tr>
+  <td>
+    {% if item.ingest_id %}
+    <a href="/datos?ingest_id={{ item.ingest_id }}">{{ item.name }}</a>
+    {% else %}
+    {{ item.name }}
+    {% endif %}
+  </td>
+  <td>
+    {% if item.status %}
+      {{ status_indicator(describe_status("ingest", item.status)) }}
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td class="mono">{{ format_count(item.rows) if item.rows is not none else "—" }}</td>
+  <td class="mono">{{ format_count(item.n_skus) if item.n_skus is not none else "—" }}</td>
+  <td class="mono">{{ format_when(item.published_at) }}</td>
+</tr>
+{% endfor %}
+{{ table_end() }}

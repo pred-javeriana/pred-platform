@@ -1,0 +1,101 @@
+{% from "components/forms.html" import field %}
+{% from "components/buttons.html" import button %}
+{% from "components/metrics.html" import metrics_row %}
+{% from "components/tables.html" import table_start, table_end, table_empty %}
+{% from "components/states.html" import unavailable_state %}
+
+<section class="pred-section" id="topologia">
+  <h2>Topología de demanda</h2>
+
+  {% if topology_error %}
+    {{ unavailable_state(
+      topology_error.title,
+      topology_error.detail or "La ingesta existe, pero las métricas ADI/CV² aún no están persistidas.",
+      topology_error.code,
+      topology_error.blocked_by
+    ) }}
+  {% elif topology %}
+    {{ metrics_row(topology_metrics) }}
+
+    <p class="pred-meta">
+      Umbrales del motor: ADI {{ format_decimal(topology.thresholds.adi) }}
+      · CV² {{ format_decimal(topology.thresholds.cv2) }}
+      {% if topology.t_star %}
+      · Clasificación calculada con historia hasta: {{ topology.t_star }}
+      {% endif %}
+    </p>
+
+    {% if topology.availability.status == "available" %}
+      <div class="pred-chart">
+        {{ chart_svg | safe }}
+      </div>
+
+      <form method="get" action="/datos" class="pred-filters" id="filtros-topologia">
+        <input type="hidden" name="ingest_id" value="{{ topology.ingest_id }}">
+        {{ field(
+          "sku_class",
+          "Clase",
+          value=topology_query.sku_class or "",
+          input_type="select",
+          options=[
+            ("", "Todas"),
+            ("smooth", "Smooth"),
+            ("erratic", "Erratic"),
+            ("intermittent", "Intermittent"),
+            ("lumpy", "Lumpy")
+          ]
+        ) }}
+        {{ field("q", "Buscar SKU", value=topology_query.q or "", placeholder="FIL-0001") }}
+        {{ field(
+          "sort",
+          "Ordenar por",
+          value=topology_query.sort,
+          input_type="select",
+          options=[
+            ("sku_id", "SKU"),
+            ("adi", "ADI"),
+            ("cv2", "CV²"),
+            ("n_positive", "Periodos con demanda")
+          ]
+        ) }}
+        {{ field("descending", "Descendente", value=topology_query.descending, input_type="checkbox") }}
+        {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
+      </form>
+
+      {{ table_start(["SKU", "Clase", "ADI", "CV²", "Periodos", "Periodos con demanda"]) }}
+      {% if topology.items %}
+        {% for row in topology.items %}
+        <tr>
+          <td><span class="mono">{{ row.sku_id }}</span></td>
+          <td>{{ sku_class_label(row.sku_class) }}</td>
+          <td class="mono">{{ format_decimal(row.adi, 3) }}</td>
+          <td class="mono">{{ format_decimal(row.cv2, 3) }}</td>
+          <td class="mono">{{ format_count(row.n_periods) }}</td>
+          <td class="mono">{{ format_count(row.n_positive) }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        {{ table_empty(6, "Sin coincidencias", "No hay SKU que coincidan con los filtros seleccionados.") }}
+      {% endif %}
+      {{ table_end() }}
+
+      {% if topology_pages.show %}
+      <nav class="pred-pager" aria-label="Paginación de SKU">
+        <span>Página {{ topology.page.number }} de {{ topology_pages.total_pages }}</span>
+        {% if topology_pages.has_prev %}
+        <a href="/datos?{{ topology_query.query_string(topology.ingest_id, page=topology.page.number - 1) }}">Anterior</a>
+        {% endif %}
+        {% if topology_pages.has_next %}
+        <a href="/datos?{{ topology_query.query_string(topology.ingest_id, page=topology.page.number + 1) }}">Siguiente</a>
+        {% endif %}
+      </nav>
+      {% endif %}
+
+      {% if can_continue %}
+      <p class="pred-actions">
+        {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion") }}
+      </p>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</section>

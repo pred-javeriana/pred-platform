@@ -1,0 +1,95 @@
+{% from "components/status.html" import status_indicator %}
+{% from "components/alerts.html" import alert %}
+{% from "components/buttons.html" import button %}
+{% from "components/metrics.html" import metrics_row %}
+{% from "components/tables.html" import table_start, table_end %}
+
+{% set ingest_status = describe_status("ingest", report.status) %}
+<section class="pred-section" id="diagnostico">
+  <h2>Diagnóstico</h2>
+  {{ status_indicator(ingest_status) }}
+  <p class="pred-meta">
+    <span class="mono">{{ report.source_file.name }}</span>
+    · {{ format_count(report.source_file.row_count) }} filas
+    · <span class="mono" title="{{ report.ingest_id }}">{{ abbreviate_id(report.ingest_id) }}</span>
+  </p>
+
+  {% if report.status == "needs_confirmation" and pending_token %}
+    {{ alert("Ya existe un archivo en el destino indicado. Confirme si desea sobrescribirlo.", variant="warning") }}
+    <form method="post" action="/datos/cargar" class="pred-actions">
+      <input type="hidden" name="pendiente" value="{{ pending_token }}">
+      <input type="hidden" name="confirm_overwrite" value="true">
+      {{ button("Cancelar", variant="subtle", href="/datos") }}
+      {{ button("Confirmar carga", variant="primary", type="submit") }}
+    </form>
+  {% endif %}
+
+  {% if report.status == "rejected" %}
+    {{ alert("Corrija el archivo y vuelva a cargarlo. Esto no es un fallo técnico de la aplicación.", variant="warning") }}
+  {% endif %}
+
+  {% if report.error %}
+    <div class="pred-log">
+      <p><strong>{{ report.error.code }}</strong></p>
+      {% if report.error.detail %}<p>{{ report.error.detail }}</p>{% endif %}
+      {% if report.error.field or report.error.column %}
+      <p class="pred-meta">
+        {% if report.error.field %}Campo: {{ report.error.field }}{% endif %}
+        {% if report.error.column %} · Columna: <span class="mono">{{ report.error.column }}</span>{% endif %}
+        {% if report.error.row_index is not none %} · Fila: {{ report.error.row_index }}{% endif %}
+      </p>
+      {% endif %}
+      {% if report.error.retryable %}
+      <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if report.validation %}
+    {{ metrics_row([
+      {"label": "Filas validadas", "value": format_count(report.validation.rows_validated), "tone": "ok"},
+      {"label": "Panel diario", "value": format_count(report.validation.rows_daily_panel), "tone": "data"},
+      {"label": "SKU", "value": format_count(report.validation.n_skus), "tone": "data"}
+    ]) }}
+  {% endif %}
+
+  {% if report.published %}
+    <p class="pred-meta">
+      Publicado: {{ format_count(report.published.rows) }} filas,
+      {{ format_count(report.published.n_skus) }} SKU,
+      columnas {{ report.published.columns | join(", ") }}.
+    </p>
+  {% endif %}
+
+  {% if report.header_diagnostic %}
+    <h3>Encabezado</h3>
+    <p class="pred-meta">Estado: {{ report.header_diagnostic.status }}</p>
+    {% if report.header_diagnostic.entries %}
+      {{ table_start(["Campo", "Severidad", "Mensaje", "Acción sugerida"]) }}
+      {% for entry in report.header_diagnostic.entries %}
+      <tr>
+        <td><span class="mono">{{ entry.field }}</span></td>
+        <td>{{ status_indicator(describe_status("severity", entry.severity)) }}</td>
+        <td>{{ entry.message }}</td>
+        <td>{{ entry.action or "—" }}</td>
+      </tr>
+      {% endfor %}
+      {{ table_end() }}
+    {% endif %}
+  {% endif %}
+
+  {% if report.quality_log %}
+    <h3>Bitácora de calidad</h3>
+    {{ table_start(["Severidad", "Código", "Mensaje", "Fila", "Columna"]) }}
+    {% for entry in report.quality_log %}
+    <tr>
+      <td>{{ status_indicator(describe_status("severity", entry.severity)) }}</td>
+      <td><span class="mono">{{ entry.code }}</span></td>
+      <td>{{ entry.message }}</td>
+      <td class="mono">{{ entry.row_index if entry.row_index is not none else "—" }}</td>
+      <td class="mono">{{ entry.column or "—" }}</td>
+    </tr>
+    {% endfor %}
+    {{ table_end() }}
+  {% endif %}
+</section>
