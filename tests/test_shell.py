@@ -37,7 +37,9 @@ def test_health_is_unchanged() -> None:
 def test_execution_fragment_does_not_repeat_the_shell() -> None:
     html = TestClient(create_app()).get("/ejecucion/estado").text
     assert "pred-nav" not in html
-    assert "G3" in html
+    # With the real DAL and no run launched yet, the surface says so (G3 no longer blocks it).
+    assert "No existe una ejecución activa" in html
+    assert "G3" not in html
 
 
 def test_catalog_is_not_in_product_navigation() -> None:

@@ -182,9 +182,10 @@ def test_topology_rejects_a_malformed_ingest_id(repo: DalRepository, bad: str) -
         repo.get_topology_report(bad)
 
 
-def test_run_status_is_unavailable_and_blocked_by_g3(repo: DalRepository) -> None:
+def test_run_status_without_any_run_is_an_empty_state(repo: DalRepository) -> None:
+    # Nothing has been launched: no data yet, and no gap blocks it (the worker exists, G3).
     doc = repo.get_run_status(RUN)
-    assert _gap(doc) == ("not_implemented", ["G3"])
+    assert _gap(doc) == ("no_data", [])
     assert doc.tasks == [] and doc.ejecucion is None
 
 
@@ -207,7 +208,6 @@ def test_synthetic_list_is_unavailable_and_blocked_by_g8(repo: DalRepository) ->
 
 def test_every_unavailable_document_matches_the_registry(repo: DalRepository) -> None:
     pairs = [
-        (repo.get_run_status(RUN), "run_orchestration"),
         (repo.list_sku_selections(RUN), "selection_results_persisted"),
         (repo.get_validation_verdicts(RUN), "retrospective_validation"),
         (repo.list_synthetic_runs(), "synthetic_log_read"),

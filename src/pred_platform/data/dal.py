@@ -276,13 +276,89 @@ class DalRepository:
         page: int = 1,
         size: int = DEFAULT_SIZE,
     ) -> models.RunStatus:
-        check_choice("estado", estado, _TASK_STATES)
-        check_choice("family", family, _FAMILIES)
-        PageRequest(page, size)
-        availability = capabilities.unavailable(
-            "run_orchestration", "Aún no hay ejecuciones: la orquestación no está implementada."
+        wanted_state = check_choice("estado", estado, _TASK_STATES)
+        wanted_family = check_choice("family", family, _FAMILIES)
+        request = PageRequest(page, size)
+
+        run = lectura.get_run(self.db_path, run_id)
+        if run is None:
+            if lectura.count_runs(self.db_path) == 0:
+                # Nothing was ever launched: an honest empty state, not a missing document.
+                return models.RunStatus(
+                    **_envelope(  # type: ignore[arg-type]
+                        models.Availability(
+                            status="unavailable",
+                            reason_code="no_data",
+                            detail="Aún no se ha lanzado ninguna ejecución.",
+                        )
+                    ),
+                    tasks=[],
+                )
+            raise ArtifactMissing(f"No existe la ejecución {run_id!r}")
+
+        rows, total = lectura.list_tasks(
+            self.db_path,
+            run.id,
+            estado=wanted_state,
+            sku=sku,
+            family=wanted_family,
+            offset=(request.number - 1) * request.size,
+            limit=request.size,
         )
-        return models.RunStatus(**_envelope(availability), tasks=[])  # type: ignore[arg-type]
+        counts = lectura.task_state_counts(self.db_path, run.id)
+        by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
+        total_tasks = sum(by_state.values())
+        finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
+        parametros = json.loads(run.parametros)
+        return models.RunStatus(
+            **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
+            ejecucion=models.Ejecucion(
+                id=str(run.id),
+                ingest_id=run.ingest_sha256,
+                configuracion_id=str(run.configuracion_id),
+                seed=run.seed,
+                estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+                iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
+                finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
+            ),
+            settings=models.RunSettings(
+                schema_version=parametros.get("schema_version", 1),
+                configuracion_version=run.configuracion_version,
+                families=parametros.get("families"),
+                min_train=parametros["min_train"],
+                horizon=parametros["horizon"],
+                step=parametros["step"],
+                metric=parametros["metric"],
+                seasonality=parametros["seasonality"],
+                aggregation=parametros.get("aggregation", "media_recortada"),
+                trim=parametros.get("trim", 0.1),
+            ),
+            reserve=models.Reserve(**json.loads(run.reserva_json)) if run.reserva_json else None,
+            progress=models.Progress(
+                tareas_total=total_tasks,
+                tareas_por_estado=by_state,  # type: ignore[arg-type]
+                avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
+            ),
+            tasks=[
+                models.Tarea(
+                    id=f"t-{task.id:04d}",
+                    sku=task.sku,
+                    modelo=task.modelo,
+                    family=task.modelo.split(":", 1)[0],  # type: ignore[arg-type]
+                    corte=task.corte,
+                    estado=task.estado,  # type: ignore[arg-type]
+                    seed=task.seed,
+                    tiempo_pared_s=task.tiempo_pared_s,
+                    error=models.ErrorInfo(**json.loads(task.detalle_error))
+                    if task.detalle_error
+                    else None,
+                    iniciada_en=task.iniciada_en,  # type: ignore[arg-type]
+                    finalizada_en=task.finalizada_en,  # type: ignore[arg-type]
+                )
+                for task in rows
+            ],
+            page=models.Page(number=request.number, size=request.size, total=total),
+        )
 
     # ------------------------------------------------------------------ selections
     def list_sku_selections(
