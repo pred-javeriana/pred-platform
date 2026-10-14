@@ -13,6 +13,7 @@ from pred_platform.dal.schema import CORE_TABLES, create_db
 RELEASED: dict[int, str] = {
     1: "7fd6a910dda7f39a1254421bbde0801e964250d4ab6d8740f74d10dc1cf8ee87",
     2: "0d855366ec4beb38636a1272e9840923f9d057d9f8052e65f1c696b539e7d6cf",
+    3: "add1571ad21d5605cd49877833d351bf1db4e873ca99168b22c5919c664a4aa0",
 }
 
 
@@ -98,7 +99,7 @@ def test_version_2_adds_report_and_topology_columns_without_losing_rows() -> Non
     conn.execute("INSERT INTO series (ingesta_id, sku, n_obs) VALUES (1, 'FIL-0001', 8)")
     conn.commit()
 
-    apply_migrations(conn, load_migrations())
+    apply_migrations(conn, load_migrations()[:2])
 
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     assert conn.execute("SELECT nombre_archivo, estado, ruta_parquet FROM ingestas").fetchall() == [
@@ -125,4 +126,45 @@ def test_version_2_checks_status_and_class_values() -> None:
         conn.execute(
             "INSERT INTO series (ingesta_id, sku, n_obs, clase) VALUES (1, 'a', 3, 'Smooth')"
         )
+    conn.close()
+
+
+# ----------------------------------------------------------------- the schema of version 3
+def test_version_3_adds_run_columns_and_keeps_existing_runs_and_tasks() -> None:
+    conn = _at_version(2)
+    conn.execute(
+        "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus) VALUES ('s', 'f.csv', 10, 1)"
+    )
+    conn.execute("INSERT INTO configuraciones (version, parametros) VALUES (1, '{}')")
+    conn.execute("INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed) VALUES (1, 1, 7)")
+    conn.execute(
+        "INSERT INTO tareas (ejecucion_id, sku, modelo, corte, seed)"
+        " VALUES (1, 'FIL-0001', 'classical:sarima', '2026-03-13', 7)"
+    )
+    conn.commit()
+
+    apply_migrations(conn, load_migrations())
+
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert conn.execute("SELECT estado, run_id, intento, pid FROM ejecuciones").fetchall() == [
+        ("pendiente", None, 0, None)
+    ]
+    assert conn.execute("SELECT modelo, tiempo_l2_s FROM tareas").fetchall() == [
+        ("classical:sarima", None)
+    ]
+    conn.close()
+
+
+def test_version_3_keeps_one_row_per_engine_run() -> None:
+    conn = create_db()
+    conn.execute(
+        "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus) VALUES ('s', 'f', 1, 1)"
+    )
+    conn.execute("INSERT INTO configuraciones (version, parametros) VALUES (1, '{}')")
+    insert = "INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed, run_id) VALUES (1,1,0,?)"
+    conn.execute(insert, ("r-1",))
+    conn.execute("INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed) VALUES (1,1,0)")
+    conn.execute("INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed) VALUES (1,1,0)")
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+        conn.execute(insert, ("r-1",))
     conn.close()

@@ -67,3 +67,28 @@ def test_an_unknown_scenario_fails_only_when_fixtures_are_used() -> None:
     with pytest.raises(ValueError, match=r"PRED_FIXTURE_SCENARIO='otro'.*normal"):
         Settings.from_env({DATA_SOURCE_VAR: "fixture", FIXTURE_SCENARIO_VAR: "otro"})
     assert Settings.from_env({FIXTURE_SCENARIO_VAR: "otro"}).data_source == "dal"
+
+
+def test_the_engine_command_and_worker_have_defaults() -> None:
+    settings = Settings.from_env({})
+    assert settings.engine_command == ("pred-engine",)
+    assert settings.worker == "embedded"
+
+
+def test_the_engine_command_is_split_like_a_shell_line() -> None:
+    settings = Settings.from_env(
+        {"PRED_ENGINE_CMD": 'uv run --project "../pred engine" pred-engine', "PRED_WORKER": "off"}
+    )
+    assert settings.engine_command == ("uv", "run", "--project", "../pred engine", "pred-engine")
+    assert settings.worker == "off"
+
+
+def test_a_blank_engine_command_counts_as_unset() -> None:
+    assert Settings.from_env({"PRED_ENGINE_CMD": "  "}).engine_command == ("pred-engine",)
+
+
+def test_an_unknown_worker_mode_or_an_unparseable_command_fails_at_startup() -> None:
+    with pytest.raises(ValueError, match=r"PRED_WORKER='threads'.*\['embedded', 'off'\]"):
+        Settings.from_env({"PRED_WORKER": "threads"})
+    with pytest.raises(ValueError, match="PRED_ENGINE_CMD cannot be parsed"):
+        Settings.from_env({"PRED_ENGINE_CMD": 'pred-engine "sin cerrar'})

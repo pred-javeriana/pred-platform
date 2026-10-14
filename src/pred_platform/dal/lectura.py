@@ -234,3 +234,124 @@ def topology_counts(db_path: Path, ingesta_id: int) -> dict[str, int]:
             (ingesta_id,),
         ).fetchall()
     return {clase: int(count) for clase, count in rows}
+
+
+# ------------------------------------------------------------------- runs and tasks (G3)
+@dataclass(frozen=True, slots=True)
+class RunDetail:
+    """One row of ``ejecuciones`` with its configuration and ingestion."""
+
+    id: int
+    run_id: str | None
+    estado: str
+    seed: int
+    iniciada_en: str | None
+    finalizada_en: str | None
+    configuracion_id: int
+    configuracion_version: int
+    parametros: str
+    ingest_sha256: str
+    reserva_json: str | None
+    error_json: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TaskRow:
+    """One row of ``tareas``."""
+
+    id: int
+    sku: str | None
+    modelo: str
+    corte: str
+    estado: str
+    seed: int
+    tiempo_pared_s: float | None
+    detalle_error: str | None
+    iniciada_en: str | None
+    finalizada_en: str | None
+
+
+_RUN_COLUMNS = (
+    "e.id, e.run_id, e.estado, e.seed, e.iniciada_en, e.finalizada_en, e.configuracion_id, "
+    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json"
+)
+_RUN_FROM = (
+    "FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id "
+    "JOIN ingestas i ON i.id = e.ingesta_id"
+)
+
+
+def _has_run_columns(conn: sqlite3.Connection) -> bool:
+    return int(conn.execute("PRAGMA user_version").fetchone()[0]) >= 3
+
+
+def count_runs(db_path: Path) -> int:
+    """How many runs are stored (0 when there is no database or it predates migration 0003)."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_run_columns(conn):
+            return 0
+        return int(conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone()[0])
+
+
+def get_run(db_path: Path, reference: str) -> RunDetail | None:
+    """A run by its ``ejecuciones.id`` (digits) or by the engine's ``run_id``."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_run_columns(conn):
+            return None
+        if reference.isdigit():
+            row = conn.execute(
+                f"SELECT {_RUN_COLUMNS} {_RUN_FROM} WHERE e.id = ?", (int(reference),)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                f"SELECT {_RUN_COLUMNS} {_RUN_FROM} WHERE e.run_id = ?", (reference,)
+            ).fetchone()
+    return None if row is None else RunDetail(*row)
+
+
+def task_state_counts(db_path: Path, ejecucion_id: int) -> dict[str, int]:
+    """Tasks per state over the whole run (not just a page)."""
+    with _open_readonly(db_path) as conn:
+        if conn is None:
+            return {}
+        rows = conn.execute(
+            "SELECT estado, COUNT(*) FROM tareas WHERE ejecucion_id = ? GROUP BY estado",
+            (ejecucion_id,),
+        ).fetchall()
+    return {estado: int(n) for estado, n in rows}
+
+
+def list_tasks(
+    db_path: Path,
+    ejecucion_id: int,
+    *,
+    estado: str | None,
+    sku: str | None,
+    family: str | None,
+    offset: int,
+    limit: int,
+) -> tuple[list[TaskRow], int]:
+    """A filtered page of the run's tasks (by SKU, then model) and the total after filtering."""
+    where = ["ejecucion_id = ?"]
+    params: list[object] = [ejecucion_id]
+    if estado:
+        where.append("estado = ?")
+        params.append(estado)
+    if sku and sku.strip():
+        where.append("sku = ?")
+        params.append(sku.strip())
+    if family:
+        where.append("modelo LIKE ?")
+        params.append(f"{family}:%")
+    clause = " AND ".join(where)
+    with _open_readonly(db_path) as conn:
+        if conn is None:
+            return [], 0
+        (total,) = conn.execute(f"SELECT COUNT(*) FROM tareas WHERE {clause}", params).fetchone()
+        rows = conn.execute(
+            "SELECT id, sku, modelo, corte, estado, seed, tiempo_pared_s, detalle_error, "
+            f"iniciada_en, finalizada_en FROM tareas WHERE {clause} "
+            "ORDER BY sku, modelo LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+    return [TaskRow(*row) for row in rows], int(total)

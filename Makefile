@@ -1,4 +1,4 @@
-.PHONY: run test lint format typecheck lock check sync-contract migrate import
+.PHONY: run test lint format typecheck lock check sync-contract migrate import worker launch
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
@@ -41,6 +41,14 @@ migrate:
 # also does this on start with PRED_DATA_SOURCE=dal. `make import ARGS=--status` only compares.
 import:
 	uv run python -m pred_platform.dal.importacion $(ARGS)
+
+# Follow the run queue in its own process (the app already does it with PRED_WORKER=embedded).
+worker:
+	uv run python -m pred_platform.worker $(ARGS)
+
+# Queue a run on the engine: make launch ARGS="--ingest <sha256> --min-train 40 --trials 1 --once"
+launch:
+	uv run python -m pred_platform.worker --launch $(ARGS)
 
 # The same checks CI runs, except its smoke job that boots the server (see .github/workflows/ci.yml).
 check: lock lint typecheck test

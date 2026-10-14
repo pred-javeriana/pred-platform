@@ -1,6 +1,7 @@
 """Fábrica FastAPI de la plataforma PRED."""
 
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ from pred_platform.config import Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
 from pred_platform.dal.migrate import migrate
 from pred_platform.data.factory import build_repository
+from pred_platform.worker.bucle import Worker
 
 _logger = logging.getLogger("pred_platform.app")
 _APP_DIR = Path(__file__).parent
@@ -48,7 +50,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if active.data_source == "dal":
             migrate(active.db_path)
             _import_engine_reports(active)
-        yield
+        stop = threading.Event()
+        thread: threading.Thread | None = None
+        if active.data_source == "dal" and active.worker == "embedded":
+            # El worker corre como hilo de la app; el mismo código se puede correr aparte con
+            # `python -m pred_platform.worker`.
+            thread = threading.Thread(
+                target=Worker(active).run_forever, args=(stop,), name="pred-worker", daemon=True
+            )
+            thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            if thread is not None:
+                thread.join(timeout=15)
 
     application = FastAPI(title="PRED", docs_url=None, redoc_url=None, lifespan=lifespan)
     application.state.settings = active

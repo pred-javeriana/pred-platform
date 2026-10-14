@@ -30,6 +30,8 @@ Environment variables (see `.env.example`):
 | `PRED_DB_PATH` | `<PRED_DATA_ROOT>/pred.db` | SQLite file behind the DAL (created and migrated on start with `dal`) |
 | `PRED_DATA_SOURCE` | `dal` | Where the views read from: `dal` (real) or `fixture` (sample data) |
 | `PRED_FIXTURE_SCENARIO` | `normal` | Sample data served by `fixture`: `normal`, `vacio` or `errores` |
+| `PRED_ENGINE_CMD` | `pred-engine` | Command that runs the engine's CLI (split like a shell line) |
+| `PRED_WORKER` | `embedded` | `embedded` runs the worker as a thread of the app (with `dal`); `off` disables it |
 
 An unknown `PRED_DATA_SOURCE` or `PRED_FIXTURE_SCENARIO` stops the app at startup with the valid options.
 
@@ -141,6 +143,39 @@ platform imports those files into `ingestas`, `bitacora_calidad` and `series`:
 - **What the views read.** `list_ingests`, `get_ingest_report` and `get_topology_report` come from
   the DAL (`/datos` shows them). Uploading from the browser (`submit_ingest`) still answers
   "not available" until the worker that launches the engine exists (G3).
+
+## Runs and the worker
+
+A run executes the engine on an accepted ingestion and leaves its state, tasks, times and errors in
+the DAL (`ejecuciones`, `tareas`). The platform **does not import the engine**: the worker launches
+`pred-engine run` as a subprocess (`PRED_ENGINE_CMD`) and reads its run folder, the same file-based
+coupling as the ingest reports. The engine writes `progreso.jsonl` while it runs (section 18 of the
+data contract), so tasks move from `pendiente` to `ejecutando` to `exitosa`/`fallida` live.
+
+```bash
+make import                                     # ingest reports -> DAL (needs an accepted ingestion)
+make launch ARGS="--ingest <sha256> --min-train 40 --horizon 7 --trials 2 --once"
+make worker ARGS=--status                       # runs and how many tasks per state
+make worker                                     # follow the queue in its own process
+```
+
+- **Where it runs.** With `PRED_DATA_SOURCE=dal` and `PRED_WORKER=embedded` (the default) the app
+  starts the worker as a thread, so one `make run` is enough; `PRED_WORKER=off` leaves it to
+  `make worker`. Point `PRED_ENGINE_CMD` at the engine, for example
+  `uv run --project ../pred-engine pred-engine`. If it cannot be launched the run ends `detenida`
+  with a readable error and the app keeps working.
+- **One task per engine unit** (SKU × model, decision D6): `modelo` is `familia:algoritmo`, `corte`
+  is the reserve cut t\*. A SKU the engine skips becomes one `no_ejecutable` task per configured
+  family, with the cause.
+- **Run state.** `completada` when every task is `exitosa`; `completada_con_fallos` when some are
+  `fallida` or `no_ejecutable`; `detenida` when the engine process died, the app was closed or a
+  stage left no results (see the table in section 7.4 of the contract).
+- **Resume.** The run id derives from the ingestion and the settings (not the number of
+  processes), so launching the same run again resumes it: the engine reuses its stored HPO studies
+  and the same task rows are updated. A run left running by a crash is queued again on start. The
+  engine does not skip units that had already finished.
+- **Reading it.** `get_run_status` returns the run, its settings, reserve cut, progress over all its
+  tasks and a filtered, paged list of tasks; `/ejecucion` will show it (task C4).
 
 ## Checks
 

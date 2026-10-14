@@ -32,7 +32,7 @@ REGISTRY: dict[CapabilityId, CapabilityState] = {
     "parquet_read": _blocked("G3"),
     "ingest_report_persisted": CapabilityState(True),
     "topology_persisted": CapabilityState(True),
-    "run_orchestration": _blocked("G3"),
+    "run_orchestration": CapabilityState(True),
     "family_comparison": _blocked("G2", "G3"),
     "selection_results_persisted": _blocked("G4"),
     "trial_detail_persisted": _blocked("G2", "G4"),
