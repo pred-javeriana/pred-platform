@@ -1,0 +1,40 @@
+{
+  "schema": "pred-engine.ingesta/1",
+  "written_at": "2026-10-14T15:36:18.123653+00:00",
+  "ingest_id": "ee1db66141ceeae4c2aeab1f69e7c2878e897f5b6e2615a8423430e1e146b20d",
+  "status": "failed",
+  "source_file": {
+    "name": "ventas_invalidas.csv",
+    "sha256": "ee1db66141ceeae4c2aeab1f69e7c2878e897f5b6e2615a8423430e1e146b20d",
+    "row_count": 31
+  },
+  "deposit": {
+    "raw_path": "raw/ventas_invalidas.csv",
+    "status": "deposited",
+    "would_overwrite": false
+  },
+  "header_diagnostic": null,
+  "validation": null,
+  "published": null,
+  "quality_log": [
+    {
+      "severity": "error",
+      "code": "ingest.schema_barrier",
+      "message": "lead_time_days no numerico: 'abc'",
+      "row_index": 30,
+      "column": "lead_time_days"
+    }
+  ],
+  "error": {
+    "code": "ingest.schema_barrier",
+    "stage": "L1",
+    "detail": "lead_time_days no numerico: 'abc'",
+    "field": null,
+    "row_index": 30,
+    "column": "lead_time_days",
+    "source_exception": "SchemaBarrierError",
+    "retryable": false
+  },
+  "reserve": null,
+  "topology": null
+}

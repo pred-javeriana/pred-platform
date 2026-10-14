@@ -1,9 +1,11 @@
 """The ``dal`` data source: what the platform's own database can answer today.
 
-The engine's results do not reach the DAL yet (gaps G1 to G4, plus G8 for the synthetic log), so
-most operations answer honestly that they are not available and name the gap that blocks them
-(``data/capabilities.py`` is the single source for that). The one real read is the list of
-ingests. Nothing is ever invented: a view that shows this data shows only what is stored.
+The ingestion side is real (G1): the engine's ingest reports are imported into the DAL
+(``dal/importacion.py``) and the list of ingests, each ingest report and the demand topology are
+read from there. The rest of the engine's results do not reach the DAL yet (gaps G2 to G4, plus G8
+for the synthetic log), so those operations answer honestly that they are not available and name
+the gap that blocks them (``data/capabilities.py`` is the single source for that). Nothing is ever
+invented: a view that shows this data shows only what is stored.
 
 Documents that always exist in some form (lists, topology, run status, verdicts) come back with
 ``availability.status == "unavailable"``. Documents that have no empty form (an ingest report, one
@@ -12,6 +14,7 @@ SKU's selection, a synthetic run, a download) raise ``ArtifactMissing`` naming t
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +25,7 @@ from pred_platform.contract import CONTRACT_VERSION, models
 from pred_platform.contract.errors import ArtifactMissing, EngineUnavailable, InvalidQuery
 from pred_platform.contract.models import CapabilityId
 from pred_platform.dal import lectura
+from pred_platform.dal.importacion import PANEL_COLUMNS
 from pred_platform.data import capabilities
 from pred_platform.data.query import (
     DEFAULT_SIZE,
@@ -45,9 +49,10 @@ _FAMILY_STATES = get_args(models.EstadoFamilia)
 _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
 
-# `submit_ingest` needs the worker (G3) and the engine's overwrite detection (G5), neither of
-# which has a capability of its own in the contract.
-_SUBMIT_GAPS = ("G1", "G5")
+# `submit_ingest` needs the worker that launches the engine (G3), which has no capability of its
+# own in the contract. Reading an ingestion (G1) and detecting a name conflict in raw/ (G5) are
+# done.
+_SUBMIT_GAPS = ("G3",)
 
 
 def _now() -> datetime:
@@ -74,9 +79,11 @@ class DalRepository:
 
     source: DataSource = "dal"
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, data_root: Path | None = None) -> None:
         # Not opened here: the application must boot without the database (CI smoke test).
         self.db_path = db_path
+        # Paths in the contract resolve against the data root (guide 16.6 of the contract).
+        self.data_root = data_root
 
     # ----------------------------------------------------------------- capabilities
     def get_capabilities(self) -> models.Capabilities:
@@ -103,14 +110,82 @@ class DalRepository:
         )
         items = [
             models.IngestSummary(
-                ingest_id=row.sha256, name=row.nombre_archivo, rows=row.filas, n_skus=row.skus
+                ingest_id=row.sha256,
+                name=row.nombre_archivo,
+                status=row.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+                parquet_path=self._display_path(row.ruta_parquet),
+                rows=row.filas,
+                n_skus=row.skus,
+                published_at=row.publicada_en,  # type: ignore[arg-type]  # ISO 8601 text
             )
             for row in rows
         ]
         return models.IngestList(**_envelope(availability), items=items, page=paging)  # type: ignore[arg-type]
 
     def get_ingest_report(self, ingest_id: str) -> models.IngestReport:
-        _missing("ingest_report_persisted", f"No hay informe de la ingesta {ingest_id!r}")
+        detail = self._require_ingest(ingest_id)
+        if detail.estado is None:
+            raise ArtifactMissing(
+                f"La ingesta {ingest_id[:12]}… se cargó antes de que la plataforma guardara su "
+                "informe; vuelva a ingerir el archivo con el motor"
+            )
+        header = json.loads(detail.diagnostico_json) if detail.diagnostico_json else None
+        error = json.loads(detail.error_json) if detail.error_json else None
+        return models.IngestReport(
+            **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
+            ingest_id=detail.sha256,
+            status=detail.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+            source_file=models.SourceFile(
+                name=detail.nombre_archivo, sha256=detail.sha256, row_count=detail.filas
+            ),
+            deposit=(
+                models.Deposit(
+                    raw_path=self._display_path(detail.ruta_raw) or "",
+                    status=detail.estado_deposito,  # type: ignore[arg-type]
+                    would_overwrite=bool(detail.deposito_colision),
+                )
+                if detail.estado_deposito is not None
+                else None
+            ),
+            header_diagnostic=(
+                models.HeaderDiagnostic(
+                    status=header["status"],
+                    entries=[models.DiagnosticEntry(**e) for e in header["entries"]],
+                )
+                if header is not None
+                else None
+            ),
+            validation=(
+                models.ValidationSummary(
+                    rows_validated=detail.filas_validadas,
+                    rows_daily_panel=detail.filas_panel or 0,
+                    n_skus=detail.skus,
+                )
+                if detail.filas_validadas is not None
+                else None
+            ),
+            published=(
+                models.PublishedArtifact(
+                    parquet_path=self._display_path(detail.ruta_parquet) or "",
+                    rows=detail.filas_panel or 0,
+                    n_skus=detail.skus,
+                    columns=list(PANEL_COLUMNS),
+                )
+                if detail.ruta_parquet is not None
+                else None
+            ),
+            quality_log=[
+                models.QualityEntry(
+                    severity=row.severidad,  # type: ignore[arg-type]
+                    code=row.codigo,
+                    message=row.mensaje,
+                    row_index=row.fila,
+                    column=row.columna,
+                )
+                for row in lectura.quality_log(self.db_path, detail.id)
+            ],
+            error=models.ErrorInfo(**error) if error is not None else None,
+        )
 
     def submit_ingest(
         self, file_name: str, content: bytes, *, confirm_overwrite: bool = False
@@ -134,18 +209,60 @@ class DalRepository:
     ) -> models.TopologyReport:
         check_choice("sku_class", sku_class, _SKU_CLASSES)
         check_sort(sort, _TOPOLOGY_SORT)
-        _, paging = paginate([], PageRequest(page, size))
-        self._require_ingest(ingest_id)
-        availability = capabilities.unavailable(
-            "topology_persisted", "La plataforma aún no guarda ADI, CV2 ni conteos por SKU."
+        request = PageRequest(page, size)
+        detail = self._require_ingest(ingest_id)
+
+        if detail.estado != "accepted":
+            reason = (
+                "La ingesta no fue aceptada: no hay topología que mostrar."
+                if detail.estado is not None
+                else "Esta ingesta se cargó antes de que la plataforma guardara su topología."
+            )
+            return models.TopologyReport(
+                **_envelope(  # type: ignore[arg-type]
+                    models.Availability(
+                        status="unavailable", reason_code="prerequisite_missing", detail=reason
+                    )
+                ),
+                ingest_id=ingest_id,
+                thresholds=self._thresholds(detail),
+                summary=models.TopologySummary(n_skus=0, by_class=dict.fromkeys(_SKU_CLASSES, 0)),
+                items=[],
+                page=models.Page(number=request.number, size=request.size, total=0),
+            )
+
+        rows, total = lectura.topology_rows(
+            self.db_path,
+            detail.id,
+            sku_class=sku_class or None,
+            q=q,
+            sort=sort,
+            descending=descending,
+            offset=(request.number - 1) * request.size,
+            limit=request.size,
         )
+        counts = lectura.topology_counts(self.db_path, detail.id)
         return models.TopologyReport(
-            **_envelope(availability),  # type: ignore[arg-type]
+            **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ingest_id=ingest_id,
-            thresholds=models.Thresholds(adi=_ADI_THRESHOLD, cv2=_CV2_THRESHOLD),
-            summary=models.TopologySummary(n_skus=0, by_class=dict.fromkeys(_SKU_CLASSES, 0)),
-            items=[],
-            page=paging,
+            t_star=detail.t_star,
+            thresholds=self._thresholds(detail),
+            summary=models.TopologySummary(
+                n_skus=sum(counts.values()),
+                by_class={c: counts.get(c, 0) for c in _SKU_CLASSES},  # type: ignore[misc]
+            ),
+            items=[
+                models.TopologyMetrics(
+                    sku_id=row.sku,
+                    n_periods=row.n_obs,
+                    n_positive=row.n_positive or 0,
+                    adi=row.adi or _ADI_THRESHOLD,
+                    cv2=row.cv2 or 0.0,
+                    sku_class=row.clase,  # type: ignore[arg-type]  # CHECK-constrained
+                )
+                for row in rows
+            ],
+            page=models.Page(number=request.number, size=request.size, total=total),
         )
 
     # -------------------------------------------------------------------- run status
@@ -230,10 +347,27 @@ class DalRepository:
         _missing("synthetic_log_read", f"No hay artefacto de la corrida sintética {run_ref!r}")
 
     # --------------------------------------------------------------------- helpers
-    def _require_ingest(self, ingest_id: str) -> None:
+    def _require_ingest(self, ingest_id: str) -> lectura.IngestDetail:
         if not _SHA256.match(ingest_id):
             raise InvalidQuery(
                 f"ingest_id must be a lowercase SHA-256 hex digest, got {ingest_id!r}"
             )
-        if not lectura.ingesta_existe(self.db_path, ingest_id):
+        detail = lectura.get_ingesta(self.db_path, ingest_id)
+        if detail is None:
             raise ArtifactMissing(f"No existe la ingesta {ingest_id[:12]}…")
+        return detail
+
+    def _display_path(self, relative: str | None) -> str | None:
+        """A path stored relative to the data root, as the contract shows it (data/raw/...)."""
+        if relative is None:
+            return None
+        if self.data_root is None:
+            return relative
+        return (self.data_root / relative).as_posix()
+
+    @staticmethod
+    def _thresholds(detail: lectura.IngestDetail) -> models.Thresholds:
+        return models.Thresholds(
+            adi=detail.umbral_adi if detail.umbral_adi is not None else _ADI_THRESHOLD,
+            cv2=detail.umbral_cv2 if detail.umbral_cv2 is not None else _CV2_THRESHOLD,
+        )

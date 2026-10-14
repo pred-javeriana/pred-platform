@@ -158,9 +158,13 @@ def _gap(doc: models.Documento) -> tuple[str | None, list[str]]:
     return doc.availability.reason_code, doc.availability.blocked_by
 
 
-def test_topology_is_unavailable_and_blocked_by_g1(repo: DalRepository) -> None:
+def test_topology_of_an_ingest_loaded_before_the_report_existed_is_unavailable(
+    repo: DalRepository,
+) -> None:
+    # The fixture rows were inserted without a report (estado NULL): there is no topology.
     doc = repo.get_topology_report(SHA_A)
-    assert _gap(doc) == ("not_implemented", ["G1"])
+    assert _gap(doc) == ("prerequisite_missing", [])
+    assert "antes de que la plataforma guardara" in (doc.availability.detail or "")
     assert doc.ingest_id == SHA_A
     assert (doc.thresholds.adi, doc.thresholds.cv2) == (1.32, 0.49)
     assert doc.items == [] and doc.summary.n_skus == 0
@@ -203,7 +207,6 @@ def test_synthetic_list_is_unavailable_and_blocked_by_g8(repo: DalRepository) ->
 
 def test_every_unavailable_document_matches_the_registry(repo: DalRepository) -> None:
     pairs = [
-        (repo.get_topology_report(SHA_A), "topology_persisted"),
         (repo.get_run_status(RUN), "run_orchestration"),
         (repo.list_sku_selections(RUN), "selection_results_persisted"),
         (repo.get_validation_verdicts(RUN), "retrospective_validation"),
@@ -243,7 +246,6 @@ def test_filters_are_still_validated_while_unavailable(repo: DalRepository) -> N
 @pytest.mark.parametrize(
     ("call", "gap"),
     [
-        (lambda r: r.get_ingest_report(SHA_A), "G1"),
         (lambda r: r.get_sku_selection(RUN, "FIL-0001"), "G4"),
         (lambda r: r.get_synthetic_run("fase0_x"), "G8"),
         (lambda r: r.download_synthetic_artifact("fase0_x"), "G8"),
@@ -258,10 +260,17 @@ def test_documents_without_an_empty_form_are_missing_and_name_the_gap(
     assert gap in (raised.value.to_error_info().detail or "")
 
 
+def test_an_ingest_loaded_before_the_report_existed_has_no_report(repo: DalRepository) -> None:
+    with pytest.raises(ArtifactMissing, match="se cargó antes"):
+        repo.get_ingest_report(SHA_A)
+    with pytest.raises(ArtifactMissing, match="No existe la ingesta"):
+        repo.get_ingest_report("c" * 64)
+
+
 def test_submit_ingest_needs_the_engine(repo: DalRepository) -> None:
     with pytest.raises(EngineUnavailable) as raised:
         repo.submit_ingest("a.csv", b"x")
-    assert raised.value.blocked_by == ("G1", "G5")
+    assert raised.value.blocked_by == ("G3",)
     info = raised.value.to_error_info()
     assert (info.code, info.retryable) == ("platform.engine_unavailable", True)
 

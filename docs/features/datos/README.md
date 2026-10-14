@@ -26,3 +26,10 @@ Views call only `DataRepository` (`submit_ingest`, `get_ingest_report`, `list_in
 | Presentation | `src/pred_platform/app/presentation.py` |
 | Page | `src/pred_platform/app/templates/pages/data.html` |
 | Partials | `src/pred_platform/app/templates/partials/data_*.html` |
+
+## Data with `PRED_DATA_SOURCE=dal` (G1)
+
+With the real database the surface reads the ingest list, each ingest report and the demand
+topology from the DAL, imported from the engine's `ingestas/<sha256>.json` (see the root README,
+"Importing ingest reports"). What stays unavailable is only the upload from the browser, which
+needs the worker that launches the engine (G3): it renders as `unavailable` with `G3`.

@@ -158,8 +158,7 @@ def test_dal_submit_is_unavailable_not_500(tmp_path: Path) -> None:
     app = create_app(Settings(data_root=tmp_path, db_path=tmp_path / "pred.db", data_source="dal"))
     html = TestClient(app).post("/datos/cargar", files={"archivo": _CSV}).text
     assert "Carga temporalmente no disponible." in html
-    assert "G1" in html
-    assert "G5" in html
+    assert "G3" in html
     assert "Error inesperado" not in html
 
 

@@ -117,6 +117,31 @@ Version 1 is the original eleven tables. The current schema is what applying eve
 
 A released migration is never edited: the test pins its hash. A mistake is fixed by a new migration.
 
+## Importing ingest reports
+
+The engine does not write to the DAL. Every ingestion (`pred-engine classify`/`ingest`/`run`) leaves
+`<PRED_DATA_ROOT>/ingestas/<sha256>.json` (schema `pred-engine.ingesta/1`, section 17 of the data
+contract in `pred-docs`), also when the ingestion is rejected, failed or waits for confirmation. The
+platform imports those files into `ingestas`, `bitacora_calidad` and `series`:
+
+- **When.** Starting the app with `PRED_DATA_SOURCE=dal` (after migrating), or on demand:
+
+  ```bash
+  make import                    # migrate if needed, then import what is in ingestas/
+  make import ARGS=--status      # compare the files with the database; changes nothing
+  ```
+
+- **Idempotent.** The ingestion is keyed by the SHA-256 of its CSV: importing again replaces its
+  quality log and series, never duplicates them. When a name conflict is confirmed in the engine
+  (`--confirm-overwrite`) the same report is rewritten as `accepted`, and the next import updates it.
+  A file kept next to an older one with the same name shows its versioned name in the list.
+- **Strict, but per file.** A report with another major version, a class outside the contract, a
+  repeated SKU or inconsistent fields is skipped with its reason (logged at startup, listed by
+  `make import`); the others are imported and the app still starts.
+- **What the views read.** `list_ingests`, `get_ingest_report` and `get_topology_report` come from
+  the DAL (`/datos` shows them). Uploading from the browser (`submit_ingest`) still answers
+  "not available" until the worker that launches the engine exists (G3).
+
 ## Checks
 
 ```bash

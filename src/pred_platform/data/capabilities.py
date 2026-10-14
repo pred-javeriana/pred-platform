@@ -30,8 +30,8 @@ def _blocked(*gaps: str) -> CapabilityState:
 
 REGISTRY: dict[CapabilityId, CapabilityState] = {
     "parquet_read": _blocked("G3"),
-    "ingest_report_persisted": _blocked("G1"),
-    "topology_persisted": _blocked("G1"),
+    "ingest_report_persisted": CapabilityState(True),
+    "topology_persisted": CapabilityState(True),
     "run_orchestration": _blocked("G3"),
     "family_comparison": _blocked("G2", "G3"),
     "selection_results_persisted": _blocked("G4"),

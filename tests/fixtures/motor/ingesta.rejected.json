@@ -1,0 +1,50 @@
+{
+  "schema": "pred-engine.ingesta/1",
+  "written_at": "2026-10-14T15:36:18.125358+00:00",
+  "ingest_id": "119109deff15434a1544279cb42e99ce74a8f27f6c69d0832f1f9026aaae366a",
+  "status": "rejected",
+  "source_file": {
+    "name": "ventas_cabeceras.csv",
+    "sha256": "119109deff15434a1544279cb42e99ce74a8f27f6c69d0832f1f9026aaae366a",
+    "row_count": 30
+  },
+  "deposit": {
+    "raw_path": "raw/ventas_cabeceras.csv",
+    "status": "deposited",
+    "would_overwrite": false
+  },
+  "header_diagnostic": {
+    "status": "rejected",
+    "entries": [
+      {
+        "field": "timestamp",
+        "severity": "error",
+        "message": "Renombrar Date",
+        "action": "Renombrar 'Date' a 'timestamp'"
+      }
+    ]
+  },
+  "validation": null,
+  "published": null,
+  "quality_log": [
+    {
+      "severity": "error",
+      "code": "ingest.header_rejected",
+      "message": "Renombrar Date",
+      "row_index": null,
+      "column": "timestamp"
+    }
+  ],
+  "error": {
+    "code": "ingest.header_rejected",
+    "stage": "L1",
+    "detail": "PRED no puede ingerir este dataset: la sonda rechazo las cabeceras. Corrija el CSV segun el reporte JSON de diagnostico.",
+    "field": null,
+    "row_index": null,
+    "column": null,
+    "source_exception": "SemanticAlignmentError",
+    "retryable": false
+  },
+  "reserve": null,
+  "topology": null
+}

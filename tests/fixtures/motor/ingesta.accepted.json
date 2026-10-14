@@ -1,0 +1,75 @@
+{
+  "schema": "pred-engine.ingesta/1",
+  "written_at": "2026-10-14T15:36:18.094860+00:00",
+  "ingest_id": "9da7e1dacb6d6dc43b9608b4df85ce8cde5a1645253e79ff334ef809279daa8d",
+  "status": "accepted",
+  "source_file": {
+    "name": "demo_canonico.csv",
+    "sha256": "9da7e1dacb6d6dc43b9608b4df85ce8cde5a1645253e79ff334ef809279daa8d",
+    "row_count": 270
+  },
+  "deposit": {
+    "raw_path": "raw/demo_canonico.csv",
+    "status": "deposited",
+    "would_overwrite": false
+  },
+  "header_diagnostic": null,
+  "validation": {
+    "rows_validated": 270,
+    "rows_daily_panel": 270,
+    "n_skus": 3
+  },
+  "published": {
+    "parquet_path": "processed/demo_canonico.parquet",
+    "rows": 270,
+    "n_skus": 3,
+    "columns": [
+      "sku_id",
+      "timestamp",
+      "demand_qty",
+      "lead_time_days",
+      "sku_class"
+    ]
+  },
+  "quality_log": [],
+  "error": null,
+  "reserve": {
+    "t_star": "2026-03-13",
+    "first_reserved": "2026-03-14",
+    "last_observed": "2026-03-31",
+    "reserved_days": 18,
+    "fraction": 0.2
+  },
+  "topology": {
+    "thresholds": {
+      "adi": 1.32,
+      "cv2": 0.49
+    },
+    "metrics": [
+      {
+        "sku_id": "FIL-0001",
+        "n_periods": 72,
+        "n_positive": 72,
+        "adi": 1.0,
+        "cv2": 0.004231909320459772,
+        "sku_class": "smooth"
+      },
+      {
+        "sku_id": "FIL-0002",
+        "n_periods": 72,
+        "n_positive": 24,
+        "adi": 3.0,
+        "cv2": 0.0,
+        "sku_class": "intermittent"
+      },
+      {
+        "sku_id": "FIL-0003",
+        "n_periods": 72,
+        "n_positive": 24,
+        "adi": 3.0,
+        "cv2": 0.9761751749763388,
+        "sku_class": "lumpy"
+      }
+    ]
+  }
+}

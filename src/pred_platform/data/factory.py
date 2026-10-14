@@ -12,4 +12,4 @@ def build_repository(settings: Settings) -> DataRepository:
     """``FixtureRepository`` when ``data_source`` is ``fixture``, otherwise ``DalRepository``."""
     if settings.data_source == "fixture":
         return FixtureRepository(settings.fixture_scenario)
-    return DalRepository(settings.db_path)
+    return DalRepository(settings.db_path, settings.data_root)

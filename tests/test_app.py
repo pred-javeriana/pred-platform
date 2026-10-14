@@ -12,9 +12,11 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
-from pred_platform.dal.migrate import SchemaTooNew
+from pred_platform.dal.migrate import SchemaTooNew, load_migrations
 from pred_platform.data.deps import get_repository
 from pred_platform.data.repository import DataRepository
+
+LATEST_SCHEMA = len(load_migrations())
 
 
 @pytest.fixture()
@@ -111,7 +113,7 @@ def test_starting_the_server_with_the_real_source_creates_and_migrates_the_datab
     with TestClient(application) as client:  # entering the client runs the lifespan
         assert client.get("/health").status_code == 200
 
-    assert _user_version(db) == 1
+    assert _user_version(db) == LATEST_SCHEMA
     assert [p.name for p in db.parent.glob("*.bak")] == []  # a new database is not backed up
 
 
@@ -143,5 +145,5 @@ def test_starting_twice_does_not_migrate_or_back_up_again(tmp_path: Path) -> Non
     for _ in range(2):
         with TestClient(create_app(settings)):
             pass
-    assert _user_version(settings.db_path) == 1
+    assert _user_version(settings.db_path) == LATEST_SCHEMA
     assert list(tmp_path.glob("*.bak")) == []
