@@ -1,0 +1,31 @@
+{
+  "schema": "pred-engine.ingesta/1",
+  "written_at": "2026-10-14T15:36:18.095719+00:00",
+  "ingest_id": "6cffc729375a78ce1f10afb1a705c96a01f049ea599f2d23f7cde2b75e0c78dd",
+  "status": "needs_confirmation",
+  "source_file": {
+    "name": "demo_canonico.csv",
+    "sha256": "6cffc729375a78ce1f10afb1a705c96a01f049ea599f2d23f7cde2b75e0c78dd",
+    "row_count": 270
+  },
+  "deposit": {
+    "raw_path": "raw/demo_canonico.csv",
+    "status": "already_present_different",
+    "would_overwrite": true
+  },
+  "header_diagnostic": null,
+  "validation": null,
+  "published": null,
+  "quality_log": [
+    {
+      "severity": "warning",
+      "code": "ingest.raw_conflict",
+      "message": "raw/demo_canonico.csv ya existe con otro contenido (existente 9da7e1dacb6d..., nuevo 6cffc729375a...); confirme para conservar ambos",
+      "row_index": null,
+      "column": null
+    }
+  ],
+  "error": null,
+  "reserve": null,
+  "topology": null
+}

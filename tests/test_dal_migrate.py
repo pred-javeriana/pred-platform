@@ -22,6 +22,11 @@ from pred_platform.dal.migrate import (
     status,
 )
 
+# The packaged chain grows with every task that changes the schema; these tests only need its end.
+LATEST = len(load_migrations())
+ALL_VERSIONS = tuple(range(1, LATEST + 1))
+ALL_LABEL = ", ".join(f"{v:04d}" for v in ALL_VERSIONS)
+
 BASE = """
 CREATE TABLE padre (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
 CREATE TABLE hijo (
@@ -91,7 +96,7 @@ def test_migrating_again_does_nothing_and_does_not_back_up(tmp_path: Path, two: 
 def test_the_packaged_migrations_build_the_real_schema(tmp_path: Path) -> None:
     db = tmp_path / "pred.db"
     result = migrate(db)
-    assert result.applied == (1,)
+    assert result.applied == ALL_VERSIONS
     with closing(sqlite3.connect(db)) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"ingestas", "tareas", "reportes_validacion"} <= tables
@@ -112,10 +117,10 @@ def test_a_database_from_before_versioning_adopts_version_1_and_is_backed_up(
 
     result = migrate(db)
 
-    assert (result.from_version, result.to_version, result.applied) == (0, 1, (1,))
-    assert result.backup_path == tmp_path / "pred.db.antes-de-v0001.bak"
+    assert (result.from_version, result.to_version, result.applied) == (0, LATEST, ALL_VERSIONS)
+    assert result.backup_path == tmp_path / f"pred.db.antes-de-v{LATEST:04d}.bak"
     assert result.backup_path is not None
-    assert user_version(db) == 1
+    assert user_version(db) == LATEST
     with closing(sqlite3.connect(db)) as conn:
         assert conn.execute("SELECT nombre_archivo FROM ingestas").fetchall() == [("x.csv",)]
     assert user_version(result.backup_path) == 0
@@ -417,9 +422,9 @@ def test_cli_migrates_then_reports_nothing_to_do(
 ) -> None:
     db = tmp_path / "pred.db"
     assert main(["--db", str(db)]) == 0
-    assert "migrated from version 0 to 1 (applied: 0001)" in capsys.readouterr().out
+    assert f"migrated from version 0 to {LATEST} (applied: {ALL_LABEL})" in capsys.readouterr().out
     assert main(["--db", str(db)]) == 0
-    assert "already at schema version 1; nothing to do" in capsys.readouterr().out
+    assert f"already at schema version {LATEST}; nothing to do" in capsys.readouterr().out
 
 
 def test_cli_mentions_the_backup(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -433,11 +438,12 @@ def test_cli_mentions_the_backup(tmp_path: Path, capsys: pytest.CaptureFixture[s
 def test_cli_status_changes_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db = tmp_path / "pred.db"
     assert main(["--db", str(db), "--status"]) == 0
-    assert "does not exist; migrating would create it at version 1" in capsys.readouterr().out
+    expected = f"does not exist; migrating would create it at version {LATEST}"
+    assert expected in capsys.readouterr().out
     assert not db.exists()
     migrate(db)
     assert main(["--db", str(db), "--status"]) == 0
-    assert "schema version 1 (up to date)" in capsys.readouterr().out
+    assert f"schema version {LATEST} (up to date)" in capsys.readouterr().out
 
 
 def test_cli_status_lists_pending_versions(
@@ -473,7 +479,7 @@ def test_cli_uses_the_configured_database_by_default(
     db = tmp_path / "from_env.db"
     monkeypatch.setenv("PRED_DB_PATH", str(db))
     assert main([]) == 0
-    assert user_version(db) == 1
+    assert user_version(db) == LATEST
     assert str(db) in capsys.readouterr().out
 
 

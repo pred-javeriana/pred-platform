@@ -1,4 +1,4 @@
-.PHONY: run test lint format typecheck lock check sync-contract migrate
+.PHONY: run test lint format typecheck lock check sync-contract migrate import
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
@@ -36,6 +36,11 @@ sync-contract:
 # `make migrate ARGS=--status` only reports; `ARGS="--db path/to/file.db"` targets another file.
 migrate:
 	uv run python -m pred_platform.dal.migrate $(ARGS)
+
+# Import the engine's ingest reports (<PRED_DATA_ROOT>/ingestas/*.json) into the database; the app
+# also does this on start with PRED_DATA_SOURCE=dal. `make import ARGS=--status` only compares.
+import:
+	uv run python -m pred_platform.dal.importacion $(ARGS)
 
 # The same checks CI runs, except its smoke job that boots the server (see .github/workflows/ci.yml).
 check: lock lint typecheck test
