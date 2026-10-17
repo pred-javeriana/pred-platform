@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pred_platform.data.query import LATEST
+
 # First schema version with the ingest report and topology columns (migration 0002).
 _REPORT_SCHEMA_VERSION = 2
 
@@ -295,11 +297,18 @@ def count_runs(db_path: Path) -> int:
 
 
 def get_run(db_path: Path, reference: str) -> RunDetail | None:
-    """A run by its ``ejecuciones.id`` (digits) or by the engine's ``run_id``."""
+    """A run by its ``ejecuciones.id`` (digits), by the engine's ``run_id`` or ``latest``.
+
+    ``latest`` is the run with the highest id, i.e. the most recently queued one.
+    """
     with _open_readonly(db_path) as conn:
         if conn is None or not _has_run_columns(conn):
             return None
-        if reference.isdigit():
+        if reference == LATEST:
+            row = conn.execute(
+                f"SELECT {_RUN_COLUMNS} {_RUN_FROM} ORDER BY e.id DESC LIMIT 1"
+            ).fetchone()
+        elif reference.isdigit():
             row = conn.execute(
                 f"SELECT {_RUN_COLUMNS} {_RUN_FROM} WHERE e.id = ?", (int(reference),)
             ).fetchone()

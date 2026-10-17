@@ -196,6 +196,9 @@ trials in `ensayos` (completed, pruned and failed, each with its reason); the wi
   the run ended. Importing again replaces each SKU's rows, so a resume leaves no duplicates.
 - The champion is not here: it is read from `resultados_comparativos` and is `null` until M3 writes
   it.
+- The views read it through `/resultados` and `/resultados/sku/{sku_id}` (task C2, see
+  `docs/features/resultados/README.md`). Wherever the repository takes a run id it also accepts
+  `latest`, the run with the highest id.
 
 ## Checks
 

@@ -16,6 +16,10 @@ from pred_platform.contract.models import Page
 DEFAULT_SIZE = 50
 MAX_SIZE = 500
 
+# A run reference may be this alias instead of an id: the most recent run. A view that does not
+# know which run to show asks for ``LATEST``; the repository resolves it.
+LATEST = "latest"
+
 
 @dataclass(frozen=True, slots=True)
 class PageRequest:

@@ -140,14 +140,14 @@ def test_capabilities_come_from_the_registry(repo: DalRepository) -> None:
 
 
 def test_the_platform_does_not_claim_engine_only_capabilities() -> None:
-    assert not capabilities.REGISTRY["parquet_read"].available
+    # The engine reads the Parquet because the worker launches it on the ingestion (G3); the
+    # Phase 0 log still has no reader in the platform (G8).
+    assert capabilities.REGISTRY["parquet_read"].available
     assert not capabilities.REGISTRY["synthetic_log_read"].available
-    assert capabilities.blocked_by("parquet_read") == ("G3",)
     assert capabilities.blocked_by("synthetic_log_read") == ("G8",)
 
 
-def test_an_available_capability_has_no_unavailable_form(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(capabilities.REGISTRY, "parquet_read", capabilities.CapabilityState(True))
+def test_an_available_capability_has_no_unavailable_form() -> None:
     with pytest.raises(ValueError, match="is available"):
         capabilities.unavailable("parquet_read", "x")
 

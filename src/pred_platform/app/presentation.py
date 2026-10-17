@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-StatusKind = Literal["task", "trial", "verdict", "run", "ingest", "severity"]
+StatusKind = Literal["task", "family", "trial", "verdict", "run", "ingest", "severity"]
 StatusModifier = Literal["neutral", "info", "ok", "err", "warn", "pruned"]
 
 # Orden de lectura de las clases de demanda en el resumen (no es un recálculo).
@@ -39,6 +39,13 @@ _TASK: dict[str, StatusPresentation] = {
     "exitosa": StatusPresentation("i-check", "exitosa", "ok"),
     "fallida": StatusPresentation("i-x", "fallida", "err"),
     "no_ejecutable": StatusPresentation("i-ban", "no ejecutable", "warn"),
+}
+
+# Estados de una familia en la selección de un SKU: los de tarea más `excluida` (la política o la
+# configuración de la corrida no la incluye; no es un fallo).
+_FAMILY: dict[str, StatusPresentation] = {
+    **_TASK,
+    "excluida": StatusPresentation("i-minus-circle", "excluida", "neutral"),
 }
 
 # Trials HPO: claves del contrato (EstadoTrial); etiquetas de A1/B2.
@@ -83,6 +90,7 @@ _SEVERITY: dict[str, StatusPresentation] = {
 
 _VOCABULARIES: dict[StatusKind, dict[str, StatusPresentation]] = {
     "task": _TASK,
+    "family": _FAMILY,
     "trial": _TRIAL,
     "verdict": _VERDICT,
     "run": _RUN,

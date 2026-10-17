@@ -23,7 +23,8 @@ La navegación de producto es `PRED · Datos | Ejecución | Resultados`.
 | `/` | Redirige a `/datos`. No hay landing. |
 | `/datos` | Datos |
 | `/ejecucion` | Ejecución |
-| `/resultados` | Resultados |
+| `/resultados` | Resultados (tabs; «Por SKU» es la vista por defecto) |
+| `/resultados/sku/{sku_id}` | Detalle de un SKU: familias, ensayos y ventanas |
 | `/health` | Sonda JSON, sin cambios. |
 | `/_dev/componentes` | Catálogo interno de B2. Fuera de la navegación. |
 
@@ -95,8 +96,13 @@ recalcula métricas.
 **Veredictos** (contrato → etiqueta): `mantiene` → se sostiene; `parcial` → se sostiene
 parcialmente; `falla` → no se sostiene.
 
-Tabs internas previstas (misma ruta): Resumen | Por clase | Por SKU. No son pantallas
-nuevas.
+Tabs internas (misma ruta, `?vista=resumen|clase|sku`): Resumen | Por clase | Por SKU. No son
+pantallas nuevas. **Por SKU** (C2) está implementada: tabla con una celda por familia y detalle
+en `/resultados/sku/{sku_id}`; **Resumen** y **Por clase** dependen del campeón (M3) y se
+muestran como no disponibles. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
+La acción «Ejecutar selección» lleva a Ejecución y se habilita solo con `parquet_read`,
+`family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
+`docs/features/resultados/README.md`.
 
 ## Propuesta anterior → interfaz final
 
@@ -118,14 +124,10 @@ El interruptor fixture/DAL ya lo resuelve B4 (`PRED_DATA_SOURCE`). Con `dal`,
 
 | Superficie | Dato | Capacidad | Hueco |
 | --- | --- | --- | --- |
-| Datos | Lista de ingestas | (lectura real de `ingestas`) | — |
-| Datos | Informe de ingesta | `ingest_report_persisted` | G1 |
-| Datos | Topología | `topology_persisted` | G1 |
-| Datos | Depósito sin sobrescritura silenciosa | — | G5 (motor) |
-| Ejecución | Orquestación, progreso en vivo, stop/resume | `run_orchestration` | G3 |
-| Ejecución / Resultados | Ensayos HPO | `trial_detail_persisted` | G2, G4 |
-| Resultados | Selección por SKU | `selection_results_persisted` | G4 |
-| Resultados | Evidencia walk-forward | `walkforward_evidence_persisted` | G3, G4 |
+| Datos | Lista de ingestas, informe y topología | `ingest_report_persisted`, `topology_persisted` | Resuelto (G1, G5) |
+| Datos | Carga desde el navegador | — | Falta cablear `submit_ingest` al worker (G3 lo permite) |
+| Ejecución | Orquestación, progreso | `run_orchestration` | Resuelto (G3); la pantalla es C4 |
+| Resultados | Selección por SKU, ensayos HPO y ventanas | `selection_results_persisted`, `trial_detail_persisted`, `walkforward_evidence_persisted`, `family_comparison` | Resuelto (G2, G4); pantalla C2 |
 | Resultados | Campeón | `champion_selection` | etapa no implementada (M3) |
 | Resultados | Veredictos | `retrospective_validation` | etapa no implementada (L4) |
 

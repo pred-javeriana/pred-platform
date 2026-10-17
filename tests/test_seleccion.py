@@ -477,3 +477,45 @@ def test_the_capabilities_of_the_selection_are_available() -> None:
         assert capabilities.REGISTRY[name].available  # type: ignore[index]
     assert not capabilities.REGISTRY["champion_selection"].available
     assert not capabilities.REGISTRY["retrospective_validation"].available
+
+
+# ------------------------------------------------------------------- the "latest" alias
+def test_latest_is_the_run_with_the_highest_id(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    _run(env, monkeypatch)
+    with closing(sqlite3.connect(env.db)) as conn:
+        # A second run, queued later and not finished: it is the latest, and has no selection yet.
+        conn.execute(
+            "INSERT INTO configuraciones (version, parametros) VALUES (2, ?)",
+            (
+                json.dumps(
+                    {"min_train": 4, "horizon": 1, "step": 1, "metric": "mae", "seasonality": 1}
+                ),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed, run_id) "
+            "VALUES (1, 2, 5, 'r-2')"
+        )
+        conn.commit()
+
+    repo = env.repo()
+    assert repo.get_run_status("latest").ejecucion is not None
+    assert repo.get_run_status("latest").ejecucion.id == "2"  # type: ignore[union-attr]
+    assert repo.list_sku_selections("latest").availability.reason_code == "prerequisite_missing"
+    # The first run is still reachable by its id, and has its selection.
+    assert repo.list_sku_selections("1").page.total == 3
+    assert repo.get_sku_selection("1", "FIL-0001").run_id == "1"
+
+
+def test_latest_without_any_run_is_an_empty_state(env: Env) -> None:
+    assert env.repo().list_sku_selections("latest").availability.reason_code == "no_data"
+    assert env.repo().get_run_status("latest").availability.reason_code == "no_data"
+
+
+def test_latest_answers_with_a_selection_when_the_run_has_one(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    doc = env.repo().list_sku_selections("latest")
+    assert doc.run_id == "1" and doc.page.total == 3
+    assert env.repo().get_sku_selection("latest", "FIL-0002").sku_id == "FIL-0002"

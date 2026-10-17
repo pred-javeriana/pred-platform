@@ -222,7 +222,7 @@ def test_the_capabilities_now_declare_the_ingestion_side_available(repo: DalRepo
     by_id = {c.id: c for c in repo.get_capabilities().items}
     assert by_id["ingest_report_persisted"].available is True
     assert by_id["topology_persisted"].available is True
-    assert by_id["parquet_read"].available is False
+    assert by_id["parquet_read"].available is True
     assert capabilities.blocked_by("topology_persisted") == ()
 
 

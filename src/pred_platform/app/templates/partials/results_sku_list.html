@@ -1,0 +1,97 @@
+{% from "components/forms.html" import field %}
+{% from "components/buttons.html" import button %}
+{% from "components/alerts.html" import alert %}
+{% from "components/run_line.html" import run_line %}
+{% from "components/status.html" import status_indicator %}
+{% from "components/tables.html" import table_start, table_end, table_empty %}
+{% from "components/states.html" import unavailable_state %}
+
+<section class="pred-section" id="seleccion-por-sku">
+  <h2>Selección por SKU</h2>
+  {{ run_line(run, listing.run_id if listing else none) }}
+
+  {% include "partials/results_action.html" %}
+
+  {% if query_error %}
+    {{ alert(query_error, variant="warning") }}
+  {% endif %}
+
+  {% if list_error %}
+    {{ unavailable_state(list_error.title, list_error.detail or "No fue posible leer la selección.", list_error.code, list_error.blocked_by) }}
+  {% elif listing and listing.availability.status != "available" %}
+    {{ unavailable_state(
+      "Todavía no hay selección por SKU.",
+      listing.availability.detail or "La ejecución aún no dejó resultados.",
+      listing.availability.reason_code or "no_data",
+      listing.availability.blocked_by
+    ) }}
+  {% elif listing %}
+    <form method="get" action="/resultados" class="pred-filters" id="filtros-seleccion">
+      <input type="hidden" name="vista" value="sku">
+      {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
+      {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=[
+        ("", "Todas"), ("smooth", "Smooth"), ("erratic", "Erratic"), ("intermittent", "Intermittent"), ("lumpy", "Lumpy")
+      ]) }}
+      {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
+        ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
+      ]) }}
+      {{ field("estado", "Estado de la familia", value=query.estado or "", input_type="select", options=[
+        ("", "Todos"), ("exitosa", "Exitosa"), ("fallida", "Fallida"), ("no_ejecutable", "No ejecutable"),
+        ("excluida", "Excluida"), ("ejecutando", "Ejecutando"), ("pendiente", "Pendiente")
+      ]) }}
+      {{ field("q", "Buscar SKU", value=query.q or "", placeholder="FIL-0001") }}
+      {{ field("sort", "Ordenar por", value=query.sort, input_type="select", options=[
+        ("sku_id", "SKU"), ("valor", "Mejor valor")
+      ]) }}
+      {{ field("descending", "Descendente", value=query.descending, input_type="checkbox") }}
+      {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
+    </form>
+
+    {{ table_start(["SKU", "Clase", "Perfil"] + FAMILY_HEADERS + ["Campeón"]) }}
+    {% if rows %}
+      {% for item in rows %}
+      <tr>
+        <td><a class="mono" href="/resultados/sku/{{ item.row.sku_id }}?{{ query.detail_query() }}">{{ item.row.sku_id }}</a></td>
+        <td>{{ sku_class_label(item.row.sku_class) }}</td>
+        <td>{{ profile_label(item.row.profile) }}</td>
+        {% for family in FAMILY_ORDER %}
+        {% set brief = item.cells.get(family) %}
+        <td>
+          {% if brief %}
+          <div class="pred-cell">
+            {{ status_indicator(describe_status("family", brief.estado)) }}
+            {% if brief.valor is not none %}
+            <span class="pred-cell__value">{{ brief.metrica_objetivo }} {{ format_decimal(brief.valor, 3) }}</span>
+            {% endif %}
+          </div>
+          {% else %}
+          <span class="pred-cell--none" aria-label="Sin dato">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+        <td>
+          {% if item.row.champion %}
+          <div class="pred-cell">
+            <span>{{ family_label(item.row.champion.family) if item.row.champion.family else "" }}</span>
+            <span class="pred-cell__value">{{ item.row.champion.modelo }} · {{ item.row.champion.metrica_seleccion }} {{ format_decimal(item.row.champion.valor_seleccion, 3) }}</span>
+          </div>
+          {% else %}
+          <span class="pred-cell--none">pendiente de M3</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      {{ table_empty(4 + (FAMILY_ORDER | length), "Sin coincidencias", "No hay SKU que coincidan con los filtros seleccionados.") }}
+    {% endif %}
+    {{ table_end() }}
+
+    {% if pages.show %}
+    <nav class="pred-pager" aria-label="Paginación de SKU">
+      <span>Página {{ listing.page.number }} de {{ pages.total_pages }} · {{ format_count(listing.page.total) }} SKU</span>
+      {% if pages.has_prev %}<a href="/resultados?{{ query.query_string(page=listing.page.number - 1) }}">Anterior</a>{% endif %}
+      {% if pages.has_next %}<a href="/resultados?{{ query.query_string(page=listing.page.number + 1) }}">Siguiente</a>{% endif %}
+    </nav>
+    {% endif %}
+  {% endif %}
+</section>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/states.html" import empty_state %}
+{% from "components/states.html" import empty_state, unavailable_state %}
 {% from "components/tabs.html" import tabs %}
 
 {% block title %}PRED — Resultados{% endblock %}
@@ -11,16 +11,31 @@
       <p>Campeones, evidencia por SKU y validación retrospectiva. La interfaz no recalcula métricas.</p>
     </div>
   </header>
+  {% if source == "fixture" %}
+  <p class="pred-meta">Datos de prueba</p>
+  {% endif %}
   {{ tabs(
     [
-      {"id": "resumen", "label": "Resumen", "href": "/resultados"},
-      {"id": "clase", "label": "Por clase", "href": "/resultados"},
-      {"id": "sku", "label": "Por SKU", "href": "/resultados"}
+      {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "clase", "label": "Por clase", "href": "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "sku", "label": "Por SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")}
     ],
-    "resumen"
+    vista
   ) }}
-  {{ empty_state(
-    "Todavía no hay resultados disponibles.",
-    "Los campeones y veredictos aparecerán aquí cuando la corrida los persista en el repositorio."
-  ) }}
+
+  {% if vista == "sku" %}
+    {% include "partials/results_sku_list.html" %}
+  {% elif champion_capability.available %}
+    {{ empty_state(
+      "Esta vista todavía no está construida.",
+      "El campeón por SKU ya existe, pero el resumen y la vista por clase aún no se han implementado en la interfaz. «Por SKU» muestra la evidencia de cada familia."
+    ) }}
+  {% else %}
+    {{ unavailable_state(
+      "Todavía no hay campeón por SKU.",
+      "El resumen y la vista por clase se construyen con el campeón de cada SKU y con los veredictos de la validación retrospectiva, etapas que aún no existen. Mientras tanto, «Por SKU» muestra la evidencia de cada familia.",
+      champion_capability.reason_code or "not_implemented",
+      champion_capability.blocked_by
+    ) }}
+  {% endif %}
 {% endblock %}
