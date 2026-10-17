@@ -81,3 +81,15 @@ def test_sku_class_labels_and_decimal_helpers() -> None:
     assert abbreviate_id("b1831d4585b72d7c") == "b1831d4585b7"
     assert abbreviate_id("short") == "short"
     assert format_when(None) == "—"
+
+
+# ------------------------------------------------------------ la selección por SKU (C2)
+def test_a_family_can_be_excluded_without_being_a_failure() -> None:
+    excluded = describe_status("family", "excluida")
+    failed = describe_status("family", "fallida")
+    assert excluded.label == "excluida" and excluded.modifier == "neutral"
+    assert excluded.icon != failed.icon and excluded.modifier != failed.modifier
+    for code in ("pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable"):
+        assert describe_status("family", code) == describe_status("task", code)
+    with pytest.raises(UnknownStatus, match="family"):
+        describe_status("family", "podado")

@@ -1,0 +1,14 @@
+{% from "components/status.html" import status_indicator %}
+{# Encabezado de la ejecución mostrada. run es un RunStatus o none. #}
+{% macro run_line(run, fallback_id=none) %}
+<p class="pred-run-line">
+  {% if run and run.ejecucion %}
+  <span>Ejecución <span class="mono">#{{ run.ejecucion.id }}</span></span>
+  {{ status_indicator(describe_status("run", run.ejecucion.estado)) }}
+  {% if run.ejecucion.ingest_id %}<span>Ingesta <span class="mono">{{ abbreviate_id(run.ejecucion.ingest_id) }}</span></span>{% endif %}
+  <span>Iniciada {{ format_when(run.ejecucion.iniciada_en) }}</span>
+  {% elif fallback_id %}
+  <span>Ejecución <span class="mono">#{{ fallback_id }}</span></span>
+  {% endif %}
+</p>
+{% endmacro %}

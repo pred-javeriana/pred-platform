@@ -5,9 +5,10 @@ from it and so is every "unavailable" document (their ``blocked_by``). When a ga
 entry changes here and its read is implemented in ``DalRepository``; nothing else moves.
 
 It describes the platform's point of view (can *this platform* read it from its DAL?), which is
-narrower than the engine's: ``parquet_read`` and ``synthetic_log_read`` work in the engine, but the
-platform does not read those files until their gaps land. The selection per SKU, its trials and its
-Walk-Forward windows are in the DAL (G2 and G4), so those capabilities are available.
+narrower than the engine's: ``synthetic_log_read`` works in the engine, but the platform does not
+read the Phase 0 log until G8 lands. ``parquet_read`` is available since the worker launches the
+engine on the ingestion's Parquet (G3), and the selection per SKU, its trials and its Walk-Forward
+windows are in the DAL (G2 and G4).
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ def _blocked(*gaps: str) -> CapabilityState:
 
 
 REGISTRY: dict[CapabilityId, CapabilityState] = {
-    "parquet_read": _blocked("G3"),
+    "parquet_read": CapabilityState(True),
     "ingest_report_persisted": CapabilityState(True),
     "topology_persisted": CapabilityState(True),
     "run_orchestration": CapabilityState(True),

@@ -26,6 +26,7 @@ from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
 from pred_platform.data.query import (
     DEFAULT_SIZE,
+    LATEST,
     PageRequest,
     check_choice,
     check_sort,
@@ -60,8 +61,8 @@ def _with[T: BaseModel](doc: T, **updates: Any) -> T:
 
 
 def _matches(wanted: str, actual: str | None) -> bool:
-    """A document without an id (an "unavailable" one) answers for any id."""
-    return actual is None or actual == wanted
+    """A document without an id (an "unavailable" one) answers for any id; so does ``latest``."""
+    return actual is None or wanted == LATEST or actual == wanted
 
 
 def sample_csv() -> bytes:
