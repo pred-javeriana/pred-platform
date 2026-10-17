@@ -189,9 +189,10 @@ def test_run_status_without_any_run_is_an_empty_state(repo: DalRepository) -> No
     assert doc.tasks == [] and doc.ejecucion is None
 
 
-def test_selection_list_is_unavailable_and_blocked_by_g4(repo: DalRepository) -> None:
+def test_selection_list_without_any_run_is_an_empty_state(repo: DalRepository) -> None:
+    # The selection is real (G4): with nothing launched there is no data, and no gap blocks it.
     doc = repo.list_sku_selections(RUN)
-    assert _gap(doc) == ("not_implemented", ["G4"])
+    assert _gap(doc) == ("no_data", [])
     assert doc.items == [] and doc.run_id == RUN
 
 
@@ -208,7 +209,6 @@ def test_synthetic_list_is_unavailable_and_blocked_by_g8(repo: DalRepository) ->
 
 def test_every_unavailable_document_matches_the_registry(repo: DalRepository) -> None:
     pairs = [
-        (repo.list_sku_selections(RUN), "selection_results_persisted"),
         (repo.get_validation_verdicts(RUN), "retrospective_validation"),
         (repo.list_synthetic_runs(), "synthetic_log_read"),
     ]
@@ -246,7 +246,6 @@ def test_filters_are_still_validated_while_unavailable(repo: DalRepository) -> N
 @pytest.mark.parametrize(
     ("call", "gap"),
     [
-        (lambda r: r.get_sku_selection(RUN, "FIL-0001"), "G4"),
         (lambda r: r.get_synthetic_run("fase0_x"), "G8"),
         (lambda r: r.download_synthetic_artifact("fase0_x"), "G8"),
     ],

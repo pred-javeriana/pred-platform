@@ -6,7 +6,8 @@ entry changes here and its read is implemented in ``DalRepository``; nothing els
 
 It describes the platform's point of view (can *this platform* read it from its DAL?), which is
 narrower than the engine's: ``parquet_read`` and ``synthetic_log_read`` work in the engine, but the
-platform does not read the engine's files until G3 and G8 land.
+platform does not read those files until their gaps land. The selection per SKU, its trials and its
+Walk-Forward windows are in the DAL (G2 and G4), so those capabilities are available.
 """
 
 from __future__ import annotations
@@ -33,10 +34,10 @@ REGISTRY: dict[CapabilityId, CapabilityState] = {
     "ingest_report_persisted": CapabilityState(True),
     "topology_persisted": CapabilityState(True),
     "run_orchestration": CapabilityState(True),
-    "family_comparison": _blocked("G2", "G3"),
-    "selection_results_persisted": _blocked("G4"),
-    "trial_detail_persisted": _blocked("G2", "G4"),
-    "walkforward_evidence_persisted": _blocked("G3", "G4"),
+    "family_comparison": CapabilityState(True),
+    "selection_results_persisted": CapabilityState(True),
+    "trial_detail_persisted": CapabilityState(True),
+    "walkforward_evidence_persisted": CapabilityState(True),
     "champion_selection": CapabilityState(False, "stage_not_implemented"),
     "retrospective_validation": CapabilityState(False, "stage_not_implemented"),
     "synthetic_log_read": _blocked("G8"),

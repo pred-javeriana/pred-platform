@@ -85,7 +85,8 @@ copy fails the build. The sync also checks that the source is consistent before 
 
 The DAL schema is versioned with SQLite's `PRAGMA user_version` and changed only through numbered
 SQL scripts in `src/pred_platform/dal/migrations/` (decision: `pred-docs/diseno/ADRs/ADR 05-002`).
-Version 1 is the original eleven tables. The current schema is what applying every script produces.
+Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs and tasks and 4 the
+selection per SKU. The current schema is what applying every script produces.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
   folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.
@@ -176,6 +177,25 @@ make worker                                     # follow the queue in its own pr
   engine does not skip units that had already finished.
 - **Reading it.** `get_run_status` returns the run, its settings, reserve cut, progress over all its
   tasks and a filtered, paged list of tasks; `/ejecucion` will show it (task C4).
+
+### The selection per SKU
+
+When a run closes the worker also imports the `seleccion.jsonl` the engine leaves in its folder
+(section 20 of the contract, `pred-engine.seleccion/1`), so the model selection (C2) reads only the
+DAL. Per run and SKU it stores `selecciones`; per family (always the four) `seleccion_familias`
+with its state, the chosen configuration's evidence and the Walk-Forward summary; the HPO study's
+trials in `ensayos` (completed, pruned and failed, each with its reason); the windows in
+`ventanas_wf`; and the metrics of every window in `metricas`, linked to the family's task.
+
+- `list_sku_selections` and `get_sku_selection` return `sku_selection_list` and `sku_selection`
+  (windows only with `include_windows`). While the run has not finished, or left no file, the list
+  answers `unavailable` (`prerequisite_missing`) instead of showing half a result.
+- The engine decides which families a SKU gets (policy matrix, configured subset); the platform
+  never repeats that policy. A SKU the engine could not run keeps its cause as the exclusion.
+- A bad line only loses its SKU and a file of another major version is refused; neither changes how
+  the run ended. Importing again replaces each SKU's rows, so a resume leaves no duplicates.
+- The champion is not here: it is read from `resultados_comparativos` and is `null` until M3 writes
+  it.
 
 ## Checks
 

@@ -9,6 +9,7 @@ NULL, so a read never fails just because migrations have not run.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -355,3 +356,307 @@ def list_tasks(
             [*params, limit, offset],
         ).fetchall()
     return [TaskRow(*row) for row in rows], int(total)
+
+
+# ------------------------------------------------------------ selection per SKU (G4)
+# First schema version with the selection tables (migration 0004).
+_SELECTION_SCHEMA_VERSION = 4
+_FAMILY_ORDER = (
+    "CASE f.familia WHEN 'classical' THEN 0 WHEN 'ml' THEN 1 WHEN 'dl' THEN 2 ELSE 3 END"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionRow:
+    """One SKU of a run in the selection table: its class and the brief of each family."""
+
+    sku: str
+    clase: str
+    perfil: str
+    familias: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionDetail:
+    """One SKU's stored selection; ``familias`` are shaped like the contract's ``FamilyEntry``."""
+
+    sku: str
+    clase: str
+    perfil: str
+    version_politica: str | None
+    familias: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class ChampionRow:
+    """The champion M3 wrote in ``resultados_comparativos`` (nobody does yet)."""
+
+    modelo: str
+    metrica_seleccion: str
+    valor_seleccion: float
+
+
+def _has_selection_tables(conn: sqlite3.Connection) -> bool:
+    return int(conn.execute("PRAGMA user_version").fetchone()[0]) >= _SELECTION_SCHEMA_VERSION
+
+
+def count_selections(db_path: Path, ejecucion_id: int) -> int:
+    """How many SKUs of the run have a stored selection."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_selection_tables(conn):
+            return 0
+        return int(
+            conn.execute(
+                "SELECT COUNT(*) FROM selecciones WHERE ejecucion_id = ?", (ejecucion_id,)
+            ).fetchone()[0]
+        )
+
+
+def list_selections(
+    db_path: Path,
+    ejecucion_id: int,
+    *,
+    sku_class: str | None,
+    family: str | None,
+    estado: str | None,
+    q: str | None,
+    sort: str,
+    descending: bool,
+    offset: int,
+    limit: int,
+) -> tuple[list[SelectionRow], int]:
+    """A filtered, sorted page of the run's SKUs and the total *after* filtering.
+
+    ``family`` and ``estado`` apply to the same family entry: a SKU matches when one of its
+    families has that family and that state. ``sort`` is ``sku_id`` or ``valor`` (the best, i.e.
+    smallest, aggregated value among the SKU's families); SKUs without one go last in either
+    direction.
+    """
+    where = ["s.ejecucion_id = ?"]
+    params: list[object] = [ejecucion_id]
+    if sku_class:
+        where.append("s.clase = ?")
+        params.append(sku_class)
+    if q and q.strip():
+        where.append("s.sku LIKE ? ESCAPE '\\'")
+        params.append(_like_pattern(q.strip()))
+    if family or estado:
+        inner = ["f.seleccion_id = s.id"]
+        if family:
+            inner.append("f.familia = ?")
+            params.append(family)
+        if estado:
+            inner.append("f.estado = ?")
+            params.append(estado)
+        where.append(f"EXISTS (SELECT 1 FROM seleccion_familias f WHERE {' AND '.join(inner)})")
+    clause = " AND ".join(where)
+    direction = "DESC" if descending else "ASC"
+    best = "(SELECT MIN(f.valor_agregado) FROM seleccion_familias f WHERE f.seleccion_id = s.id)"
+    order = (
+        f"s.sku {direction}"
+        if sort == "sku_id"
+        else f"{best} IS NULL, {best} {direction}, s.sku ASC"
+    )
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_selection_tables(conn):
+            return [], 0
+        (total,) = conn.execute(
+            f"SELECT COUNT(*) FROM selecciones s WHERE {clause}", params
+        ).fetchone()
+        skus = conn.execute(
+            "SELECT s.id, s.sku, s.clase, s.perfil FROM selecciones s "
+            f"WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+        rows: list[SelectionRow] = []
+        for selection_id, sku, clase, perfil in skus:
+            briefs = conn.execute(
+                "SELECT f.familia, f.estado, f.metrica_objetivo, f.valor_agregado "
+                f"FROM seleccion_familias f WHERE f.seleccion_id = ? ORDER BY {_FAMILY_ORDER}",
+                (selection_id,),
+            ).fetchall()
+            rows.append(
+                SelectionRow(
+                    sku,
+                    clase,
+                    perfil,
+                    [
+                        {
+                            "family": familia,
+                            "estado": state,
+                            "metrica_objetivo": metric,
+                            "valor": value,
+                        }
+                        for familia, state, metric, value in briefs
+                    ],
+                )
+            )
+    return rows, int(total)
+
+
+def get_selection(
+    db_path: Path, ejecucion_id: int, sku: str, *, include_windows: bool
+) -> SelectionDetail | None:
+    """The stored selection of one SKU, or ``None`` when the run has none for it."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_selection_tables(conn):
+            return None
+        head = conn.execute(
+            "SELECT id, clase, perfil, version_politica FROM selecciones "
+            "WHERE ejecucion_id = ? AND sku = ?",
+            (ejecucion_id, sku),
+        ).fetchone()
+        if head is None:
+            return None
+        selection_id, clase, perfil, policy = head
+        families = conn.execute(
+            "SELECT f.id, f.familia, f.estado, f.tarea_id, f.modelo, f.producido_por, "
+            "f.exclusion_codigo, f.exclusion_detalle, f.evidencia_json, "
+            "f.configuracion_pronostico_json, f.semilla_pronostico, f.error_json, "
+            "f.ensayos_persistidos, f.metrica_objetivo, f.valor_agregado, f.completo, "
+            "f.n_ventanas_evaluadas, f.n_ventanas_totales, f.alcance_seleccion, "
+            f"f.comparacion_estadistica FROM seleccion_familias f WHERE f.seleccion_id = ? "
+            f"ORDER BY {_FAMILY_ORDER}",
+            (selection_id,),
+        ).fetchall()
+        entries = [_family_entry(conn, row, include_windows) for row in families]
+    return SelectionDetail(sku, clase, perfil, policy, entries)
+
+
+def _loads(text: str | None) -> Any:
+    return None if text is None else json.loads(text)
+
+
+def _family_entry(
+    conn: sqlite3.Connection, row: tuple[Any, ...], include_windows: bool
+) -> dict[str, Any]:
+    (
+        family_id,
+        familia,
+        estado,
+        tarea_id,
+        modelo,
+        produced_by,
+        exclusion_code,
+        exclusion_detail,
+        evidence,
+        forecast_config,
+        forecast_seed,
+        error,
+        has_trials,
+        metric,
+        value,
+        complete,
+        evaluated,
+        total,
+        scope,
+        comparable,
+    ) = row
+    entry: dict[str, Any] = {
+        "family": familia,
+        "estado": estado,
+        "exclusion": (
+            {"reason_code": exclusion_code, "detail": exclusion_detail} if exclusion_code else None
+        ),
+        "modelo": modelo,
+        "produced_by": produced_by,
+        "evidence": _loads(evidence),
+        "forecast_config": _loads(forecast_config),
+        "forecast_seed": forecast_seed,
+        "trials": None,
+        "walk_forward": None,
+        "error": _loads(error),
+    }
+    if has_trials:
+        entry["trials"] = [
+            {
+                "id": trial_id,
+                "configuracion": json.loads(configuration),
+                "estado": state,
+                "valor": trial_value,
+                "n_ventanas": windows,
+                "motivo": reason,
+                "timestamp": instant,
+            }
+            for trial_id, configuration, state, trial_value, windows, reason, instant in (
+                conn.execute(
+                    "SELECT trial_id, configuracion_json, estado, valor, n_ventanas, motivo, "
+                    "instante FROM ensayos WHERE seleccion_familia_id = ? ORDER BY orden",
+                    (family_id,),
+                )
+            )
+        ]
+    if metric is not None:
+        entry["walk_forward"] = {
+            "metrica_objetivo": metric,
+            "valor_agregado": value,
+            "completo": bool(complete),
+            "n_ventanas_evaluadas": evaluated,
+            "n_ventanas_totales": total,
+            "selection_scope": scope,
+            "statistical_comparison_available": bool(comparable),
+            "windows": _windows(conn, family_id, tarea_id) if include_windows else None,
+        }
+    return entry
+
+
+def _windows(
+    conn: sqlite3.Connection, family_id: int, tarea_id: int | None
+) -> list[dict[str, Any]]:
+    metrics: dict[int, dict[str, float]] = {}
+    if tarea_id is not None:
+        for index, name, number in conn.execute(
+            "SELECT ventana, metrica, valor FROM metricas "
+            "WHERE tarea_id = ? AND ventana IS NOT NULL",
+            (tarea_id,),
+        ):
+            metrics.setdefault(index, {})[name] = number
+    return [
+        {
+            "indice": index,
+            "corte": cut,
+            "inicio_train": train_start,
+            "fin_train": train_end,
+            "inicio_val": val_start,
+            "fin_val": val_end,
+            "metricas": metrics.get(index, {}),
+            "duracion_s": seconds,
+            "fallo": failure,
+        }
+        for index, cut, train_start, train_end, val_start, val_end, seconds, failure in (
+            conn.execute(
+                "SELECT indice, corte, inicio_train, fin_train, inicio_val, fin_val, duracion_s, "
+                "fallo FROM ventanas_wf WHERE seleccion_familia_id = ? ORDER BY indice",
+                (family_id,),
+            )
+        )
+    ]
+
+
+def get_champions(db_path: Path, ejecucion_id: int, skus: list[str]) -> dict[str, ChampionRow]:
+    """The champions M3 wrote for ``skus`` in ``resultados_comparativos`` (none until M3 exists)."""
+    if not skus:
+        return {}
+    marks = ", ".join("?" for _ in skus)
+    with _open_readonly(db_path) as conn:
+        if conn is None:
+            return {}
+        rows = conn.execute(
+            "SELECT sku, modelo_campeon, metrica_seleccion, valor_seleccion "
+            f"FROM resultados_comparativos WHERE ejecucion_id = ? AND sku IN ({marks})",
+            [ejecucion_id, *skus],
+        ).fetchall()
+    return {sku: ChampionRow(*rest) for sku, *rest in rows}
+
+
+def get_topology_row(db_path: Path, ingest_sha256: str, sku: str) -> SeriesRow | None:
+    """The demand metrics of one SKU in an ingestion, when its topology was stored."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_report_columns(conn):
+            return None
+        row = conn.execute(
+            "SELECT s.sku, s.n_obs, s.n_positive, s.adi, s.cv2, s.clase FROM series s "
+            "JOIN ingestas i ON i.id = s.ingesta_id WHERE i.sha256 = ? AND s.sku = ?",
+            (ingest_sha256, sku),
+        ).fetchone()
+    return None if row is None else SeriesRow(*row)
