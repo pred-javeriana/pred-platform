@@ -1,0 +1,57 @@
+{% from "components/forms.html" import field %}
+{% from "components/buttons.html" import button %}
+{% from "components/alerts.html" import alert %}
+
+<section class="pred-section" id="lanzar">
+  {# Plegado cuando ya hay una corrida que mostrar, para que su avance quede a la vista. #}
+  <details class="pred-details pred-details--launch"{% if not run or form_errors or form_error %} open{% endif %}>
+  <summary><h2>Lanzar ejecución</h2></summary>
+  {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
+
+  {% if not ingests %}
+    <p class="pred-note pred-note--muted">Todavía no hay ninguna ingesta aceptada. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
+  {% else %}
+  <form method="post" action="/ejecucion/lanzar" class="pred-launch">
+    <div class="pred-filters">
+      <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
+        <label class="pred-field__label" for="ingest_id">Ingesta</label>
+        <select class="pred-field__control" id="ingest_id" name="ingest_id">
+          {% for item in ingests %}
+          <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU · {{ abbreviate_id(item.ingest_id, 8) }}</option>
+          {% endfor %}
+        </select>
+        {% if form_errors.get('ingest_id') %}<p class="pred-field__error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors['ingest_id'] }}</span></p>{% endif %}
+      </div>
+      {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
+    </div>
+
+    <fieldset class="pred-fieldset">
+      <legend>Familias de modelos</legend>
+      {% for code, label in family_choices %}
+      <label class="pred-field__check" for="fam-{{ code }}">
+        <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if code in form.families %} checked{% endif %}{% if code == "foundation" %} disabled{% endif %}>
+        <span>{{ label }}{% if code == "foundation" %} · exige instalar torch y chronos-forecasting{% endif %}</span>
+      </label>
+      {% endfor %}
+      {% if form_errors.get("families") %}<p class="pred-field__error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
+    </fieldset>
+
+    <div class="pred-filters">
+      {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", error=form_errors.get("min_train", "")) }}
+      {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", error=form_errors.get("horizon", "")) }}
+      {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
+      {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
+      {{ field("trials", "Ensayos por estudio", value=form.trials, input_type="number", placeholder="los del motor", hint="Vacío: el presupuesto de cada familia.", error=form_errors.get("trials", "")) }}
+      {{ field("seed", "Semilla", value=form.seed, input_type="number", error=form_errors.get("seed", "")) }}
+      {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
+    </div>
+
+    <p class="pred-actions">
+      {{ button("Lanzar ejecución", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
+    </p>
+    {% if control_reason %}<p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p>{% endif %}
+    {% if not worker_active and control_reason is none %}<p class="pred-meta">Esta aplicación no ejecuta el worker (PRED_WORKER=off): la corrida quedará en cola hasta que lo inicie con <span class="mono">make worker</span>.</p>{% endif %}
+  </form>
+  {% endif %}
+  </details>
+</section>

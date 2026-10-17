@@ -81,6 +81,26 @@ def _task_model(family: str) -> str:
     return model_id(family, MODELO_POR_FAMILIA.get(family, family))
 
 
+def _unique_trial_ids(trials: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    """Give every trial of a study its own id, keeping all of them.
+
+    The engine reuses a ``trial_id`` when an attempt has an invalid configuration and is retried,
+    so a study with many trials can repeat one. The first keeps its id; the next ones become
+    ``<id>#2``, ``<id>#3``... A trial is never dropped: each one is evidence.
+    """
+    if trials is None:
+        return None
+    seen: dict[str, int] = {}
+    unique = []
+    for trial in trials:
+        trial_id = str(trial.get("id", ""))
+        seen[trial_id] = seen.get(trial_id, 0) + 1
+        unique.append(
+            trial if seen[trial_id] == 1 else {**trial, "id": f"{trial_id}#{seen[trial_id]}"}
+        )
+    return unique
+
+
 def _family_entry(raw: _EngineFamily) -> models.FamilyEntry:
     """The contract's entry for one engine family, validated by the contract's own rules."""
     exclusion = raw.exclusion
@@ -101,7 +121,7 @@ def _family_entry(raw: _EngineFamily) -> models.FamilyEntry:
             "evidence": raw.evidence,
             "forecast_config": raw.forecast_config,
             "forecast_seed": raw.forecast_seed,
-            "trials": raw.trials,
+            "trials": _unique_trial_ids(raw.trials),
             "walk_forward": raw.walk_forward,
             "error": error,
         }

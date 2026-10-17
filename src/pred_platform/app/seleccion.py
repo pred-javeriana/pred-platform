@@ -63,6 +63,10 @@ _ERROR_TITLES: dict[str, str] = {
     "evaluation.failed": "La evaluación Walk-Forward no pudo completarse.",
     "pipeline.stage_failed": "Una etapa de la corrida falló.",
     "ingest.temporal_continuity": "Las fechas no forman una serie diaria válida.",
+    "platform.run_stopped": "La ejecución se detuvo a petición del operador.",
+    "platform.engine_unavailable": "El motor no está disponible.",
+    "platform.artifact_missing": "No se encontró el resultado esperado del motor.",
+    "platform.schema_version_unsupported": "La versión del archivo del motor no es compatible.",
 }
 
 # Qué necesita la acción «Ejecutar selección» (contrato, sección 7.8) y cómo se llama cada cosa.
@@ -104,7 +108,7 @@ def error_title(code: str) -> str:
     return _ERROR_TITLES.get(code, code)
 
 
-def _int_param(raw: str | None, default: int, name: str) -> int:
+def int_param(raw: str | None, default: int, name: str) -> int:
     if raw is None or raw == "":
         return default
     try:
@@ -182,8 +186,8 @@ def parse_selection_query(params: Mapping[str, str]) -> SelectionQuery:
         q=params.get("q") or None,
         sort=params.get("sort") or "sku_id",
         descending=params.get("descending") in {"1", "true", "on"},
-        page=_int_param(params.get("page"), 1, "page"),
-        size=_int_param(params.get("size"), DEFAULT_SIZE, "size"),
+        page=int_param(params.get("page"), 1, "page"),
+        size=int_param(params.get("size"), DEFAULT_SIZE, "size"),
     )
 
 

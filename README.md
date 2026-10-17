@@ -142,8 +142,9 @@ platform imports those files into `ingestas`, `bitacora_calidad` and `series`:
   repeated SKU or inconsistent fields is skipped with its reason (logged at startup, listed by
   `make import`); the others are imported and the app still starts.
 - **What the views read.** `list_ingests`, `get_ingest_report` and `get_topology_report` come from
-  the DAL (`/datos` shows them). Uploading from the browser (`submit_ingest`) still answers
-  "not available" until the worker that launches the engine exists (G3).
+  the DAL (`/datos` shows them). Uploading a CSV from the browser (`submit_ingest`) runs
+  `pred-engine classify` through `PRED_ENGINE_CMD` (canonical headers, no LLM) and imports the report
+  it leaves; see `docs/features/datos/README.md`.
 
 ## Runs and the worker
 

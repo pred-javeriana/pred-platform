@@ -110,15 +110,8 @@ def create_run(
             "SELECT id, estado FROM ejecuciones WHERE run_id = ?", (run_id,)
         ).fetchone()
         if existing is not None:
-            ejecucion_id, estado = existing
-            if estado in ("detenida", "completada_con_fallos"):
-                conn.execute(
-                    "UPDATE ejecuciones SET estado = 'pendiente', error_json = NULL, "
-                    "finalizada_en = NULL, pid = NULL WHERE id = ?",
-                    (ejecucion_id,),
-                )
-                return int(ejecucion_id), True
-            return int(ejecucion_id), False
+            ejecucion_id = int(existing[0])
+            return ejecucion_id, _resume(conn, ejecucion_id)
 
         ingest = conn.execute(
             "SELECT id, estado FROM ingestas WHERE sha256 = ?", (ingest_sha256,)
@@ -140,6 +133,72 @@ def create_run(
             (ingest[0], configuracion_id, seed, run_id),
         )
         return int(cursor.lastrowid or 0), True
+
+
+def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
+    """Queue again a run that was stopped or ended with failures (inside a transaction).
+
+    The tasks that ended badly (``fallida`` or ``no_ejecutable``, including the ones the stop or
+    the failure closed) go back to ``pendiente``: the engine starts them again, and until it does
+    the screen must not show them as finished. Successful tasks keep their result.
+    """
+    queued = (
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'pendiente', error_json = NULL, "
+            "finalizada_en = NULL, pid = NULL WHERE id = ? "
+            "AND estado IN ('detenida', 'completada_con_fallos')",
+            (ejecucion_id,),
+        ).rowcount
+        == 1
+    )
+    if queued:
+        conn.execute(
+            "UPDATE tareas SET estado = 'pendiente', detalle_error = NULL, finalizada_en = NULL "
+            "WHERE ejecucion_id = ? AND estado IN ('fallida', 'no_ejecutable')",
+            (ejecucion_id,),
+        )
+    return queued
+
+
+def resume_run(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
+    """Resume a run: only a ``detenida`` or ``completada_con_fallos`` one goes back to the queue.
+
+    It keeps its parameters and engine ``run_id``, so the engine reuses its stored HPO studies and
+    the same task rows are updated. Returns whether the run was queued.
+    """
+    with conn:
+        _begin_immediate(conn)
+        return _resume(conn, ejecucion_id)
+
+
+def request_stop(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str, Any]) -> bool:
+    """Ask a run that is queued or running to stop. Returns whether it was still in progress.
+
+    The run becomes ``detenida`` right away. A running one has a worker following its engine
+    process: the worker sees the new state on its next look (``run_estado``), terminates the
+    process and closes the open tasks with the same ``error``. A run that has just finished is
+    left alone (the ``WHERE`` makes the check and the change one step).
+    """
+    with conn:
+        _begin_immediate(conn)
+        return (
+            conn.execute(
+                "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, error_json = ? "
+                "WHERE id = ? AND estado IN ('pendiente', 'ejecutando')",
+                (now_iso(), json.dumps(error, ensure_ascii=False), ejecucion_id),
+            ).rowcount
+            == 1
+        )
+
+
+def run_estado(conn: sqlite3.Connection, ejecucion_id: int) -> tuple[str, dict[str, Any] | None]:
+    """The run's current state and its error, as another connection has left them."""
+    row = conn.execute(
+        "SELECT estado, error_json FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+    ).fetchone()
+    if row is None:
+        return "detenida", None
+    return str(row[0]), json.loads(row[1]) if row[1] else None
 
 
 def claim_pending(conn: sqlite3.Connection) -> Ejecucion | None:

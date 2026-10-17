@@ -267,9 +267,10 @@ def test_an_ingest_loaded_before_the_report_existed_has_no_report(repo: DalRepos
 
 
 def test_submit_ingest_needs_the_engine(repo: DalRepository) -> None:
+    # A repository built without an ingest runner cannot take uploads; no open gap blocks it.
     with pytest.raises(EngineUnavailable) as raised:
         repo.submit_ingest("a.csv", b"x")
-    assert raised.value.blocked_by == ("G3",)
+    assert raised.value.blocked_by == ()
     info = raised.value.to_error_info()
     assert (info.code, info.retryable) == ("platform.engine_unavailable", True)
 

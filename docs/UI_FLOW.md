@@ -41,7 +41,7 @@ Agrupa la antigua “Carga y validación” y “Topología de demanda”.
 | Operación | Uso en la superficie |
 | --- | --- |
 | `list_ingests(...)` | Historial de ingestas. En `dal` es la única lectura real hoy. |
-| `submit_ingest(...)` | Carga del archivo. |
+| `submit_ingest(...)` | Carga del archivo: con `dal` corre `pred-engine classify` (CSV con cabeceras canónicas). |
 | `get_ingest_report(...)` | Diagnóstico, validación y errores. Bloqueado en `dal` por G1. |
 | `get_topology_report(...)` | Caracterización de demanda. Bloqueado en `dal` por G1. |
 
@@ -58,9 +58,13 @@ corrida activa, el avance del pipeline, el progreso global, las tareas en curso,
 errores recuperables, detener y reanudar. La configuración de lanzamiento vive aquí, no
 en una pantalla aparte. El monitoreo también.
 
-**Operación de lectura hoy:** `get_run_status(...)`.
-
-La escritura (lanzar, detener, reanudar, worker) depende de las tareas G, sobre todo G3.
+**Lectura:** `get_run_status(...)` (la última ejecución con el alias `latest`, o `?ejecucion=`)
+y `list_ingests(...)` para elegir la ingesta. **Escritura:** `app.state.run_control`
+(`worker/control.py`), un servicio aparte de `DataRepository` (contrato §19): lanzar
+(`POST /ejecucion/lanzar`), detener (`/ejecucion/detener`) y reanudar (`/ejecucion/reanudar`).
+Con fixtures las acciones salen deshabilitadas con el motivo. El cuerpo se refresca con HTMX
+cada 2 s mientras la corrida está en curso (`/ejecucion/estado`, que responde 286 al terminar).
+Ver `docs/features/ejecucion/README.md`.
 
 **Estados de corrida:** `sin_ejecucion` (página; `ejecucion is None`), y los de
 `EstadoEjecucion`: `pendiente`, `ejecutando`, `completada`, `completada_con_fallos`,
@@ -125,8 +129,8 @@ El interruptor fixture/DAL ya lo resuelve B4 (`PRED_DATA_SOURCE`). Con `dal`,
 | Superficie | Dato | Capacidad | Hueco |
 | --- | --- | --- | --- |
 | Datos | Lista de ingestas, informe y topología | `ingest_report_persisted`, `topology_persisted` | Resuelto (G1, G5) |
-| Datos | Carga desde el navegador | — | Falta cablear `submit_ingest` al worker (G3 lo permite) |
-| Ejecución | Orquestación, progreso | `run_orchestration` | Resuelto (G3); la pantalla es C4 |
+| Datos | Carga desde el navegador | — | Resuelto: `submit_ingest` corre `pred-engine classify` |
+| Ejecución | Orquestación, progreso, detener y reanudar | `run_orchestration` | Resuelto (G3 y C4) |
 | Resultados | Selección por SKU, ensayos HPO y ventanas | `selection_results_persisted`, `trial_detail_persisted`, `walkforward_evidence_persisted`, `family_comparison` | Resuelto (G2, G4); pantalla C2 |
 | Resultados | Campeón | `champion_selection` | etapa no implementada (M3) |
 | Resultados | Veredictos | `retrospective_validation` | etapa no implementada (L4) |

@@ -17,6 +17,7 @@ from pred_platform.dal.importacion import ReportImportError, import_reports
 from pred_platform.dal.migrate import migrate
 from pred_platform.data.factory import build_repository
 from pred_platform.worker.bucle import Worker
+from pred_platform.worker.control import build_run_control
 
 _logger = logging.getLogger("pred_platform.app")
 _APP_DIR = Path(__file__).parent
@@ -69,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(title="PRED", docs_url=None, redoc_url=None, lifespan=lifespan)
     application.state.settings = active
     application.state.repository = build_repository(active)
+    application.state.run_control = build_run_control(active)
     application.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     application.state.templates = build_templates(
         _TEMPLATES_DIR,

@@ -93,7 +93,7 @@
 
       {% if can_continue %}
       <p class="pred-actions">
-        {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion") }}
+        {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id) }}
       </p>
       {% endif %}
     {% endif %}
