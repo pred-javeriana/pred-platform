@@ -14,6 +14,7 @@ RELEASED: dict[int, str] = {
     1: "7fd6a910dda7f39a1254421bbde0801e964250d4ab6d8740f74d10dc1cf8ee87",
     2: "0d855366ec4beb38636a1272e9840923f9d057d9f8052e65f1c696b539e7d6cf",
     3: "add1571ad21d5605cd49877833d351bf1db4e873ca99168b22c5919c664a4aa0",
+    4: "d95daf0e756e24aaa0036889bbdeadbd8ce4322eaf43ed48bae26aa16583b44f",
 }
 
 
@@ -143,7 +144,7 @@ def test_version_3_adds_run_columns_and_keeps_existing_runs_and_tasks() -> None:
     )
     conn.commit()
 
-    apply_migrations(conn, load_migrations())
+    apply_migrations(conn, load_migrations()[:3])
 
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     assert conn.execute("SELECT estado, run_id, intento, pid FROM ejecuciones").fetchall() == [
@@ -167,4 +168,113 @@ def test_version_3_keeps_one_row_per_engine_run() -> None:
     conn.execute("INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed) VALUES (1,1,0)")
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
         conn.execute(insert, ("r-1",))
+    conn.close()
+
+
+# ----------------------------------------------------------------- the schema of version 4
+def _run_with_task(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus) VALUES ('s', 'f.csv', 10, 1)"
+    )
+    conn.execute("INSERT INTO configuraciones (version, parametros) VALUES (1, '{}')")
+    conn.execute("INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed) VALUES (1, 1, 7)")
+    conn.execute(
+        "INSERT INTO tareas (ejecucion_id, sku, modelo, corte, seed)"
+        " VALUES (1, 'FIL-0001', 'classical:sarima', '2026-03-13', 7)"
+    )
+    conn.execute(
+        "INSERT INTO metricas (tarea_id, sku, modelo, metrica, valor)"
+        " VALUES (1, 'FIL-0001', 'classical:sarima', 'mae', 1.5)"
+    )
+
+
+def test_version_4_adds_the_selection_tables_and_keeps_existing_metrics() -> None:
+    conn = _at_version(3)
+    _run_with_task(conn)
+    conn.commit()
+
+    apply_migrations(conn, load_migrations()[:4])
+
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"selecciones", "seleccion_familias", "ensayos", "ventanas_wf"} <= tables
+    # The aggregated metric written before the window column existed stays aggregated (NULL).
+    assert conn.execute("SELECT metrica, valor, ventana FROM metricas").fetchall() == [
+        ("mae", 1.5, None)
+    ]
+    assert conn.execute("SELECT COUNT(*) FROM tareas").fetchone()[0] == 1
+    conn.close()
+
+
+def _selection(conn: sqlite3.Connection) -> None:
+    _run_with_task(conn)
+    conn.execute(
+        "INSERT INTO selecciones (ejecucion_id, sku, clase, perfil)"
+        " VALUES (1, 'FIL-0001', 'smooth', 'dense_stable')"
+    )
+    conn.execute(
+        "INSERT INTO seleccion_familias (seleccion_id, familia, estado) VALUES (1, 'ml', 'exitosa')"
+    )
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "INSERT INTO selecciones (ejecucion_id, sku, clase, perfil)"
+        " VALUES (1, 'x', 'Smooth', 'dense_stable')",
+        "INSERT INTO selecciones (ejecucion_id, sku, clase, perfil)"
+        " VALUES (1, 'x', 'smooth', 'dense')",
+        "INSERT INTO seleccion_familias (seleccion_id, familia, estado)"
+        " VALUES (1, 'sarima', 'exitosa')",
+        "INSERT INTO seleccion_familias (seleccion_id, familia, estado)"
+        " VALUES (1, 'dl', 'completada')",
+        "INSERT INTO ensayos (seleccion_familia_id, orden, trial_id, configuracion_json, estado,"
+        " n_ventanas) VALUES (1, 0, 't', '{}', 'podada', 1)",
+    ],
+)
+def test_version_4_checks_the_vocabulary_of_the_engine(statement: str) -> None:
+    conn = create_db()
+    _selection(conn)
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+        conn.execute(statement)
+    conn.close()
+
+
+_TRIAL = (
+    "INSERT INTO ensayos (seleccion_familia_id, orden, trial_id, configuracion_json, estado,"
+    " n_ventanas) VALUES (1, 0, 't-0', '{}', 'podado', 1)"
+)
+_WINDOW = (
+    "INSERT INTO ventanas_wf (seleccion_familia_id, indice, corte, inicio_train, fin_train,"
+    " inicio_val, fin_val) VALUES (1, 0, '2026-01-01', 0, 5, 5, 7)"
+)
+
+
+@pytest.mark.parametrize(
+    ("first", "again"),
+    [
+        # `_selection` already stored the SKU and its `ml` family: repeating them collides.
+        (
+            None,
+            "INSERT INTO selecciones (ejecucion_id, sku, clase, perfil)"
+            " VALUES (1, 'FIL-0001', 'lumpy', 'sparse_variable')",
+        ),
+        (
+            None,
+            "INSERT INTO seleccion_familias (seleccion_id, familia, estado)"
+            " VALUES (1, 'ml', 'fallida')",
+        ),
+        (_TRIAL, _TRIAL),
+        (_WINDOW, _WINDOW),
+    ],
+)
+def test_version_4_keeps_one_row_per_run_sku_family_trial_and_window(
+    first: str | None, again: str
+) -> None:
+    conn = create_db()
+    _selection(conn)
+    if first is not None:
+        conn.execute(first)
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+        conn.execute(again)
     conn.close()

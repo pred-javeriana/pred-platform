@@ -2,7 +2,8 @@
 
 ``corrida.json`` and ``unidades.jsonl`` are written when the engine ends, so they win over what
 the live progress stream said. Anything still in flight is closed: a unit cut off is ``fallida``
-and one that never started is ``no_ejecutable``.
+and one that never started is ``no_ejecutable``. Then the selection per SKU the engine left in
+``seleccion.jsonl`` (G4) is imported.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker.engine import MODELO_POR_FAMILIA, log_tail, model_id
 from pred_platform.worker.errores import error_info, exclusion_info, platform_error
+from pred_platform.worker.seleccion import import_selection
 
 
 def _read_units(path: Path) -> list[dict[str, Any]]:
@@ -108,6 +110,9 @@ def finalize(
             )
 
     dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
+    # The selection per SKU (G4) links its families to the tasks settled just above. A bad line
+    # only loses its SKU: it never changes how the run ended.
+    import_selection(conn, run, run_dir=run_dir, corte=corte)
     counts = dal.task_counts(conn, run.id)
     reserve = summary.get("reserve")
     failed = [s for s in summary.get("stages", []) if s.get("state") == "failed"]

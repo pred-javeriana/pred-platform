@@ -2,10 +2,12 @@
 
 The ingestion side is real (G1): the engine's ingest reports are imported into the DAL
 (``dal/importacion.py``) and the list of ingests, each ingest report and the demand topology are
-read from there. The rest of the engine's results do not reach the DAL yet (gaps G2 to G4, plus G8
-for the synthetic log), so those operations answer honestly that they are not available and name
-the gap that blocks them (``data/capabilities.py`` is the single source for that). Nothing is ever
-invented: a view that shows this data shows only what is stored.
+read from there. So are the run status (G3) and the selection per SKU (G4): the worker imports the
+run's ``seleccion.jsonl`` when it closes and the selection list and detail read the families, trials
+and Walk-Forward windows from the DAL. What still does not reach the DAL (the synthetic log, G8, and
+the champion and verdicts of M3) answers honestly that it is not available and names the gap that
+blocks it (``data/capabilities.py`` is the single source for that). Nothing is ever invented: a view
+that shows this data shows only what is stored.
 
 Documents that always exist in some form (lists, topology, run status, verdicts) come back with
 ``availability.status == "unavailable"``. Documents that have no empty form (an ingest report, one
@@ -71,6 +73,18 @@ def _envelope(availability: models.Availability) -> dict[str, object]:
 def _missing(capability: CapabilityId, what: str) -> Never:
     raise ArtifactMissing(
         f"{what}: la plataforma aún no lo guarda", blocked_by=capabilities.blocked_by(capability)
+    )
+
+
+def _champion(row: lectura.ChampionRow | None) -> models.Champion | None:
+    if row is None:
+        return None
+    family = row.modelo.split(":", 1)[0]
+    return models.Champion(
+        modelo=row.modelo,
+        family=family if family in _FAMILIES else None,  # type: ignore[arg-type]
+        metrica_seleccion=row.metrica_seleccion,
+        valor_seleccion=row.valor_seleccion,
     )
 
 
@@ -374,26 +388,115 @@ class DalRepository:
         page: int = 1,
         size: int = DEFAULT_SIZE,
     ) -> models.SkuSelectionList:
-        check_choice("sku_class", sku_class, _SKU_CLASSES)
-        check_choice("family", family, _FAMILIES)
-        check_choice("estado", estado, _FAMILY_STATES)
+        wanted_class = check_choice("sku_class", sku_class, _SKU_CLASSES)
+        wanted_family = check_choice("family", family, _FAMILIES)
+        wanted_state = check_choice("estado", estado, _FAMILY_STATES)
         check_sort(sort, _SELECTION_SORT)
-        _, paging = paginate([], PageRequest(page, size))
-        availability = capabilities.unavailable(
-            "selection_results_persisted",
-            "La plataforma aún no guarda resultados de selección por SKU.",
+        request = PageRequest(page, size)
+        empty_page = models.Page(number=request.number, size=request.size, total=0)
+
+        run = lectura.get_run(self.db_path, run_id)
+        if run is None:
+            if lectura.count_runs(self.db_path) == 0:
+                return models.SkuSelectionList(
+                    **_envelope(  # type: ignore[arg-type]
+                        models.Availability(
+                            status="unavailable",
+                            reason_code="no_data",
+                            detail="Aún no se ha lanzado ninguna ejecución.",
+                        )
+                    ),
+                    run_id=run_id,
+                    items=[],
+                    page=empty_page,
+                )
+            raise ArtifactMissing(f"No existe la ejecución {run_id!r}")
+
+        rows, total = lectura.list_selections(
+            self.db_path,
+            run.id,
+            sku_class=wanted_class,
+            family=wanted_family,
+            estado=wanted_state,
+            q=q,
+            sort=sort,
+            descending=descending,
+            offset=(request.number - 1) * request.size,
+            limit=request.size,
         )
+        if total == 0 and lectura.count_selections(self.db_path, run.id) == 0:
+            pending = run.estado in ("pendiente", "ejecutando")
+            return models.SkuSelectionList(
+                **_envelope(  # type: ignore[arg-type]
+                    models.Availability(
+                        status="unavailable",
+                        reason_code="prerequisite_missing",
+                        detail=(
+                            "La selección por SKU estará disponible cuando termine la ejecución."
+                            if pending
+                            else "La ejecución no dejó la selección por SKU: el motor que la "
+                            "corrió no la entrega o su archivo no se pudo importar."
+                        ),
+                    )
+                ),
+                ingest_id=run.ingest_sha256,
+                run_id=str(run.id),
+                items=[],
+                page=empty_page,
+            )
+        champions = lectura.get_champions(self.db_path, run.id, [row.sku for row in rows])
         return models.SkuSelectionList(
-            **_envelope(availability),  # type: ignore[arg-type]
-            run_id=run_id,
-            items=[],
-            page=paging,
+            **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
+            ingest_id=run.ingest_sha256,
+            run_id=str(run.id),
+            items=[
+                models.SkuSelectionRow(
+                    sku_id=row.sku,
+                    sku_class=row.clase,  # type: ignore[arg-type]  # CHECK-constrained
+                    profile=row.perfil,  # type: ignore[arg-type]
+                    families=[models.FamilyBrief(**brief) for brief in row.familias],
+                    champion=_champion(champions.get(row.sku)),
+                )
+                for row in rows
+            ],
+            page=models.Page(number=request.number, size=request.size, total=total),
         )
 
     def get_sku_selection(
         self, run_id: str, sku_id: str, *, include_windows: bool = False
     ) -> models.SkuSelection:
-        _missing("selection_results_persisted", f"No hay selección del SKU {sku_id!r}")
+        run = lectura.get_run(self.db_path, run_id)
+        if run is None:
+            raise ArtifactMissing(f"No existe la ejecución {run_id!r}")
+        detail = lectura.get_selection(
+            self.db_path, run.id, sku_id, include_windows=include_windows
+        )
+        if detail is None:
+            raise ArtifactMissing(f"No hay selección del SKU {sku_id!r} en la ejecución {run_id!r}")
+        topology = lectura.get_topology_row(self.db_path, run.ingest_sha256, sku_id)
+        return models.SkuSelection(
+            **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
+            ingest_id=run.ingest_sha256,
+            run_id=str(run.id),
+            sku_id=detail.sku,
+            sku_class=detail.clase,  # type: ignore[arg-type]  # CHECK-constrained
+            profile=detail.perfil,  # type: ignore[arg-type]
+            policy_version=detail.version_politica,
+            topology=(
+                models.TopologyMetrics(
+                    sku_id=topology.sku,
+                    n_periods=topology.n_obs,
+                    n_positive=topology.n_positive or 0,
+                    adi=topology.adi or _ADI_THRESHOLD,
+                    cv2=topology.cv2 or 0.0,
+                    sku_class=topology.clase,  # type: ignore[arg-type]
+                )
+                if topology is not None and topology.clase is not None
+                else None
+            ),
+            families=[models.FamilyEntry.model_validate(entry) for entry in detail.familias],
+            champion=_champion(lectura.get_champions(self.db_path, run.id, [sku_id]).get(sku_id)),
+        )
 
     # -------------------------------------------------------------------- verdicts
     def get_validation_verdicts(self, run_id: str) -> models.ValidationVerdicts:

@@ -64,6 +64,17 @@ def exclusion_info(cause: str) -> dict[str, Any]:
     }
 
 
+def exclusion_reason(cause: str) -> str:
+    """The contract's ``reason_code`` (7.5.1) of a SKU the engine could not run.
+
+    Free text until G7: a history too short or ending before t* is ``series_too_short``; any
+    other cause is ``execution_failed``.
+    """
+    lowered = cause.lower()
+    short = "historia" in lowered or "termina antes" in lowered or "comienza" in lowered
+    return "series_too_short" if short else "execution_failed"
+
+
 def platform_error(code: str, detail: str, *, retryable: bool = False) -> dict[str, Any]:
     """An error of the platform itself (the engine could not be launched, the app closed...)."""
     return {
