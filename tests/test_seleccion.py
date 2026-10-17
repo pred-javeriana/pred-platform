@@ -519,3 +519,43 @@ def test_latest_answers_with_a_selection_when_the_run_has_one(
     doc = env.repo().list_sku_selections("latest")
     assert doc.run_id == "1" and doc.page.total == 3
     assert env.repo().get_sku_selection("latest", "FIL-0002").sku_id == "FIL-0002"
+
+
+def test_repeated_trial_ids_of_a_study_are_all_kept_with_their_own_id(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The engine retries an invalid configuration under the same trial_id, so a study with many
+    # trials can repeat one (found with a real run of 20 trials).
+    _run(env, monkeypatch)
+    run_dir = env.settings.data_root / "runs" / env.rows("SELECT run_id FROM ejecuciones")[0][0]
+    path = run_dir / "seleccion.jsonl"
+    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    classical = next(f for f in lines[0]["families"] if f["family"] == "classical")
+    base = classical["trials"][0]
+    classical["trials"] = [
+        {
+            **base,
+            "id": "classical-FIL-0001-0008",
+            "estado": "fallido",
+            "valor": None,
+            "motivo": "configuracion_invalida",
+        },
+        {**base, "id": "classical-FIL-0001-0008"},
+        {**base, "id": "classical-FIL-0001-0008", "estado": "podado", "motivo": "escalon=4"},
+    ]
+    path.write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+    with closing(connect(env.db)) as conn:
+        run = get_run(conn, 1)
+        assert run is not None
+        result = import_selection(conn, run, run_dir=run_dir, corte="2026-03-13")
+
+    assert (result.imported, result.rejected) == (3, [])
+    trials = _families(env.repo().get_sku_selection(RUN, "FIL-0001"))["classical"].trials
+    assert trials is not None
+    assert [t.id for t in trials] == [
+        "classical-FIL-0001-0008",
+        "classical-FIL-0001-0008#2",
+        "classical-FIL-0001-0008#3",
+    ]
+    assert [t.estado for t in trials] == ["fallido", "completado", "podado"]

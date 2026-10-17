@@ -75,6 +75,13 @@ def exclusion_reason(cause: str) -> str:
     return "series_too_short" if short else "execution_failed"
 
 
+def run_stopped_error() -> dict[str, Any]:
+    """What a run stopped by the operator records (contract section 11)."""
+    return platform_error(
+        "platform.run_stopped", "La ejecución se detuvo a petición del operador.", retryable=True
+    )
+
+
 def platform_error(code: str, detail: str, *, retryable: bool = False) -> dict[str, Any]:
     """An error of the platform itself (the engine could not be launched, the app closed...)."""
     return {

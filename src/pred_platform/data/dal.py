@@ -37,6 +37,7 @@ from pred_platform.data.query import (
     paginate,
 )
 from pred_platform.data.repository import ArtifactDownload
+from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
 # Same constants the engine's classifier uses (ADR-006 of the engine); shown while no metrics exist.
 _ADI_THRESHOLD = 1.32
@@ -50,11 +51,6 @@ _TASK_STATES = get_args(models.EstadoTarea)
 _FAMILY_STATES = get_args(models.EstadoFamilia)
 _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
-
-# `submit_ingest` needs the worker that launches the engine (G3), which has no capability of its
-# own in the contract. Reading an ingestion (G1) and detecting a name conflict in raw/ (G5) are
-# done.
-_SUBMIT_GAPS = ("G3",)
 
 
 def _now() -> datetime:
@@ -93,11 +89,16 @@ class DalRepository:
 
     source: DataSource = "dal"
 
-    def __init__(self, db_path: Path, data_root: Path | None = None) -> None:
+    def __init__(
+        self, db_path: Path, data_root: Path | None = None, submit: Submitter | None = None
+    ) -> None:
         # Not opened here: the application must boot without the database (CI smoke test).
         self.db_path = db_path
         # Paths in the contract resolve against the data root (guide 16.6 of the contract).
         self.data_root = data_root
+        # What ingests an uploaded CSV by running the engine (``worker/ingesta.py``); without it
+        # the repository cannot take uploads and says so.
+        self._submit = submit
 
     # ----------------------------------------------------------------- capabilities
     def get_capabilities(self) -> models.Capabilities:
@@ -204,10 +205,18 @@ class DalRepository:
     def submit_ingest(
         self, file_name: str, content: bytes, *, confirm_overwrite: bool = False
     ) -> models.IngestReport:
-        raise EngineUnavailable(
-            "Cargar archivos necesita el motor, que aún no está conectado a la plataforma",
-            blocked_by=_SUBMIT_GAPS,
-        )
+        if self._submit is None:
+            raise EngineUnavailable(
+                "Cargar archivos necesita el motor, que no está conectado a la plataforma",
+                blocked_by=(),
+            )
+        try:
+            sha256 = self._submit(file_name, content, confirm_overwrite)
+        except ValueError as exc:
+            raise InvalidQuery(str(exc)) from exc
+        except IngestLaunchError as exc:
+            raise EngineUnavailable(str(exc), blocked_by=()) from exc
+        return self.get_ingest_report(sha256)
 
     # --------------------------------------------------------------------- topology
     def get_topology_report(

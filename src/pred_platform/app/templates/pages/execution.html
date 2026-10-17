@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/alerts.html" import alert %}
 
 {% block title %}PRED — Ejecución{% endblock %}
 
@@ -6,13 +7,23 @@
   <header class="pred-page-header">
     <div>
       <h1>Ejecución</h1>
-      <p>Configuración, avance y recuperación de la corrida en una sola superficie.</p>
+      <p>Lance una corrida sobre una ingesta aceptada, siga su avance y deténgala o reanúdela sin salir de esta pantalla.</p>
     </div>
   </header>
-  {# hx-trigger queda en none: el polling real depende de G3. #}
+
+  {% if source == "fixture" %}
+  <p class="pred-meta">Datos de prueba</p>
+  {% endif %}
+
+  {% if notice %}{{ alert(notice[1], variant=notice[0]) }}{% endif %}
+  {% if action_error %}{{ alert(action_error, variant="warning") }}{% endif %}
+  {% if query_error %}{{ alert(query_error, variant="warning") }}{% endif %}
+
+  {% include "partials/execution_launch.html" %}
+
   <div id="ejecucion-cuerpo"
-       hx-get="/ejecucion/estado"
-       hx-trigger="none"
+       hx-get="/ejecucion/estado{% if query_string %}?{{ query_string }}{% endif %}"
+       hx-trigger="{% if poll %}every 2s{% else %}none{% endif %}"
        hx-swap="innerHTML"
        hx-target="this">
     {% include "partials/execution_body.html" %}

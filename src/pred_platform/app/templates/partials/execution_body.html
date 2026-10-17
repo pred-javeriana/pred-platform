@@ -1,15 +1,136 @@
 {% from "components/states.html" import empty_state, unavailable_state %}
+{% from "components/progress.html" import progress_bar %}
+{% from "components/status.html" import status_indicator %}
+{% from "components/buttons.html" import button %}
+{% from "components/forms.html" import field %}
+{% from "components/tables.html" import table_start, table_end, table_empty %}
+{% from "components/run_line.html" import run_line %}
 
-{% if orchestration.available %}
+{% if status_error %}
+  {{ unavailable_state(status_error.title, status_error.detail or "No fue posible leer la ejecución.", status_error.code, status_error.blocked_by) }}
+{% elif not run %}
   {{ empty_state(
     "No existe una ejecución activa.",
-    "Cuando el worker esté conectado, el progreso y las tareas se actualizarán aquí sin recargar el shell."
+    "Cuando lance una ejecución, su avance y sus tareas aparecerán aquí sin recargar la página."
   ) }}
+  {% if not orchestration.available %}
+    {{ unavailable_state(
+      "La orquestación todavía no está disponible.",
+      "El lanzamiento, el progreso en vivo y detener o reanudar dependen del worker de plataforma.",
+      orchestration.reason_code,
+      orchestration.blocked_by
+    ) }}
+  {% endif %}
 {% else %}
-  {{ unavailable_state(
-    "La orquestación todavía no está disponible.",
-    "El lanzamiento, el progreso en vivo y detener o reanudar dependen del worker de plataforma.",
-    orchestration.reason_code,
-    orchestration.blocked_by
-  ) }}
+<section class="pred-section" id="ejecucion-activa">
+  <h2>Ejecución activa</h2>
+  {{ run_line(status) }}
+
+  <div class="pred-actions">
+    {% if run.estado in ("pendiente", "ejecutando") %}
+    <form method="post" action="/ejecucion/detener">
+      <input type="hidden" name="ejecucion" value="{{ run.id }}">
+      {{ button("Detener", variant="secondary", type="submit", icon="i-stop", disabled=not actions.can_stop) }}
+    </form>
+    {% endif %}
+    {% if run.estado in ("detenida", "completada_con_fallos") %}
+    <form method="post" action="/ejecucion/reanudar">
+      <input type="hidden" name="ejecucion" value="{{ run.id }}">
+      {{ button("Reanudar" if run.estado == "detenida" else "Reintentar las tareas con fallos", variant="secondary", type="submit", icon="i-rotate", disabled=not actions.can_resume) }}
+    </form>
+    {% endif %}
+    {% if finished and results_href %}{{ button("Ver resultados", variant="primary", href=results_href) }}{% endif %}
+  </div>
+  {% if actions.disabled_reason %}<p class="pred-meta">Detener y reanudar están deshabilitados. {{ actions.disabled_reason }}</p>{% endif %}
+  {% if run.estado == "pendiente" and not worker_active and not control_reason %}
+  <p class="pred-meta">En cola: esta aplicación no ejecuta el worker (PRED_WORKER=off); inícielo con <span class="mono">make worker</span>.</p>
+  {% elif run.estado == "pendiente" %}
+  <p class="pred-meta">En cola: empezará en cuanto el worker termine la corrida anterior.</p>
+  {% endif %}
+  {% if run.estado == "detenida" and not rows %}
+  <p class="pred-note pred-note--muted">La ejecución se detuvo antes de crear tareas. Revise el registro del motor (<span class="mono">motor.log</span> en la carpeta de la corrida) y vuelva a lanzar.</p>
+  {% endif %}
+
+  {% if progress %}
+  {% set counts = progress.tareas_por_estado %}
+  {# Una corrida detenida cierra sus tareas abiertas como fallidas o no ejecutables: no es avance. #}
+  {% if run.estado == "detenida" %}
+    {% set done = counts.get("exitosa", 0) %}
+    {% set pct = ((100 * done / progress.tareas_total) | round(1)) if progress.tareas_total else 0 %}
+    {% set bar_label = "Tareas exitosas antes de detenerse" %}
+  {% else %}
+    {% set done = counts.get("exitosa", 0) + counts.get("fallida", 0) + counts.get("no_ejecutable", 0) %}
+    {% set pct = progress.avance_pct %}
+    {% set bar_label = "Avance de la ejecución" %}
+  {% endif %}
+  {{ progress_bar(done, progress.tareas_total, pct, bar_label) }}
+  <ul class="pred-statelist">
+    {% for code, count in state_counts %}
+    <li>{{ status_indicator(describe_status("task", code)) }} <span class="mono">{{ format_count(count) }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <details class="pred-details">
+    <summary>Configuración y corte de la reserva</summary>
+    <dl class="pred-kv">
+      {% for label, value in settings_rows %}<dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
+      {% if reserve %}
+      <dt>Corte t*</dt><dd class="mono">{{ reserve.t_star }}</dd>
+      <dt>Días reservados</dt><dd class="mono">{{ reserve.reserved_days }} ({{ reserve.first_reserved }} a {{ reserve.last_observed }})</dd>
+      {% endif %}
+      <dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd>
+      {% if run.ingest_id %}<dt>Ingesta</dt><dd class="mono">{{ run.ingest_id }}</dd>{% endif %}
+    </dl>
+  </details>
+</section>
+
+<section class="pred-section" id="tareas">
+  <h2>Tareas</h2>
+  <form method="get" action="/ejecucion" class="pred-filters" id="filtros-tareas" hx-preserve="true">
+    {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
+    {{ field("estado", "Estado", value=query.estado or "", input_type="select", options=[
+      ("", "Todos"), ("pendiente", "Pendiente"), ("ejecutando", "Ejecutando"), ("exitosa", "Exitosa"),
+      ("fallida", "Fallida"), ("no_ejecutable", "No ejecutable")
+    ]) }}
+    {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
+      ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
+    ]) }}
+    {{ field("sku", "SKU", value=query.sku or "", placeholder="FIL-0001") }}
+    {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
+  </form>
+
+  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"]) }}
+  {% if rows %}
+    {% for item in rows %}
+    {% set task = item.task %}
+    <tr>
+      <td><span class="mono">{{ task.sku or "—" }}</span></td>
+      <td>{{ family_label(task.family) if task.family else "—" }}</td>
+      <td><span class="mono">{{ task.modelo }}</span></td>
+      <td>{{ status_indicator(describe_status("task", task.estado)) }}</td>
+      <td class="num">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
+      <td class="wrap">
+        {% if item.error %}
+        <strong>{{ item.error.title }}</strong>
+        {% if item.error.detail %}<span class="pred-meta"> {{ item.error.detail }}</span>{% endif %}
+        {% if item.error.action %}<br><span class="pred-note">{{ item.error.action }}</span>{% endif %}
+        <br><span class="pred-meta">Etapa {{ item.error.stage }} · <span class="mono">{{ item.error.code }}</span></span>
+        {% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  {% else %}
+    {{ table_empty(6, "Sin tareas", "No hay tareas que coincidan con los filtros seleccionados.") }}
+  {% endif %}
+  {{ table_end() }}
+
+  {% if pages and pages.show %}
+  <nav class="pred-pager" aria-label="Paginación de tareas">
+    <span>Página {{ status.page.number }} de {{ pages.total_pages }} · {{ format_count(status.page.total) }} tareas</span>
+    {% if pages.has_prev %}<a href="/ejecucion?{{ query.query_string(page=status.page.number - 1) }}">Anterior</a>{% endif %}
+    {% if pages.has_next %}<a href="/ejecucion?{{ query.query_string(page=status.page.number + 1) }}">Siguiente</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
 {% endif %}

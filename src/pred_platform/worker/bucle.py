@@ -14,12 +14,13 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import closing
+from typing import Any
 
 from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker import engine
-from pred_platform.worker.errores import platform_error
+from pred_platform.worker.errores import platform_error, run_stopped_error
 from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
 
@@ -126,11 +127,18 @@ class Worker:
         )
         follower = ProgressFollower(conn, run, folder / "progreso.jsonl", corte=corte)
         stopped = False
+        stopped_by_user: dict[str, Any] | None = None
         try:
             while process.poll() is None:
                 follower.poll()
                 if stop.is_set():
                     stopped = True
+                    engine.terminate(process.pid)
+                    break
+                state, error = dal.run_estado(conn, run.id)
+                if state != "ejecutando":
+                    # The operator stopped the run from the interface (`request_stop`).
+                    stopped_by_user = error or run_stopped_error()
                     engine.terminate(process.pid)
                     break
                 time.sleep(0.2)
@@ -150,6 +158,13 @@ class Worker:
                 estado="detenida",
                 error=platform_error("platform.schema_version_unsupported", str(exc)),
             )
+            return
+
+        if stopped_by_user is not None:
+            # `request_stop` already left the run `detenida` with its error; only the tasks the
+            # engine did not finish are still open.
+            dal.close_open_tasks(conn, run.id, interrupted=stopped_by_user, skipped=stopped_by_user)
+            _logger.info("Corrida %s detenida por el operador", run.run_id)
             return
 
         if stopped:

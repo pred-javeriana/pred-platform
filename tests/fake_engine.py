@@ -14,6 +14,12 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     future_schema writes a progress stream of an unsupported major version
 
+``classify --csv <file> --data-root <root> [--confirm-overwrite]`` plays the ingestion the browser
+upload launches: it leaves ``ingestas/<sha256>.json`` (copied from ``tests/fixtures/motor``) chosen
+by a marker in the file's content: ``BADHEADER`` (rejected), ``BADVALUE`` (failed), ``CONFLICT``
+(needs confirmation, exit 7, accepted keeping both files once confirmed), ``BOOM`` (dies without
+a report) and ``SLOW`` (hangs); anything else is accepted.
+
 ``FAKE_ENGINE_SELECTION`` shapes ``seleccion.jsonl`` (contract section 20): ``ok`` (default),
 ``none`` (an engine that predates it), ``future`` (an unsupported major version) or ``bad_line``
 (one unreadable line and one with a family that contradicts its model, between valid ones).
@@ -259,12 +265,54 @@ def _write_selection(folder: Path, lines: list[dict[str, Any]], mode: str) -> No
     (folder / "seleccion.jsonl").write_text("".join(f"{x}\n" for x in out), encoding="utf-8")
 
 
+_FIXTURES = Path(__file__).parent / "fixtures" / "motor"
+
+
+def _classify(args: argparse.Namespace) -> int:
+    import hashlib
+
+    path = Path(args.csv)
+    content = path.read_bytes()
+    sha = hashlib.sha256(content).hexdigest()
+    root = Path(args.data_root)
+    if b"BOOM" in content:
+        print("el motor se cayó", file=sys.stderr)
+        return 1
+    if b"SLOW" in content:
+        time.sleep(60)
+    conflict = b"CONFLICT" in content
+    if b"BADHEADER" in content:
+        label, code = "rejected", 3
+    elif b"BADVALUE" in content:
+        label, code = "failed", 3
+    elif conflict and not args.confirm_overwrite:
+        label, code = "needs_confirmation", 7
+    elif conflict:
+        label, code = "accepted_keep_both", 0
+    else:
+        label, code = "accepted", 0
+    report = json.loads((_FIXTURES / f"ingesta.{label}.json").read_text())
+    stem = path.stem + (f"-{sha[:8]}" if label == "accepted_keep_both" else "")
+    report["ingest_id"] = sha
+    report["source_file"] = {**report["source_file"], "name": path.name, "sha256": sha}
+    report["deposit"]["raw_path"] = f"raw/{stem}{path.suffix}"
+    if report.get("published"):
+        report["published"]["parquet_path"] = f"processed/{stem}.parquet"
+        (root / "processed").mkdir(parents=True, exist_ok=True)
+        (root / "processed" / f"{stem}.parquet").write_bytes(b"")
+    (root / "ingestas").mkdir(parents=True, exist_ok=True)
+    (root / "ingestas" / f"{sha}.json").write_text(json.dumps(report), encoding="utf-8")
+    return code
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command")
+    parser.add_argument("--csv")
+    parser.add_argument("--confirm-overwrite", action="store_true")
     parser.add_argument("--parquet")
     parser.add_argument("--data-root", required=True)
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id")
     parser.add_argument("--families", nargs="+", default=["classical", "ml", "dl"])
     parser.add_argument("--trials")
     parser.add_argument("--min-train")
@@ -275,6 +323,8 @@ def main() -> int:
     parser.add_argument("--seed")
     parser.add_argument("--workers")
     args = parser.parse_args()
+    if args.command == "classify":
+        return _classify(args)
 
     scenario = os.environ.get("FAKE_ENGINE_SCENARIO", "ok")
     skus = os.environ.get("FAKE_ENGINE_SKUS", "FIL-0001,FIL-0002,FIL-0003").split(",")

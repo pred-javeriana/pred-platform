@@ -154,11 +154,16 @@ def test_local_validation_errors_stay_on_the_form(tmp_path: Path) -> None:
     assert repo.submit_calls == []
 
 
-def test_dal_submit_is_unavailable_not_500(tmp_path: Path) -> None:
-    app = create_app(Settings(data_root=tmp_path, db_path=tmp_path / "pred.db", data_source="dal"))
-    html = TestClient(app).post("/datos/cargar", files={"archivo": _CSV}).text
+def test_dal_submit_without_an_engine_is_unavailable_not_500(tmp_path: Path) -> None:
+    settings = Settings(
+        data_root=tmp_path,
+        db_path=tmp_path / "pred.db",
+        data_source="dal",
+        engine_command=("/no/such/pred-engine",),
+    )
+    html = TestClient(create_app(settings)).post("/datos/cargar", files={"archivo": _CSV}).text
     assert "Carga temporalmente no disponible." in html
-    assert "G3" in html
+    assert "No se pudo lanzar el motor" in html
     assert "Error inesperado" not in html
 
 
