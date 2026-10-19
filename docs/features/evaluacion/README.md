@@ -1,0 +1,79 @@
+# Evidencia de evaluación M3
+
+La plataforma y el motor comparten una única base SQLite. El motor ejecuta M3;
+la plataforma lee sus resultados precalculados sin ajustar modelos, seleccionar
+campeones ni calcular métricas evaluativas.
+
+## Migraciones
+
+Las migraciones 0005 y 0006 incorporan el esquema M3. Sus textos canónicos
+pertenecen a `pred-engine`, en `forecasting/persistencia_evidencia/`:
+`esquema_m3.sql` y `esquema_m3_0002.sql`. La plataforma conserva copias exactas
+con sus hashes de publicación. Las migraciones 0001 a 0004 no cambian.
+
+```bash
+python -m pred_platform.dal.migrate --db data/pred.db
+pred-engine run --csv ventas.csv --data-root data --db-path data/pred.db
+```
+
+Ambos procesos usan `PRAGMA user_version`, actualmente 6. El motor aplica las
+migraciones M3 pendientes sobre una base de plataforma existente. No crea una
+base independiente ni modifica una versión desconocida. Si el archivo falta,
+la ejecución se detiene con un mensaje claro antes de M0/M2.
+
+El proceso del motor recibe la ruta efectiva de `Settings.db_path` mediante
+`PRED_DB_PATH`. Una configuración heredada diferente no desvía los resultados
+a otra base. `--db-path` tiene prioridad si se usa explícitamente en el CLI.
+
+## Lectura pública del DAL
+
+```python
+from pathlib import Path
+from pred_platform.dal.evidencia import read_m3_evidence, m3_run_status
+
+estado = m3_run_status(Path("data/pred.db"), "identidad-m2")
+evidencia = read_m3_evidence(Path("data/pred.db"), "identidad-m2")
+sku = read_m3_evidence(Path("data/pred.db"), "identidad-m2", sku="SKU-1")
+```
+
+Las consultas aceptan una identidad M2 o M3. `read_m3_evidence` devuelve listas
+de registros por tabla, solo para corridas PUBLICADA. Con `sku`, devuelve
+únicamente las tablas que contienen esa columna. No incorpora métricas de una
+corrida parcial ni transforma los cinco veredictos al vocabulario histórico
+v1 de presentación.
+
+`m3_run_status` expone estado, rechazo y avance durable. `n_resueltas` cuenta
+unidades confirmadas o fallidas. `n_confirmadas` cuenta solo las exitosas y
+`n_fallidas` las fallidas. `n_unidades_previstas` es el total del protocolo.
+La consulta de progreso no expone métricas parciales.
+
+Las lecturas abren la base en modo `ro`. Una base ausente o anterior a M3
+produce un resultado vacío sin crear archivos. Un error de corrupción no se
+oculta como ausencia de datos.
+
+## Contenido
+
+- Pronósticos fechados por candidato, origen y paso.
+- Métricas por ventana y agregadas, con causas de no calculabilidad.
+- Selección de familia por categoría y resultado visible por SKU.
+- Cinco veredictos, cobertura, incertidumbre y resultados adversos.
+- HLN-DM/BH como evidencia complementaria solo sobre datos reales y con
+  mínimo de orígenes configurado. No sustituye el veredicto descriptivo.
+- Distribuciones de cartera precalculadas por clase, familia y métrica.
+- Protocolo, procedencia, versiones, fallos y unidades durables.
+
+M3 también publica CSV y Parquet derivados de SQLite. La vista
+`evidencia_publicada` impide consumir resultados antes de terminar la
+publicación. La interfaz visual de M4 no cambia en esta entrega.
+
+## Verificación
+
+`tests/test_evidencia_m3.py` comprueba publicación, progreso, filtrado por SKU,
+lecturas sin escritura y transmisión de la ruta central al proceso del motor.
+Las pruebas de migraciones conservan los hashes de todas las versiones
+publicadas y la compatibilidad con datos previos.
+
+La integración de ambos paquetes se verifica con una base temporal creada
+por el migrador real, una corrida multi-SKU del motor y lectura posterior
+mediante este DAL. También se comprueban una actualización pendiente y el
+rechazo de una base ausente, sin sustituir ninguno de los procesos.

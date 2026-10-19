@@ -78,7 +78,11 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
         OSError: the command cannot be started (for example, ``pred-engine`` is not installed).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PRED_DATA_ROOT": str(settings.data_root.resolve())}
+    env = {
+        **os.environ,
+        "PRED_DATA_ROOT": str(settings.data_root.resolve()),
+        "PRED_DB_PATH": str(settings.db_path.resolve()),
+    }
     with log_path.open("ab") as log:
         return subprocess.Popen(  # noqa: S603 - the command comes from trusted settings
             command,
