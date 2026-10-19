@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,12 +34,15 @@ class LaunchSettings:
     families: tuple[str, ...] = ("classical", "ml", "dl")
     trials: int | None = None
     seed: int = 0
+    datos_sinteticos: bool | None = None
     workers: int = 2
     # The engine's evaluation defaults; recorded so the run's settings are complete (RunSettings).
     aggregation: str = "media_recortada"
     trim: float = 0.1
 
     def __post_init__(self) -> None:
+        if self.datos_sinteticos is not None and type(self.datos_sinteticos) is not bool:
+            raise ValueError("datos_sinteticos debe ser booleano o nulo")
         for name in ("min_train", "horizon", "step", "seasonality", "workers"):
             value = getattr(self, name)
             if type(value) is not int or value < 1:
@@ -64,6 +67,7 @@ class LaunchSettings:
             "families": list(self.families),
             "trials": self.trials,
             "seed": self.seed,
+            "datos_sinteticos": self.datos_sinteticos,
             "workers": self.workers,
             "aggregation": self.aggregation,
             "trim": self.trim,
@@ -78,6 +82,8 @@ def run_id_for(ingest_sha256: str, settings: LaunchSettings) -> str:
     """
     parametros = settings.to_parametros()
     parametros.pop("workers")
+    # La procedencia pertenece a la ingesta inmutable, no al ajuste M2.
+    parametros.pop("datos_sinteticos")
     digest = hashlib.sha256(
         json.dumps({"input": ingest_sha256, "settings": parametros}, sort_keys=True).encode()
     ).hexdigest()
@@ -100,8 +106,46 @@ def enqueue_run(
         RunRequestError: the ingestion is unknown or was not accepted.
     """
     chosen = settings or LaunchSettings()
-    run_id = run_id_for(ingest_id, chosen)
-    with closing(dal.connect(db_path)) as conn:
+    with closing(dal.connect(db_path)) as conn, conn:
+        conn.execute("BEGIN IMMEDIATE")
+        dal.accepted_ingestion_id(conn, ingest_id)
+        origenes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT datos_sinteticos FROM m3_ingestas WHERE ingesta_sha256 = ?1 "
+                "UNION SELECT datos_sinteticos FROM m3_corridas WHERE ingesta_sha256 = ?1",
+                (ingest_id,),
+            )
+        }
+        if len(origenes) > 1:
+            raise RunRequestError("la ingesta tiene origenes incompatibles")
+        if origenes:
+            origen = bool(origenes.pop())
+            if chosen.datos_sinteticos is not None and chosen.datos_sinteticos != origen:
+                raise RunRequestError("el origen real o sintetico de una ingesta no puede cambiar")
+            chosen = replace(chosen, datos_sinteticos=origen)
+        if chosen.datos_sinteticos is None:
+            raise RunRequestError("la ingesta necesita procedencia real o sintetica declarada")
+        run_id = run_id_for(ingest_id, chosen)
+        previa = conn.execute(
+            "SELECT c.id, c.parametros, i.sha256 FROM ejecuciones e "
+            "JOIN configuraciones c ON c.id=e.configuracion_id "
+            "JOIN ingestas i ON i.id=e.ingesta_id WHERE e.run_id=?",
+            (run_id,),
+        ).fetchone()
+        if previa is not None:
+            parametros = json.loads(previa[1])
+            origen_previo = parametros.get("datos_sinteticos")
+            if previa[2] != ingest_id or (
+                origen_previo is not None and origen_previo != chosen.datos_sinteticos
+            ):
+                raise RunRequestError("la identidad o procedencia de la ejecucion no puede cambiar")
+            if origen_previo is None:
+                parametros["datos_sinteticos"] = chosen.datos_sinteticos
+                conn.execute(
+                    "UPDATE configuraciones SET parametros=? WHERE id=?",
+                    (json.dumps(parametros, sort_keys=True), previa[0]),
+                )
         ejecucion_id, queued = dal.create_run(
             conn,
             ingest_sha256=ingest_id,

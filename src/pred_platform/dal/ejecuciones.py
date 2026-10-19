@@ -90,6 +90,20 @@ def get_run(conn: sqlite3.Connection, ejecucion_id: int) -> Ejecucion | None:
     return None if row is None else _row_to_run(row)
 
 
+def accepted_ingestion_id(conn: sqlite3.Connection, ingest_sha256: str) -> int:
+    """Exige una ingesta aceptada antes de fijar parametros o procedencia."""
+    ingest = conn.execute(
+        "SELECT id, estado FROM ingestas WHERE sha256 = ?", (ingest_sha256,)
+    ).fetchone()
+    if ingest is None:
+        raise RunRequestError(f"no existe la ingesta {ingest_sha256[:12]}…")
+    if ingest[1] != "accepted":
+        raise RunRequestError(
+            f"la ingesta {ingest_sha256[:12]}… no fue aceptada (estado: {ingest[1]})"
+        )
+    return int(ingest[0])
+
+
 def create_run(
     conn: sqlite3.Connection,
     *,
@@ -113,15 +127,7 @@ def create_run(
             ejecucion_id = int(existing[0])
             return ejecucion_id, _resume(conn, ejecucion_id)
 
-        ingest = conn.execute(
-            "SELECT id, estado FROM ingestas WHERE sha256 = ?", (ingest_sha256,)
-        ).fetchone()
-        if ingest is None:
-            raise RunRequestError(f"no existe la ingesta {ingest_sha256[:12]}…")
-        if ingest[1] != "accepted":
-            raise RunRequestError(
-                f"la ingesta {ingest_sha256[:12]}… no fue aceptada (estado: {ingest[1]})"
-            )
+        ingest_id = accepted_ingestion_id(conn, ingest_sha256)
         version = conn.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM configuraciones")
         configuracion_id = conn.execute(
             "INSERT INTO configuraciones (version, descripcion, parametros) VALUES (?, ?, ?)",
@@ -130,7 +136,7 @@ def create_run(
         cursor = conn.execute(
             "INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed, estado, run_id) "
             "VALUES (?, ?, ?, 'pendiente', ?)",
-            (ingest[0], configuracion_id, seed, run_id),
+            (ingest_id, configuracion_id, seed, run_id),
         )
         return int(cursor.lastrowid or 0), True
 

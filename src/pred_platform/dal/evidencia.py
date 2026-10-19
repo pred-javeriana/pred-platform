@@ -24,11 +24,14 @@ def read_m3_evidence(
 
     With ``sku``, return only the SKU-scoped tables. Portfolio distributions
     remain run-scoped and are available through the unfiltered call.
+    Materializes the full matching run(s) in one read snapshot. An M2 alias
+    can match several M3 runs; choose a specific M3 id and SKU to bound reads.
     Missing databases and databases predating M3 return an empty mapping.
     """
     with _open_readonly(db_path) as conn:
         if conn is None:
             return {}
+        conn.execute("BEGIN")
         if not conn.execute(
             "SELECT 1 FROM sqlite_master WHERE name = 'evidencia_publicada'"
         ).fetchone():

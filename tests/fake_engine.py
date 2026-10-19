@@ -294,12 +294,18 @@ def _classify(args: argparse.Namespace) -> int:
     report = json.loads((_FIXTURES / f"ingesta.{label}.json").read_text())
     stem = path.stem + (f"-{sha[:8]}" if label == "accepted_keep_both" else "")
     report["ingest_id"] = sha
-    report["source_file"] = {**report["source_file"], "name": path.name, "sha256": sha}
+    report["source_file"] = {
+        **report["source_file"],
+        "name": path.name,
+        "sha256": sha,
+        "datos_sinteticos": args.datos_sinteticos,
+    }
     report["deposit"]["raw_path"] = f"raw/{stem}{path.suffix}"
     if report.get("published"):
         report["published"]["parquet_path"] = f"processed/{stem}.parquet"
         (root / "processed").mkdir(parents=True, exist_ok=True)
         (root / "processed" / f"{stem}.parquet").write_bytes(b"")
+        report["published"]["sha256"] = hashlib.sha256(b"").hexdigest()
     (root / "ingestas").mkdir(parents=True, exist_ok=True)
     (root / "ingestas" / f"{sha}.json").write_text(json.dumps(report), encoding="utf-8")
     return code
@@ -311,6 +317,9 @@ def main() -> int:
     parser.add_argument("--csv")
     parser.add_argument("--confirm-overwrite", action="store_true")
     parser.add_argument("--parquet")
+    provenance = parser.add_mutually_exclusive_group()
+    provenance.add_argument("--datos-sinteticos", action="store_true")
+    provenance.add_argument("--datos-reales", action="store_true")
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--run-id")
     parser.add_argument("--families", nargs="+", default=["classical", "ml", "dl"])

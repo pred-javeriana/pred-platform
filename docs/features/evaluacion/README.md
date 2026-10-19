@@ -6,9 +6,9 @@ campeones ni calcular métricas evaluativas.
 
 ## Migraciones
 
-Las migraciones 0005 y 0006 incorporan el esquema M3. Sus textos canónicos
+Las migraciones 0005, 0006 y 0007 incorporan el esquema M3. Sus textos canónicos
 pertenecen a `pred-engine`, en `forecasting/persistencia_evidencia/`:
-`esquema_m3.sql` y `esquema_m3_0002.sql`. La plataforma conserva copias exactas
+`esquema_m3.sql`, `esquema_m3_0002.sql` y `esquema_m3_0003.sql`. La plataforma conserva copias exactas
 con sus hashes de publicación. Las migraciones 0001 a 0004 no cambian.
 
 ```bash
@@ -16,7 +16,7 @@ python -m pred_platform.dal.migrate --db data/pred.db
 pred-engine run --csv ventas.csv --data-root data --db-path data/pred.db
 ```
 
-Ambos procesos usan `PRAGMA user_version`, actualmente 6. El motor aplica las
+Ambos procesos usan `PRAGMA user_version`, actualmente 7. El motor aplica las
 migraciones M3 pendientes sobre una base de plataforma existente. No crea una
 base independiente ni modifica una versión desconocida. Si el archivo falta,
 la ejecución se detiene con un mensaje claro antes de M0/M2.
@@ -24,6 +24,10 @@ la ejecución se detiene con un mensaje claro antes de M0/M2.
 El proceso del motor recibe la ruta efectiva de `Settings.db_path` mediante
 `PRED_DB_PATH`. Una configuración heredada diferente no desvía los resultados
 a otra base. `--db-path` tiene prioridad si se usa explícitamente en el CLI.
+M1 declara `source_file.datos_sinteticos` y `published.sha256`; el importador
+los conserva en `m3_ingestas`. La cola congela ese origen en `LaunchSettings`
+y transmite `--datos-sinteticos` o `--datos-reales`. La ausencia de procedencia
+exige una declaración explícita; no equivale a datos reales.
 
 ## Lectura pública del DAL
 
@@ -41,6 +45,12 @@ de registros por tabla, solo para corridas PUBLICADA. Con `sku`, devuelve
 únicamente las tablas que contienen esa columna. No incorpora métricas de una
 corrida parcial ni transforma los cinco veredictos al vocabulario histórico
 v1 de presentación.
+
+La función materializa el conjunto completo de filas que coinciden, no pagina.
+Todas las tablas pertenecen a una sola instantánea SQLite. Una identidad M2
+puede corresponder a varias corridas M3; cada fila conserva `run_id`. Para un
+único resultado se debe elegir la identidad M3 exacta. El filtro SKU reduce las
+filas materializadas dentro de ese ámbito; no permite consultar sin identidad.
 
 `m3_run_status` expone estado, rechazo y avance durable. `n_resueltas` cuenta
 unidades confirmadas o fallidas. `n_confirmadas` cuenta solo las exitosas y

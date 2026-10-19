@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 
+import pytest
+
 from pred_platform.config import Settings
+from pred_platform.dal import evidencia
 from pred_platform.dal.evidencia import m3_run_status, read_m3_evidence
+from pred_platform.dal.lectura import _open_readonly
 from pred_platform.dal.migrate import migrate
 from pred_platform.worker.engine import launch
 
@@ -58,7 +62,19 @@ def test_unpublished_run_has_status_but_no_evidence(tmp_path: Path) -> None:
     db = tmp_path / "platform.db"
     _database(db)
     hidden = read_m3_evidence(db, "m2-test")
-    assert all(rows == [] for rows in hidden.values())
+    assert set(hidden) == {
+        "m3_cartera",
+        "m3_categorias",
+        "m3_corridas",
+        "m3_fallos",
+        "m3_metricas",
+        "m3_pronosticos",
+        "m3_protocolos",
+        "m3_skus",
+        "m3_unidades",
+        "m3_veredictos",
+    }
+    assert list(map(len, hidden.values())) == [0] * 10
     assert m3_run_status(db, "m2-test")[0]["estado"] == "EN_CURSO"
     assert m3_run_status(db, "m2-test")[0]["n_unidades_previstas"] == 12
     with closing(sqlite3.connect(db)) as conn:
@@ -88,7 +104,25 @@ def test_progress_separates_successes_from_failed_durable_units(tmp_path: Path) 
         conn.commit()
     status = m3_run_status(db, "m2-test")[0]
     assert (status["n_resueltas"], status["n_confirmadas"], status["n_fallidas"]) == (2, 1, 1)
-    assert all(rows == [] for rows in read_m3_evidence(db, "m2-test").values())
+    assert status == {
+        "run_id": "m3-test",
+        "run_id_m2": "m2-test",
+        "estado": "EN_CURSO",
+        "causa_rechazo": None,
+        "datos_sinteticos": 1,
+        "n_unidades_previstas": 12,
+        "n_resueltas": 2,
+        "n_confirmadas": 1,
+        "n_fallidas": 1,
+    }
+    hidden = read_m3_evidence(db, "m2-test")
+    assert len(hidden) == 10 and [len(rows) for rows in hidden.values()] == [0] * 10
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("UPDATE m3_corridas SET estado = 'PUBLICADA'")
+        conn.commit()
+    assert [
+        (r["sku"], r["veredicto"]) for r in read_m3_evidence(db, "m2-test")["m3_veredictos"]
+    ] == [("A", "EXPLORATORIO"), ("B", "EXPLORATORIO")]
 
 
 def test_published_sku_scope_and_reads_never_write(tmp_path: Path) -> None:
@@ -105,6 +139,97 @@ def test_published_sku_scope_and_reads_never_write(tmp_path: Path) -> None:
     assert "m3_cartera" not in one
     assert m3_run_status(db, "m3-test")[0]["n_confirmadas"] == 0
     assert db.read_bytes() == before
+    with evidencia._open_readonly(db) as conn:
+        assert conn is not None
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            conn.execute("UPDATE m3_corridas SET estado = 'EN_CURSO'")
+    assert m3_run_status(db, "m3-test")[0]["estado"] == "PUBLICADA"
+
+
+def test_publication_during_read_keeps_one_sqlite_snapshot(tmp_path, monkeypatch):
+    db = tmp_path / "snapshot.db"
+    _database(db)
+    scheduled = False
+
+    @contextmanager
+    def scheduled_reader(path):
+        nonlocal scheduled
+        with _open_readonly(path) as conn:
+
+            def publish(sql):
+                nonlocal scheduled
+                if not scheduled and sql.startswith('SELECT * FROM "m3_categorias"'):
+                    scheduled = True
+                    with closing(sqlite3.connect(db)) as writer:
+                        writer.execute("UPDATE m3_corridas SET estado='PUBLICADA'")
+                        writer.commit()
+
+            assert conn is not None
+            conn.set_trace_callback(publish)
+            yield conn
+
+    monkeypatch.setattr(evidencia, "_open_readonly", scheduled_reader)
+    result = read_m3_evidence(db, "m2-test")
+    assert scheduled is True
+    assert {table: len(rows) for table, rows in result.items()} == {
+        "m3_cartera": 0,
+        "m3_categorias": 0,
+        "m3_corridas": 0,
+        "m3_fallos": 0,
+        "m3_metricas": 0,
+        "m3_pronosticos": 0,
+        "m3_protocolos": 0,
+        "m3_skus": 0,
+        "m3_unidades": 0,
+        "m3_veredictos": 0,
+    }
+    complete = read_m3_evidence(db, "m2-test")
+    assert [r["sku"] for r in complete["m3_veredictos"]] == ["A", "B"]
+    assert complete["m3_cartera"][0]["mediana"] == 3.0
+
+
+def test_m2_alias_gates_each_run_and_keeps_run_identity(tmp_path):
+    db = tmp_path / "mixed.db"
+    _database(db)
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("UPDATE m3_corridas SET estado='PUBLICADA'")
+        conn.execute(
+            "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, "
+            "datos_sinteticos, estado) VALUES "
+            "('m3-second', 'source', 'm2-test', 'second', 1, 'EVALUADA')"
+        )
+        for table in ("m3_protocolos", "m3_skus", "m3_categorias", "m3_veredictos", "m3_cartera"):
+            rows = conn.execute(f'SELECT * FROM "{table}" WHERE run_id=?', ("m3-test",)).fetchall()
+            for row in rows:
+                conn.execute(
+                    f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in row)})',
+                    ("m3-second", *row[1:]),
+                )
+        conn.commit()
+    assert [(r["run_id"], r["sku"]) for r in read_m3_evidence(db, "m2-test")["m3_veredictos"]] == [
+        ("m3-test", "A"),
+        ("m3-test", "B"),
+    ]
+    assert sorted((r["run_id"], r["estado"]) for r in m3_run_status(db, "m2-test")) == [
+        ("m3-second", "EVALUADA"),
+        ("m3-test", "PUBLICADA"),
+    ]
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("UPDATE m3_corridas SET estado='PUBLICADA'")
+        conn.commit()
+    assert sorted(
+        (r["run_id"], r["sku"]) for r in read_m3_evidence(db, "m2-test")["m3_veredictos"]
+    ) == [("m3-second", "A"), ("m3-second", "B"), ("m3-test", "A"), ("m3-test", "B")]
+
+
+def test_corrupt_files_are_not_missing_evidence(tmp_path):
+    db = tmp_path / "corrupt.db"
+    db.write_bytes(b"not a sqlite database")
+    for reader in (read_m3_evidence, m3_run_status):
+        with pytest.raises(sqlite3.DatabaseError, match="not a database"):
+            reader(db, "run")
+    _database(tmp_path / "valid.db")
+    assert m3_run_status(tmp_path / "valid.db", "m2-test")[0]["n_unidades_previstas"] == 12
 
 
 def test_engine_child_receives_the_configured_central_database(tmp_path: Path, monkeypatch) -> None:

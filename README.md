@@ -87,7 +87,8 @@ The DAL schema is versioned with SQLite's `PRAGMA user_version` and changed only
 SQL scripts in `src/pred_platform/dal/migrations/` (decision: `pred-docs/diseno/ADRs/ADR 05-002`).
 Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs and tasks and 4 the
 selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, frozen protocols and
-precalculated portfolio summaries. The current schema is version 6.
+precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance.
+The current schema is version 7.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
   folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.
@@ -127,9 +128,11 @@ The engine writes M3 results into this same SQLite database through an injected 
 Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
 standalone result database. It applies pending M3 migrations itself on an existing platform
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
-5 and 6, so both processes agree on `user_version`.
+5, 6 and 7, so both processes agree on `user_version`.
 
-`pred_platform.dal.evidencia.read_m3_evidence` reads only PUBLICADA runs, by M2/M3 id or SKU.
+`pred_platform.dal.evidencia.read_m3_evidence` reads only PUBLICADA runs by M2/M3 run id, optionally filtered by SKU.
+One call materializes all matching rows within one read snapshot. An M2 alias can match several
+M3 runs; use an exact M3 id and SKU for bounded reads, or group results by their retained `run_id`.
 `m3_run_status` exposes durable progress and rejections without partial metrics. The platform
 reads precalculated descriptive metrics, verdicts, HLN-DM/BH and portfolio distributions; it does
 not evaluate models. See [the M3 data interface](docs/features/evaluacion/README.md).

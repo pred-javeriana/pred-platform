@@ -66,6 +66,10 @@ def build_command(settings: Settings, run: Ejecucion, parquet: Path) -> list[str
         "--workers",
         str(p.get("workers", 1)),
     ]
+    origen = p.get("datos_sinteticos")
+    if type(origen) is not bool:
+        raise ValueError("la ejecucion necesita procedencia real o sintetica declarada")
+    command.append("--datos-sinteticos" if origen else "--datos-reales")
     if p.get("trials") is not None:
         command += ["--trials", str(p["trials"])]
     return command

@@ -44,7 +44,16 @@ from pred_platform.worker.service import (
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "motor"
 _FAKE = Path(__file__).parent / "fake_engine.py"
-SMALL = LaunchSettings(min_train=40, horizon=2, step=14, metric="mae", trials=1, workers=2, seed=17)
+SMALL = LaunchSettings(
+    min_train=40,
+    horizon=2,
+    step=14,
+    metric="mae",
+    trials=1,
+    workers=2,
+    seed=17,
+    datos_sinteticos=False,
+)
 
 
 @dataclass
@@ -79,6 +88,13 @@ def env(tmp_path: Path) -> Env:
         shutil.copyfile(
             _FIXTURES / f"ingesta.{label}.json", root / "ingestas" / f"{_fixture_id(label)}.json"
         )
+    accepted = root / "ingestas" / f"{_fixture_id('accepted')}.json"
+    report = json.loads(accepted.read_text())
+    report["source_file"]["datos_sinteticos"] = False
+    report["published"]["sha256"] = (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
+    accepted.write_text(json.dumps(report))
     (root / "processed").mkdir()
     (root / "processed" / "demo_canonico.parquet").write_bytes(b"")
     db = tmp_path / "pred.db"
@@ -91,6 +107,65 @@ def env(tmp_path: Path) -> Env:
         worker="off",
     )
     return Env(settings, _fixture_id("accepted"))
+
+
+def test_procedencia_importada_se_fija_y_viaja_al_cli(env):
+    from pred_platform.dal.importacion import import_reports
+
+    report_path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    report = json.loads(report_path.read_text())
+    report["ingest_id"] = report["source_file"]["sha256"] = "b" * 64
+    report["source_file"]["datos_sinteticos"] = True
+    report["published"]["sha256"] = "f" * 64
+    path = report_path.with_name("b" * 64 + ".json")
+    path.write_text(json.dumps(report))
+    assert import_reports(env.db, env.settings.data_root).ok is True
+    queued = enqueue_run(env.db, "b" * 64)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, queued.ejecucion_id)
+    assert run is not None
+    assert run.parametros["datos_sinteticos"] is True
+    command = engine.build_command(
+        env.settings, run, env.settings.data_root / "processed/synthetic.parquet"
+    )
+    assert "--datos-sinteticos" in command and "--datos-reales" not in command
+    with pytest.raises(RunRequestError, match="no puede cambiar"):
+        enqueue_run(env.db, "b" * 64, LaunchSettings(datos_sinteticos=False))
+    report["source_file"]["datos_sinteticos"] = False
+    path.write_text(json.dumps(report))
+    rejected = import_reports(env.db, env.settings.data_root)
+    assert rejected.ok is False
+    assert env.rows(
+        "SELECT datos_sinteticos FROM m3_ingestas WHERE ingesta_sha256=?", "b" * 64
+    ) == [(1,)]
+
+
+def test_id_publico_no_cambia_al_resolver_procedencia_de_m1(env):
+    settings = LaunchSettings(families=("ml",), trials=1)
+    expected = run_id_for(env.ingest_id, settings)
+    queued = enqueue_run(env.db, env.ingest_id, settings)
+    assert queued.run_id == expected
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, queued.ejecucion_id)
+    assert run is not None and run.parametros["datos_sinteticos"] is False
+
+
+def test_procedencia_ausente_no_se_infiere_real(env):
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    with pytest.raises(RunRequestError, match="procedencia"):
+        enqueue_run(env.db, env.ingest_id)
+    queued = enqueue_run(env.db, env.ingest_id, LaunchSettings(datos_sinteticos=False))
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, queued.ejecucion_id)
+    assert run is not None
+    assert run.parametros["datos_sinteticos"] is False
+    with pytest.raises(RunRequestError, match="no puede cambiar"):
+        enqueue_run(env.db, env.ingest_id, LaunchSettings(datos_sinteticos=True))
+    assert "--datos-reales" in engine.build_command(
+        env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
+    )
 
 
 def _scenario(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
