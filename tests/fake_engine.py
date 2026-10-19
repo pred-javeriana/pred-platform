@@ -10,6 +10,7 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     excluded      FIL-0003 is excluded before L2
     crash         dies after the first unit started, without corrida.json
     stage_fails   L3 fails as a whole: no L3 unit, corrida.json says so (exit 1)
+    l4_fails      L2 and L3 complete, L4 fails as a whole (exit 1)
     slow          plans and starts one unit, then waits until it is killed
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     future_schema writes a progress stream of an unsupported major version
@@ -418,7 +419,17 @@ def main() -> int:
             run_unit("L3", sku, family)
         stream.emit("stage_finished", stage="L3", state="completed")
         stages.append({"id": "L3", "state": "completed"})
-    stages.append({"id": "L4", "state": "blocked"})
+    if scenario == "l4_fails":
+        stream.emit("stage_started", stage="L4")
+        stream.emit(
+            "stage_finished",
+            stage="L4",
+            state="failed",
+            message="evaluación M3 falló: timeout",
+        )
+        stages.append({"id": "L4", "state": "failed", "message": "evaluación M3 falló: timeout"})
+    else:
+        stages.append({"id": "L4", "state": "blocked"})
 
     (folder / "unidades.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in unit_rows), encoding="utf-8"
@@ -452,13 +463,14 @@ def main() -> int:
         json.dumps({"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}),
         encoding="utf-8",
     )
-    failed = scenario == "stage_fails"
+    failed = scenario in ("stage_fails", "l4_fails")
+    failed_stage = "L3" if scenario == "stage_fails" else "L4" if scenario == "l4_fails" else None
     stream.emit(
         "run_finished",
         state="failed" if failed else "completed",
         exit_code=1 if failed else 7,
-        failed_stage="L3" if failed else None,
-        blocked_stage="L4",
+        failed_stage=failed_stage,
+        blocked_stage=None if scenario == "l4_fails" else "L4",
     )
     return 1 if failed else 7
 

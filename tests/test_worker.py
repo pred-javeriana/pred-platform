@@ -246,6 +246,27 @@ def test_a_stage_without_results_stops_the_run(env: Env, monkeypatch: pytest.Mon
     assert error["code"] == "pipeline.stage_failed" and "L3" in error["detail"]
 
 
+def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "l4_fails")
+    enqueue_run(env.db, env.ingest_id, SMALL)
+
+    env.worker().run_next()
+
+    estado, error_json = _run_state(env)
+    assert estado == "detenida"
+    error = json.loads(error_json or "{}")
+    assert error["code"] == "pipeline.stage_failed"
+    assert "L4" in error["detail"]
+    # The successful L2/L3 tasks stay stored.
+    counts = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
+    assert counts.get("exitosa", 0) == 9  # 3 SKU × 3 families
+    assert counts.get("fallida", 0) == 0
+    # The per-SKU selection (G4) was imported and linked.
+    assert env.rows("SELECT COUNT(*) FROM selecciones")[0][0] > 0
+
+
 def test_a_missing_engine_command_is_a_clear_stopped_run(env: Env) -> None:
     broken = Settings(
         data_root=env.settings.data_root,
