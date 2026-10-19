@@ -117,7 +117,7 @@ def finalize(
     reserve = summary.get("reserve")
     failed = [s for s in summary.get("stages", []) if s.get("state") == "failed"]
 
-    if failed and counts.get("exitosa", 0) == 0:
+    if failed:
         stage = failed[0]
         return _stop(
             conn,
@@ -137,7 +137,7 @@ def finalize(
         )
     estado = (
         "completada_con_fallos"
-        if counts.get("fallida", 0) or counts.get("no_ejecutable", 0) or failed
+        if counts.get("fallida", 0) or counts.get("no_ejecutable", 0)
         else "completada"
     )
     dal.finish_run(conn, run.id, estado=estado, reserva=reserve)
