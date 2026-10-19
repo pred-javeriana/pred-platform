@@ -29,16 +29,18 @@
   {% endif %}
 
   {% if report.error %}
+    {% set described = describir_error(report.error) %}
     <div class="pred-log">
-      <p><strong>{{ report.error.code }}</strong></p>
-      {% if report.error.detail %}<p>{{ report.error.detail }}</p>{% endif %}
-      {% if report.error.field or report.error.column %}
+      <p><strong>{{ described.titulo }}</strong></p>
+      {% if described.accion %}<p>{{ described.accion }}</p>{% endif %}
+      {% if report.error.detail %}<p class="pred-meta">{{ report.error.detail }}</p>{% endif %}
+      {% if described.ubicacion or report.error.field %}
       <p class="pred-meta">
         {% if report.error.field %}Campo: {{ report.error.field }}{% endif %}
-        {% if report.error.column %} · Columna: <span class="mono">{{ report.error.column }}</span>{% endif %}
-        {% if report.error.row_index is not none %} · Fila: {{ report.error.row_index }}{% endif %}
+        {% if described.ubicacion %}{{ " · " if report.error.field else "" }}{{ described.ubicacion|capitalize }}{% endif %}
       </p>
       {% endif %}
+      <p class="pred-meta"><span class="mono">{{ report.error.code }}</span></p>
       {% if report.error.retryable %}
       <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
       {% endif %}
@@ -85,8 +87,13 @@
     <tr>
       <td>{{ status_indicator(describe_status("severity", entry.severity)) }}</td>
       <td><span class="mono">{{ entry.code }}</span></td>
-      <td>{{ entry.message }}</td>
-      <td class="mono">{{ entry.row_index if entry.row_index is not none else "—" }}</td>
+      <td>
+        {% if entry.code in CATALOGO_ERRORES %}
+        {{ error_title(entry.code, none, entry.row_index, entry.column) }}
+        {% if entry.message %}<br><span class="pred-meta">{{ entry.message }}</span>{% endif %}
+        {% else %}{{ entry.message }}{% endif %}
+      </td>
+      <td class="mono">{{ fila_en_archivo(entry.row_index) if entry.row_index is not none else "—" }}</td>
       <td class="mono">{{ entry.column or "—" }}</td>
     </tr>
     {% endfor %}

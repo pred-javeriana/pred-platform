@@ -79,6 +79,7 @@ class ProgressFollower:
             dal.plan_tasks(self._conn, run.id, corte=corte, seed=run.seed, units=units)
         elif kind == "excluded":
             sku, cause = str(event["sku_id"]), str(event.get("cause", ""))
+            code = event.get("code")
             for family in self.families:
                 dal.task_excluded(
                     self._conn,
@@ -87,7 +88,7 @@ class ProgressFollower:
                     modelo=model_id(family, MODELO_POR_FAMILIA.get(family, family)),
                     corte=corte,
                     seed=run.seed,
-                    error=exclusion_info(cause),
+                    error=exclusion_info(cause, code),
                 )
         elif kind == "unit_started":
             dal.task_started(
@@ -113,7 +114,9 @@ class ProgressFollower:
                 completed=completed,
                 seconds=event.get("seconds"),
                 finished_at=str(event.get("finished_at") or event.get("t")),
-                error=None if completed else error_info(stage, event.get("error")),
+                error=None
+                if completed
+                else error_info(stage, event.get("error"), event.get("code")),
             )
         elif kind == "stage_finished" and event.get("state") == "failed":
             self.failed_stages.append(str(event.get("stage")))

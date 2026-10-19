@@ -36,6 +36,7 @@ class _EngineError(BaseModel):
 
     stage: str
     text: str
+    code: str | None = None
 
 
 class _EngineFamily(BaseModel):
@@ -47,6 +48,7 @@ class _EngineFamily(BaseModel):
     estado: models.EstadoFamilia
     exclusion: models.Exclusion | None = None
     cause: str | None = None
+    code: str | None = None
     modelo: str | None = None
     produced_by: str | None = None
     evidence: dict[str, Any] | None = None
@@ -106,11 +108,14 @@ def _family_entry(raw: _EngineFamily) -> models.FamilyEntry:
     exclusion = raw.exclusion
     if raw.estado == "no_ejecutable":
         cause = raw.cause or "El motor no ejecutó este SKU."
-        exclusion = models.Exclusion(reason_code=exclusion_reason(cause), detail=cause)  # type: ignore[arg-type]
+        reason = exclusion_reason(cause, raw.code)
+        exclusion = models.Exclusion(reason_code=reason, detail=cause)  # type: ignore[arg-type]
     error = None
     if raw.estado == "fallida":
         stage = raw.error.stage if raw.error else "L2"
-        error = models.ErrorInfo(**error_info(stage, raw.error.text if raw.error else None))  # type: ignore[arg-type]
+        text = raw.error.text if raw.error else None
+        code = raw.error.code if raw.error else None
+        error = models.ErrorInfo(**error_info(stage, text, code))  # type: ignore[arg-type]
     return models.FamilyEntry.model_validate(
         {
             "family": raw.family,

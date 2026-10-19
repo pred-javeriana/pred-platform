@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
+from pred_platform import mensajes
 from pred_platform.app.presentation import format_decimal
 from pred_platform.app.seleccion import int_param
 from pred_platform.contract.models import RunSettings
@@ -48,34 +49,10 @@ NOTICES: dict[str, tuple[str, str]] = {
     "no_aplica": ("info", "La ejecución ya no estaba en un estado que admita esa acción."),
 }
 
-# Qué hacer ante cada error (texto accionable). Los títulos están en `seleccion.error_title`.
-_ERROR_ACTIONS: dict[str, str] = {
-    "model.fit_failed": (
-        "Pruebe con más ensayos o con otra familia; las demás familias del SKU no se afectan."
-    ),
-    "selection.no_viable_trial": (
-        "Ninguna configuración terminó: aumente los ensayos o revise la serie del SKU."
-    ),
-    "model.series_too_short": (
-        "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento (min_train)."
-    ),
-    "ingest.temporal_continuity": (
-        "Corrija los huecos de fechas del SKU en el CSV y vuelva a cargarlo."
-    ),
-    "evaluation.failed": "Reduzca el horizonte o el paso de validación, o pruebe otra familia.",
-    "model.foundation_unavailable": (
-        "Instale las dependencias de la familia fundacional o quítela de la configuración."
-    ),
-    "platform.run_stopped": "Reanude la ejecución cuando quiera.",
-    "platform.engine_unavailable": "Verifique que el motor esté instalado y reanude la ejecución.",
-    "platform.artifact_missing": "Revise el registro del motor (motor.log) y lance de nuevo.",
-    "pipeline.stage_failed": "Revise el registro del motor (motor.log) y lance de nuevo.",
-}
-
 
 def error_action(code: str) -> str | None:
-    """Lo que el operador puede hacer ante ``code``; ``None`` si todavía no hay consejo."""
-    return _ERROR_ACTIONS.get(code)
+    """Lo que el operador puede hacer ante ``code`` (catálogo único en `mensajes`)."""
+    return mensajes.accion(code)
 
 
 # ---------------------------------------------------------------------------- consulta

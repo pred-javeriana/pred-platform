@@ -10,7 +10,10 @@ engine (families, selection metric, minimum training, horizon, step, seasonality
 seed, processes; the defaults are the engine's), follow it live (state, global progress, count per
 task state, reserve cut t\* and settings, a filtered and paged task table), **stop** it and
 **resume** it, and jump to its results. Each failed or unrunnable task shows a readable title, the
-engine's detail and a next step (`app/ejecucion.py: error_action`). A stopped run does not show
+engine's detail and a next step (`pred_platform/mensajes.py`, the single catalogue of error codes in
+Spanish: title, action and whether it can be retried). The code comes from the engine (G6, G7); runs
+written by an older engine, which carry none, fall back to the class name or the cause text
+(`worker/errores.py`). A stopped run does not show
 its closed tasks as progress: its bar counts the successful ones.
 
 ## How

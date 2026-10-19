@@ -69,8 +69,9 @@
         {% endif %}
 
         {% if entry.error %}
-        <p class="pred-note"><strong>{{ error_title(entry.error.code) }}</strong>
+        <p class="pred-note"><strong>{{ error_title(entry.error.code, entry.error.stage, entry.error.row_index, entry.error.column) }}</strong>
           {% if entry.error.detail %}{{ entry.error.detail }}{% endif %}
+          {% if error_action(entry.error.code) %}<br><span class="pred-meta">{{ error_action(entry.error.code) }}</span>{% endif %}
           <span class="pred-meta">Etapa {{ entry.error.stage }} · <span class="mono">{{ entry.error.code }}</span></span></p>
         {% endif %}
 
