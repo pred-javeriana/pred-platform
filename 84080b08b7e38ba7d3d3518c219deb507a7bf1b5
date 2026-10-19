@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "summary": "La plataforma conserva una instantánea de lectura y transmite la procedencia de M1 al trabajador.",
+  "files": [
+    {
+      "path": "src/pred_platform/dal/evidencia.py",
+      "summary": "El DAL materializa solo evidencia publicada dentro de una misma transacción de lectura.",
+      "annotations": [{"newRange": [1, 87], "summary": "read_m3_evidence abre una instantánea antes de consultar el estado y las tablas de M3.", "rationale": "Una publicación entre consultas podía mezclar tablas ocultas y visibles, por lo que la transacción conserva un único estado. La regresión programada con conexiones SQLite reales, la escritura rechazada y las pruebas de corrupción aprobaron. No se afirma lectura acotada de millones de filas sin filtro.", "author": "fm/pred-m3-build"}]
+    },
+    {
+      "path": "src/pred_platform/worker/service.py",
+      "summary": "La cola valida la procedencia de ingesta sin cambiar la identidad pública de M2.",
+      "annotations": [
+        {"newRange": [85, 86], "summary": "run_id_for excluye la procedencia resuelta del conjunto de parámetros que identifica M2.", "rationale": "La procedencia es metadato inmutable de ingesta y no una elección de ajuste, por lo que resolverla conserva el identificador público. test_id_publico_no_cambia_al_resolver_procedencia_de_m1 aprobó. No se cambia la política de migración de experimentos entre versiones del código.", "author": "fm/pred-m3-build"},
+        {"newRange": [109, 148], "summary": "enqueue_run exige un origen conocido o declarado y rechaza cambios de procedencia.", "rationale": "Una marca ausente no prueba datos reales, por lo que la cola consulta M1 y conserva la comprobación de consistencia. La primera ejecución y la reanudación del trabajador real publicaron seis SKU sintéticos. No se afirma aceptación con la semilla clínica de tesis.", "author": "fm/pred-m3-build"}
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/engine.py",
+      "summary": "El proceso hijo recibe la procedencia y la ruta efectiva de la base central.",
+      "annotations": [
+        {"newRange": [69, 72], "summary": "build_command transmite --datos-sinteticos o --datos-reales según la procedencia validada.", "rationale": "El proceso Parquet no puede deducir su origen del nombre del archivo, por lo que recibe una declaración explícita. Las pruebas de comandos y la corrida del trabajador real aprobaron sin debilitar la comprobación del motor. No se ejecutó inferencia clínica.", "author": "fm/pred-m3-build"},
+        {"newRange": [85, 89], "summary": "launch sustituye un PRED_DB_PATH heredado por Settings.db_path antes de iniciar el motor.", "rationale": "Motor y DAL deben usar el mismo archivo, por lo que la configuración efectiva prevalece sobre el entorno heredado. Las pruebas del proceso hijo y la lectura conjunta aprobaron. No se modificó una configuración de despliegue de producción.", "author": "fm/pred-m3-build"}
+      ]
+    }
+  ]
+}
