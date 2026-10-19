@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "summary": "La plataforma comparte el esquema y lee evidencia M3 sin evaluar modelos.",
+  "files": [
+    {
+      "path": "src/pred_platform/dal/evidencia.py",
+      "summary": "Lee resultados publicados y progreso durable de la base central.",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            84
+          ],
+          "summary": "El DAL solo expone evidencia PUBLICADA y separa unidades resueltas, exitosas y fallidas.",
+          "rationale": "Porque M4 consume resultados precalculados, las lecturas no ejecutan modelos ni muestran métricas parciales. La suite comprobó ausencia de escrituras y filtrado por SKU. La prueba conjunta leyó 1848 pronósticos y los diez conjuntos CSV/Parquet. La interfaz visual M4 no cambia.",
+          "author": "fm/pred-m3-build"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/engine.py",
+      "summary": "Transmite al motor la ruta efectiva de la base central.",
+      "annotations": [
+        {
+          "newRange": [
+            81,
+            85
+          ],
+          "summary": "El proceso hijo recibe Settings.db_path mediante PRED_DB_PATH.",
+          "rationale": "Porque un valor heredado puede apuntar a otra base, la configuración de plataforma sustituye ese valor al lanzar el motor. La prueba del proceso hijo comprobó esa sustitución. La ejecución conjunta usó ambas instalaciones y una misma base; no se desplegó un servicio de producción.",
+          "author": "fm/pred-m3-build"
+        }
+      ]
+    }
+  ]
+}
