@@ -72,6 +72,12 @@ class Worker:
                 dal.requeue(conn, run.id)
                 _logger.info("Corrida %s retomada tras una caída", run.run_id)
 
+    def drain(self) -> None:
+        """Run the queued runs until none is left and no claim is left unsettled (``--once``)."""
+        while self.run_next() or self._unsettled is not None:
+            if self._unsettled is not None:
+                time.sleep(self.poll_interval)  # the database still fails: wait, then retry
+
     def run_next(self, stop: threading.Event | None = None) -> bool:
         """Claim and run one pending run to the end. Returns whether there was one.
 
@@ -104,7 +110,7 @@ class Worker:
             return True
         run, error = self._unsettled
         try:
-            dal.stop_claimed(conn, run.id, error=error)
+            dal.stop_claimed(conn, run.id, intento=run.intento, error=error)
         except sqlite3.Error:
             # Still failing: keep the claim and try again on the next pass of the loop.
             _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)

@@ -234,19 +234,22 @@ def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> None:
         )
 
 
-def stop_claimed(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str, Any]) -> None:
-    """Stop a run whose worker could not settle it, and close its open tasks, in one step.
+def stop_claimed(
+    conn: sqlite3.Connection, ejecucion_id: int, *, intento: int, error: dict[str, Any]
+) -> None:
+    """Stop the claim (``intento``) a worker could not settle and close its tasks, in one step.
 
-    A run still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
-    the meantime keeps its own error, which also closes its tasks. Any other state belongs to
-    someone else now and is left alone.
+    A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
+    the meantime keeps its own error and time; both release the recorded process, which the worker
+    has already reaped. A later attempt, or any other state, belongs to someone else and is left
+    alone.
     """
     with conn:
         _begin_immediate(conn)
         row = conn.execute(
-            "SELECT estado, error_json FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+            "SELECT estado, error_json, intento FROM ejecuciones WHERE id = ?", (ejecucion_id,)
         ).fetchone()
-        if row is None or row[0] not in ("ejecutando", "detenida"):
+        if row is None or row[2] != intento or row[0] not in ("ejecutando", "detenida"):
             return
         if row[0] == "ejecutando":
             conn.execute(
@@ -254,8 +257,10 @@ def stop_claimed(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str
                 "error_json = ? WHERE id = ?",
                 (now_iso(), json.dumps(error, ensure_ascii=False), ejecucion_id),
             )
-        elif row[1]:
-            error = json.loads(row[1])
+        else:
+            conn.execute("UPDATE ejecuciones SET pid = NULL WHERE id = ?", (ejecucion_id,))
+            if row[1]:
+                error = json.loads(row[1])
         _close_open_tasks(conn, ejecucion_id, interrupted=error, skipped=error)
 
 

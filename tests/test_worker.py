@@ -6,10 +6,13 @@ chosen with ``FAKE_ENGINE_SCENARIO``.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
+import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -34,12 +37,7 @@ from pred_platform.data.dal import DalRepository
 from pred_platform.worker import engine
 from pred_platform.worker.__main__ import main as worker_main
 from pred_platform.worker.bucle import Launcher, Worker
-from pred_platform.worker.errores import (
-    error_info,
-    exclusion_info,
-    platform_error,
-    run_stopped_error,
-)
+from pred_platform.worker.errores import error_info, exclusion_info, run_stopped_error
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.service import (
     LaunchSettings,
@@ -710,25 +708,150 @@ def test_a_lock_that_outlasts_a_pre_launch_diagnostic_stops_the_run_once_it_clea
     assert (error["code"], error["retryable"]) == ("platform.database_busy", True)
 
 
-def test_a_late_settlement_keeps_an_operator_stop_and_leaves_a_requeued_run_alone(
-    env: Env,
-) -> None:
-    busy = platform_error("platform.database_busy", "database is locked", retryable=True)
+def _strand_a_launched_run(
+    env: Env, lock: _LockUntilGivenUp, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Worker, list[Any]]:
+    """A worker launches the run, then the database fails past its diagnostic: the claim stays."""
+    _scenario(monkeypatch, "slow")
+    real_set_launch = dal.set_launch
+    children: list[Any] = []
+
+    def set_launch(*args: Any, **kwargs: Any) -> None:
+        real_set_launch(*args, **kwargs)
+        lock.take()  # the next write (a progress event) fails, and so does its diagnostic
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        process = engine.launch(command, **kwargs)
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(dal, "set_launch", set_launch)
     enqueue_run(env.db, env.ingest_id, SMALL)
+    worker = Worker(env.settings, launcher=launcher)
+    worker.run_next()
+    monkeypatch.setattr(dal, "set_launch", real_set_launch)
+    ((estado, intento, pid),) = env.rows("SELECT estado, intento, pid FROM ejecuciones")
+    assert (estado, intento) == ("ejecutando", 1) and pid is not None
+    return worker, children
+
+
+def test_a_late_settlement_after_an_operator_stop_keeps_its_error_and_clears_the_pid(
+    env: Env, lock: _LockUntilGivenUp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker, children = _strand_a_launched_run(env, lock, monkeypatch)
     with closing(dal.connect(env.db)) as conn:
-        run = dal.claim_pending(conn)
-        assert run is not None
-        dal.plan_tasks(conn, run.id, corte="2024-01-01", seed=17, units=[("FIL-0001", "ml:a")])
-        assert dal.request_stop(conn, run.id, error=run_stopped_error())
+        assert dal.request_stop(conn, 1, error=run_stopped_error())
+    stopped_at = env.rows("SELECT finalizada_en FROM ejecuciones")[0][0]
 
-        dal.stop_claimed(conn, run.id, error=busy)
+    worker.run_next()
 
-        assert dal.run_estado(conn, run.id) == ("detenida", run_stopped_error())
-        assert env.rows("SELECT estado, detalle_error FROM tareas") == [
-            ("no_ejecutable", json.dumps(run_stopped_error(), ensure_ascii=False))
-        ]
+    (child,) = children
+    assert child.poll() is not None  # reaped, so no process may stay recorded
+    stopped = json.dumps(run_stopped_error(), ensure_ascii=False)
+    assert env.rows("SELECT estado, pid, error_json, finalizada_en FROM ejecuciones") == [
+        ("detenida", None, stopped, stopped_at)
+    ]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente', 'ejecutando')") == [
+        (0,)
+    ]
 
-        assert dal.resume_run(conn, run.id)
-        dal.stop_claimed(conn, run.id, error=busy)
 
-        assert dal.run_estado(conn, run.id) == ("pendiente", None)
+def test_a_stale_settlement_leaves_the_claim_of_a_resumed_run_alone(
+    env: Env, lock: _LockUntilGivenUp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stale, _ = _strand_a_launched_run(env, lock, monkeypatch)
+    with closing(dal.connect(env.db)) as conn:  # the operator stops and resumes the run
+        assert dal.request_stop(conn, 1, error=run_stopped_error())
+        assert dal.resume_run(conn, 1)
+    stop = threading.Event()
+    replacement = threading.Thread(target=env.worker().run_next, args=(stop,))
+    replacement.start()
+    try:
+        _wait(
+            lambda: (
+                env.rows(
+                    "SELECT e.intento, e.pid IS NOT NULL, COUNT(t.id) FROM ejecuciones e "
+                    "LEFT JOIN tareas t ON t.ejecucion_id = e.id AND t.estado = 'ejecutando'"
+                )[0]
+                == (2, 1, 1)
+            ),
+            what="a second worker running attempt 2",
+        )
+        before = env.rows("SELECT estado, intento, pid, error_json FROM ejecuciones")
+        tasks = env.rows("SELECT id, estado, detalle_error FROM tareas ORDER BY id")
+
+        stale.run_next()  # the first worker settles its old attempt 1 late
+
+        assert env.rows("SELECT estado, intento, pid, error_json FROM ejecuciones") == before
+        assert env.rows("SELECT id, estado, detalle_error FROM tareas ORDER BY id") == tasks
+        assert before[0][0] == "ejecutando"
+    finally:
+        stop.set()
+        replacement.join(timeout=20)
+
+
+_ONCE_DURING_AN_OUTAGE = """
+import sys
+from pred_platform.dal import ejecuciones as dal
+from pred_platform.worker.__main__ import main
+
+real_connect, real_claim, claims = dal.connect, dal.claim_pending, []
+
+def connect(path):
+    conn = real_connect(path)
+    conn.execute("PRAGMA busy_timeout = 200")
+    return conn
+
+def claim_pending(conn):
+    run = real_claim(conn)
+    if run is not None and not claims:
+        claims.append(run)
+        print("claimed", flush=True)
+        sys.stdin.readline()  # another writer takes the lock now
+    return run
+
+dal.connect, dal.claim_pending = connect, claim_pending
+raise SystemExit(main(["--once"]))
+"""
+
+
+def test_worker_once_waits_for_a_late_settlement_and_drains_the_queue(env: Env) -> None:
+    first = enqueue_run(env.db, env.ingest_id, SMALL)
+    second = enqueue_run(env.db, env.ingest_id, dataclasses.replace(SMALL, seed=18))
+    environ = {
+        **os.environ,
+        "PRED_DATA_ROOT": str(env.settings.data_root),
+        "PRED_DB_PATH": str(env.db),
+        "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+        "FAKE_ENGINE_SCENARIO": "ok",
+    }
+    holder = sqlite3.connect(env.db, isolation_level=None)
+    process = subprocess.Popen(  # noqa: S603 - the test's own interpreter and script
+        [sys.executable, "-c", _ONCE_DURING_AN_OUTAGE],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environ,
+    )
+    assert process.stdin and process.stdout and process.stderr
+    assert process.stdout.readline().strip() == "claimed"
+    holder.execute("BEGIN IMMEDIATE")
+    process.stdin.write("\n")
+    process.stdin.flush()
+    failed_diagnostics = 0
+    for line in process.stderr:  # the lock clears after the second failed diagnostic
+        failed_diagnostics += "no se pudo registrar el diagnóstico" in line
+        if failed_diagnostics == 2:
+            break
+    holder.rollback()
+    holder.close()
+
+    process.communicate(timeout=60)
+
+    assert failed_diagnostics == 2
+    assert process.returncode == 0
+    assert env.rows("SELECT id, estado, pid FROM ejecuciones ORDER BY id") == [
+        (first.ejecucion_id, "detenida", None),
+        (second.ejecucion_id, "completada", None),
+    ]
