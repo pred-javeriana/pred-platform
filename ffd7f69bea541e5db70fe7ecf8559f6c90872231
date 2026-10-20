@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "summary": "The running worker loop stops a claimed run whose database failure it could not record, as soon as the database answers again, without a restart.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/bucle.py",
+      "summary": "Owns the single handler for database failures in a claimed run and the retry of its settlement.",
+      "annotations": [
+        {
+          "newRange": [87, 112],
+          "summary": "run_next catches any sqlite3.Error from _execute, keeps the claim in _unsettled and tries stop_claimed at once and before every later claim.",
+          "rationale": "Before this change a lock that outlasted both 30-second waits left the run ejecutando with no PID, and only recover() at startup fixed it. Because the worker runs one run at a time and claims nothing while a settlement is pending, one optional slot is enough. Verified with the two outlasts tests (fail on 0a6278b, pass here) and with a 70-second external lock: settled 0.2 s after release on the fix, still ejecutando 20 s after release on main.",
+          "author": "fm/pred-platform-lock-strand"
+        },
+        {
+          "newRange": [197, 200],
+          "summary": "The follow loop now only terminates and reaps the engine on a database failure, then re-raises to run_next.",
+          "rationale": "The diagnostic write moved to run_next so that the post-launch, pre-launch, finalize and stop paths share one owner. The child is still reaped before any database write, which the existing locked-database test and the new test check.",
+          "author": "fm/pred-platform-lock-strand"
+        },
+        {
+          "oldRange": [190, 215],
+          "summary": "_abort_after_database_error is removed because run_next now records the platform.database_busy diagnostic.",
+          "rationale": "Open PR 17 edits this function, so its rebase conflicts here. The resolution is to drop the pre-launch except sqlite3.Error branch from PR 17, because run_next now covers that case.",
+          "author": "fm/pred-platform-lock-strand"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/dal/ejecuciones.py",
+      "summary": "Adds stop_claimed, which stops a run and closes its tasks in one transaction.",
+      "annotations": [
+        {
+          "newRange": [237, 261],
+          "summary": "stop_claimed changes only a run still ejecutando, keeps an operator stop's own error, and leaves any other state alone.",
+          "rationale": "The settlement can run long after the claim, so the operator or a restarted worker may have changed the run. One BEGIN IMMEDIATE transaction makes the check and both writes atomic. Covered by test_a_late_settlement_keeps_an_operator_stop_and_leaves_a_requeued_run_alone.",
+          "author": "fm/pred-platform-lock-strand"
+        }
+      ]
+    },
+    {
+      "path": "tests/test_worker.py",
+      "summary": "Regression tests that hold a real SQLite lock until the worker gives up on the diagnostic.",
+      "annotations": [
+        {
+          "newRange": [636, 734],
+          "summary": "_LockUntilGivenUp releases the lock when the worker logs an error with a traceback, which marks the failed diagnostic write.",
+          "rationale": "Releasing on the log record instead of a patched DAL function keeps the tests independent of which DAL call records the diagnostic, so the same tests fail on main and pass here. The tests drive run_forever, the loop the platform runs.",
+          "author": "fm/pred-platform-lock-strand"
+        }
+      ]
+    }
+  ]
+}
