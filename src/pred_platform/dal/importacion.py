@@ -275,27 +275,17 @@ def _upsert(conn: sqlite3.Connection, report: EngineIngestFile) -> None:
         "SELECT id FROM ingestas WHERE sha256 = ?", (report.ingest_id,)
     ).fetchone()[0]
 
-    origen = report.source_file.datos_sinteticos
-    if (
-        published is not None
-        and published.sha256 is not None
-        and origen is not None
-        and conn.execute("SELECT 1 FROM sqlite_master WHERE name='m3_ingestas'").fetchone()
-    ):
-        anteriores = conn.execute(
-            "SELECT datos_sinteticos FROM m3_ingestas WHERE ingesta_sha256 = ?1 "
-            "UNION SELECT datos_sinteticos FROM m3_corridas WHERE ingesta_sha256 = ?1",
-            (report.ingest_id,),
-        ).fetchall()
-        if any(bool(row[0]) != origen for row in anteriores):
-            raise ReportImportError(
-                None, "el origen real o sintetico de una ingesta no puede cambiar"
-            )
-        conn.execute(
-            "INSERT INTO m3_ingestas (ingesta_sha256, ingesta_ref_m1, datos_sinteticos) "
-            "VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-            (report.ingest_id, published.sha256, origen),
+    from pred_platform.dal.procedencia import resolver_procedencia
+
+    try:
+        resolver_procedencia(
+            conn,
+            report.ingest_id,
+            report.source_file.datos_sinteticos,
+            ingesta_ref_m1=published.sha256 if published is not None else None,
         )
+    except ValueError as exc:
+        raise ReportImportError(None, str(exc)) from exc
 
     # Everything below belongs to this ingestion alone: replace it as a unit.
     conn.execute("DELETE FROM bitacora_calidad WHERE ingesta_id = ?", (ingesta_id,))
@@ -356,6 +346,8 @@ def import_reports(db_path: Path, data_root: Path) -> ImportResult:
                 with conn:  # one transaction per report
                     _upsert(conn, report)
             except ReportImportError as exc:
+                if exc.path is None:
+                    exc = ReportImportError(path, str(exc))
                 failed.append(exc)
                 continue
             except sqlite3.Error as exc:

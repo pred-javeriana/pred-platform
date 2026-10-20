@@ -319,8 +319,16 @@ def main() -> int:
     parser.add_argument("--confirm-overwrite", action="store_true")
     parser.add_argument("--parquet")
     provenance = parser.add_mutually_exclusive_group()
-    provenance.add_argument("--datos-sinteticos", action="store_true")
-    provenance.add_argument("--datos-reales", action="store_true")
+    provenance.add_argument(
+        "--datos-sinteticos",
+        dest="datos_sinteticos",
+        action="store_const",
+        const=True,
+        default=None,
+    )
+    provenance.add_argument(
+        "--datos-reales", dest="datos_sinteticos", action="store_const", const=False
+    )
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--run-id")
     parser.add_argument("--families", nargs="+", default=["classical", "ml", "dl"])

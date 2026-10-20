@@ -154,9 +154,16 @@ def test_procedencia_ausente_no_se_infiere_real(env):
     with closing(dal.connect(env.db)) as conn:
         conn.execute("DELETE FROM m3_ingestas")
         conn.commit()
-    with pytest.raises(RunRequestError, match="procedencia"):
-        enqueue_run(env.db, env.ingest_id)
+    unknown = enqueue_run(env.db, env.ingest_id)
+    with closing(dal.connect(env.db)) as conn:
+        pending = dal.get_run(conn, unknown.ejecucion_id)
+    assert pending is not None and pending.parametros["datos_sinteticos"] is None
+    command = engine.build_command(
+        env.settings, pending, env.settings.data_root / "processed/demo_canonico.parquet"
+    )
+    assert "--datos-reales" not in command and "--datos-sinteticos" not in command
     queued = enqueue_run(env.db, env.ingest_id, LaunchSettings(datos_sinteticos=False))
+    assert queued.run_id == unknown.run_id
     with closing(dal.connect(env.db)) as conn:
         run = dal.get_run(conn, queued.ejecucion_id)
     assert run is not None
@@ -166,6 +173,66 @@ def test_procedencia_ausente_no_se_infiere_real(env):
     assert "--datos-reales" in engine.build_command(
         env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
     )
+
+
+def test_declaraciones_de_todas_las_configuraciones_tienen_un_solo_origen(env):
+    first = enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    with pytest.raises(RunRequestError, match="no puede cambiar"):
+        enqueue_run(env.db, env.ingest_id, LaunchSettings(seed=99, datos_sinteticos=True))
+    assert env.rows("SELECT run_id FROM ejecuciones") == [(first.run_id,)]
+    path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    report = json.loads(path.read_text())
+    report["source_file"]["datos_sinteticos"] = True
+    report["source_file"]["row_count"] = 999
+    path.write_text(json.dumps(report))
+    ingesta_id = env.rows("SELECT id FROM ingestas WHERE sha256=?", env.ingest_id)[0][0]
+    queries = {
+        "ingestas": ("SELECT * FROM ingestas WHERE sha256=?", env.ingest_id),
+        "series": ("SELECT * FROM series WHERE ingesta_id=?", ingesta_id),
+        "bitacora_calidad": ("SELECT * FROM bitacora_calidad WHERE ingesta_id=?", ingesta_id),
+        "m3_ingestas": ("SELECT * FROM m3_ingestas WHERE ingesta_sha256=?", env.ingest_id),
+    }
+    before = {t: env.rows(q, arg) for t, (q, arg) in queries.items()}
+    result = import_reports(env.db, env.settings.data_root)
+    assert result.ok is False
+    assert any(error.path == path and path.name in str(error) for error in result.failed)
+    assert {t: env.rows(q, arg) for t, (q, arg) in queries.items()} == before
+
+
+@pytest.mark.parametrize("known", [True, False])
+def test_trabajador_resuelve_configuracion_antigua_antes_de_lanzar(env, known):
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        cfg, raw = conn.execute(
+            "SELECT c.id,c.parametros FROM configuraciones c "
+            "JOIN ejecuciones e ON e.configuracion_id=c.id WHERE e.id=?",
+            (queued.ejecucion_id,),
+        ).fetchone()
+        params = json.loads(raw)
+        params.pop("datos_sinteticos")
+        conn.execute(
+            "UPDATE configuraciones SET parametros=? WHERE id=?", (json.dumps(params), cfg)
+        )
+        if not known:
+            conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    assert env.worker().run_next() is True
+    state, error, pid = env.rows("SELECT estado,error_json,pid FROM ejecuciones")[0]
+    if known:
+        assert state == "completada" and error is None
+        assert (
+            json.loads(env.rows("SELECT parametros FROM configuraciones WHERE id=?", cfg)[0][0])[
+                "datos_sinteticos"
+            ]
+            is False
+        )
+    else:
+        assert state == "detenida" and pid is None
+        assert "encolar" in json.loads(error)["detail"]
+        assert not (env.settings.data_root / "runs" / queued.run_id / "motor.log").exists()
 
 
 def _scenario(monkeypatch: pytest.MonkeyPatch, name: str) -> None:

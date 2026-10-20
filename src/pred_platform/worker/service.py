@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
+from pred_platform.dal.procedencia import resolver_procedencia
 
 PARAMETERS_SCHEMA_VERSION = 1
 _FAMILIES = ("classical", "ml", "dl", "foundation")
@@ -109,23 +110,11 @@ def enqueue_run(
     with closing(dal.connect(db_path)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
         dal.accepted_ingestion_id(conn, ingest_id)
-        origenes = {
-            row[0]
-            for row in conn.execute(
-                "SELECT datos_sinteticos FROM m3_ingestas WHERE ingesta_sha256 = ?1 "
-                "UNION SELECT datos_sinteticos FROM m3_corridas WHERE ingesta_sha256 = ?1",
-                (ingest_id,),
-            )
-        }
-        if len(origenes) > 1:
-            raise RunRequestError("la ingesta tiene origenes incompatibles")
-        if origenes:
-            origen = bool(origenes.pop())
-            if chosen.datos_sinteticos is not None and chosen.datos_sinteticos != origen:
-                raise RunRequestError("el origen real o sintetico de una ingesta no puede cambiar")
-            chosen = replace(chosen, datos_sinteticos=origen)
-        if chosen.datos_sinteticos is None:
-            raise RunRequestError("la ingesta necesita procedencia real o sintetica declarada")
+        try:
+            origen = resolver_procedencia(conn, ingest_id, chosen.datos_sinteticos)
+        except ValueError as exc:
+            raise RunRequestError(str(exc)) from exc
+        chosen = replace(chosen, datos_sinteticos=origen)
         run_id = run_id_for(ingest_id, chosen)
         previa = conn.execute(
             "SELECT c.id, c.parametros, i.sha256 FROM ejecuciones e "

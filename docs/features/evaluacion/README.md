@@ -6,9 +6,10 @@ campeones ni calcular métricas evaluativas.
 
 ## Migraciones
 
-Las migraciones 0005, 0006 y 0007 incorporan el esquema M3. Sus textos canónicos
+Las migraciones 0005 a 0008 incorporan el esquema M3. Sus textos canónicos
 pertenecen a `pred-engine`, en `forecasting/persistencia_evidencia/`:
-`esquema_m3.sql`, `esquema_m3_0002.sql` y `esquema_m3_0003.sql`. La plataforma conserva copias exactas
+`esquema_m3.sql`, `esquema_m3_0002.sql`, `esquema_m3_0003.sql` y
+`esquema_m3_0004.sql`. La plataforma conserva copias exactas
 con sus hashes de publicación. Las migraciones 0001 a 0004 no cambian.
 
 ```bash
@@ -16,7 +17,7 @@ python -m pred_platform.dal.migrate --db data/pred.db
 pred-engine run --csv ventas.csv --data-root data --db-path data/pred.db
 ```
 
-Ambos procesos usan `PRAGMA user_version`, actualmente 7. El motor aplica las
+Ambos procesos usan `PRAGMA user_version`, actualmente 8. El motor aplica las
 migraciones M3 pendientes sobre una base de plataforma existente. No crea una
 base independiente ni modifica una versión desconocida. Si el archivo falta,
 la ejecución se detiene con un mensaje claro antes de M0/M2.
@@ -26,8 +27,18 @@ El proceso del motor recibe la ruta efectiva de `Settings.db_path` mediante
 a otra base. `--db-path` tiene prioridad si se usa explícitamente en el CLI.
 M1 declara `source_file.datos_sinteticos` y `published.sha256`; el importador
 los conserva en `m3_ingestas`. La cola congela ese origen en `LaunchSettings`
-y transmite `--datos-sinteticos` o `--datos-reales`. La ausencia de procedencia
-exige una declaración explícita; no equivale a datos reales.
+y transmite `--datos-sinteticos` o `--datos-reales` solo si hay declaración.
+La ausencia es origen desconocido y no equivale a datos reales. La carga web
+sigue recibiendo solo el archivo y conserva ese origen desconocido: sus
+resultados son exploratorios, sin valores p. En SQLite, `origen_declarado=0`
+señala que el bit `datos_sinteticos` no contiene una declaración.
+
+La cola, el importador y el trabajador comparten un único resolvedor de
+procedencia. Este contrasta todas las configuraciones de una ingesta dentro
+de la transacción de escritura. Al volver a encolar una configuración antigua,
+se puede añadir su campo de procedencia sin crear una nueva versión de
+configuración. Una tarea antigua sin ese campo ni origen conocido se detiene
+con un error que indica volver a encolarla, no queda ejecutándose sin proceso.
 
 ## Lectura pública del DAL
 
