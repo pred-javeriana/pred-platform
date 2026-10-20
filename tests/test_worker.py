@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -200,6 +200,25 @@ def test_declaraciones_de_todas_las_configuraciones_tienen_un_solo_origen(env):
     assert result.ok is False
     assert any(error.path == path and path.name in str(error) for error in result.failed)
     assert {t: env.rows(q, arg) for t, (q, arg) in queries.items()} == before
+
+
+def test_ejecucion_completada_de_origen_desconocido_conserva_su_configuracion(env, monkeypatch):
+    _scenario(monkeypatch, "ok")
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("UPDATE m3_ingestas SET datos_sinteticos=0, origen_declarado=0")
+        conn.commit()
+    unknown = replace(SMALL, datos_sinteticos=None)
+    queued = enqueue_run(env.db, env.ingest_id, unknown)
+    assert env.worker().run_next() is True
+    assert _run_state(env) == ("completada", None)
+    before = env.rows("SELECT parametros FROM configuraciones")
+    with pytest.raises(RunRequestError, match="no puede cambiar"):
+        enqueue_run(env.db, env.ingest_id, SMALL)
+    assert env.rows("SELECT parametros FROM configuraciones") == before
+    assert json.loads(before[0][0])["datos_sinteticos"] is None
+    assert env.rows("SELECT datos_sinteticos, origen_declarado FROM m3_ingestas") == [(0, 0)]
+    again = enqueue_run(env.db, env.ingest_id, unknown)
+    assert (again.ejecucion_id, again.queued) == (queued.ejecucion_id, False)
 
 
 @pytest.mark.parametrize("known", [True, False])

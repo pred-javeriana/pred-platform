@@ -129,7 +129,7 @@ The engine writes M3 results into this same SQLite database through an injected 
 Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
 standalone result database. It applies pending M3 migrations itself on an existing platform
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
-5 through 8, so both processes agree on `user_version`.
+5 through 9, so both processes agree on `user_version`.
 
 `pred_platform.dal.evidencia.read_m3_evidence` reads only PUBLICADA runs by M2/M3 run id, optionally filtered by SKU.
 One call materializes all matching rows within one read snapshot. An M2 alias can match several

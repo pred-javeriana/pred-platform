@@ -117,19 +117,24 @@ def enqueue_run(
         chosen = replace(chosen, datos_sinteticos=origen)
         run_id = run_id_for(ingest_id, chosen)
         previa = conn.execute(
-            "SELECT c.id, c.parametros, i.sha256 FROM ejecuciones e "
+            "SELECT c.id, c.parametros, i.sha256, e.estado FROM ejecuciones e "
             "JOIN configuraciones c ON c.id=e.configuracion_id "
             "JOIN ingestas i ON i.id=e.ingesta_id WHERE e.run_id=?",
             (run_id,),
         ).fetchone()
         if previa is not None:
             parametros = json.loads(previa[1])
+            # A missing key is a legacy queue entry; an explicit null is a declared unknown
+            # origin, which only a run that has not started yet may still resolve.
+            antigua = "datos_sinteticos" not in parametros
             origen_previo = parametros.get("datos_sinteticos")
+            cambia = not antigua and origen_previo != chosen.datos_sinteticos
             if previa[2] != ingest_id or (
-                origen_previo is not None and origen_previo != chosen.datos_sinteticos
+                cambia and (origen_previo is not None or previa[3] != "pendiente")
             ):
+                # Raising rolls back the whole transaction, including the provenance resolved above.
                 raise RunRequestError("la identidad o procedencia de la ejecucion no puede cambiar")
-            if origen_previo is None:
+            if antigua or cambia:
                 parametros["datos_sinteticos"] = chosen.datos_sinteticos
                 conn.execute(
                     "UPDATE configuraciones SET parametros=? WHERE id=?",

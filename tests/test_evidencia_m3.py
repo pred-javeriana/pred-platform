@@ -110,6 +110,7 @@ def test_progress_separates_successes_from_failed_durable_units(tmp_path: Path) 
         "estado": "EN_CURSO",
         "causa_rechazo": None,
         "datos_sinteticos": 1,
+        "origen_declarado": 1,
         "n_unidades_previstas": 12,
         "n_resueltas": 2,
         "n_confirmadas": 1,
@@ -258,3 +259,20 @@ def test_missing_and_old_databases_return_no_evidence(tmp_path: Path) -> None:
     present = tmp_path / "current.db"
     _database(present)
     assert m3_run_status(present, "m2-test")[0]["estado"] == "EN_CURSO"
+
+
+def test_unknown_origin_is_not_read_as_declared_real_data(tmp_path: Path) -> None:
+    db = tmp_path / "platform.db"
+    _database(db)
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "UPDATE m3_corridas SET datos_sinteticos = 0, origen_declarado = 0, "
+            "estado = 'PUBLICADA' WHERE run_id = 'm3-test'"
+        )
+        conn.commit()
+        published = conn.execute(
+            "SELECT sku, datos_sinteticos, origen_declarado FROM evidencia_publicada"
+        ).fetchall()
+    assert published == [("A", 0, 0), ("B", 0, 0)]
+    status = m3_run_status(db, "m2-test")[0]
+    assert (status["datos_sinteticos"], status["origen_declarado"]) == (0, 0)

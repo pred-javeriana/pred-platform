@@ -69,11 +69,21 @@ def m3_run_status(db_path: Path, run_id: str) -> list[dict[str, Any]]:
             ).fetchone()
         ):
             return []
+        # Before migration 0008 every stored origin was declared, the column's default.
+        declarado = (
+            "c.origen_declarado"
+            if any(
+                row[1] == "origen_declarado"
+                for row in conn.execute("PRAGMA table_info(m3_corridas)")
+            )
+            else "1 AS origen_declarado"
+        )
         conn.row_factory = sqlite3.Row
         return [
             dict(row)
             for row in conn.execute(
                 "SELECT c.run_id, c.run_id_m2, c.estado, c.causa_rechazo, c.datos_sinteticos, "
+                f"{declarado}, "
                 "p.n_unidades_previstas, "
                 "(SELECT COUNT(*) FROM m3_unidades u WHERE u.run_id = c.run_id) AS n_resueltas, "
                 "(SELECT COUNT(*) FROM m3_unidades u WHERE u.run_id = c.run_id "
