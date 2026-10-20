@@ -7,12 +7,13 @@ chosen with ``FAKE_ENGINE_SCENARIO``.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,8 +33,13 @@ from pred_platform.dal.schema import create_db
 from pred_platform.data.dal import DalRepository
 from pred_platform.worker import engine
 from pred_platform.worker.__main__ import main as worker_main
-from pred_platform.worker.bucle import Worker
-from pred_platform.worker.errores import error_info, exclusion_info
+from pred_platform.worker.bucle import Launcher, Worker
+from pred_platform.worker.errores import (
+    error_info,
+    exclusion_info,
+    platform_error,
+    run_stopped_error,
+)
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.service import (
     LaunchSettings,
@@ -627,3 +633,102 @@ def test_a_busy_database_error_has_its_own_operator_guidance() -> None:
 
     assert error_action("platform.database_busy")
     assert error_title("platform.database_busy") != "platform.database_busy"
+
+
+class _LockUntilGivenUp(logging.Handler):
+    """Another writer holds the lock until the worker logs a database failure it gave up on."""
+
+    def __init__(self, db: Path) -> None:
+        super().__init__(logging.ERROR)
+        self.holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+
+    def take(self) -> None:
+        self.holder.execute("BEGIN IMMEDIATE")
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.exc_info and self.holder.in_transaction:
+            self.holder.rollback()
+
+
+@pytest.fixture
+def lock(env: Env, monkeypatch: pytest.MonkeyPatch) -> Iterator[_LockUntilGivenUp]:
+    real_connect = dal.connect
+    monkeypatch.setattr(dal, "connect", lambda path: _short_timeout(real_connect, path))
+    handler = _LockUntilGivenUp(env.db)
+    logger = logging.getLogger("pred_platform.worker")
+    logger.addHandler(handler)
+    yield handler
+    logger.removeHandler(handler)
+    handler.holder.close()
+
+
+def _settled_by_the_running_loop(env: Env, launcher: Launcher) -> dict[str, Any]:
+    """Run the worker loop, as the platform does, until the run is stopped; return its error."""
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    stop = threading.Event()
+    worker = Worker(env.settings, poll_interval=0.05, launcher=launcher)
+    thread = threading.Thread(target=worker.run_forever, args=(stop,))
+    thread.start()
+    try:
+        _wait(lambda: _run_state(env)[0] == "detenida", timeout=10, what="the run to settle")
+    finally:
+        stop.set()
+        thread.join(timeout=30)
+    assert env.rows("SELECT pid FROM ejecuciones")[0][0] is None
+    return json.loads(_run_state(env)[1] or "{}")
+
+
+def test_a_lock_that_outlasts_the_diagnostic_stops_the_run_once_it_clears(
+    env: Env, lock: _LockUntilGivenUp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    children: list[Any] = []
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        process = engine.launch(command, **kwargs)
+        children.append(process)
+        lock.take()  # held through the launch record and the diagnostic after it
+        return process
+
+    error = _settled_by_the_running_loop(env, launcher)
+
+    assert (error["code"], error["retryable"]) == ("platform.database_busy", True)
+    assert "database is locked" in error["detail"]
+    (child,) = children
+    assert child.poll() is not None  # terminated and reaped, not left running
+
+
+def test_a_lock_that_outlasts_a_pre_launch_diagnostic_stops_the_run_once_it_clears(
+    env: Env, lock: _LockUntilGivenUp
+) -> None:
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        lock.take()  # held through the diagnostic of the failed launch
+        raise OSError("no such engine")
+
+    error = _settled_by_the_running_loop(env, launcher)
+
+    assert (error["code"], error["retryable"]) == ("platform.database_busy", True)
+
+
+def test_a_late_settlement_keeps_an_operator_stop_and_leaves_a_requeued_run_alone(
+    env: Env,
+) -> None:
+    busy = platform_error("platform.database_busy", "database is locked", retryable=True)
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.plan_tasks(conn, run.id, corte="2024-01-01", seed=17, units=[("FIL-0001", "ml:a")])
+        assert dal.request_stop(conn, run.id, error=run_stopped_error())
+
+        dal.stop_claimed(conn, run.id, error=busy)
+
+        assert dal.run_estado(conn, run.id) == ("detenida", run_stopped_error())
+        assert env.rows("SELECT estado, detalle_error FROM tareas") == [
+            ("no_ejecutable", json.dumps(run_stopped_error(), ensure_ascii=False))
+        ]
+
+        assert dal.resume_run(conn, run.id)
+        dal.stop_claimed(conn, run.id, error=busy)
+
+        assert dal.run_estado(conn, run.id) == ("pendiente", None)

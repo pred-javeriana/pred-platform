@@ -234,6 +234,31 @@ def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> None:
         )
 
 
+def stop_claimed(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str, Any]) -> None:
+    """Stop a run whose worker could not settle it, and close its open tasks, in one step.
+
+    A run still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
+    the meantime keeps its own error, which also closes its tasks. Any other state belongs to
+    someone else now and is left alone.
+    """
+    with conn:
+        _begin_immediate(conn)
+        row = conn.execute(
+            "SELECT estado, error_json FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+        ).fetchone()
+        if row is None or row[0] not in ("ejecutando", "detenida"):
+            return
+        if row[0] == "ejecutando":
+            conn.execute(
+                "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, pid = NULL, "
+                "error_json = ? WHERE id = ?",
+                (now_iso(), json.dumps(error, ensure_ascii=False), ejecucion_id),
+            )
+        elif row[1]:
+            error = json.loads(row[1])
+        _close_open_tasks(conn, ejecucion_id, interrupted=error, skipped=error)
+
+
 def set_launch(conn: sqlite3.Connection, ejecucion_id: int, *, pid: int, ruta_corrida: str) -> None:
     with conn:
         conn.execute(
@@ -390,16 +415,26 @@ def close_open_tasks(
     ``no_ejecutable`` (it never started). Returns how many rows changed.
     """
     with conn:
-        a = conn.execute(
-            "UPDATE tareas SET estado = 'fallida', detalle_error = ?, finalizada_en = ? "
-            "WHERE ejecucion_id = ? AND estado = 'ejecutando'",
-            (json.dumps(interrupted, ensure_ascii=False), now_iso(), ejecucion_id),
-        ).rowcount
-        b = conn.execute(
-            "UPDATE tareas SET estado = 'no_ejecutable', detalle_error = ? "
-            "WHERE ejecucion_id = ? AND estado = 'pendiente'",
-            (json.dumps(skipped, ensure_ascii=False), ejecucion_id),
-        ).rowcount
+        return _close_open_tasks(conn, ejecucion_id, interrupted=interrupted, skipped=skipped)
+
+
+def _close_open_tasks(
+    conn: sqlite3.Connection,
+    ejecucion_id: int,
+    *,
+    interrupted: dict[str, Any],
+    skipped: dict[str, Any],
+) -> int:
+    a = conn.execute(
+        "UPDATE tareas SET estado = 'fallida', detalle_error = ?, finalizada_en = ? "
+        "WHERE ejecucion_id = ? AND estado = 'ejecutando'",
+        (json.dumps(interrupted, ensure_ascii=False), now_iso(), ejecucion_id),
+    ).rowcount
+    b = conn.execute(
+        "UPDATE tareas SET estado = 'no_ejecutable', detalle_error = ? "
+        "WHERE ejecucion_id = ? AND estado = 'pendiente'",
+        (json.dumps(skipped, ensure_ascii=False), ejecucion_id),
+    ).rowcount
     return int(a) + int(b)
 
 
