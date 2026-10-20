@@ -737,3 +737,92 @@ def test_the_app_runs_the_worker_as_a_thread_and_stops_it(
 def test_a_worker_thread_is_not_started_with_the_worker_off(env: Env) -> None:
     with TestClient(create_app(env.settings)):
         assert not [t for t in threading.enumerate() if t.name == "pred-worker"]
+
+
+def test_a_locked_database_after_launch_stops_the_run_and_reaps_the_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    real_connect, real_set_launch = dal.connect, dal.set_launch
+    monkeypatch.setattr(dal, "connect", lambda path: _short_timeout(real_connect, path))
+    holder = sqlite3.connect(env.db, isolation_level=None)
+    children: list[Any] = []
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        process = engine.launch(command, **kwargs)
+        children.append(process)
+        holder.execute("BEGIN IMMEDIATE")  # another writer holds the lock past the timeout
+        return process
+
+    def set_launch(*args: Any, **kwargs: Any) -> None:
+        try:
+            real_set_launch(*args, **kwargs)
+        finally:
+            holder.rollback()
+
+    monkeypatch.setattr(dal, "set_launch", set_launch)
+    enqueue_run(env.db, env.ingest_id, SMALL)
+
+    Worker(env.settings, launcher=launcher).run_next()
+
+    estado, error_json = _run_state(env)
+    error = json.loads(error_json or "{}")
+    assert estado == "detenida"
+    assert (error["code"], error["retryable"]) == ("platform.database_busy", True)
+    assert "database is locked" in error["detail"]
+    assert env.rows("SELECT pid FROM ejecuciones")[0][0] is None
+    (child,) = children
+    assert child.poll() is not None  # terminated and reaped, not left running
+    holder.close()
+
+
+def test_a_locked_database_before_launch_stops_the_claimed_run_without_an_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_connect, real_claim, real_close = dal.connect, dal.claim_pending, dal.close_open_tasks
+    monkeypatch.setattr(dal, "connect", lambda path: _short_timeout(real_connect, path))
+    holder = sqlite3.connect(env.db, isolation_level=None)
+    launched: list[list[str]] = []
+
+    def claim(conn: sqlite3.Connection) -> Any:
+        run = real_claim(conn)
+        holder.execute("BEGIN IMMEDIATE")  # another writer holds the lock past the timeout
+        return run
+
+    def close(*args: Any, **kwargs: Any) -> None:
+        holder.rollback()  # the lock is released only once the worker records its diagnostic
+        real_close(*args, **kwargs)
+
+    monkeypatch.setattr(dal, "claim_pending", claim)
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        launched.append(command)
+        return engine.launch(command, **kwargs)
+
+    monkeypatch.setattr(dal, "close_open_tasks", close)
+    enqueue_run(env.db, env.ingest_id, SMALL)
+
+    Worker(env.settings, launcher=launcher).run_next()
+
+    estado, error_json = _run_state(env)
+    error = json.loads(error_json or "{}")
+    assert estado == "detenida"
+    assert (error["code"], error["retryable"]) == ("platform.database_busy", True)
+    assert "database is locked" in error["detail"]
+    assert env.rows("SELECT pid FROM ejecuciones")[0][0] is None
+    assert launched == []
+    holder.close()
+
+
+def _short_timeout(real_connect: Callable[[Path], sqlite3.Connection], path: Path) -> Any:
+    conn = real_connect(path)
+    conn.execute("PRAGMA busy_timeout = 200")
+    return conn
+
+
+def test_a_busy_database_error_has_its_own_operator_guidance() -> None:
+    from pred_platform.app.ejecucion import error_action
+    from pred_platform.app.seleccion import error_title
+
+    assert error_action("platform.database_busy")
+    assert error_title("platform.database_busy") != "platform.database_busy"

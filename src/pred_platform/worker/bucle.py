@@ -135,6 +135,9 @@ class Worker:
                 error=platform_error("pipeline.stage_failed", str(exc)),
             )
             return
+        except sqlite3.Error as exc:  # the provenance write failed before any engine started
+            self._abort_after_database_error(conn, run, None, exc)
+            return
         except OSError as exc:
             dal.finish_run(
                 conn,
@@ -148,16 +151,16 @@ class Worker:
             )
             return
 
-        dal.set_launch(
-            conn,
-            run.id,
-            pid=process.pid,
-            ruta_corrida=folder.relative_to(self.settings.data_root.resolve()).as_posix(),
-        )
-        follower = ProgressFollower(conn, run, folder / "progreso.jsonl", corte=corte)
         stopped = False
         stopped_by_user: dict[str, Any] | None = None
         try:
+            dal.set_launch(
+                conn,
+                run.id,
+                pid=process.pid,
+                ruta_corrida=folder.relative_to(self.settings.data_root.resolve()).as_posix(),
+            )
+            follower = ProgressFollower(conn, run, folder / "progreso.jsonl", corte=corte)
             while process.poll() is None:
                 follower.poll()
                 if stop.is_set():
@@ -188,6 +191,9 @@ class Worker:
                 error=platform_error("platform.schema_version_unsupported", str(exc)),
             )
             return
+        except sqlite3.Error as exc:  # the database failed with the engine already running
+            self._abort_after_database_error(conn, run, process, exc)
+            return
 
         if stopped_by_user is not None:
             # `request_stop` already left the run `detenida` with its error; only the tasks the
@@ -213,3 +219,28 @@ class Worker:
             log_path=log_path,
         )
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)
+
+    def _abort_after_database_error(
+        self,
+        conn: sqlite3.Connection,
+        run: Ejecucion,
+        process: subprocess.Popen[bytes] | None,
+        exc: sqlite3.Error,
+    ) -> None:
+        """Stop the engine this worker started, if any, and leave the run queued-able."""
+        _logger.error("Corrida %s: falló la base de datos: %s", run.run_id, exc)
+        if process is not None:
+            engine.terminate(process.pid)
+            process.wait()
+        error = platform_error(
+            "platform.database_busy",
+            f"No se pudo registrar el estado de la corrida en la base de datos: {exc}",
+            retryable=True,
+        )
+        try:
+            conn.rollback()
+            dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
+            dal.finish_run(conn, run.id, estado="detenida", error=error)
+        except sqlite3.Error:
+            # Still failing: the run stays `ejecutando` and `recover` queues it on the next start.
+            _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)
