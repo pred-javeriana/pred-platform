@@ -6,6 +6,7 @@ import sqlite3
 import sys
 from contextlib import closing, contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -276,3 +277,44 @@ def test_unknown_origin_is_not_read_as_declared_real_data(tmp_path: Path) -> Non
     assert published == [("A", 0, 0), ("B", 0, 0)]
     status = m3_run_status(db, "m2-test")[0]
     assert (status["datos_sinteticos"], status["origen_declarado"]) == (0, 0)
+
+
+def test_status_reads_schema_and_rows_from_one_snapshot_during_an_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pred_platform.dal.migrate import apply_migrations, load_migrations
+
+    db = tmp_path / "platform.db"
+    migrate(db, load_migrations()[:7])  # version 7: no origin declaration marker yet
+
+    def upgrade_and_publish_unknown_origin() -> None:
+        with closing(sqlite3.connect(db)) as writer:
+            apply_migrations(writer, load_migrations())
+            writer.execute(
+                "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, "
+                "datos_sinteticos, origen_declarado, estado) "
+                "VALUES ('m3-race', 'source', 'm2-race', '{}', 0, 0, 'EN_CURSO')"
+            )
+            writer.commit()
+
+    real_open = evidencia._open_readonly
+
+    @contextmanager
+    def racing_open(path: Path) -> Any:
+        with real_open(path) as conn:
+            assert conn is not None
+
+            def trace(sql: str) -> None:
+                # The engine upgrades and writes between the schema probe and the row read.
+                if sql.startswith("SELECT c.run_id"):
+                    conn.set_trace_callback(None)
+                    upgrade_and_publish_unknown_origin()
+
+            conn.set_trace_callback(trace)
+            yield conn
+
+    monkeypatch.setattr(evidencia, "_open_readonly", racing_open)
+    assert m3_run_status(db, "m2-race") == []
+    monkeypatch.setattr(evidencia, "_open_readonly", real_open)
+    status = m3_run_status(db, "m2-race")
+    assert [(s["datos_sinteticos"], s["origen_declarado"]) for s in status] == [(0, 0)]

@@ -1,6 +1,7 @@
 """The packaged migrations: pinned hashes (immutability) and the schema version 1 produces."""
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -283,3 +284,8 @@ def test_version_4_keeps_one_row_per_run_sku_family_trial_and_window(
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
         conn.execute(again)
     conn.close()
+
+
+def test_readme_names_the_current_schema_version() -> None:
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    assert f"The current schema is version {len(load_migrations())}." in readme

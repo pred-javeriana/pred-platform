@@ -60,14 +60,16 @@ def read_m3_evidence(
 
 
 def m3_run_status(db_path: Path, run_id: str) -> list[dict[str, Any]]:
-    """Run state and durable progress, without exposing unfinished metrics."""
+    """Run state and durable progress, without exposing unfinished metrics.
+
+    The schema probe and the rows share one read snapshot, so an upgrade between them
+    cannot label a newer row with the older schema's declared-origin fallback.
+    """
     with _open_readonly(db_path) as conn:
-        if (
-            conn is None
-            or not conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE name = 'm3_protocolos'"
-            ).fetchone()
-        ):
+        if conn is None:
+            return []
+        conn.execute("BEGIN")
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'm3_protocolos'").fetchone():
             return []
         # Before migration 0008 every stored origin was declared, the column's default.
         declarado = (

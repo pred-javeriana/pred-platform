@@ -87,8 +87,9 @@ The DAL schema is versioned with SQLite's `PRAGMA user_version` and changed only
 SQL scripts in `src/pred_platform/dal/migrations/` (decision: `pred-docs/diseno/ADRs/ADR 05-002`).
 Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs and tasks and 4 the
 selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, frozen protocols and
-precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance.
-The current schema is version 8. An undeclared origin stays unknown and cannot
+precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
+8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
+The current schema is version 9. An undeclared origin stays unknown and cannot
 produce statistical inference. The file-only website upload does not declare real data.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
