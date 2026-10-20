@@ -148,11 +148,54 @@ def test_only_an_accepted_ingestion_can_be_run(env: Env, ingest_id: str) -> None
 
 @pytest.mark.parametrize(
     "kwargs",
-    [{"min_train": 0}, {"metric": "mape"}, {"families": ()}, {"trials": 0}, {"workers": 0}],
+    [
+        {"min_train": 0},
+        {"metric": "mape"},
+        {"families": ()},
+        {"trials": 0},
+        {"workers": 0},
+        {"aggregation": "media"},
+        {"trim": 0.2},
+    ],
 )
 def test_launch_settings_are_validated(kwargs: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         LaunchSettings(**kwargs)
+
+
+def test_a_queued_run_never_records_settings_the_engine_does_not_use(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    with pytest.raises(ValueError, match="media_recortada"):
+        enqueue_run(env.db, env.ingest_id, LaunchSettings(aggregation="media", trim=0.2))
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+    # A legacy row queued with those settings is stopped before the engine is launched.
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE configuraciones SET parametros = json_set(parametros, '$.aggregation', "
+            "'media', '$.trim', 0.2)"
+        )
+        conn.commit()
+    launched: list[list[str]] = []
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        launched.append(command)
+        return engine.launch(command, **kwargs)
+
+    Worker(env.settings, launcher=launcher).run_next()
+
+    estado, error_json = _run_state(env)
+    error = json.loads(error_json or "{}")
+    assert (estado, error["code"], error["retryable"]) == (
+        "detenida",
+        "platform.contract_invalid",
+        False,
+    )
+    assert "media_recortada" in error["detail"]
+    assert launched == []
 
 
 # ------------------------------------------------------------------------ a full run
