@@ -68,6 +68,7 @@ _ERROR_ACTIONS: dict[str, str] = {
     ),
     "platform.run_stopped": "Reanude la ejecución cuando quiera.",
     "platform.engine_unavailable": "Verifique que el motor esté instalado y reanude la ejecución.",
+    "platform.database_busy": "Espere un momento y reanude la ejecución.",
     "platform.artifact_missing": "Revise el registro del motor (motor.log) y lance de nuevo.",
     "pipeline.stage_failed": "Revise el registro del motor (motor.log) y lance de nuevo.",
 }

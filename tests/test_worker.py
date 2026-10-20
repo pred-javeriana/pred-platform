@@ -607,7 +607,7 @@ def test_a_locked_database_after_launch_stops_the_run_and_reaps_the_engine(
     estado, error_json = _run_state(env)
     error = json.loads(error_json or "{}")
     assert estado == "detenida"
-    assert (error["code"], error["retryable"]) == ("platform.engine_unavailable", True)
+    assert (error["code"], error["retryable"]) == ("platform.database_busy", True)
     assert "database is locked" in error["detail"]
     assert env.rows("SELECT pid FROM ejecuciones")[0][0] is None
     (child,) = children
@@ -619,3 +619,11 @@ def _short_timeout(real_connect: Callable[[Path], sqlite3.Connection], path: Pat
     conn = real_connect(path)
     conn.execute("PRAGMA busy_timeout = 200")
     return conn
+
+
+def test_a_busy_database_error_has_its_own_operator_guidance() -> None:
+    from pred_platform.app.ejecucion import error_action
+    from pred_platform.app.seleccion import error_title
+
+    assert error_action("platform.database_busy")
+    assert error_title("platform.database_busy") != "platform.database_busy"

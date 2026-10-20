@@ -65,6 +65,7 @@ _ERROR_TITLES: dict[str, str] = {
     "ingest.temporal_continuity": "Las fechas no forman una serie diaria válida.",
     "platform.run_stopped": "La ejecución se detuvo a petición del operador.",
     "platform.engine_unavailable": "El motor no está disponible.",
+    "platform.database_busy": "La base de datos estaba ocupada y no se pudo registrar la corrida.",
     "platform.artifact_missing": "No se encontró el resultado esperado del motor.",
     "platform.schema_version_unsupported": "La versión del archivo del motor no es compatible.",
 }

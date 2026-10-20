@@ -202,7 +202,7 @@ class Worker:
         engine.terminate(process.pid)
         process.wait()
         error = platform_error(
-            "platform.engine_unavailable",
+            "platform.database_busy",
             f"No se pudo registrar el estado de la corrida en la base de datos: {exc}",
             retryable=True,
         )
