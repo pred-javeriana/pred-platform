@@ -10,6 +10,7 @@ import dataclasses
 import json
 import logging
 import os
+import queue
 import shutil
 import sqlite3
 import subprocess
@@ -815,43 +816,104 @@ raise SystemExit(main(["--once"]))
 """
 
 
+class _OnceDuringAnOutage:
+    """``worker --once`` as a real subprocess whose first claim waits until another writer locks."""
+
+    def __init__(self, env: Env) -> None:
+        environ = {
+            **os.environ,
+            "PRED_DATA_ROOT": str(env.settings.data_root),
+            "PRED_DB_PATH": str(env.db),
+            "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+            "FAKE_ENGINE_SCENARIO": "ok",
+        }
+        self.holder = sqlite3.connect(env.db, isolation_level=None, check_same_thread=False)
+        self.process = subprocess.Popen(  # noqa: S603 - the test's own interpreter and script
+            [sys.executable, "-c", _ONCE_DURING_AN_OUTAGE],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environ,
+        )
+        self._lines: queue.Queue[tuple[str, str]] = queue.Queue()
+        self._pumps = [
+            threading.Thread(target=self._pump, args=(name, stream), daemon=True)
+            for name, stream in (("stdout", self.process.stdout), ("stderr", self.process.stderr))
+        ]
+        for pump in self._pumps:
+            pump.start()
+
+    def _pump(self, name: str, stream: Any) -> None:
+        for line in stream:
+            self._lines.put((name, line))
+
+    def run(self, *, diagnostic: str, count: int, timeout: float) -> int:
+        """Hold the lock from the first claim until ``count`` failed diagnostics; return the exit.
+
+        Reading, waiting and exiting share one deadline; the lock and the process are released
+        however this ends.
+        """
+        deadline = time.monotonic() + timeout
+        try:
+            self._expect("stdout", "claimed", 1, deadline)
+            self.holder.execute("BEGIN IMMEDIATE")
+            assert self.process.stdin is not None
+            self.process.stdin.write("\n")
+            self.process.stdin.flush()
+            self._expect("stderr", diagnostic, count, deadline)
+            self.holder.rollback()
+            return self.process.wait(timeout=max(deadline - time.monotonic(), 0))
+        finally:
+            if self.holder.in_transaction:
+                self.holder.rollback()
+            self.holder.close()
+            if self.process.poll() is None:
+                self.process.kill()
+            self.process.communicate(timeout=10)
+            for pump in self._pumps:
+                pump.join(timeout=10)
+
+    def _expect(self, stream: str, text: str, count: int, deadline: float) -> None:
+        seen = 0
+        while seen < count:
+            try:
+                name, line = self._lines.get(timeout=max(deadline - time.monotonic(), 0))
+            except queue.Empty:
+                raise AssertionError(
+                    f"timed out waiting for {count} {stream} lines with {text!r} (saw {seen})"
+                ) from None
+            seen += name == stream and text in line
+
+
 def test_worker_once_waits_for_a_late_settlement_and_drains_the_queue(env: Env) -> None:
     first = enqueue_run(env.db, env.ingest_id, SMALL)
     second = enqueue_run(env.db, env.ingest_id, dataclasses.replace(SMALL, seed=18))
-    environ = {
-        **os.environ,
-        "PRED_DATA_ROOT": str(env.settings.data_root),
-        "PRED_DB_PATH": str(env.db),
-        "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
-        "FAKE_ENGINE_SCENARIO": "ok",
-    }
-    holder = sqlite3.connect(env.db, isolation_level=None)
-    process = subprocess.Popen(  # noqa: S603 - the test's own interpreter and script
-        [sys.executable, "-c", _ONCE_DURING_AN_OUTAGE],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        env=environ,
+
+    # The lock clears after the second failed diagnostic, where the command used to give up.
+    code = _OnceDuringAnOutage(env).run(
+        diagnostic="no se pudo registrar el diagnóstico", count=2, timeout=60
     )
-    assert process.stdin and process.stdout and process.stderr
-    assert process.stdout.readline().strip() == "claimed"
-    holder.execute("BEGIN IMMEDIATE")
-    process.stdin.write("\n")
-    process.stdin.flush()
-    failed_diagnostics = 0
-    for line in process.stderr:  # the lock clears after the second failed diagnostic
-        failed_diagnostics += "no se pudo registrar el diagnóstico" in line
-        if failed_diagnostics == 2:
-            break
-    holder.rollback()
-    holder.close()
 
-    process.communicate(timeout=60)
-
-    assert failed_diagnostics == 2
-    assert process.returncode == 0
+    assert code == 0
     assert env.rows("SELECT id, estado, pid FROM ejecuciones ORDER BY id") == [
         (first.ejecucion_id, "detenida", None),
         (second.ejecucion_id, "completada", None),
     ]
+
+
+def test_a_diagnostic_that_never_arrives_fails_the_outage_drive_in_time_and_cleans_up(
+    env: Env,
+) -> None:
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    once = _OnceDuringAnOutage(env)
+    started = time.monotonic()
+
+    with pytest.raises(AssertionError, match="timed out waiting"):
+        once.run(diagnostic="a wording the worker never logs", count=2, timeout=3)
+
+    assert time.monotonic() - started < 3 + 10
+    assert once.process.poll() is not None  # killed and reaped, not left retrying
+    with closing(sqlite3.connect(env.db, timeout=0)) as conn:
+        conn.execute("BEGIN IMMEDIATE")  # no writer lock is left behind
+        conn.rollback()
