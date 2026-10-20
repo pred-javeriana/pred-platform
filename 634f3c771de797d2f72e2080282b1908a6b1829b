@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "summary": "The running worker loop stops a claimed run whose database failure it could not record, once the database answers again, without touching a later attempt, and worker --once waits for that settlement.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/bucle.py",
+      "summary": "Owns the single handler for database failures in a claimed run, the retry of its settlement and the --once drain loop.",
+      "annotations": [
+        {
+          "newRange": [
+            75,
+            80
+          ],
+          "summary": "Worker.drain runs queued runs and keeps polling while a claim is unsettled, so worker --once returns only after settlement and an empty queue.",
+          "rationale": "At ffd7f69 the second failed settlement made run_next return False, so --once exited 0 with the run ejecutando and the queue undrained. Verified by test_worker_once_waits_for_a_late_settlement_and_drains_the_queue (real subprocess exit code and SQL state) and by a 105-second real-lock CLI run. A permanently failing database makes --once retry forever, like run_forever.",
+          "author": "fm/pred-platform-lock-strand"
+        },
+        {
+          "newRange": [
+            93,
+            118
+          ],
+          "summary": "run_next catches any sqlite3.Error from _execute, keeps the claim in _unsettled and calls stop_claimed with the claimed intento at once and before every later claim.",
+          "rationale": "Before this change a lock that outlasted both 30-second waits left the run ejecutando with no PID, and only recover() at startup fixed it. Passing run.intento stops a stale settlement from stopping a resumed run that another worker owns. Verified with the outlasts tests and the stale-settlement test, all failing on their base commits.",
+          "author": "fm/pred-platform-lock-strand"
+        },
+        {
+          "oldRange": [
+            190,
+            215
+          ],
+          "summary": "_abort_after_database_error is removed because run_next now records the platform.database_busy diagnostic.",
+          "rationale": "Open PR 17 edits this function, so its rebase conflicts here. The resolution is to drop the pre-launch except sqlite3.Error branch from PR 17, because run_next now covers that case.",
+          "author": "fm/pred-platform-lock-strand"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/dal/ejecuciones.py",
+      "summary": "Adds stop_claimed, which settles one claimed attempt and closes its tasks in one transaction.",
+      "annotations": [
+        {
+          "newRange": [
+            237,
+            266
+          ],
+          "summary": "stop_claimed acts only on the given intento: it stops a claim still ejecutando, or clears the PID of an operator-stopped one while keeping its error and time.",
+          "rationale": "The settlement can run long after the claim, so an operator stop, a resume and a second worker can intervene. The check and writes share one BEGIN IMMEDIATE transaction. The worker has reaped its child before this call, so a stored PID would be false. Covered by the late-settlement and stale-settlement tests.",
+          "author": "fm/pred-platform-lock-strand"
+        }
+      ]
+    },
+    {
+      "path": "tests/test_worker.py",
+      "summary": "Regression tests that hold a real SQLite lock until the worker gives up on the diagnostic.",
+      "annotations": [
+        {
+          "newRange": [
+            635,
+            818
+          ],
+          "summary": "_LockUntilGivenUp releases the lock when the worker logs an error with a traceback, which marks a failed diagnostic write.",
+          "rationale": "Releasing on the log record instead of a patched DAL function keeps the tests independent of which DAL call records the diagnostic. The --once test runs the CLI as a real subprocess and releases the lock only after the second failed diagnostic, which is the point where ffd7f69 exited 0.",
+          "author": "fm/pred-platform-lock-strand"
+        },
+        {
+          "newRange": [
+            819,
+            919
+          ],
+          "summary": "_OnceDuringAnOutage runs worker --once as a subprocess and bounds every read and the exit wait with one deadline.",
+          "rationale": "Before this change the test read the child output with no timeout, so a changed diagnostic wording left it hanging with a live child and the writer lock held (reproduced: killed after 45 s). The finally block releases the lock and kills and reaps the child however the drive ends. test_a_diagnostic_that_never_arrives_fails_the_outage_drive_in_time_and_cleans_up proves the fault path fails in about 3 s with no process and no lock left.",
+          "author": "fm/pred-platform-lock-strand"
+        }
+      ]
+    }
+  ]
+}
