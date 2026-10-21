@@ -168,22 +168,29 @@ def test_launch_settings_are_validated(kwargs: dict[str, Any]) -> None:
         LaunchSettings(**kwargs)
 
 
-def test_a_queued_run_never_records_settings_the_engine_does_not_use(
-    env: Env, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _scenario(monkeypatch, "ok")
-    with pytest.raises(ValueError, match="media_recortada"):
-        enqueue_run(env.db, env.ingest_id, LaunchSettings(aggregation="media", trim=0.2))
-    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
-
-    # A legacy row queued with those settings is stopped before the engine is launched.
+def test_a_queued_run_records_the_settings_the_engine_uses(env: Env) -> None:
     enqueue_run(env.db, env.ingest_id, SMALL)
+
+    parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
+    assert (parametros["aggregation"], parametros["trim"]) == ("media_recortada", 0.1)
+    with pytest.raises(ValueError, match="media_recortada"):
+        LaunchSettings(aggregation="media", trim=0.2)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]  # nothing else was queued
+
+
+def _make_legacy(env: Env) -> None:
+    """Leave the stored settings as a platform that queued ``media`` / 0.2 left them."""
     with closing(sqlite3.connect(env.db)) as conn:
         conn.execute(
             "UPDATE configuraciones SET parametros = json_set(parametros, '$.aggregation', "
             "'media', '$.trim', 0.2)"
         )
         conn.commit()
+
+
+def test_a_legacy_run_with_unsupported_settings_is_stopped_before_the_engine(env: Env) -> None:
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    _make_legacy(env)
     launched: list[list[str]] = []
 
     def launcher(command: list[str], **kwargs: Any) -> Any:
@@ -201,6 +208,35 @@ def test_a_queued_run_never_records_settings_the_engine_does_not_use(
     )
     assert "media_recortada" in error["detail"]
     assert launched == []
+
+
+def test_a_legacy_run_with_task_history_ends_with_all_its_tasks_settled(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    assert _run_state(env)[0] == "completada_con_fallos"
+    _make_legacy(env)
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, 1)  # a pre-upgrade queue entry, as the old resume left it
+    launched: list[list[str]] = []
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        launched.append(command)
+        return engine.launch(command, **kwargs)
+
+    assert Worker(env.settings, launcher=launcher).run_next() is True
+
+    tasks = env.rows("SELECT estado, detalle_error FROM tareas")
+    assert tasks and {estado for estado, _ in tasks} <= {"exitosa", "no_ejecutable"}
+    settled = [json.loads(detail) for estado, detail in tasks if estado == "no_ejecutable"]
+    assert settled and {e["code"] for e in settled} == {"platform.contract_invalid"}
+    assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
+    assert launched == []
+    before = (env.rows("SELECT * FROM tareas"), env.rows("SELECT * FROM ejecuciones"))
+    assert Worker(env.settings, launcher=launcher).run_next() is False  # nothing left to claim
+    assert (env.rows("SELECT * FROM tareas"), env.rows("SELECT * FROM ejecuciones")) == before
 
 
 # ------------------------------------------------------------------------ a full run

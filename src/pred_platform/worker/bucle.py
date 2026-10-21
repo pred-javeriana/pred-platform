@@ -151,10 +151,10 @@ class Worker:
             parametros.get("aggregation", ENGINE_AGGREGATION), parametros.get("trim", ENGINE_TRIM)
         )
         if reason is not None:
-            dal.finish_run(
+            dal.stop_claimed(
                 conn,
                 run.id,
-                estado="detenida",
+                intento=run.intento,
                 error=platform_error("platform.contract_invalid", reason),
             )
             return

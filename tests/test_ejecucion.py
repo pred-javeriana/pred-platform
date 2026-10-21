@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 import threading
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -308,6 +310,30 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     done = client.get("/ejecucion").text
     assert "completada" in _text(done) and 'href="/resultados?ejecucion=1"' in done
     assert env.rows("SELECT COUNT(*) FROM tareas") == [(6,)]  # the same rows, no duplicates
+
+
+def test_resuming_a_legacy_run_with_unsupported_settings_changes_nothing(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    client = _dal_client(env)
+    _launch(client, env, families=["classical", "ml"])
+    env.worker().run_next()
+    legacy = env.rows("SELECT id FROM configuraciones")[0][0]
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE configuraciones SET parametros = json_set(parametros, '$.aggregation', "
+            "'media', '$.trim', 0.2) WHERE id = ?",
+            (legacy,),
+        )
+        conn.commit()
+    before = (env.rows("SELECT * FROM ejecuciones"), env.rows("SELECT * FROM tareas"))
+    assert env.rows("SELECT estado FROM ejecuciones") == [("completada_con_fallos",)]
+
+    resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+
+    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=no_aplica"
+    assert (env.rows("SELECT * FROM ejecuciones"), env.rows("SELECT * FROM tareas")) == before
 
 
 def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
