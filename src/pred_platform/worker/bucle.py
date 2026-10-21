@@ -206,9 +206,10 @@ class Worker:
             raise
 
         if stopped_by_user is not None:
-            # `request_stop` already left the run `detenida` with its error; only the tasks the
-            # engine did not finish are still open.
-            dal.close_open_tasks(conn, run.id, interrupted=stopped_by_user, skipped=stopped_by_user)
+            # `request_stop` already left the run `detenida` with its error; the engine is reaped,
+            # so release its process and close the tasks it did not finish, if this attempt is
+            # still the run's.
+            dal.stop_claimed(conn, run.id, intento=run.intento, error=stopped_by_user)
             _logger.info("Corrida %s detenida por el operador", run.run_id)
             return
 

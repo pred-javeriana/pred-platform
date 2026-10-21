@@ -91,12 +91,15 @@ def test_a_running_run_is_stopped_the_engine_dies_and_no_task_stays_in_flight(
     assert pid is not None and engine.is_alive(pid)
 
     assert control.stop(1) is True
+    stopped_at = env.rows("SELECT finalizada_en FROM ejecuciones")[0][0]
     thread.join(timeout=20)
 
     assert not thread.is_alive()
     estado, error = _state(env)
     assert estado == "detenida" and error is not None and error["code"] == "platform.run_stopped"
     assert not engine.is_alive(pid)
+    # The engine is reaped, so the run keeps no process, and the operator's time stays.
+    assert env.rows("SELECT pid, finalizada_en FROM ejecuciones") == [(None, stopped_at)]
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
         (0,)
     ]
