@@ -21,6 +21,20 @@ from pred_platform.dal.procedencia import resolver_procedencia
 PARAMETERS_SCHEMA_VERSION = 1
 _FAMILIES = ("classical", "ml", "dl", "foundation")
 _METRICS = ("mae", "rmse", "smape", "mase")
+# ``pred-engine run`` has no option for these two: it always evaluates with them, so they are the
+# only values a run can record without claiming settings that did not produce its results.
+ENGINE_AGGREGATION = "media_recortada"
+ENGINE_TRIM = 0.1
+
+
+def unsupported_evaluation(aggregation: object, trim: object) -> str | None:
+    """Why the engine cannot evaluate with this aggregation and trim, or ``None`` if it can."""
+    if aggregation == ENGINE_AGGREGATION and type(trim) is float and trim == ENGINE_TRIM:
+        return None
+    return (
+        f"El motor solo evalúa con aggregation={ENGINE_AGGREGATION!r} y trim={ENGINE_TRIM}; "
+        f"se recibió aggregation={aggregation!r} y trim={trim!r}."
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,8 +52,8 @@ class LaunchSettings:
     datos_sinteticos: bool | None = None
     workers: int = 2
     # The engine's evaluation defaults; recorded so the run's settings are complete (RunSettings).
-    aggregation: str = "media_recortada"
-    trim: float = 0.1
+    aggregation: str = ENGINE_AGGREGATION
+    trim: float = ENGINE_TRIM
 
     def __post_init__(self) -> None:
         if self.datos_sinteticos is not None and type(self.datos_sinteticos) is not bool:
@@ -48,6 +62,8 @@ class LaunchSettings:
             value = getattr(self, name)
             if type(value) is not int or value < 1:
                 raise ValueError(f"{name} debe ser un entero >= 1, se recibió {value!r}")
+        if (reason := unsupported_evaluation(self.aggregation, self.trim)) is not None:
+            raise ValueError(reason)
         if self.trials is not None and (type(self.trials) is not int or self.trials < 1):
             raise ValueError(f"trials debe ser un entero >= 1 o nulo, se recibió {self.trials!r}")
         if type(self.seed) is not int or self.seed < 0:
@@ -150,4 +166,11 @@ def enqueue_run(
     return EnqueueResult(ejecucion_id, run_id, queued)
 
 
-__all__ = ["EnqueueResult", "LaunchSettings", "RunRequestError", "enqueue_run", "run_id_for"]
+__all__ = [
+    "EnqueueResult",
+    "LaunchSettings",
+    "RunRequestError",
+    "enqueue_run",
+    "run_id_for",
+    "unsupported_evaluation",
+]
