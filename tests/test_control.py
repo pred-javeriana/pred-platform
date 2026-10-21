@@ -178,6 +178,7 @@ def test_stopping_a_queued_retry_closes_the_tasks_it_was_resumed_with(
     )
     control.stop(1)
     thread.join(timeout=20)
+    assert not thread.is_alive()
     assert control.resume(1) is True
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'pendiente'")[0][0]
 
