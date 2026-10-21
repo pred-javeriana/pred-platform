@@ -182,12 +182,17 @@ def request_stop(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str
 
     The run becomes ``detenida`` right away. A running one has a worker following its engine
     process: the worker sees the new state on its next look (``run_estado``), terminates the
-    process and closes the open tasks with the same ``error``. A run that has just finished is
-    left alone (the ``WHERE`` makes the check and the change one step).
+    process and closes the open tasks with the same ``error``. A queued one has no worker, and a
+    retry keeps the tasks it was resumed with, so they are closed here, in the same step, with the
+    same ``error``. A run that has just finished is left alone (the ``WHERE`` makes the check and
+    the change one step).
     """
     with conn:
         _begin_immediate(conn)
-        return (
+        row = conn.execute(
+            "SELECT estado FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+        ).fetchone()
+        stopped = (
             conn.execute(
                 "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, error_json = ? "
                 "WHERE id = ? AND estado IN ('pendiente', 'ejecutando')",
@@ -195,6 +200,9 @@ def request_stop(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str
             ).rowcount
             == 1
         )
+        if stopped and row is not None and row[0] == "pendiente":
+            _close_open_tasks(conn, ejecucion_id, interrupted=error, skipped=error)
+        return stopped
 
 
 def run_estado(conn: sqlite3.Connection, ejecucion_id: int) -> tuple[str, dict[str, Any] | None]:
