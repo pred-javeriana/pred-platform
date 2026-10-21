@@ -164,6 +164,35 @@ def test_resuming_puts_the_tasks_the_stop_closed_back_to_pending(
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE detalle_error IS NOT NULL") == [(0,)]
 
 
+def test_stopping_a_queued_retry_closes_the_tasks_it_was_resumed_with(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    control = _control(env)
+    control.launch(env.ingest_id, SMALL)
+    thread = threading.Thread(target=env.worker().run_next)
+    thread.start()
+    _wait(
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'ejecutando'")[0][0] > 0,
+        what="a unit running",
+    )
+    control.stop(1)
+    thread.join(timeout=20)
+    assert control.resume(1) is True
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'pendiente'")[0][0]
+
+    assert control.stop(1) is True
+
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
+        (0,)
+    ]
+    diagnostics = env.rows("SELECT detalle_error FROM tareas WHERE estado = 'no_ejecutable'")
+    assert diagnostics and all(
+        json.loads(d)["code"] == "platform.run_stopped" for (d,) in diagnostics
+    )
+    assert env.worker().run_next() is False
+
+
 def test_a_run_with_failures_can_be_retried(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _scenario(monkeypatch, "unit_fails")
     control = _control(env)
