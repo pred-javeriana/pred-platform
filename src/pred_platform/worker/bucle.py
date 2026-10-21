@@ -25,6 +25,7 @@ from pred_platform.worker import engine
 from pred_platform.worker.errores import platform_error, run_stopped_error
 from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
+from pred_platform.worker.service import ENGINE_AGGREGATION, ENGINE_TRIM, unsupported_evaluation
 
 _logger = logging.getLogger("pred_platform.worker")
 
@@ -141,6 +142,20 @@ class Worker:
                 run.id,
                 estado="detenida",
                 error=platform_error("platform.artifact_missing", f"No existe {parquet}."),
+            )
+            return
+
+        # Queued rows from before this check may carry settings the engine does not apply.
+        parametros = run.parametros
+        reason = unsupported_evaluation(
+            parametros.get("aggregation", ENGINE_AGGREGATION), parametros.get("trim", ENGINE_TRIM)
+        )
+        if reason is not None:
+            dal.stop_claimed(
+                conn,
+                run.id,
+                intento=run.intento,
+                error=platform_error("platform.contract_invalid", reason),
             )
             return
 
