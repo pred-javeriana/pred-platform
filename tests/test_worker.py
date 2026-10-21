@@ -145,6 +145,39 @@ def test_procedencia_importada_se_fija_y_viaja_al_cli(env):
     ) == [(1,)]
 
 
+def test_bytes_publicados_compartidos_no_reciben_origenes_opuestos(env):
+    report_path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    base = json.loads(report_path.read_text())
+
+    def importar(ingest_id: str, origen: bool | None) -> bool:
+        report = json.loads(json.dumps(base))
+        report["ingest_id"] = report["source_file"]["sha256"] = ingest_id
+        report["source_file"]["datos_sinteticos"] = origen
+        report["published"]["sha256"] = "f" * 64  # the same published Parquet bytes
+        report_path.with_name(f"{ingest_id}.json").write_text(json.dumps(report))
+        return import_reports(env.db, env.settings.data_root).ok
+
+    assert importar("a" * 64, True)  # a synthetic export
+    assert importar("c" * 64, None)  # a byte-different export of the same table, origin unknown
+    # The bytes are already known synthetic, so the unknown export inherits that origin.
+    assert env.rows(
+        "SELECT datos_sinteticos, origen_declarado FROM m3_ingestas WHERE ingesta_sha256=?",
+        "c" * 64,
+    ) == [(1, 1)]
+    with pytest.raises(RunRequestError, match="no puede cambiar"):
+        enqueue_run(env.db, "c" * 64, replace(SMALL, datos_sinteticos=False))
+    assert env.rows(
+        "SELECT COUNT(*) FROM ejecuciones e JOIN ingestas i ON i.id=e.ingesta_id WHERE i.sha256=?",
+        "c" * 64,
+    ) == [(0,)]
+    # A report declaring those bytes real is rejected too; a matching declaration is accepted.
+    assert importar("d" * 64, False) is False
+    queued = enqueue_run(env.db, "c" * 64, replace(SMALL, datos_sinteticos=True))
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, queued.ejecucion_id)
+    assert run is not None and run.parametros["datos_sinteticos"] is True
+
+
 def test_id_publico_no_cambia_al_resolver_procedencia_de_m1(env):
     settings = LaunchSettings(families=("ml",), trials=1)
     expected = run_id_for(env.ingest_id, settings)

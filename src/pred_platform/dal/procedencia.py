@@ -16,7 +16,8 @@ def resolver_procedencia(
     """Resuelve y conserva la declaracion dentro de la transaccion del llamador.
 
     None representa origen desconocido, no una declaracion de datos reales.
-    Se consultan todas las configuraciones de la ingesta, incluidas las antiguas.
+    Se consultan todas las configuraciones de la ingesta, incluidas las antiguas, y
+    las de toda otra ingesta que haya publicado los mismos bytes Parquet.
     """
     if not conn.in_transaction:
         raise ValueError("la procedencia requiere una transaccion de escritura")
@@ -24,31 +25,28 @@ def resolver_procedencia(
         raise ValueError("datos_sinteticos debe ser booleano o nulo")
     tablas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     origenes: set[bool] = set()
-    columnas: dict[str, set[str]] = {}
-    for tabla in ("m3_ingestas", "m3_corridas"):
-        if tabla not in tablas:
-            continue
-        columnas[tabla] = {r[1] for r in conn.execute(f"PRAGMA table_info({tabla})")}
-        filtro = " AND origen_declarado=1" if "origen_declarado" in columnas[tabla] else ""
-        origenes.update(
-            bool(r[0])
+    columnas: dict[str, set[str]] = {
+        tabla: {r[1] for r in conn.execute(f"PRAGMA table_info({tabla})")}
+        for tabla in ("m3_ingestas", "m3_corridas")
+        if tabla in tablas
+    }
+    ingestas = {ingesta_sha256}
+    if "m3_ingestas" in columnas:
+        huellas = {
+            r[0]
             for r in conn.execute(
-                f"SELECT datos_sinteticos FROM {tabla} WHERE ingesta_sha256=?{filtro}",
-                (ingesta_sha256,),
+                "SELECT ingesta_ref_m1 FROM m3_ingestas WHERE ingesta_sha256=?", (ingesta_sha256,)
             )
-        )
-    if "ejecuciones" in tablas:
-        for (texto,) in conn.execute(
-            "SELECT c.parametros FROM configuraciones c "
-            "JOIN ejecuciones e ON e.configuracion_id=c.id "
-            "JOIN ingestas i ON i.id=e.ingesta_id WHERE i.sha256=?",
-            (ingesta_sha256,),
-        ):
-            valor = json.loads(texto).get("datos_sinteticos")
-            if valor is not None and type(valor) is not bool:
-                raise ValueError("procedencia invalida en la configuracion almacenada")
-            if valor is not None:
-                origenes.add(valor)
+        } | ({ingesta_ref_m1} if ingesta_ref_m1 is not None else set())
+        for huella in huellas:
+            ingestas.update(
+                r[0]
+                for r in conn.execute(
+                    "SELECT ingesta_sha256 FROM m3_ingestas WHERE ingesta_ref_m1=?", (huella,)
+                )
+            )
+    for sha in ingestas:
+        origenes.update(_declaradas(conn, sha, tablas, columnas))
     if declarada is not None:
         origenes.add(declarada)
     if len(origenes) > 1:
@@ -77,3 +75,31 @@ def resolver_procedencia(
                     (ingesta_sha256, ingesta_ref_m1, origen),
                 )
     return origen
+
+
+def _declaradas(
+    conn: sqlite3.Connection, sha: str, tablas: set[str], columnas: dict[str, set[str]]
+) -> set[bool]:
+    """Los origenes declarados para una ingesta en M3 y en sus configuraciones."""
+    origenes: set[bool] = set()
+    for tabla, cols in columnas.items():
+        filtro = " AND origen_declarado=1" if "origen_declarado" in cols else ""
+        origenes.update(
+            bool(r[0])
+            for r in conn.execute(
+                f"SELECT datos_sinteticos FROM {tabla} WHERE ingesta_sha256=?{filtro}", (sha,)
+            )
+        )
+    if "ejecuciones" in tablas:
+        for (texto,) in conn.execute(
+            "SELECT c.parametros FROM configuraciones c "
+            "JOIN ejecuciones e ON e.configuracion_id=c.id "
+            "JOIN ingestas i ON i.id=e.ingesta_id WHERE i.sha256=?",
+            (sha,),
+        ):
+            valor = json.loads(texto).get("datos_sinteticos")
+            if valor is not None and type(valor) is not bool:
+                raise ValueError("procedencia invalida en la configuracion almacenada")
+            if valor is not None:
+                origenes.add(valor)
+    return origenes

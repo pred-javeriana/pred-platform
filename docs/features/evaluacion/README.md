@@ -37,7 +37,8 @@ bit, de modo que una lectura parcial no confunde origen desconocido con real.
 
 La cola, el importador y el trabajador comparten un único resolvedor de
 procedencia. Este contrasta todas las configuraciones de una ingesta dentro
-de la transacción de escritura. Al volver a encolar una configuración antigua,
+de la transacción de escritura, y también las de toda otra ingesta que haya
+publicado los mismos bytes Parquet: esos bytes no reciben orígenes opuestos. Al volver a encolar una configuración antigua,
 sin el campo de procedencia, se puede añadir ese campo sin crear una nueva
 versión de configuración. Un origen desconocido explícito (`null`) solo se
 resuelve mientras la ejecución sigue pendiente. Una ejecución ya iniciada o
