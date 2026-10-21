@@ -86,7 +86,11 @@ copy fails the build. The sync also checks that the source is consistent before 
 The DAL schema is versioned with SQLite's `PRAGMA user_version` and changed only through numbered
 SQL scripts in `src/pred_platform/dal/migrations/` (decision: `pred-docs/diseno/ADRs/ADR 05-002`).
 Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs and tasks and 4 the
-selection per SKU. The current schema is what applying every script produces.
+selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, frozen protocols and
+precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
+8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
+The current schema is version 9. An undeclared origin stays unknown and cannot
+produce statistical inference. The file-only website upload does not declare real data.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
   folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.
@@ -120,9 +124,24 @@ selection per SKU. The current schema is what applying every script produces.
 
 A released migration is never edited: the test pins its hash. A mistake is fixed by a new migration.
 
+## M3 evaluation evidence
+
+The engine writes M3 results into this same SQLite database through an injected connection.
+Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
+standalone result database. It applies pending M3 migrations itself on an existing platform
+schema. The migration texts are owned by pred-engine and copied exactly into platform versions
+5 through 9, so both processes agree on `user_version`.
+
+`pred_platform.dal.evidencia.read_m3_evidence` reads only PUBLICADA runs by M2/M3 run id, optionally filtered by SKU.
+One call materializes all matching rows within one read snapshot. An M2 alias can match several
+M3 runs; use an exact M3 id and SKU for bounded reads, or group results by their retained `run_id`.
+`m3_run_status` exposes durable progress and rejections without partial metrics. The platform
+reads precalculated descriptive metrics, verdicts, HLN-DM/BH and portfolio distributions; it does
+not evaluate models. See [the M3 data interface](docs/features/evaluacion/README.md).
+
 ## Importing ingest reports
 
-The engine does not write to the DAL. Every ingestion (`pred-engine classify`/`ingest`/`run`) leaves
+M1 ingestion remains a file-based handoff. Every ingestion (`pred-engine classify`/`ingest`/`run`) leaves
 `<PRED_DATA_ROOT>/ingestas/<sha256>.json` (schema `pred-engine.ingesta/1`, section 17 of the data
 contract in `pred-docs`), also when the ingestion is rejected, failed or waits for confirmation. The
 platform imports those files into `ingestas`, `bitacora_calidad` and `series`:

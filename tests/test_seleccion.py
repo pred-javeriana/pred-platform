@@ -463,8 +463,9 @@ def test_a_database_before_migration_0004_reads_as_no_selection(tmp_path: Path) 
     # And the migration brings it forward without losing the run.
     with closing(sqlite3.connect(old)) as conn:
         apply_migrations(conn, load_migrations())
-        assert conn.execute("PRAGMA user_version").fetchone() == (4,)
+        assert conn.execute("PRAGMA user_version").fetchone() == (9,)
         assert conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone() == (1,)
+        assert conn.execute("SELECT COUNT(*) FROM m3_unidades").fetchone() == (0,)
 
 
 def test_the_capabilities_of_the_selection_are_available() -> None:

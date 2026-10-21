@@ -10,12 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
+from pred_platform.dal.procedencia import resolver_procedencia
 
 PARAMETERS_SCHEMA_VERSION = 1
 _FAMILIES = ("classical", "ml", "dl", "foundation")
@@ -48,12 +49,15 @@ class LaunchSettings:
     families: tuple[str, ...] = ("classical", "ml", "dl")
     trials: int | None = None
     seed: int = 0
+    datos_sinteticos: bool | None = None
     workers: int = 2
     # The engine's evaluation defaults; recorded so the run's settings are complete (RunSettings).
     aggregation: str = ENGINE_AGGREGATION
     trim: float = ENGINE_TRIM
 
     def __post_init__(self) -> None:
+        if self.datos_sinteticos is not None and type(self.datos_sinteticos) is not bool:
+            raise ValueError("datos_sinteticos debe ser booleano o nulo")
         for name in ("min_train", "horizon", "step", "seasonality", "workers"):
             value = getattr(self, name)
             if type(value) is not int or value < 1:
@@ -80,6 +84,7 @@ class LaunchSettings:
             "families": list(self.families),
             "trials": self.trials,
             "seed": self.seed,
+            "datos_sinteticos": self.datos_sinteticos,
             "workers": self.workers,
             "aggregation": self.aggregation,
             "trim": self.trim,
@@ -94,6 +99,8 @@ def run_id_for(ingest_sha256: str, settings: LaunchSettings) -> str:
     """
     parametros = settings.to_parametros()
     parametros.pop("workers")
+    # La procedencia pertenece a la ingesta inmutable, no al ajuste M2.
+    parametros.pop("datos_sinteticos")
     digest = hashlib.sha256(
         json.dumps({"input": ingest_sha256, "settings": parametros}, sort_keys=True).encode()
     ).hexdigest()
@@ -116,8 +123,39 @@ def enqueue_run(
         RunRequestError: the ingestion is unknown or was not accepted.
     """
     chosen = settings or LaunchSettings()
-    run_id = run_id_for(ingest_id, chosen)
-    with closing(dal.connect(db_path)) as conn:
+    with closing(dal.connect(db_path)) as conn, conn:
+        conn.execute("BEGIN IMMEDIATE")
+        dal.accepted_ingestion_id(conn, ingest_id)
+        try:
+            origen = resolver_procedencia(conn, ingest_id, chosen.datos_sinteticos)
+        except ValueError as exc:
+            raise RunRequestError(str(exc)) from exc
+        chosen = replace(chosen, datos_sinteticos=origen)
+        run_id = run_id_for(ingest_id, chosen)
+        previa = conn.execute(
+            "SELECT c.id, c.parametros, i.sha256, e.estado FROM ejecuciones e "
+            "JOIN configuraciones c ON c.id=e.configuracion_id "
+            "JOIN ingestas i ON i.id=e.ingesta_id WHERE e.run_id=?",
+            (run_id,),
+        ).fetchone()
+        if previa is not None:
+            parametros = json.loads(previa[1])
+            # A missing key is a legacy queue entry; an explicit null is a declared unknown
+            # origin, which only a run that has not started yet may still resolve.
+            antigua = "datos_sinteticos" not in parametros
+            origen_previo = parametros.get("datos_sinteticos")
+            cambia = not antigua and origen_previo != chosen.datos_sinteticos
+            if previa[2] != ingest_id or (
+                cambia and (origen_previo is not None or previa[3] != "pendiente")
+            ):
+                # Raising rolls back the whole transaction, including the provenance resolved above.
+                raise RunRequestError("la identidad o procedencia de la ejecucion no puede cambiar")
+            if antigua or cambia:
+                parametros["datos_sinteticos"] = chosen.datos_sinteticos
+                conn.execute(
+                    "UPDATE configuraciones SET parametros=? WHERE id=?",
+                    (json.dumps(parametros, sort_keys=True), previa[0]),
+                )
         ejecucion_id, queued = dal.create_run(
             conn,
             ingest_sha256=ingest_id,

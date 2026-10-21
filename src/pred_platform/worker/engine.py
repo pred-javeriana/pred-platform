@@ -66,6 +66,13 @@ def build_command(settings: Settings, run: Ejecucion, parquet: Path) -> list[str
         "--workers",
         str(p.get("workers", 1)),
     ]
+    origen = p.get("datos_sinteticos")
+    if "datos_sinteticos" not in p or (origen is not None and type(origen) is not bool):
+        raise ValueError(
+            "procedencia ausente o invalida; vuelva a encolar la corrida para registrar el origen"
+        )
+    if origen is not None:
+        command.append("--datos-sinteticos" if origen else "--datos-reales")
     if p.get("trials") is not None:
         command += ["--trials", str(p["trials"])]
     return command
@@ -78,7 +85,11 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
         OSError: the command cannot be started (for example, ``pred-engine`` is not installed).
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PRED_DATA_ROOT": str(settings.data_root.resolve())}
+    env = {
+        **os.environ,
+        "PRED_DATA_ROOT": str(settings.data_root.resolve()),
+        "PRED_DB_PATH": str(settings.db_path.resolve()),
+    }
     with log_path.open("ab") as log:
         return subprocess.Popen(  # noqa: S603 - the command comes from trusted settings
             command,
