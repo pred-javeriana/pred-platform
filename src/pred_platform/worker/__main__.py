@@ -105,8 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     worker = Worker(settings)
     if args.once:
-        while worker.run_next():
-            pass
+        worker.drain()
         return _status(settings.db_path)
 
     stop = threading.Event()
