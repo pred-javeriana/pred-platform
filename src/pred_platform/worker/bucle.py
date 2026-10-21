@@ -3,6 +3,8 @@
 One run at a time (the engine already parallelises SKU x family units inside a run). Every state
 change is its own short transaction, so a crash loses at most the event in flight; on the next
 start, a run left ``ejecutando`` is queued again with the same ``run_id`` and the engine resumes.
+A run whose database failure could not even be recorded is stopped as soon as the database answers
+again, before the next claim, so a running worker never leaves an unowned run ``ejecutando``.
 """
 
 from __future__ import annotations
@@ -42,6 +44,8 @@ class Worker:
         self.settings = settings
         self.poll_interval = poll_interval
         self._launch = launcher
+        # The run this worker claimed but could not record as stopped, with the error to record.
+        self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
@@ -68,13 +72,50 @@ class Worker:
                 dal.requeue(conn, run.id)
                 _logger.info("Corrida %s retomada tras una caída", run.run_id)
 
+    def drain(self) -> None:
+        """Run the queued runs until none is left and no claim is left unsettled (``--once``)."""
+        while self.run_next() or self._unsettled is not None:
+            if self._unsettled is not None:
+                time.sleep(self.poll_interval)  # the database still fails: wait, then retry
+
     def run_next(self, stop: threading.Event | None = None) -> bool:
-        """Claim and run one pending run to the end. Returns whether there was one."""
+        """Claim and run one pending run to the end. Returns whether there was one.
+
+        A run left unsettled by a database failure is stopped first; while the database still
+        fails, nothing new is claimed.
+        """
         with closing(dal.connect(self.settings.db_path)) as conn:
+            if not self._settle(conn):
+                return False
             run = dal.claim_pending(conn)
             if run is None:
                 return False
-            self._execute(conn, run, stop or threading.Event())
+            try:
+                self._execute(conn, run, stop or threading.Event())
+            except sqlite3.Error as exc:  # the database failed before the run was settled
+                _logger.error("Corrida %s: falló la base de datos: %s", run.run_id, exc)
+                conn.rollback()
+                error = platform_error(
+                    "platform.database_busy",
+                    f"No se pudo registrar el estado de la corrida en la base de datos: {exc}",
+                    retryable=True,
+                )
+                self._unsettled = (run, error)
+                self._settle(conn)
+        return True
+
+    def _settle(self, conn: sqlite3.Connection) -> bool:
+        """Record the stop of the run left unsettled, if any. Returns whether none is left."""
+        if self._unsettled is None:
+            return True
+        run, error = self._unsettled
+        try:
+            dal.stop_claimed(conn, run.id, intento=run.intento, error=error)
+        except sqlite3.Error:
+            # Still failing: keep the claim and try again on the next pass of the loop.
+            _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)
+            return False
+        self._unsettled = None
         return True
 
     # ------------------------------------------------------------------- one run
@@ -159,9 +200,10 @@ class Worker:
                 error=platform_error("platform.schema_version_unsupported", str(exc)),
             )
             return
-        except sqlite3.Error as exc:  # the database failed with the engine already running
-            self._abort_after_database_error(conn, run, process, exc)
-            return
+        except sqlite3.Error:  # the database failed with the engine already running
+            engine.terminate(process.pid)
+            process.wait()
+            raise
 
         if stopped_by_user is not None:
             # `request_stop` already left the run `detenida` with its error; only the tasks the
@@ -187,29 +229,3 @@ class Worker:
             log_path=log_path,
         )
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)
-
-    def _abort_after_database_error(
-        self,
-        conn: sqlite3.Connection,
-        run: Ejecucion,
-        process: subprocess.Popen[bytes],
-        exc: sqlite3.Error,
-    ) -> None:
-        """Stop the engine this worker started and leave the run queued-able with a diagnostic."""
-        _logger.error(
-            "Corrida %s: falló la base de datos tras lanzar el motor: %s", run.run_id, exc
-        )
-        engine.terminate(process.pid)
-        process.wait()
-        error = platform_error(
-            "platform.database_busy",
-            f"No se pudo registrar el estado de la corrida en la base de datos: {exc}",
-            retryable=True,
-        )
-        try:
-            conn.rollback()
-            dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
-            dal.finish_run(conn, run.id, estado="detenida", error=error)
-        except sqlite3.Error:
-            # Still failing: the run stays `ejecutando` and `recover` queues it on the next start.
-            _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)
