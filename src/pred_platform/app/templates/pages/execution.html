@@ -21,11 +21,17 @@
 
   {% include "partials/execution_launch.html" %}
 
+  <div class="pred-poll-controls">
+    <button type="button" class="pred-btn pred-btn--subtle" id="pausar-actualizacion" aria-controls="ejecucion-cuerpo" aria-pressed="false"{% if not poll %} disabled{% endif %}>Pausar actualización</button>
+    <p class="pred-meta" id="actualizacion-ayuda">{% if poll %}Actualización automática cada 2 segundos. Se pausa mientras usa los controles o selecciona texto.{% else %}Actualización automática no activa.{% endif %}</p>
+  </div>
+  <p class="pred-sr-only" id="ejecucion-anuncio" role="status" aria-live="polite" aria-atomic="true"></p>
+  <noscript><p class="pred-meta">Recargue la página para consultar el avance actualizado.</p></noscript>
   <div id="ejecucion-cuerpo"
        hx-get="/ejecucion/estado{% if query_string %}?{{ query_string }}{% endif %}"
-       hx-trigger="{% if poll %}every 2s{% else %}none{% endif %}"
+       hx-trigger="{% if poll %}every 2s, pred:refresh{% else %}none{% endif %}"
        hx-swap="innerHTML"
-       hx-target="this">
+       hx-target="this" aria-live="off">
     {% include "partials/execution_body.html" %}
   </div>
 {% endblock %}
