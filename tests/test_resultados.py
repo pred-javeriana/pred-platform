@@ -68,7 +68,7 @@ def _text(html: str) -> str:
 
 
 # --------------------------------------------------------------------------- la tabla
-def test_the_table_shows_every_sku_with_a_cell_per_family_and_no_champion_yet() -> None:
+def test_the_table_shows_compact_decisions_and_family_evidence_on_demand() -> None:
     client, _ = _client()
     response = client.get("/resultados")
     html = response.text
@@ -77,11 +77,11 @@ def test_the_table_shows_every_sku_with_a_cell_per_family_and_no_champion_yet() 
     assert 'aria-current="page"' in html and "Por SKU" in html
     for sku in ("FIL-0001", "FIL-0002", "FIL-0003", "FIL-0004"):
         assert f'href="/resultados/sku/{sku}?' in html
-    for header in ("Clásica", "ML", "DL", "Fundacional", "Campeón"):
-        assert f"<th>{header}</th>" in html
+        assert f"Ver familias de {sku}" in html
+    for header in ("SKU", "Clase", "Campeón", "Evidencia por familia"):
+        assert f'<th scope="col">{header}</th>' in html
     assert "mae 1,546" in _text(html)
-    assert "pendiente de M3" in html  # the fixtures' rows carry no champion
-    # A family the document does not carry is a dash, not an invented state.
+    assert "No informado" in html
     assert 'aria-label="Sin dato"' in html
 
 
@@ -301,7 +301,7 @@ def test_windows_are_only_requested_and_shown_on_demand() -> None:
     assert repo.detail_calls[-2:] == [("1", "FIL-0001", False), ("1", "FIL-0001", True)]
     assert "Entrenamiento" not in plain and "Ver las 9 ventanas" in plain
     assert "Entrenamiento" in full and "Ocultar las ventanas" in full
-    assert "<th>mae</th>" in full and "<th>rmse</th>" in full
+    assert '<th scope="col">mae</th>' in full and '<th scope="col">rmse</th>' in full
 
 
 def test_the_detail_goes_back_to_the_same_list() -> None:
