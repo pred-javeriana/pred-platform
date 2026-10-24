@@ -93,14 +93,24 @@ width, one clear action.
 
 ## States
 
-Eight states total, each rendered as color + icon + label (RNF-USA-04) — color alone never carries
-meaning.
+State vocabularies are specific to each context; there is no single fixed total.
+Every presented state uses color + icon + label (RNF-USA-04); color alone never carries meaning.
 
-Task lifecycle: pendiente (neutral, clock), ejecutando (info, play), exitosa (ok, check), fallida
-(err, x), no ejecutable (warn, banned-sign).
+**Current implementation.** Task lifecycle: pendiente (neutral, clock), ejecutando (info, play),
+exitosa (ok, check), fallida (err, x), no ejecutable (warn, banned-sign). Family states also include
+excluida. Runs use pendiente, ejecutando, completada, completada_con_fallos and detenida.
+HPO trials use pendiente, corriendo, completado, podado and fallido; podado is distinct from a
+failure. Ingestion has accepted, rejected, failed and needs_confirmation, presented through the
+ingest vocabulary. These contexts remain separate in the presentation helpers.
 
-Validation verdicts: se sostiene (ok, check-circle), se sostiene parcialmente (warn, dash-circle),
-no se sostiene (err, x-circle).
+**Current v1 / legacy contract verdicts.** mantiene → se sostiene (ok, check-circle),
+parcial → se sostiene parcialmente (warn, dash-circle), falla → no se sostiene (err, x-circle).
+These labels describe the copied v1 contract and fixtures; they are not the final M4 vocabulary.
+
+**Published M3 evidence; pending M4 integration in these views.** The five verdicts are
+FALLO_TECNICO, NO_EVALUABLE, EVIDENCIA_INSUFICIENTE, VALIDADO and EXPLORATORIO.
+D2 documents this dependency without adding their contract adapter, mapping them to legacy
+verdicts, deriving new decisions or implementing M4 presentation functionality.
 
 ## Icons
 
@@ -121,3 +131,9 @@ consumer-product or SaaS look. RNF-USA-04 requires every state to be distinguish
 alone, since the interface may be shown on a projector to viewers with reduced color perception.
 Both are recorded in the SRS (v1.1, §3.5.6); full rationale and the decision history live in
 `pred-docs/diseno/`.
+
+## Ajustes de presentación D2
+
+La paleta base se conserva. Para texto pequeño sobre canvas/surface, pred.css usa variantes de contraste: --muted-text (#5D6168), --warn-text (#785415) y --data-text (#176777). Los tokens base continúan disponibles para trazos y marcadores. Debe verificarse contraste con el color de fondo computado en navegador, incluido hover/foco.
+
+Los títulos primarios usan escala adaptable y peso 800. Las etiquetas KPI usan Archivo; JetBrains Mono queda en cifras e identificadores. Toda tabla ancha tiene una región nombrada desplazable por teclado, caption y scope de encabezados. Las listas primarias se paginan en servidor; evidencia técnica anidada usa details cerrados y un contenedor visual de altura acotada cuando el contrato no ofrece paginación propia. El contenedor pred-evidence-scroll no tiene role, aria-label ni tabindex: la pred-table-wrap interior creada por table_start() es la única región nombrada y enfocable de la tabla.
