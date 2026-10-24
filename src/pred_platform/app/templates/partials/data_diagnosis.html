@@ -20,7 +20,7 @@
       <input type="hidden" name="pendiente" value="{{ pending_token }}">
       <input type="hidden" name="confirm_overwrite" value="true">
       {{ button("Cancelar", variant="subtle", href="/datos") }}
-      {{ button("Confirmar carga", variant="primary", type="submit") }}
+      {{ button("Confirmar carga", variant="danger", type="submit") }}
     </form>
   {% endif %}
 
@@ -33,6 +33,8 @@
     <div class="pred-log">
       <p><strong>{{ described.titulo }}</strong></p>
       {% if described.accion %}<p>{{ described.accion }}</p>{% endif %}
+      <details class="pred-details" id="error-ingesta">
+        <summary>Detalle técnico del diagnóstico</summary>
       {% if report.error.detail %}<p class="pred-meta">{{ report.error.detail }}</p>{% endif %}
       {% if described.ubicacion or report.error.field %}
       <p class="pred-meta">
@@ -41,6 +43,7 @@
       </p>
       {% endif %}
       <p class="pred-meta"><span class="mono">{{ report.error.code }}</span></p>
+      </details>
       {% if report.error.retryable %}
       <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
       {% endif %}
@@ -81,8 +84,10 @@
   {% endif %}
 
   {% if report.quality_log %}
-    <h3>Bitácora de calidad</h3>
-    {{ table_start(["Severidad", "Código", "Mensaje", "Fila", "Columna"]) }}
+    <details class="pred-details" id="bitacora-calidad">
+    <summary>Bitácora de calidad · {{ format_count(report.quality_log | length) }} registros</summary>
+    <div class="pred-evidence-scroll">
+    {{ table_start(["Severidad", "Código", "Mensaje", "Fila", "Columna"], "Registros de calidad de la ingesta") }}
     {% for entry in report.quality_log %}
     <tr>
       <td>{{ status_indicator(describe_status("severity", entry.severity)) }}</td>
@@ -98,5 +103,7 @@
     </tr>
     {% endfor %}
     {{ table_end() }}
+    </div>
+    </details>
   {% endif %}
 </section>

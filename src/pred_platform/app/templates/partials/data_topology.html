@@ -26,7 +26,8 @@
     </p>
 
     {% if topology.availability.status == "available" %}
-      <div class="pred-chart">
+      <p class="pred-meta" id="alcance-topologia">Los conteos resumen toda la ingesta. El gráfico y la tabla muestran únicamente los SKU de la página filtrada actual.</p>
+      <div class="pred-chart" aria-describedby="alcance-topologia">
         {{ chart_svg | safe }}
       </div>
 
@@ -59,19 +60,21 @@
           ]
         ) }}
         {{ field("descending", "Descendente", value=topology_query.descending, input_type="checkbox") }}
+        <input type="hidden" name="size" value="{{ topology_query.size }}">
         {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
+        <a href="/datos?ingest_id={{ topology.ingest_id }}#topologia">Limpiar filtros</a>
       </form>
 
-      {{ table_start(["SKU", "Clase", "ADI", "CV²", "Periodos", "Periodos con demanda"]) }}
+      {{ table_start(["SKU", "Clase", "ADI", "CV²", "Periodos", "Periodos con demanda"], "Topología por SKU de la página filtrada") }}
       {% if topology.items %}
         {% for row in topology.items %}
         <tr>
-          <td><span class="mono">{{ row.sku_id }}</span></td>
+          <th scope="row" class="pred-sku"><span class="mono">{{ row.sku_id }}</span></th>
           <td>{{ sku_class_label(row.sku_class) }}</td>
-          <td class="mono">{{ format_decimal(row.adi, 3) }}</td>
-          <td class="mono">{{ format_decimal(row.cv2, 3) }}</td>
-          <td class="mono">{{ format_count(row.n_periods) }}</td>
-          <td class="mono">{{ format_count(row.n_positive) }}</td>
+          <td class="num">{{ format_decimal(row.adi, 3) }}</td>
+          <td class="num">{{ format_decimal(row.cv2, 3) }}</td>
+          <td class="num">{{ format_count(row.n_periods) }}</td>
+          <td class="num">{{ format_count(row.n_positive) }}</td>
         </tr>
         {% endfor %}
       {% else %}

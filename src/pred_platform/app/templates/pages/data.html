@@ -2,7 +2,7 @@
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
-{% from "components/states.html" import unavailable_state %}
+{% from "components/states.html" import unavailable_state, error_state %}
 
 {% block title %}PRED — Datos{% endblock %}
 
@@ -29,7 +29,7 @@
         hint=csv_hint,
         error=form_error or ""
       ) }}
-      {{ button("Cargar y validar", variant="primary", type="submit", icon="i-upload") }}
+      {{ button("Cargar y validar", variant="secondary" if can_continue or pending_token else "primary", type="submit", icon="i-upload") }}
     </form>
     {% if not has_ingest %}
     <p class="pred-meta">Carga un archivo para comenzar.</p>
@@ -44,6 +44,9 @@
 
   {% if report_error and not report %}
   <section class="pred-section" id="diagnostico">
+    {% if report_error.code not in ("platform.artifact_missing", "platform.engine_unavailable") %}
+    {{ error_state(report_error.title, report_error.detail or "Vuelva a intentar la operación.", report_error.code, "Reintentar", "/datos") }}
+    {% else %}
     {{ unavailable_state(
       report_error.title,
       report_error.detail or "La integración con el motor todavía no está habilitada.",
@@ -53,6 +56,7 @@
     {% if report_error.retryable %}
     <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
     {% endif %}
+  {% endif %}
   </section>
   {% endif %}
 
@@ -73,7 +77,7 @@
         list_error.code,
         list_error.blocked_by
       ) }}
-    {% elif listing and listing.items %}
+    {% elif listing and (listing.items or listing.page.total) %}
       {% include "partials/data_history.html" %}
     {% else %}
       <p class="pred-meta">Todavía no hay ingestas registradas.</p>
