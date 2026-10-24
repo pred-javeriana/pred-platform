@@ -2,38 +2,32 @@
 
 {% macro empty_state(title, description, action_label=none, action_href=none) %}
 <div class="pred-state">
-  <h2>{{ title }}</h2>
-  <p>{{ description }}</p>
-  {% if action_label and action_href %}
-  {{ button(action_label, variant="primary", href=action_href) }}
-  {% endif %}
+  <h2>{{ title }}</h2><p>{{ description }}</p>
+  {% if action_label and action_href %}{{ button(action_label, variant="primary", href=action_href) }}{% endif %}
 </div>
 {% endmacro %}
 
 {% macro error_state(title, message, error_code=none, retry_label=none, retry_href=none) %}
-<div class="pred-state">
-  <h2>{{ title }}</h2>
+<section class="pred-state pred-state--error">
+  <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-x-circle"></use></svg> {{ title }}</h2>
   <p>{{ message }}</p>
-  {% if error_code %}<span class="pred-state__code">{{ error_code }}</span>{% endif %}
-  {% if retry_label and retry_href %}
-  {{ button(retry_label, variant="secondary", href=retry_href, icon="i-rotate") }}
-  {% endif %}
-</div>
+  {% if error_code %}<details class="pred-details"><summary>Detalle técnico</summary><p class="mono">{{ error_code }}</p></details>{% endif %}
+  {% if retry_label and retry_href %}{{ button(retry_label, variant="secondary", href=retry_href, icon="i-rotate") }}{% endif %}
+</section>
 {% endmacro %}
 
 {% macro unavailable_state(title, detail, reason_code, blocked_by) %}
 <section class="pred-unavailable">
-  <h2>{{ title }}</h2>
+  <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ title }}</h2>
   <p>{{ detail }}</p>
-  <p class="pred-unavailable__meta">
-    {{ reason_code }}{% if blocked_by %} · {{ blocked_by | join(", ") }}{% endif %}
-  </p>
+  {% if reason_code or blocked_by %}
+  <details class="pred-details"><summary>Disponibilidad y dependencias</summary>
+    <p class="pred-unavailable__meta">{{ reason_code or "" }}{% if blocked_by %} · {{ blocked_by | join(", ") }}{% endif %}</p>
+  </details>
+  {% endif %}
 </section>
 {% endmacro %}
 
 {% macro loading_state(label="Cargando…") %}
-<div class="pred-loading" role="status">
-  <span class="pred-loading__mark" aria-hidden="true"></span>
-  <span>{{ label }}</span>
-</div>
+<div class="pred-loading" role="status"><span class="pred-loading__mark" aria-hidden="true"></span><span>{{ label }}</span></div>
 {% endmacro %}

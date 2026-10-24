@@ -53,6 +53,10 @@
   --info: #2e6e9e;
   --info-soft: #e4eef4;
   --data: #1b7a8c;
+  /* Variantes de texto con contraste sobre lienzo y superficie. */
+  --muted-text: #5d6168;
+  --warn-text: #785415;
+  --data-text: #176777;
 
   --font-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -77,7 +81,7 @@
 
   --pico-background-color: var(--canvas);
   --pico-color: var(--ink-soft);
-  --pico-muted-color: var(--muted);
+  --pico-muted-color: var(--muted-text);
   --pico-muted-border-color: var(--border);
   --pico-border-color: var(--border);
   --pico-form-element-border-color: var(--border-strong);
@@ -135,7 +139,7 @@ samp,
 }
 
 .mono {
-  color: var(--data);
+  color: var(--data-text);
 }
 
 /* ---------------------------------------------------------------- Shell */
@@ -148,7 +152,8 @@ samp,
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  height: 50px;
+  min-height: 50px;
+  flex-wrap: wrap;
   padding: 0 var(--space-3);
   background: var(--surface);
   border-bottom: 1px solid var(--border-strong);
@@ -165,7 +170,7 @@ samp,
 .pred-nav__link {
   padding: 6px 10px;
   border-radius: var(--radius);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 13px;
   text-decoration: none;
   white-space: nowrap;
@@ -198,14 +203,14 @@ samp,
 
 .pred-page-header h1 {
   margin-bottom: var(--space-1);
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
 }
 
 .pred-page-header p {
   margin: 0;
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 13px;
 }
 
@@ -288,7 +293,7 @@ samp,
 }
 
 .pred-field__label {
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 12px;
   font-weight: 500;
 }
@@ -318,7 +323,7 @@ samp,
 
 .pred-field__control:disabled {
   background: var(--canvas);
-  color: var(--muted);
+  color: var(--muted-text);
   cursor: not-allowed;
 }
 
@@ -336,7 +341,7 @@ samp,
 }
 
 .pred-field__hint {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 
 .pred-field__error {
@@ -409,12 +414,12 @@ samp,
 
 .pred-alert--warning {
   background: var(--warn-soft);
-  border-color: var(--warn);
+  border-color: var(--warn-text);
   color: var(--ink);
 }
 
 .pred-alert--warning svg {
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .pred-alert--error {
@@ -437,7 +442,7 @@ samp,
   font-size: 12px;
   font-weight: 500;
   line-height: 1.6;
-  white-space: nowrap;
+  white-space: normal;
   background: transparent;
 }
 
@@ -449,7 +454,7 @@ samp,
 }
 
 .pred-status--neutral {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 
 .pred-status--info {
@@ -465,7 +470,7 @@ samp,
 }
 
 .pred-status--warn {
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 /* Poda: tono atenuado propio, nunca el de fallo. */
@@ -489,14 +494,14 @@ samp,
 }
 
 .pred-progress__label {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 
 .pred-progress__counts,
 .pred-progress__pct {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--data);
+  color: var(--data-text);
   font-weight: 600;
 }
 
@@ -528,7 +533,7 @@ samp,
 .pred-table th {
   padding: 7px 10px;
   border-bottom: 1px solid var(--border-strong);
-  color: var(--muted);
+  color: var(--muted-text);
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -549,12 +554,12 @@ samp,
 }
 
 .pred-table .mono {
-  color: var(--data);
+  color: var(--data-text);
 }
 
 .pred-table__empty {
   padding: var(--space-4);
-  color: var(--muted);
+  color: var(--muted-text);
   text-align: center;
 }
 
@@ -573,11 +578,11 @@ samp,
 
 .pred-metrics__label {
   margin: 0 0 var(--space-1);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0.04em;
+  color: var(--muted-text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -595,7 +600,7 @@ samp,
 }
 
 .pred-metrics__value.is-warn {
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .pred-metrics__value.is-err {
@@ -607,7 +612,7 @@ samp,
 }
 
 .pred-metrics__value.is-data {
-  color: var(--data);
+  color: var(--data-text);
 }
 
 /* --------------------------------------------------------------- Tabs */
@@ -627,7 +632,7 @@ samp,
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-text);
   font-family: var(--font-body);
   font-size: 13px;
   text-decoration: none;
@@ -659,14 +664,14 @@ samp,
 
 .pred-state p {
   margin: 0 0 var(--space-3);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 14px;
 }
 
 .pred-state__code {
   display: block;
   margin-bottom: var(--space-3);
-  color: var(--muted);
+  color: var(--muted-text);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -691,7 +696,7 @@ samp,
 }
 
 .pred-unavailable__meta {
-  color: var(--muted);
+  color: var(--muted-text);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -702,7 +707,7 @@ samp,
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-4);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 13px;
 }
 
@@ -722,7 +727,7 @@ samp,
 /* ----------------------------------------------------------- Superficie Datos */
 .pred-meta {
   margin: 0 0 var(--space-3);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 12px;
 }
 
@@ -789,7 +794,7 @@ samp,
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-3);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 13px;
 }
 
@@ -825,7 +830,7 @@ samp,
 .pred-chart__tick,
 .pred-chart__threshold-label,
 .pred-chart__legend-label {
-  fill: var(--muted);
+  fill: var(--muted-text);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -837,14 +842,14 @@ samp,
   align-items: center;
   gap: var(--space-2) var(--space-3);
   margin: 0 0 var(--space-3);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 13px;
 }
 
 .pred-reasons {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-4);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 12.5px;
 }
 
@@ -867,14 +872,14 @@ samp,
 }
 
 .pred-cell__value {
-  color: var(--data);
+  color: var(--data-text);
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .pred-cell--none {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 
 .pred-kv {
@@ -886,7 +891,7 @@ samp,
 }
 
 .pred-kv dt {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 
 .pred-kv dd {
@@ -895,7 +900,7 @@ samp,
 }
 
 .pred-kv dd.mono {
-  color: var(--data);
+  color: var(--data-text);
 }
 
 .pred-family {
@@ -934,7 +939,7 @@ samp,
 }
 
 .pred-note--muted {
-  color: var(--muted);
+  color: var(--muted-text);
 }
 
 .pred-back {
@@ -954,7 +959,7 @@ samp,
 
 .pred-fieldset legend {
   margin-bottom: var(--space-2);
-  color: var(--muted);
+  color: var(--muted-text);
   font-size: 12.5px;
   font-weight: 500;
 }
@@ -1010,5 +1015,71 @@ samp,
 
 .pred-details--launch > summary::after {
   content: " ▾";
-  color: var(--muted);
+  color: var(--muted-text);
+}
+
+/* ------------------------------------------------------------- Revisión D2 */
+.pred-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.pred-skip {
+  position: absolute;
+  top: -10rem;
+  left: var(--space-3);
+  z-index: 10;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  color: var(--primary-dark);
+}
+.pred-skip:focus { top: var(--space-2); }
+.pred-inline-icon { width: 1em; height: 1em; vertical-align: -0.1em; }
+.pred-page-header > *, .pred-filters > *, .pred-family__head > * { min-width: 0; }
+.pred-main :where(p, h1, h2, h3, h4, li, dd, td, th, summary, a) { overflow-wrap: anywhere; }
+.pred-table-wrap { max-width: 100%; margin-block: var(--space-2); }
+.pred-table { min-width: 36rem; }
+.pred-table :is(th, td) { max-width: 24rem; }
+.pred-table tbody th { font-weight: 400; white-space: normal; }
+.pred-table tbody tr:hover :is(th, td) { background: var(--canvas); }
+.pred-table .num { color: var(--data-text); }
+.pred-table .pred-sku { min-width: 8rem; max-width: 16rem; }
+.pred-table th[scope="col"] { vertical-align: bottom; }
+.pred-pager a, .pred-back { text-decoration: underline; text-underline-offset: 0.2em; }
+.pred-btn, .pred-tabs a, .pred-details summary, .pred-pager a { min-height: 32px; }
+.pred-metrics__item { max-width: 100%; }
+.pred-progress__meta { flex-wrap: wrap; }
+.pred-filters .pred-field { flex: 1 1 10rem; max-width: 100%; }
+.pred-field__control { min-width: 0; }
+.pred-unavailable { padding: var(--space-3) 0; border: 0; background: transparent; }
+.pred-family { margin: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.pred-details { padding-block: var(--space-2); }
+.pred-details > summary { line-height: 1.6; }
+.pred-details[open] > summary { margin-bottom: var(--space-2); }
+.pred-table-wrap .pred-details { margin: 0; }
+.pred-evidence-scroll { max-height: 28rem; overflow: auto; scrollbar-gutter: stable; }
+.pred-section-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.pred-poll-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.pred-poll-controls p { margin: 0; }
+.pred-state--error h2 { color: var(--err); }
+.pred-alert { background: transparent; border: 0; padding: var(--space-2) 0; }
+.pred-alert--warning svg { color: var(--warn-text); }
+.pred-metrics__label { text-transform: none; }
+@media (max-width: 600px) {
+  .pred-main { padding-inline: var(--space-2); }
+  .pred-nav { padding-inline: var(--space-2); gap: 0; }
+  .pred-nav__brand { margin-right: var(--space-2); }
+  .pred-nav__link { padding-inline: var(--space-2); }
+  .pred-kv { grid-template-columns: 1fr; }
+  .pred-kv dd { margin-bottom: var(--space-2); }
+  .pred-filters .pred-field { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
