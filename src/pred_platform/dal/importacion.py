@@ -56,6 +56,7 @@ class _Format(BaseModel):
 
 
 class SourceFile(_Format):
+    datos_sinteticos: bool | None = Field(default=None, strict=True)
     name: str = Field(min_length=1)
     sha256: str
     row_count: int = Field(ge=0)
@@ -86,6 +87,7 @@ class Validation(_Format):
 
 
 class Published(_Format):
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     parquet_path: str
     rows: int = Field(ge=0)
     n_skus: int = Field(ge=0)
@@ -273,6 +275,18 @@ def _upsert(conn: sqlite3.Connection, report: EngineIngestFile) -> None:
         "SELECT id FROM ingestas WHERE sha256 = ?", (report.ingest_id,)
     ).fetchone()[0]
 
+    from pred_platform.dal.procedencia import resolver_procedencia
+
+    try:
+        resolver_procedencia(
+            conn,
+            report.ingest_id,
+            report.source_file.datos_sinteticos,
+            ingesta_ref_m1=published.sha256 if published is not None else None,
+        )
+    except ValueError as exc:
+        raise ReportImportError(None, str(exc)) from exc
+
     # Everything below belongs to this ingestion alone: replace it as a unit.
     conn.execute("DELETE FROM bitacora_calidad WHERE ingesta_id = ?", (ingesta_id,))
     conn.executemany(
@@ -332,6 +346,8 @@ def import_reports(db_path: Path, data_root: Path) -> ImportResult:
                 with conn:  # one transaction per report
                     _upsert(conn, report)
             except ReportImportError as exc:
+                if exc.path is None:
+                    exc = ReportImportError(path, str(exc))
                 failed.append(exc)
                 continue
             except sqlite3.Error as exc:

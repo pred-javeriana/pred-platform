@@ -1,6 +1,7 @@
 """The packaged migrations: pinned hashes (immutability) and the schema version 1 produces."""
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,11 @@ RELEASED: dict[int, str] = {
     2: "0d855366ec4beb38636a1272e9840923f9d057d9f8052e65f1c696b539e7d6cf",
     3: "add1571ad21d5605cd49877833d351bf1db4e873ca99168b22c5919c664a4aa0",
     4: "d95daf0e756e24aaa0036889bbdeadbd8ce4322eaf43ed48bae26aa16583b44f",
+    5: "ef81f941dea1256877058240e065b6be52c6cd40043d71548162d446c80f6828",
+    6: "b8f0f53f938c2d81764f8bcaaee4fde713f5b393c6d647eb869840a1da829cf5",
+    7: "992f5be0b7f670a393519ff7a0f6ed3d8074a20dcb3cce7614057061d23f6e37",
+    8: "cba43152604647196739f77496222dd3bda5a8d88bac999b065961de7e17a62f",
+    9: "ee0d58ffcd57ce34d65478334c571d5196f227dab2cbf2cae0f24175ec99dd01",
 }
 
 
@@ -278,3 +284,8 @@ def test_version_4_keeps_one_row_per_run_sku_family_trial_and_window(
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
         conn.execute(again)
     conn.close()
+
+
+def test_readme_names_the_current_schema_version() -> None:
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    assert f"The current schema is version {len(load_migrations())}." in readme

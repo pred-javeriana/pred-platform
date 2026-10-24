@@ -3,10 +3,13 @@
 One run at a time (the engine already parallelises SKU x family units inside a run). Every state
 change is its own short transaction, so a crash loses at most the event in flight; on the next
 start, a run left ``ejecutando`` is queued again with the same ``run_id`` and the engine resumes.
+A run whose database failure could not even be recorded is stopped as soon as the database answers
+again, before the next claim, so a running worker never leaves an unowned run ``ejecutando``.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import subprocess
@@ -14,15 +17,18 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import closing
+from dataclasses import replace
 from typing import Any
 
 from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
+from pred_platform.dal.procedencia import resolver_procedencia
 from pred_platform.worker import engine
 from pred_platform.worker.errores import platform_error, run_stopped_error
 from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
+from pred_platform.worker.service import ENGINE_AGGREGATION, ENGINE_TRIM, unsupported_evaluation
 
 _logger = logging.getLogger("pred_platform.worker")
 
@@ -42,6 +48,8 @@ class Worker:
         self.settings = settings
         self.poll_interval = poll_interval
         self._launch = launcher
+        # The run this worker claimed but could not record as stopped, with the error to record.
+        self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
@@ -68,13 +76,50 @@ class Worker:
                 dal.requeue(conn, run.id)
                 _logger.info("Corrida %s retomada tras una caída", run.run_id)
 
+    def drain(self) -> None:
+        """Run the queued runs until none is left and no claim is left unsettled (``--once``)."""
+        while self.run_next() or self._unsettled is not None:
+            if self._unsettled is not None:
+                time.sleep(self.poll_interval)  # the database still fails: wait, then retry
+
     def run_next(self, stop: threading.Event | None = None) -> bool:
-        """Claim and run one pending run to the end. Returns whether there was one."""
+        """Claim and run one pending run to the end. Returns whether there was one.
+
+        A run left unsettled by a database failure is stopped first; while the database still
+        fails, nothing new is claimed.
+        """
         with closing(dal.connect(self.settings.db_path)) as conn:
+            if not self._settle(conn):
+                return False
             run = dal.claim_pending(conn)
             if run is None:
                 return False
-            self._execute(conn, run, stop or threading.Event())
+            try:
+                self._execute(conn, run, stop or threading.Event())
+            except sqlite3.Error as exc:  # the database failed before the run was settled
+                _logger.error("Corrida %s: falló la base de datos: %s", run.run_id, exc)
+                conn.rollback()
+                error = platform_error(
+                    "platform.database_busy",
+                    f"No se pudo registrar el estado de la corrida en la base de datos: {exc}",
+                    retryable=True,
+                )
+                self._unsettled = (run, error)
+                self._settle(conn)
+        return True
+
+    def _settle(self, conn: sqlite3.Connection) -> bool:
+        """Record the stop of the run left unsettled, if any. Returns whether none is left."""
+        if self._unsettled is None:
+            return True
+        run, error = self._unsettled
+        try:
+            dal.stop_claimed(conn, run.id, intento=run.intento, error=error)
+        except sqlite3.Error:
+            # Still failing: keep the claim and try again on the next pass of the loop.
+            _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)
+            return False
+        self._unsettled = None
         return True
 
     # ------------------------------------------------------------------- one run
@@ -103,9 +148,49 @@ class Worker:
             )
             return
 
-        command = engine.build_command(self.settings, run, parquet)
+        # Queued rows from before this check may carry settings the engine does not apply.
+        parametros = run.parametros
+        reason = unsupported_evaluation(
+            parametros.get("aggregation", ENGINE_AGGREGATION), parametros.get("trim", ENGINE_TRIM)
+        )
+        if reason is not None:
+            dal.stop_claimed(
+                conn,
+                run.id,
+                intento=run.intento,
+                error=platform_error("platform.contract_invalid", reason),
+            )
+            return
+
         try:
+            with conn:
+                conn.execute("BEGIN IMMEDIATE")
+                origen = resolver_procedencia(
+                    conn, run.ingest_sha256, run.parametros.get("datos_sinteticos")
+                )
+                if origen is None and "datos_sinteticos" not in run.parametros:
+                    raise ValueError(
+                        "La configuracion antigua no tiene procedencia. Vuelva a encolar "
+                        "la corrida para registrar su origen desconocido "
+                        "o una declaracion explicita."
+                    )
+                parametros = {**run.parametros, "datos_sinteticos": origen}
+                conn.execute(
+                    "UPDATE configuraciones SET parametros=? WHERE id="
+                    "(SELECT configuracion_id FROM ejecuciones WHERE id=?)",
+                    (json.dumps(parametros, sort_keys=True), run.id),
+                )
+            run = replace(run, parametros=parametros)
+            command = engine.build_command(self.settings, run, parquet)
             process = self._launch(command, settings=self.settings, log_path=log_path)
+        except ValueError as exc:
+            dal.finish_run(
+                conn,
+                run.id,
+                estado="detenida",
+                error=platform_error("pipeline.stage_failed", str(exc)),
+            )
+            return
         except OSError as exc:
             dal.finish_run(
                 conn,
@@ -119,16 +204,16 @@ class Worker:
             )
             return
 
-        dal.set_launch(
-            conn,
-            run.id,
-            pid=process.pid,
-            ruta_corrida=folder.relative_to(self.settings.data_root.resolve()).as_posix(),
-        )
-        follower = ProgressFollower(conn, run, folder / "progreso.jsonl", corte=corte)
         stopped = False
         stopped_by_user: dict[str, Any] | None = None
         try:
+            dal.set_launch(
+                conn,
+                run.id,
+                pid=process.pid,
+                ruta_corrida=folder.relative_to(self.settings.data_root.resolve()).as_posix(),
+            )
+            follower = ProgressFollower(conn, run, folder / "progreso.jsonl", corte=corte)
             while process.poll() is None:
                 follower.poll()
                 if stop.is_set():
@@ -159,11 +244,16 @@ class Worker:
                 error=platform_error("platform.schema_version_unsupported", str(exc)),
             )
             return
+        except sqlite3.Error:  # the database failed with the engine already running
+            engine.terminate(process.pid)
+            process.wait()
+            raise
 
         if stopped_by_user is not None:
-            # `request_stop` already left the run `detenida` with its error; only the tasks the
-            # engine did not finish are still open.
-            dal.close_open_tasks(conn, run.id, interrupted=stopped_by_user, skipped=stopped_by_user)
+            # `request_stop` already left the run `detenida` with its error; the engine is reaped,
+            # so release its process and close the tasks it did not finish, if this attempt is
+            # still the run's.
+            dal.stop_claimed(conn, run.id, intento=run.intento, error=stopped_by_user)
             _logger.info("Corrida %s detenida por el operador", run.run_id)
             return
 

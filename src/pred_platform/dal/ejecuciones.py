@@ -90,6 +90,20 @@ def get_run(conn: sqlite3.Connection, ejecucion_id: int) -> Ejecucion | None:
     return None if row is None else _row_to_run(row)
 
 
+def accepted_ingestion_id(conn: sqlite3.Connection, ingest_sha256: str) -> int:
+    """Exige una ingesta aceptada antes de fijar parametros o procedencia."""
+    ingest = conn.execute(
+        "SELECT id, estado FROM ingestas WHERE sha256 = ?", (ingest_sha256,)
+    ).fetchone()
+    if ingest is None:
+        raise RunRequestError(f"no existe la ingesta {ingest_sha256[:12]}…")
+    if ingest[1] != "accepted":
+        raise RunRequestError(
+            f"la ingesta {ingest_sha256[:12]}… no fue aceptada (estado: {ingest[1]})"
+        )
+    return int(ingest[0])
+
+
 def create_run(
     conn: sqlite3.Connection,
     *,
@@ -113,15 +127,7 @@ def create_run(
             ejecucion_id = int(existing[0])
             return ejecucion_id, _resume(conn, ejecucion_id)
 
-        ingest = conn.execute(
-            "SELECT id, estado FROM ingestas WHERE sha256 = ?", (ingest_sha256,)
-        ).fetchone()
-        if ingest is None:
-            raise RunRequestError(f"no existe la ingesta {ingest_sha256[:12]}…")
-        if ingest[1] != "accepted":
-            raise RunRequestError(
-                f"la ingesta {ingest_sha256[:12]}… no fue aceptada (estado: {ingest[1]})"
-            )
+        ingest_id = accepted_ingestion_id(conn, ingest_sha256)
         version = conn.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM configuraciones")
         configuracion_id = conn.execute(
             "INSERT INTO configuraciones (version, descripcion, parametros) VALUES (?, ?, ?)",
@@ -130,7 +136,7 @@ def create_run(
         cursor = conn.execute(
             "INSERT INTO ejecuciones (ingesta_id, configuracion_id, seed, estado, run_id) "
             "VALUES (?, ?, ?, 'pendiente', ?)",
-            (ingest[0], configuracion_id, seed, run_id),
+            (ingest_id, configuracion_id, seed, run_id),
         )
         return int(cursor.lastrowid or 0), True
 
@@ -176,12 +182,17 @@ def request_stop(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str
 
     The run becomes ``detenida`` right away. A running one has a worker following its engine
     process: the worker sees the new state on its next look (``run_estado``), terminates the
-    process and closes the open tasks with the same ``error``. A run that has just finished is
-    left alone (the ``WHERE`` makes the check and the change one step).
+    process and closes the open tasks with the same ``error``. A queued one has no worker, and a
+    retry keeps the tasks it was resumed with, so they are closed here, in the same step, with the
+    same ``error``. A run that has just finished is left alone (the ``WHERE`` makes the check and
+    the change one step).
     """
     with conn:
         _begin_immediate(conn)
-        return (
+        row = conn.execute(
+            "SELECT estado FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+        ).fetchone()
+        stopped = (
             conn.execute(
                 "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, error_json = ? "
                 "WHERE id = ? AND estado IN ('pendiente', 'ejecutando')",
@@ -189,6 +200,9 @@ def request_stop(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str
             ).rowcount
             == 1
         )
+        if stopped and row is not None and row[0] == "pendiente":
+            _close_open_tasks(conn, ejecucion_id, interrupted=error, skipped=error)
+        return stopped
 
 
 def run_estado(conn: sqlite3.Connection, ejecucion_id: int) -> tuple[str, dict[str, Any] | None]:
@@ -232,6 +246,36 @@ def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> None:
             "AND estado = 'ejecutando'",
             (ejecucion_id,),
         )
+
+
+def stop_claimed(
+    conn: sqlite3.Connection, ejecucion_id: int, *, intento: int, error: dict[str, Any]
+) -> None:
+    """Stop the claim (``intento``) a worker could not settle and close its tasks, in one step.
+
+    A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
+    the meantime keeps its own error and time; both release the recorded process, which the worker
+    has already reaped. A later attempt, or any other state, belongs to someone else and is left
+    alone.
+    """
+    with conn:
+        _begin_immediate(conn)
+        row = conn.execute(
+            "SELECT estado, error_json, intento FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+        ).fetchone()
+        if row is None or row[2] != intento or row[0] not in ("ejecutando", "detenida"):
+            return
+        if row[0] == "ejecutando":
+            conn.execute(
+                "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, pid = NULL, "
+                "error_json = ? WHERE id = ?",
+                (now_iso(), json.dumps(error, ensure_ascii=False), ejecucion_id),
+            )
+        else:
+            conn.execute("UPDATE ejecuciones SET pid = NULL WHERE id = ?", (ejecucion_id,))
+            if row[1]:
+                error = json.loads(row[1])
+        _close_open_tasks(conn, ejecucion_id, interrupted=error, skipped=error)
 
 
 def set_launch(conn: sqlite3.Connection, ejecucion_id: int, *, pid: int, ruta_corrida: str) -> None:
@@ -390,16 +434,26 @@ def close_open_tasks(
     ``no_ejecutable`` (it never started). Returns how many rows changed.
     """
     with conn:
-        a = conn.execute(
-            "UPDATE tareas SET estado = 'fallida', detalle_error = ?, finalizada_en = ? "
-            "WHERE ejecucion_id = ? AND estado = 'ejecutando'",
-            (json.dumps(interrupted, ensure_ascii=False), now_iso(), ejecucion_id),
-        ).rowcount
-        b = conn.execute(
-            "UPDATE tareas SET estado = 'no_ejecutable', detalle_error = ? "
-            "WHERE ejecucion_id = ? AND estado = 'pendiente'",
-            (json.dumps(skipped, ensure_ascii=False), ejecucion_id),
-        ).rowcount
+        return _close_open_tasks(conn, ejecucion_id, interrupted=interrupted, skipped=skipped)
+
+
+def _close_open_tasks(
+    conn: sqlite3.Connection,
+    ejecucion_id: int,
+    *,
+    interrupted: dict[str, Any],
+    skipped: dict[str, Any],
+) -> int:
+    a = conn.execute(
+        "UPDATE tareas SET estado = 'fallida', detalle_error = ?, finalizada_en = ? "
+        "WHERE ejecucion_id = ? AND estado = 'ejecutando'",
+        (json.dumps(interrupted, ensure_ascii=False), now_iso(), ejecucion_id),
+    ).rowcount
+    b = conn.execute(
+        "UPDATE tareas SET estado = 'no_ejecutable', detalle_error = ? "
+        "WHERE ejecucion_id = ? AND estado = 'pendiente'",
+        (json.dumps(skipped, ensure_ascii=False), ejecucion_id),
+    ).rowcount
     return int(a) + int(b)
 
 

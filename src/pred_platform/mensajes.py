@@ -258,6 +258,11 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         "Verifique que el motor esté instalado y reanude la ejecución.",
         reintentable=True,
     ),
+    "platform.database_busy": Mensaje(
+        "La base de datos estaba ocupada y no se pudo registrar la corrida.",
+        "Espere un momento y reanude la ejecución.",
+        reintentable=True,
+    ),
     "platform.run_stopped": Mensaje(
         "La ejecución se detuvo a petición del operador.",
         "Reanude la ejecución cuando quiera.",

@@ -17,7 +17,14 @@ from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.worker.errores import run_stopped_error
-from pred_platform.worker.service import EnqueueResult, LaunchSettings, enqueue_run
+from pred_platform.worker.service import (
+    ENGINE_AGGREGATION,
+    ENGINE_TRIM,
+    EnqueueResult,
+    LaunchSettings,
+    enqueue_run,
+    unsupported_evaluation,
+)
 
 
 class ControlUnavailable(Exception):
@@ -61,8 +68,24 @@ class DalRunControl:
             return dal.request_stop(conn, ejecucion_id, error=run_stopped_error())
 
     def resume(self, ejecucion_id: int) -> bool:
-        """Queue again a stopped run or one that ended with failures. False if it cannot be."""
+        """Queue again a stopped run or one that ended with failures. False if it cannot be.
+
+        A run whose stored settings the engine does not apply (queued before ``LaunchSettings``
+        validated them) stays as it is: resuming it would only run it with other settings.
+        """
         with closing(dal.connect(self._db_path)) as conn:
+            run = dal.get_run(conn, ejecucion_id)
+            if run is None:
+                return False
+            parametros = run.parametros
+            if (
+                unsupported_evaluation(
+                    parametros.get("aggregation", ENGINE_AGGREGATION),
+                    parametros.get("trim", ENGINE_TRIM),
+                )
+                is not None
+            ):
+                return False
             return dal.resume_run(conn, ejecucion_id)
 
 

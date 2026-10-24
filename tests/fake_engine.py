@@ -10,6 +10,7 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     excluded      FIL-0003 is excluded before L2
     crash         dies after the first unit started, without corrida.json
     stage_fails   L3 fails as a whole: no L3 unit, corrida.json says so (exit 1)
+    l4_fails      L2 and L3 complete, L4 fails as a whole (exit 1)
     slow          plans and starts one unit, then waits until it is killed
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     future_schema writes a progress stream of an unsupported major version
@@ -303,12 +304,18 @@ def _classify(args: argparse.Namespace) -> int:
     report = json.loads((_FIXTURES / f"ingesta.{label}.json").read_text())
     stem = path.stem + (f"-{sha[:8]}" if label == "accepted_keep_both" else "")
     report["ingest_id"] = sha
-    report["source_file"] = {**report["source_file"], "name": path.name, "sha256": sha}
+    report["source_file"] = {
+        **report["source_file"],
+        "name": path.name,
+        "sha256": sha,
+        "datos_sinteticos": args.datos_sinteticos,
+    }
     report["deposit"]["raw_path"] = f"raw/{stem}{path.suffix}"
     if report.get("published"):
         report["published"]["parquet_path"] = f"processed/{stem}.parquet"
         (root / "processed").mkdir(parents=True, exist_ok=True)
         (root / "processed" / f"{stem}.parquet").write_bytes(b"")
+        report["published"]["sha256"] = hashlib.sha256(b"").hexdigest()
     (root / "ingestas").mkdir(parents=True, exist_ok=True)
     (root / "ingestas" / f"{sha}.json").write_text(json.dumps(report), encoding="utf-8")
     return code
@@ -320,6 +327,17 @@ def main() -> int:
     parser.add_argument("--csv")
     parser.add_argument("--confirm-overwrite", action="store_true")
     parser.add_argument("--parquet")
+    provenance = parser.add_mutually_exclusive_group()
+    provenance.add_argument(
+        "--datos-sinteticos",
+        dest="datos_sinteticos",
+        action="store_const",
+        const=True,
+        default=None,
+    )
+    provenance.add_argument(
+        "--datos-reales", dest="datos_sinteticos", action="store_const", const=False
+    )
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--run-id")
     parser.add_argument("--families", nargs="+", default=["classical", "ml", "dl"])
@@ -433,7 +451,17 @@ def main() -> int:
             run_unit("L3", sku, family)
         stream.emit("stage_finished", stage="L3", state="completed")
         stages.append({"id": "L3", "state": "completed"})
-    stages.append({"id": "L4", "state": "blocked"})
+    if scenario == "l4_fails":
+        stream.emit("stage_started", stage="L4")
+        stream.emit(
+            "stage_finished",
+            stage="L4",
+            state="failed",
+            message="evaluación M3 falló: timeout",
+        )
+        stages.append({"id": "L4", "state": "failed", "message": "evaluación M3 falló: timeout"})
+    else:
+        stages.append({"id": "L4", "state": "blocked"})
 
     (folder / "unidades.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in unit_rows), encoding="utf-8"
@@ -478,13 +506,14 @@ def main() -> int:
         json.dumps({"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}),
         encoding="utf-8",
     )
-    failed = scenario == "stage_fails"
+    failed = scenario in ("stage_fails", "l4_fails")
+    failed_stage = "L3" if scenario == "stage_fails" else "L4" if scenario == "l4_fails" else None
     stream.emit(
         "run_finished",
         state="failed" if failed else "completed",
         exit_code=1 if failed else 7,
-        failed_stage="L3" if failed else None,
-        blocked_stage="L4",
+        failed_stage=failed_stage,
+        blocked_stage=None if scenario == "l4_fails" else "L4",
     )
     return 1 if failed else 7
 

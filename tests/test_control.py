@@ -91,12 +91,15 @@ def test_a_running_run_is_stopped_the_engine_dies_and_no_task_stays_in_flight(
     assert pid is not None and engine.is_alive(pid)
 
     assert control.stop(1) is True
+    stopped_at = env.rows("SELECT finalizada_en FROM ejecuciones")[0][0]
     thread.join(timeout=20)
 
     assert not thread.is_alive()
     estado, error = _state(env)
     assert estado == "detenida" and error is not None and error["code"] == "platform.run_stopped"
     assert not engine.is_alive(pid)
+    # The engine is reaped, so the run keeps no process, and the operator's time stays.
+    assert env.rows("SELECT pid, finalizada_en FROM ejecuciones") == [(None, stopped_at)]
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
         (0,)
     ]
@@ -159,6 +162,36 @@ def test_resuming_puts_the_tasks_the_stop_closed_back_to_pending(
     # Until the engine starts them again nothing may look finished or failed.
     assert env.rows("SELECT DISTINCT estado FROM tareas") == [("pendiente",)]
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE detalle_error IS NOT NULL") == [(0,)]
+
+
+def test_stopping_a_queued_retry_closes_the_tasks_it_was_resumed_with(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    control = _control(env)
+    control.launch(env.ingest_id, SMALL)
+    thread = threading.Thread(target=env.worker().run_next)
+    thread.start()
+    _wait(
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'ejecutando'")[0][0] > 0,
+        what="a unit running",
+    )
+    control.stop(1)
+    thread.join(timeout=20)
+    assert not thread.is_alive()
+    assert control.resume(1) is True
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'pendiente'")[0][0]
+
+    assert control.stop(1) is True
+
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
+        (0,)
+    ]
+    diagnostics = env.rows("SELECT detalle_error FROM tareas WHERE estado = 'no_ejecutable'")
+    assert diagnostics and all(
+        json.loads(d)["code"] == "platform.run_stopped" for (d,) in diagnostics
+    )
+    assert env.worker().run_next() is False
 
 
 def test_a_run_with_failures_can_be_retried(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
