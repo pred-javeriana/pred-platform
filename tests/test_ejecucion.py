@@ -427,3 +427,14 @@ def test_the_execution_query_round_trips_and_rejects_a_bad_page() -> None:
 def test_known_errors_have_a_next_step_and_unknown_ones_do_not() -> None:
     assert "otra familia" in (error_action("model.fit_failed") or "")
     assert error_action("some.new_code") is None
+
+
+def test_every_eligibility_exclusion_tells_what_to_do() -> None:
+    for code in (
+        "eligibility.no_admissible_history",
+        "eligibility.calendar_gaps",
+        "eligibility.no_reserved_observations",
+        "eligibility.non_finite_demand",
+        "eligibility.insufficient_history",
+    ):
+        assert error_action(code), code

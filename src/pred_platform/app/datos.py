@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import Request
 from starlette.datastructures import UploadFile
 
+from pred_platform import mensajes
 from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_class_label
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
@@ -151,6 +152,7 @@ def error_view(exc: DataLayerError) -> dict[str, object]:
         "retryable": info.retryable,
         "blocked_by": list(exc.blocked_by),
         "title": _error_title(info.code),
+        "action": mensajes.accion(info.code),
     }
 
 
@@ -211,12 +213,6 @@ def _int_param(raw: str | None, default: int, name: str) -> int:
 
 
 def _error_title(code: str) -> str:
-    if code == "platform.engine_unavailable":
-        return "Carga temporalmente no disponible."
-    if code == "platform.artifact_missing":
-        return "La caracterización todavía no está disponible."
-    if code == "platform.contract_invalid":
-        return "No fue posible leer el documento de datos."
-    if code == "platform.schema_version_unsupported":
-        return "La versión del contrato no es compatible."
+    if code in mensajes.CATALOGO:
+        return mensajes.titulo(code)
     return "No fue posible completar la operación."

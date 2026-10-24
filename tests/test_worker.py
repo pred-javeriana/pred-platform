@@ -38,7 +38,12 @@ from pred_platform.data.dal import DalRepository
 from pred_platform.worker import engine
 from pred_platform.worker.__main__ import main as worker_main
 from pred_platform.worker.bucle import Launcher, Worker
-from pred_platform.worker.errores import error_info, exclusion_info, run_stopped_error
+from pred_platform.worker.errores import (
+    error_info,
+    exclusion_info,
+    exclusion_reason,
+    run_stopped_error,
+)
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.service import (
     LaunchSettings,
@@ -489,7 +494,7 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
         ("FIL-0003", "dl:mlp"),
         ("FIL-0003", "ml:lightgbm"),
     ]
-    assert json.loads(skipped[0][2])["code"] == "model.series_too_short"
+    assert json.loads(skipped[0][2])["code"] == "eligibility.no_reserved_observations"
 
 
 # ------------------------------------------------------------------- engine problems
@@ -797,10 +802,44 @@ def test_error_codes_come_from_the_exception_class(stage: str, text: str | None,
     assert info["code"] == code and info["stage"] == stage and info["severity"] == "error"
 
 
-def test_exclusion_codes() -> None:
+def test_exclusion_codes_fall_back_to_the_cause_text_for_older_runs() -> None:
     assert exclusion_info("la serie termina antes de t*")["code"] == "model.series_too_short"
     assert exclusion_info("calendario diario con huecos")["code"] == "ingest.temporal_continuity"
     assert exclusion_info("otra cosa")["code"] == "pipeline.stage_failed"
+
+
+def test_the_engine_code_wins_over_the_exception_class_and_the_text() -> None:
+    info = error_info("L2", "RuntimeError: algo raro", "model.fit_failed")
+    assert info["code"] == "model.fit_failed" and info["retryable"] is True
+    # The text says nothing useful: only the code decides.
+    exclusion = exclusion_info("causa libre", "eligibility.calendar_gaps")
+    assert exclusion["code"] == "eligibility.calendar_gaps" and exclusion["retryable"] is False
+    assert exclusion["detail"] == "causa libre" and exclusion["stage"] == "L2"
+
+
+def test_a_malformed_engine_code_is_ignored_not_stored() -> None:
+    assert error_info("L2", "RuntimeError: x", "No Es Un Codigo")["code"] == "pipeline.stage_failed"
+    assert error_info("L3", "RuntimeError: x", "")["code"] == "evaluation.failed"
+    assert exclusion_info("calendario con huecos", "X.Y")["code"] == "ingest.temporal_continuity"
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [
+        ("eligibility.no_admissible_history", "series_too_short"),
+        ("eligibility.no_reserved_observations", "series_too_short"),
+        ("eligibility.insufficient_history", "series_too_short"),
+        ("eligibility.calendar_gaps", "execution_failed"),
+        ("eligibility.non_finite_demand", "execution_failed"),
+    ],
+)
+def test_the_reason_code_comes_from_the_engine_code(code: str, reason: str) -> None:
+    assert exclusion_reason("texto que no se lee", code) == reason
+
+
+def test_the_reason_code_falls_back_to_the_text_without_a_code() -> None:
+    assert exclusion_reason("la serie termina antes de t*") == "series_too_short"
+    assert exclusion_reason("calendario diario con huecos") == "execution_failed"
 
 
 def test_the_cli_launches_runs_and_reports_status(

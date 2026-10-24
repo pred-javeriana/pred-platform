@@ -135,8 +135,9 @@ El interruptor fixture/DAL ya lo resuelve B4 (`PRED_DATA_SOURCE`). Con `dal`,
 | Resultados | Campeón | `champion_selection` | etapa no implementada (M3) |
 | Resultados | Veredictos | `retrospective_validation` | etapa no implementada (L4) |
 
-Códigos de error estables y exclusiones tipadas: G6, G7. Bitácora sintética (fuera de
-estas tres superficies): G8.
+Códigos de error estables y exclusiones tipadas: resueltos (G6, G7); el texto en español de
+cada código vive en `pred_platform/mensajes.py`. Bitácora sintética (fuera de estas tres
+superficies): G8.
 
 Una capacidad no implementada se pinta con el estado **no disponible**
 (`availability.status`, `reason_code`, `blocked_by`, `detail`), nunca como fallo

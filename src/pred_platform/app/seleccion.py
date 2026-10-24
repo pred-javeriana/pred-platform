@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
+from pred_platform import mensajes
 from pred_platform.app.presentation import format_decimal
 from pred_platform.contract.errors import InvalidQuery
 from pred_platform.contract.models import (
@@ -48,28 +49,6 @@ _EXCLUSION_TEXT: dict[str, str] = {
     "execution_failed": "El motor no pudo ejecutar el SKU.",
 }
 
-# Mensajes de la tabla de errores del contrato (sección 11) que pueden verse en una selección.
-_ERROR_TITLES: dict[str, str] = {
-    "selection.no_viable_trial": "Ninguna configuración terminó la búsqueda para este SKU.",
-    "selection.contract": "No se pudo seleccionar un modelo para el SKU.",
-    "selection.unregistered_family": "La familia solicitada no está registrada.",
-    "selection.unknown_class": "La clase de demanda del SKU no es válida.",
-    "selection.router_config": "La configuración del enrutador no es válida.",
-    "model.series_too_short": "La serie es demasiado corta para esta familia.",
-    "model.fit_failed": "El modelo no pudo ajustarse.",
-    "model.foundation_unavailable": "El modelo fundacional no está disponible en este equipo.",
-    "hpo.invalid_space": "La búsqueda de configuraciones no pudo completarse.",
-    "hpo.study_failed": "La búsqueda de configuraciones no pudo completarse.",
-    "evaluation.failed": "La evaluación Walk-Forward no pudo completarse.",
-    "pipeline.stage_failed": "Una etapa de la corrida falló.",
-    "ingest.temporal_continuity": "Las fechas no forman una serie diaria válida.",
-    "platform.run_stopped": "La ejecución se detuvo a petición del operador.",
-    "platform.engine_unavailable": "El motor no está disponible.",
-    "platform.database_busy": "La base de datos estaba ocupada y no se pudo registrar la corrida.",
-    "platform.artifact_missing": "No se encontró el resultado esperado del motor.",
-    "platform.schema_version_unsupported": "La versión del archivo del motor no es compatible.",
-}
-
 # Qué necesita la acción «Ejecutar selección» (contrato, sección 7.8) y cómo se llama cada cosa.
 _ACTION_REQUIREMENTS: tuple[tuple[str, str], ...] = (
     ("parquet_read", "Lectura del Parquet"),
@@ -104,9 +83,14 @@ def exclusion_text(reason_code: str, detail: str | None) -> str:
     return detail if reason_code in _SELF_EXPLAINED else f"{base} {detail}"
 
 
-def error_title(code: str) -> str:
-    """Título legible de un error del motor; el código mismo si aún no tiene texto."""
-    return _ERROR_TITLES.get(code, code)
+def error_title(
+    code: str,
+    stage: str | None = None,
+    row_index: int | None = None,
+    column: str | None = None,
+) -> str:
+    """Título legible de un error (catálogo único en `mensajes`); el código mismo si no lo tiene."""
+    return mensajes.titulo(code, stage=stage, row_index=row_index, column=column)
 
 
 def int_param(raw: str | None, default: int, name: str) -> int:

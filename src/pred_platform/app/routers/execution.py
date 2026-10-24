@@ -70,7 +70,7 @@ def _task_rows(status: RunStatus) -> list[dict[str, Any]]:
                 "error": None
                 if error is None
                 else {
-                    "title": error_title(error.code),
+                    "title": error_title(error.code, error.stage, error.row_index, error.column),
                     "detail": error.detail,
                     "code": error.code,
                     "stage": error.stage,

@@ -112,6 +112,7 @@ def _selection_family(
             "family": family,
             "estado": "no_ejecutable",
             "cause": "la serie termina antes de t*: sin reserva",
+            "code": "eligibility.no_reserved_observations",
         }
     model = f"{family}:{MODELS[family]}"
     study = f"{family}-{sku}-fake"
@@ -144,7 +145,11 @@ def _selection_family(
             "family": family,
             "estado": "fallida",
             "modelo": model,
-            "error": {"stage": "L2", "text": "AjusteModeloError: el modelo no converge"},
+            "error": {
+                "stage": "L2",
+                "text": "AjusteModeloError: el modelo no converge",
+                "code": "model.fit_failed",
+            },
             "trials": trials,
         }
     value = round(1.0 + 0.5 * list(CLASS_BY_SKU).index(sku) + 0.25 * index, 4)
@@ -183,7 +188,11 @@ def _selection_family(
     if l3_failed:
         return entry | {
             "estado": "fallida",
-            "error": {"stage": "L3", "text": "EvaluacionError: ninguna unidad evaluó"},
+            "error": {
+                "stage": "L3",
+                "text": "EvaluacionError: ninguna unidad evaluó",
+                "code": "evaluation.failed",
+            },
         }
     windows = [
         {
@@ -369,7 +378,12 @@ def main() -> int:
     stream.emit("stage_finished", stage="L1", state="completed")
     stream.emit("stage_started", stage="L2")
     for sku in excluded:
-        stream.emit("excluded", sku_id=sku, cause="la serie termina antes de t*: sin reserva")
+        stream.emit(
+            "excluded",
+            sku_id=sku,
+            cause="la serie termina antes de t*: sin reserva",
+            code="eligibility.no_reserved_observations",
+        )
     stream.emit(
         "planned",
         stage="L2",
@@ -393,6 +407,7 @@ def main() -> int:
             "seconds": 1.5 if stage == "L2" else 0.5,
             "cpu_s": 1.0,
             "error": error,
+            "code": "model.fit_failed" if fail else None,
         }
         stream.emit("unit_finished", **row)
         unit_rows.append(row)
@@ -468,10 +483,21 @@ def main() -> int:
         "stages": stages,
         "reserve": RESERVE,
         "exclusions": [
-            {"sku_id": s, "cause": "la serie termina antes de t*: sin reserva"} for s in excluded
+            {
+                "sku_id": s,
+                "cause": "la serie termina antes de t*: sin reserva",
+                "code": "eligibility.no_reserved_observations",
+            }
+            for s in excluded
         ],
         "failures": [
-            {"stage": r["stage"], "sku_id": r["sku_id"], "family": r["family"], "error": r["error"]}
+            {
+                "stage": r["stage"],
+                "sku_id": r["sku_id"],
+                "family": r["family"],
+                "error": r["error"],
+                "code": r["code"],
+            }
             for r in unit_rows
             if r["state"] == "fallida"
         ],

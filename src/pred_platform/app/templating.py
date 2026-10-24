@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from pred_platform import mensajes
 from pred_platform.app import seleccion
 from pred_platform.app.presentation import (
     abbreviate_id,
@@ -39,6 +40,10 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "window_metric_names",
     ):
         templates.env.globals[name] = getattr(seleccion, name)
+    templates.env.globals["error_action"] = mensajes.accion
+    templates.env.globals["describir_error"] = mensajes.describir
+    templates.env.globals["CATALOGO_ERRORES"] = mensajes.CATALOGO
+    templates.env.globals["fila_en_archivo"] = mensajes.fila_en_archivo
     templates.env.globals["FAMILY_ORDER"] = seleccion.FAMILY_ORDER
     templates.env.globals["FAMILY_HEADERS"] = [
         seleccion.family_label(family) for family in seleccion.FAMILY_ORDER

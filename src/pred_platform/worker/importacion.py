@@ -95,7 +95,7 @@ def finalize(
             completed=completed,
             seconds=unit.get("seconds"),
             finished_at=str(unit.get("finished_at") or ""),
-            error=None if completed else error_info(stage, unit.get("error")),
+            error=None if completed else error_info(stage, unit.get("error"), unit.get("code")),
         )
     for exclusion in summary.get("exclusions", []):
         for family in families:
@@ -106,7 +106,7 @@ def finalize(
                 modelo=model_id(family, MODELO_POR_FAMILIA.get(family, family)),
                 corte=corte,
                 seed=run.seed,
-                error=exclusion_info(str(exclusion.get("cause", ""))),
+                error=exclusion_info(str(exclusion.get("cause", "")), exclusion.get("code")),
             )
 
     dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)

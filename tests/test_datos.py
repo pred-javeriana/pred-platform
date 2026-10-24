@@ -136,6 +136,9 @@ def test_needs_confirmation_then_confirm_overwrite(tmp_path: Path) -> None:
     failed = client.get(confirmed.headers["location"]).text
     assert "No fue posible procesar el archivo" in failed
     assert "ingest.schema_barrier" in failed
+    # El error sale en español con la fila y la columna, y con lo que hay que hacer (G6).
+    assert "La fila 43 tiene un valor inválido en lead_time_days." in failed
+    assert "Corríjalo en el archivo y vuelva a cargarlo." in failed
     assert "Topología de demanda" not in failed
 
 
@@ -162,7 +165,7 @@ def test_dal_submit_without_an_engine_is_unavailable_not_500(tmp_path: Path) -> 
         engine_command=("/no/such/pred-engine",),
     )
     html = TestClient(create_app(settings)).post("/datos/cargar", files={"archivo": _CSV}).text
-    assert "Carga temporalmente no disponible." in html
+    assert "El motor no está disponible." in html
     assert "No se pudo lanzar el motor" in html
     assert "Error inesperado" not in html
 
@@ -171,7 +174,7 @@ def test_dal_missing_ingest_report_is_unavailable_not_500(tmp_path: Path) -> Non
     app = create_app(Settings(data_root=tmp_path, db_path=tmp_path / "pred.db", data_source="dal"))
     response = TestClient(app).get(f"/datos?ingest_id={ACCEPTED}")
     assert response.status_code == 200
-    assert "no disponible" in response.text.lower() or "todavía no está disponible" in response.text
+    assert "No se encontró el resultado esperado." in response.text
     assert "Traceback" not in response.text
 
 
