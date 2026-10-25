@@ -89,7 +89,7 @@
 </section>
 
 <section class="pred-section" id="tareas">
-  <details class="pred-details" id="detalle-tareas"{% if query.estado or query.family or query.sku or query.page > 1 %} open{% endif %}>
+  <details class="pred-details" id="detalle-tareas"{% if query.estado or query.family or query.sku or query.page > 1 or "estado" in request.query_params %} open{% endif %}>
   <summary>Explorar tareas{% if status.page %} · {{ format_count(status.page.total) }} en esta consulta{% endif %}</summary>
   <form method="get" action="/ejecucion" class="pred-filters" id="filtros-tareas" hx-preserve="true">
     {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}

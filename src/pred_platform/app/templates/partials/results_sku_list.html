@@ -26,7 +26,7 @@
       listing.availability.blocked_by
     ) }}
   {% elif listing %}
-    <details class="pred-details" id="filtrar-resultados"{% if query.q or query.family or query.estado or query.sku_class %} open{% endif %}><summary>Filtrar y ordenar SKU</summary>
+    <details class="pred-details" id="filtrar-resultados"{% if query.q or query.family or query.estado or query.sku_class or "sort" in request.query_params %} open{% endif %}><summary>Filtrar y ordenar SKU</summary>
     <form method="get" action="/resultados" class="pred-filters" id="filtros-seleccion">
       <input type="hidden" name="vista" value="sku">
       {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}

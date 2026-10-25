@@ -20,7 +20,7 @@
     {% if can_continue %}
     <p class="pred-actions">{{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id) }}</p>
     {% endif %}
-    <details class="pred-details" id="explorar-topologia"{% if topology_query.q or topology_query.sku_class or topology_query.page > 1 %} open{% endif %}>
+    <details class="pred-details" id="explorar-topologia"{% if topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params %} open{% endif %}>
     <summary>Explorar clases y SKU · gráfico y tabla</summary>
     <p class="pred-meta">
       Umbrales del motor: ADI {{ format_decimal(topology.thresholds.adi) }}

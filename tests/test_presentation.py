@@ -75,6 +75,8 @@ def test_severity_is_not_color_only() -> None:
 
 def test_sku_class_labels_and_decimal_helpers() -> None:
     assert sku_class_label("smooth") == "Regular"
+    assert sku_class_label("erratic") == "Errática"
+    assert sku_class_label("intermittent") == "Intermitente"
     assert sku_class_label("lumpy") == "Irregular"
     assert format_decimal(1.32) == "1,32"
     assert format_decimal(0.00827, 3) == "0,008"

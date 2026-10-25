@@ -210,6 +210,15 @@ def test_filter_form_keeps_page_size_after_submission() -> None:
         assert any(
             a.get("name") == "size" and a.get("value") == "20" for a in Markup(html).select("input")
         )
+    # Ordenar sin otros filtros o volver a todos los estados conserva el explorador abierto.
+    for path, disclosure in (
+        ("/resultados?sort=valor", "filtrar-resultados"),
+        ("/ejecucion?estado=", "detalle-tareas"),
+        (f"/datos?ingest_id={ACCEPTED}&sort=adi", "explorar-topologia"),
+    ):
+        html = client_for().get(path).text
+        details = Markup(html).select("details")
+        assert any(a.get("id") == disclosure and "open" in a for a in details)
 
 
 def test_result_navigation_remains_links_and_preserves_run() -> None:
