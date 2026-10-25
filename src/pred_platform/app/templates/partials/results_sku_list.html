@@ -31,7 +31,7 @@
       <input type="hidden" name="vista" value="sku">
       {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
       {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=[
-        ("", "Todas"), ("smooth", "Regular"), ("erratic", "Errática"), ("intermittent", "Intermitente"), ("lumpy", "Irregular")
+        ("", "Todas"), ("smooth", "Smooth (Suave)"), ("erratic", "Erratic (Errática)"), ("intermittent", "Intermittent (Intermitente)"), ("lumpy", "Lumpy (Grumosa)")
       ]) }}
       {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
         ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")

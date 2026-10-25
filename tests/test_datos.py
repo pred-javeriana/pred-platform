@@ -191,7 +191,7 @@ def test_topology_filters_are_delegated(tmp_path: Path) -> None:
     assert call["sort"] == "adi"
     assert call["descending"] is True
     assert "FIL-0001" in html
-    assert "Regular" in html
+    assert "Smooth (Suave)" in html
     assert 'role="img"' in html
     assert "<title>" in html
     assert "<desc>" in html

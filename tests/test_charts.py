@@ -15,7 +15,12 @@ def test_scatter_includes_accessible_title_desc_and_thresholds() -> None:
     assert "1,32" in svg
     assert "0,49" in svg
     assert "FIL-0001" in svg
-    for label in ("Regular", "Errática", "Intermitente", "Irregular"):
+    for label in (
+        "Smooth (Suave)",
+        "Erratic (Errática)",
+        "Intermittent (Intermitente)",
+        "Lumpy (Grumosa)",
+    ):
         assert label in svg
     assert "circle" in svg
     assert "polygon" in svg or "rect" in svg

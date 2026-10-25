@@ -16,10 +16,10 @@ StatusModifier = Literal["neutral", "info", "ok", "err", "warn", "pruned"]
 SKU_CLASS_ORDER: tuple[str, ...] = ("smooth", "erratic", "intermittent", "lumpy")
 
 _SKU_CLASS_LABELS: dict[str, str] = {
-    "smooth": "Regular",
-    "erratic": "Errática",
-    "intermittent": "Intermitente",
-    "lumpy": "Irregular",
+    "smooth": "Smooth (Suave)",
+    "erratic": "Erratic (Errática)",
+    "intermittent": "Intermittent (Intermitente)",
+    "lumpy": "Lumpy (Grumosa)",
 }
 
 
