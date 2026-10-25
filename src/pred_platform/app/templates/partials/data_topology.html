@@ -17,6 +17,11 @@
   {% elif topology %}
     {{ metrics_row(topology_metrics) }}
 
+    {% if can_continue %}
+    <p class="pred-actions">{{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id) }}</p>
+    {% endif %}
+    <details class="pred-details" id="explorar-topologia"{% if topology_query.q or topology_query.sku_class or topology_query.page > 1 %} open{% endif %}>
+    <summary>Explorar clases y SKU · gráfico y tabla</summary>
     <p class="pred-meta">
       Umbrales del motor: ADI {{ format_decimal(topology.thresholds.adi) }}
       · CV² {{ format_decimal(topology.thresholds.cv2) }}
@@ -40,10 +45,10 @@
           input_type="select",
           options=[
             ("", "Todas"),
-            ("smooth", "Smooth"),
-            ("erratic", "Erratic"),
-            ("intermittent", "Intermittent"),
-            ("lumpy", "Lumpy")
+            ("smooth", "Regular"),
+            ("erratic", "Errática"),
+            ("intermittent", "Intermitente"),
+            ("lumpy", "Irregular")
           ]
         ) }}
         {{ field("q", "Buscar SKU", value=topology_query.q or "", placeholder="FIL-0001") }}
@@ -93,12 +98,7 @@
         {% endif %}
       </nav>
       {% endif %}
-
-      {% if can_continue %}
-      <p class="pred-actions">
-        {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id) }}
-      </p>
-      {% endif %}
     {% endif %}
+    </details>
   {% endif %}
 </section>

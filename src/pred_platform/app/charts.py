@@ -38,8 +38,8 @@ def topology_scatter_svg(report: TopologyReport) -> str:
     desc = (
         "Cada marca es un SKU del reporte. El eje horizontal es ADI y el vertical es CV². "
         "Las líneas de puntos marcan los umbrales del motor. "
-        "Las clases se distinguen por forma: círculo Smooth, cuadrado Erratic, "
-        "triángulo Intermittent y rombo Lumpy."
+        "Las clases se distinguen por forma: círculo regular, cuadrado errática, "
+        "triángulo intermitente y rombo irregular."
     )
     parts = [
         f'<svg role="img" viewBox="0 0 {_WIDTH} {_HEIGHT}" width="{_WIDTH}" height="{_HEIGHT}" '

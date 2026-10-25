@@ -18,24 +18,6 @@
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
 
-  <section class="pred-section" id="carga">
-    <h2>Cargar archivo</h2>
-    <form method="post" action="/datos/cargar" enctype="multipart/form-data">
-      {{ field(
-        "archivo",
-        "Archivo CSV",
-        input_type="file",
-        accept=".csv",
-        hint=csv_hint,
-        error=form_error or ""
-      ) }}
-      {{ button("Cargar y validar", variant="secondary" if can_continue or pending_token else "primary", type="submit", icon="i-upload") }}
-    </form>
-    {% if not has_ingest %}
-    <p class="pred-meta">Carga un archivo para comenzar.</p>
-    {% endif %}
-  </section>
-
   {% if query_error %}
   <section class="pred-section">
     {{ alert(query_error, variant="warning") }}
@@ -68,8 +50,29 @@
     {% include "partials/data_topology.html" %}
   {% endif %}
 
+  <section class="pred-section" id="carga">
+    {% if report and report.status == "accepted" and not form_error %}
+    <details class="pred-details" id="cambiar-archivo"><summary>Cargar otro archivo</summary>
+    {% else %}<h2>Cargar archivo</h2>{% endif %}
+    <form method="post" action="/datos/cargar" enctype="multipart/form-data">
+      {{ field(
+        "archivo",
+        "Archivo CSV",
+        input_type="file",
+        accept=".csv",
+        hint=csv_hint,
+        error=form_error or ""
+      ) }}
+      {{ button("Cargar y validar", variant="secondary" if can_continue or pending_token else "primary", type="submit", icon="i-upload") }}
+    </form>
+    {% if not has_ingest %}
+    <p class="pred-meta">Carga un archivo para comenzar.</p>
+    {% endif %}
+    {% if report and report.status == "accepted" and not form_error %}</details>{% endif %}
+  </section>
+
   <section class="pred-section" id="historial">
-    <h2>Ingestas</h2>
+    <details class="pred-details" id="historial-ingestas"{% if request.query_params.get("history_page") %} open{% endif %}><summary>Explorar ingestas anteriores</summary>
     {% if list_error %}
       {{ unavailable_state(
         list_error.title,
@@ -82,5 +85,6 @@
     {% else %}
       <p class="pred-meta">Todavía no hay ingestas registradas.</p>
     {% endif %}
+    </details>
   </section>
 {% endblock %}

@@ -10,6 +10,12 @@
   <select class="pred-field__control" id="{{ control_id }}" name="{{ name }}"{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true"{% endif %}{% if described %} aria-describedby="{{ described }}"{% endif %}>
     {% for opt_value, opt_label in options %}<option value="{{ opt_value }}"{% if opt_value == value %} selected{% endif %}>{{ opt_label }}</option>{% endfor %}
   </select>
+  {% elif input_type == "file" %}
+  <div class="pred-file">
+    <input class="pred-file__input" id="{{ control_id }}" name="{{ name }}" type="file"{% if accept %} accept="{{ accept }}"{% endif %}{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true"{% endif %}{% if described %} aria-describedby="{{ described }}"{% endif %}>
+    <span class="pred-file__button" aria-hidden="true">Seleccionar archivo</span>
+    <span class="pred-file__name" id="{{ control_id }}-nombre" role="status" aria-live="polite">Ningún archivo seleccionado</span>
+  </div>
   {% else %}
   <input class="{{ 'pred-field__control' if input_type != 'checkbox' else 'pred-field__checkbox' }}" id="{{ control_id }}" name="{{ name }}" type="{{ input_type }}"{% if input_type == 'checkbox' %} value="1"{% if value %} checked{% endif %}{% elif input_type != 'file' %} value="{{ value }}" placeholder="{{ placeholder }}"{% endif %}{% if accept %} accept="{{ accept }}"{% endif %}{% if disabled %} disabled{% endif %}{% if error %} aria-invalid="true"{% endif %}{% if described %} aria-describedby="{{ described }}"{% endif %}>
   {% endif %}

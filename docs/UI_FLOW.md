@@ -172,3 +172,12 @@ Por SKU conserva la entrada actual hasta que la integración M4 publique los dat
 El encabezado comunica alcance retrospectivo y origen no informado cuando el contrato no entrega procedencia. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección.
 
 Los agregados de cartera/clase, procedencia declarada, cinco veredictos, DM/BH/causas y exportables son dependencias de M4. Se mantienen disponibles únicamente los campos del contrato vigente. Ver el registro y la condición de cierre en UI_REVIEW.md.
+
+
+## Exploración progresiva en la revisión final D2
+
+Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con archivo/estado/conteos y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cambiar archivo e historial son disclosures. Un filtro o página explícitos reabren el explorador correspondiente.
+
+Ejecución sin contexto comienza con la corrida actual. Los conteos por estado son enlaces al explorador de tareas filtrado, que se abre al navegar a esa consulta. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
+
+Resultados mantiene la lista por SKU como entrada actual: filtros plegables, familias por fila y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. Origen no informado y alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.

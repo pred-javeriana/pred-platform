@@ -52,13 +52,13 @@
       <p class="pred-meta">La comparación puede estar incompleta. Cada familia conserva su estado y su causa; una exclusión no es un fallo técnico.</p>
       {% for entry in entries %}
       {% set wf = entry.walk_forward %}
-      <article class="pred-family" id="familia-{{ entry.family }}">
-        <div class="pred-family__head">
+      <details class="pred-family pred-details" id="familia-{{ entry.family }}"{% if with_windows and wf %} open{% endif %}>
+        <summary class="pred-family__head">
           <h3>{{ family_label(entry.family) }}</h3>
           {{ status_indicator(describe_status("family", entry.estado)) }}
           {% if entry.modelo %}<span class="mono">{{ entry.modelo }}</span>{% endif %}
-          {% if entry.produced_by %}<span class="pred-meta">{{ entry.produced_by }}</span>{% endif %}
-        </div>
+          {% if wf and wf.valor_agregado is not none %}<span class="mono">{{ wf.metrica_objetivo }} {{ format_decimal(wf.valor_agregado, 3) }}</span>{% endif %}
+        </summary>
 
         {% if entry.exclusion %}
         <p class="pred-note">{{ exclusion_text(entry.exclusion.reason_code, entry.exclusion.detail) }}</p>
@@ -76,6 +76,7 @@
         {% endif %}
 
         {% set items = evidence_items(entry) %}
+        {% if entry.produced_by %}<p class="pred-meta">Implementación: <span class="mono">{{ entry.produced_by }}</span></p>{% endif %}
         {% if items %}
         <details class="pred-details" id="configuracion-{{ entry.family }}">
         <summary>Configuración elegida y búsqueda · {{ family_label(entry.family) }}</summary>
@@ -154,7 +155,7 @@
         <p class="pred-note"><a href="{{ windows_href }}#familia-{{ entry.family }}">Ver las {{ wf.n_ventanas_evaluadas }} ventanas</a></p>
         {% endif %}
         {% endif %}
-      </article>
+      </details>
       {% endfor %}
       {% if with_windows %}
       <p class="pred-note"><a href="{{ hide_windows_href }}">Ocultar las ventanas</a></p>

@@ -31,10 +31,7 @@ from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
 
-_CSV_HINT = (
-    "Solo archivos .csv. La validación de columnas y filas la realiza el repositorio, "
-    "no esta vista."
-)
+_CSV_HINT = "Seleccione un archivo .csv. Al cargarlo se validarán sus columnas y filas."
 
 
 @router.get("/datos", response_class=HTMLResponse)

@@ -74,6 +74,7 @@
 /* ---------------------------------------------- Correspondencia con Pico */
 :root,
 :root[data-theme="light"] {
+  --pico-font-size: 16px;
   --pico-font-family: var(--font-body);
   --pico-font-family-sans-serif: var(--font-body);
   --pico-font-family-monospace: var(--font-mono);
@@ -150,6 +151,7 @@ samp,
 
 .pred-nav {
   display: flex;
+  justify-content: flex-start;
   align-items: center;
   gap: var(--space-1);
   min-height: 50px;
@@ -171,7 +173,7 @@ samp,
   padding: 6px 10px;
   border-radius: var(--radius);
   color: var(--muted-text);
-  font-size: 13px;
+  font-size: 0.875rem;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -211,7 +213,7 @@ samp,
 .pred-page-header p {
   margin: 0;
   color: var(--muted-text);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-section {
@@ -224,8 +226,10 @@ samp,
 }
 
 /* ---------------------------------------------------------------- Botones */
-.pred-btn {
+.pred-btn, button.pred-btn {
   display: inline-flex;
+  width: auto;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
   margin: 0;
@@ -233,7 +237,7 @@ samp,
   border: 1px solid transparent;
   border-radius: var(--radius);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.4;
   text-decoration: none;
@@ -293,13 +297,17 @@ samp,
 }
 
 .pred-field__label {
+  margin: 0;
+  line-height: 1.5;
   color: var(--muted-text);
-  font-size: 12px;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
-.pred-field__control {
+.pred-field .pred-field__control {
   width: 100%;
+  height: 2.5rem;
+  line-height: 1.5;
   margin: 0;
   padding: 7px 10px;
   border: 1px solid var(--border-strong);
@@ -307,7 +315,7 @@ samp,
   background: var(--surface);
   color: var(--ink-soft);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 0.875rem;
   box-shadow: none;
 }
 
@@ -337,7 +345,7 @@ samp,
   align-items: flex-start;
   gap: 6px;
   margin: 0;
-  font-size: 12px;
+  font-size: 0.875rem;
 }
 
 .pred-field__hint {
@@ -382,7 +390,7 @@ samp,
   padding: 10px 12px;
   border: 1px solid;
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-alert svg {
@@ -439,7 +447,7 @@ samp,
   gap: 6px;
   padding: 2px 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.6;
   white-space: normal;
@@ -490,7 +498,7 @@ samp,
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-progress__label {
@@ -527,7 +535,7 @@ samp,
 .pred-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 0.875rem;
 }
 
 .pred-table th {
@@ -545,7 +553,7 @@ samp,
   vertical-align: middle;
 }
 
-.pred-table tbody tr:last-child td {
+.pred-table tbody tr:last-child :is(th, td) {
   border-bottom: none;
 }
 
@@ -580,7 +588,7 @@ samp,
   margin: 0 0 var(--space-1);
   color: var(--muted-text);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -618,6 +626,7 @@ samp,
 /* --------------------------------------------------------------- Tabs */
 .pred-tabs {
   display: flex;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-1);
   margin-bottom: var(--space-3);
@@ -634,7 +643,7 @@ samp,
   background: transparent;
   color: var(--muted-text);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 0.875rem;
   text-decoration: none;
   cursor: pointer;
   box-shadow: none;
@@ -673,7 +682,7 @@ samp,
   margin-bottom: var(--space-3);
   color: var(--muted-text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.875rem;
 }
 
 .pred-unavailable {
@@ -692,13 +701,13 @@ samp,
 .pred-unavailable p {
   margin: 0 0 var(--space-2);
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-unavailable__meta {
   color: var(--muted-text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.875rem;
 }
 
 .pred-loading {
@@ -708,7 +717,7 @@ samp,
   gap: var(--space-2);
   padding: var(--space-4);
   color: var(--muted-text);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-loading__mark {
@@ -728,7 +737,7 @@ samp,
 .pred-meta {
   margin: 0 0 var(--space-3);
   color: var(--muted-text);
-  font-size: 12px;
+  font-size: 0.875rem;
 }
 
 .pred-section h2 {
@@ -740,7 +749,7 @@ samp,
 
 .pred-section h3 {
   margin: var(--space-3) 0 var(--space-2);
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -755,7 +764,7 @@ samp,
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  align-items: end;
+  align-items: start;
   margin: var(--space-3) 0;
 }
 
@@ -769,12 +778,14 @@ samp,
   align-items: center;
   gap: var(--space-2);
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-field__check input {
   margin: 0;
-  width: auto;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 1.125rem;
 }
 
 .pred-log {
@@ -785,7 +796,7 @@ samp,
 
 .pred-log p {
   margin: 0 0 var(--space-2);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-pager {
@@ -795,7 +806,7 @@ samp,
   gap: var(--space-3);
   margin-top: var(--space-3);
   color: var(--muted-text);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-pager a {
@@ -843,14 +854,14 @@ samp,
   gap: var(--space-2) var(--space-3);
   margin: 0 0 var(--space-3);
   color: var(--muted-text);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-reasons {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-4);
   color: var(--muted-text);
-  font-size: 12.5px;
+  font-size: 0.875rem;
 }
 
 .pred-table .num {
@@ -874,7 +885,7 @@ samp,
 .pred-cell__value {
   color: var(--data-text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -887,7 +898,7 @@ samp,
   grid-template-columns: minmax(12rem, max-content) 1fr;
   gap: 4px var(--space-3);
   margin: 0 0 var(--space-3);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-kv dt {
@@ -922,20 +933,20 @@ samp,
 }
 
 .pred-family__head .mono {
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-family h4 {
   margin: var(--space-3) 0 var(--space-2);
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
 .pred-note {
   margin: 0 0 var(--space-2);
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-note--muted {
@@ -946,7 +957,7 @@ samp,
   display: inline-block;
   margin-bottom: var(--space-3);
   color: var(--primary-dark);
-  font-size: 13px;
+  font-size: 0.875rem;
   text-decoration: none;
 }
 
@@ -960,7 +971,7 @@ samp,
 .pred-fieldset legend {
   margin-bottom: var(--space-2);
   color: var(--muted-text);
-  font-size: 12.5px;
+  font-size: 0.875rem;
   font-weight: 500;
 }
 
@@ -976,7 +987,7 @@ samp,
   margin: var(--space-3) 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-statelist li {
@@ -988,7 +999,7 @@ samp,
 
 .pred-details {
   margin: var(--space-3) 0 0;
-  font-size: 13px;
+  font-size: 0.875rem;
 }
 
 .pred-details summary {
@@ -1014,8 +1025,8 @@ samp,
 }
 
 .pred-details--launch > summary::after {
-  content: " ▾";
-  color: var(--muted-text);
+  content: "";
+  background-image: var(--pico-icon-chevron);
 }
 
 /* ------------------------------------------------------------- Revisión D2 */
@@ -1064,7 +1075,10 @@ samp,
 .pred-details[open] > summary { margin-bottom: var(--space-2); }
 .pred-table-wrap .pred-details { margin: 0; }
 .pred-evidence-scroll { max-height: 28rem; overflow: auto; scrollbar-gutter: stable; }
-.pred-section-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.pred-section-links { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: var(--space-2); margin-block: var(--space-3); }
+.pred-section-links a { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border-strong); color: var(--primary-dark); font-size: 0.875rem; line-height: 1.5; text-decoration: none; }
+.pred-section-links a[aria-current="true"], .pred-section-links a:hover { background: var(--primary-soft); border-color: var(--primary); }
+.pred-section-links .pred-status { font-size: inherit; }
 .pred-poll-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pred-poll-controls p { margin: 0; }
 .pred-state--error h2 { color: var(--err); }
@@ -1083,3 +1097,36 @@ samp,
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* Controles coherentes sobre los tamaños y márgenes predeterminados de Pico. */
+.pred-field__check { margin: 0; min-height: 2.5rem; }
+.pred-field select.pred-field__control { background-image: var(--pico-icon-chevron); background-position: center right 0.75rem; background-repeat: no-repeat; background-size: 1rem auto; padding-right: 2rem; }
+.pred-field:has(.pred-field__checkbox) { padding-top: 1.5625rem; }
+.pred-filters > .pred-btn, .pred-filters > a { align-self: start; margin-top: 1.5625rem; }
+.pred-filters > a { font-size: 0.875rem; line-height: 2.5rem; }
+.pred-launch .pred-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pred-launch fieldset + .pred-filters, .pred-launch__advanced > .pred-filters { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+.pred-launch__advanced .pred-field__label { min-height: 3em; }
+.pred-file { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--border-strong); background: var(--surface); font-size: 0.875rem; }
+.pred-file:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pred-file__input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pred-file__button { padding: 0.5rem 0.75rem; background: var(--primary-soft); color: var(--primary-dark); border: 1px solid var(--primary); }
+.pred-file__name { min-width: 0; overflow-wrap: anywhere; color: var(--muted-text); }
+@media (max-width: 600px) {
+  .pred-launch .pred-filters, .pred-launch fieldset + .pred-filters, .pred-launch__advanced > .pred-filters { grid-template-columns: 1fr; }
+  .pred-launch__advanced .pred-field__label { min-height: 0; }
+  .pred-field:has(.pred-field__checkbox) { padding-top: 0; }
+  .pred-filters > .pred-btn, .pred-filters > a { margin-top: 0; }
+}
+
+/* Resumen operativo y exploración progresiva. */
+.pred-statelist a { display: inline-flex; align-items: center; gap: var(--space-2); padding: 0.5rem 0.75rem; border: 1px solid var(--border-strong); color: var(--ink-soft); font-size: 0.875rem; text-decoration: none; }
+.pred-statelist a:hover, .pred-statelist a[aria-current="true"] { background: var(--primary-soft); border-color: var(--primary); }
+.pred-statelist .pred-status { font-size: inherit; }
+.pred-family > .pred-family__head { display: flex; align-items: center; padding-block: var(--space-2); }
+.pred-family > .pred-family__head h3 { flex: 1 1 8rem; }
+.pred-family > summary::after { flex: 0 0 1rem; }
+.pred-family[open] { padding-bottom: var(--space-4); }
+.pred-section > .pred-details:first-child { margin-top: 0; }
+
+.pred-field.is-error .pred-file { border-color: var(--err); }

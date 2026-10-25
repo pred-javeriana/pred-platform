@@ -1,5 +1,12 @@
 /* Pintado de la barra de progreso: interpolación cúbica info → ok (DESIGN.md). */
 (function () {
+  document.addEventListener("change", function (evento) {
+    const entrada = evento.target;
+    if (!entrada.matches || !entrada.matches(".pred-file__input")) return;
+    const nombre = document.getElementById(entrada.id + "-nombre");
+    if (nombre) nombre.textContent = entrada.files.length ? entrada.files[0].name : "Ningún archivo seleccionado";
+  });
+
   function colorProgreso(pct) {
     const desde = [46, 110, 158];
     const hasta = [62, 107, 79];
@@ -104,6 +111,16 @@
   document.addEventListener("DOMContentLoaded", function () {
     pintarBarras(document);
     actualizarSondeo();
+    // Tras un envío inválido, el primer campo lleva al error sin recorrer la página de nuevo.
+    const invalido = document.querySelector('[aria-invalid="true"]:not(:disabled)');
+    if (invalido) {
+      let contenedor = invalido.parentElement;
+      while (contenedor) {
+        if (contenedor.tagName === "DETAILS") contenedor.open = true;
+        contenedor = contenedor.parentElement;
+      }
+      invalido.focus();
+    }
   });
   document.body.addEventListener("htmx:afterSwap", function (evento) {
     pintarBarras(evento.target);

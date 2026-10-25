@@ -25,7 +25,7 @@
 {% else %}
 <section class="pred-section" id="ejecucion-activa">
   <h2>{{ "Ejecución activa" if run.estado in ("pendiente", "ejecutando") else "Estado de la ejecución" }}</h2>
-  <p class="pred-meta">El avance corresponde a las tareas informadas por la ejecución. La etapa analítica actual no está informada en este contrato.</p>
+
   {{ run_line(status) }}
 
   <div class="pred-actions">
@@ -68,13 +68,14 @@
   {{ progress_bar(done, progress.tareas_total, pct, bar_label) }}
   <ul class="pred-statelist">
     {% for code, count in state_counts %}
-    <li>{{ status_indicator(describe_status("task", code)) }} <span class="mono">{{ format_count(count) }}</span></li>
+    <li><a href="/ejecucion?{{ query.query_string(estado=code, page=1) }}#tareas"{% if query.estado == code %} aria-current="true"{% endif %}>{{ status_indicator(describe_status("task", code)) }} <span class="mono">{{ format_count(count) }}</span></a></li>
     {% endfor %}
   </ul>
   {% endif %}
 
   <details class="pred-details" id="configuracion-corrida">
-    <summary>Configuración y corte de la reserva</summary>
+    <summary>Explorar configuración y trazabilidad</summary>
+    <p class="pred-meta">El avance corresponde a las tareas informadas. La etapa analítica actual no está informada en este contrato.</p>
     <dl class="pred-kv">
       {% for label, value in settings_rows %}<dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
       {% if reserve %}
@@ -88,13 +89,8 @@
 </section>
 
 <section class="pred-section" id="tareas">
-  <h2>Tareas</h2>
-  <nav class="pred-section-links" aria-label="Priorizar tareas">
-    {% for code in ("fallida", "no_ejecutable", "ejecutando", "pendiente") %}
-    <a href="/ejecucion?{{ query.query_string(estado=code, page=1) }}#tareas"{% if query.estado == code %} aria-current="true"{% endif %}>{{ status_indicator(describe_status("task", code)) }}{% if progress %} · {{ format_count(progress.tareas_por_estado.get(code, 0)) }}{% endif %}</a>
-    {% endfor %}
-    <a href="/ejecucion?{{ query.query_string(estado='', page=1) }}#tareas">Todos los estados</a>
-  </nav>
+  <details class="pred-details" id="detalle-tareas"{% if query.estado or query.family or query.sku or query.page > 1 %} open{% endif %}>
+  <summary>Explorar tareas{% if status.page %} · {{ format_count(status.page.total) }} en esta consulta{% endif %}</summary>
   <form method="get" action="/ejecucion" class="pred-filters" id="filtros-tareas" hx-preserve="true">
     {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
     {{ field("estado", "Estado", value=query.estado or "", input_type="select", options=[
@@ -145,5 +141,6 @@
     {% if pages.has_next %}<a href="/ejecucion?{{ query.query_string(page=status.page.number + 1) }}">Siguiente</a>{% endif %}
   </nav>
   {% endif %}
+  </details>
 </section>
 {% endif %}

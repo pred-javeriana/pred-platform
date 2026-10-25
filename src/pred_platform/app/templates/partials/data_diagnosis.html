@@ -6,7 +6,7 @@
 
 {% set ingest_status = describe_status("ingest", report.status) %}
 <section class="pred-section" id="diagnostico">
-  <h2>Diagnóstico</h2>
+  <h2>Archivo seleccionado</h2>
   {{ status_indicator(ingest_status) }}
   <p class="pred-meta">
     <span class="mono">{{ report.source_file.name }}</span>
@@ -58,6 +58,7 @@
     ]) }}
   {% endif %}
 
+  <details class="pred-details" id="diagnostico-completo"><summary>Explorar diagnóstico y validación</summary>
   {% if report.published %}
     <p class="pred-meta">
       Publicado: {{ format_count(report.published.rows) }} filas,
@@ -68,7 +69,7 @@
 
   {% if report.header_diagnostic %}
     <h3>Encabezado</h3>
-    <p class="pred-meta">Estado: {{ report.header_diagnostic.status }}</p>
+    <p class="pred-meta">Estado: {{ {"accepted": "Aceptado", "rejected": "Requiere corrección", "needs_confirmation": "Requiere confirmación", "failed": "Fallido"}.get(report.header_diagnostic.status, report.header_diagnostic.status) }}</p>
     {% if report.header_diagnostic.entries %}
       {{ table_start(["Campo", "Severidad", "Mensaje", "Acción sugerida"]) }}
       {% for entry in report.header_diagnostic.entries %}
@@ -106,4 +107,5 @@
     </div>
     </details>
   {% endif %}
+  </details>
 </section>

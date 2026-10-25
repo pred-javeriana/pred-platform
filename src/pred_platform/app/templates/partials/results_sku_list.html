@@ -26,11 +26,12 @@
       listing.availability.blocked_by
     ) }}
   {% elif listing %}
+    <details class="pred-details" id="filtrar-resultados"{% if query.q or query.family or query.estado or query.sku_class %} open{% endif %}><summary>Filtrar y ordenar SKU</summary>
     <form method="get" action="/resultados" class="pred-filters" id="filtros-seleccion">
       <input type="hidden" name="vista" value="sku">
       {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
       {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=[
-        ("", "Todas"), ("smooth", "Smooth"), ("erratic", "Erratic"), ("intermittent", "Intermittent"), ("lumpy", "Lumpy")
+        ("", "Todas"), ("smooth", "Regular"), ("erratic", "Errática"), ("intermittent", "Intermitente"), ("lumpy", "Irregular")
       ]) }}
       {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
         ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
@@ -48,6 +49,7 @@
       {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
       <a href="/resultados?{{ query.query_string(sku_class='', family='', estado='', q='', sort='sku_id', descending='', page=1) }}">Limpiar filtros</a>
     </form>
+    </details>
 
     <p class="pred-meta">{{ format_count(listing.page.total) }} SKU coinciden con la consulta. Los estados corresponden a cada familia; no representan un veredicto global del SKU.</p>
     {{ table_start(["SKU", "Clase", "Campeón", "Evidencia por familia"], "Selección por SKU de la ejecución") }}

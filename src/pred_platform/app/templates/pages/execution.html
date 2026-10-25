@@ -7,7 +7,7 @@
   <header class="pred-page-header">
     <div>
       <h1>Ejecución</h1>
-      <p>Lance una corrida sobre una ingesta aceptada, siga su avance y deténgala o reanúdela sin salir de esta pantalla.</p>
+      <p>Siga el avance de la corrida y atienda las tareas que necesitan intervención.</p>
     </div>
   </header>
 
@@ -19,8 +19,10 @@
   {% if action_error %}{{ alert(action_error, variant="warning") }}{% endif %}
   {% if query_error %}{{ alert(query_error, variant="warning") }}{% endif %}
 
-  {% include "partials/execution_launch.html" %}
 
+  {% if not run or request.query_params.get("ingest_id") or form_errors or form_error %}
+  {% include "partials/execution_launch.html" %}
+  {% endif %}
   <div class="pred-poll-controls">
     <button type="button" class="pred-btn pred-btn--subtle" id="pausar-actualizacion" aria-controls="ejecucion-cuerpo" aria-pressed="false"{% if not poll %} disabled{% endif %}>Pausar actualización</button>
     <p class="pred-meta" id="actualizacion-ayuda">{% if poll %}Actualización automática cada 2 segundos. Se pausa mientras usa los controles o selecciona texto.{% else %}Actualización automática no activa.{% endif %}</p>
@@ -34,4 +36,7 @@
        hx-target="this" aria-live="off">
     {% include "partials/execution_body.html" %}
   </div>
+  {% if run and not request.query_params.get("ingest_id") and not form_errors and not form_error %}
+  {% include "partials/execution_launch.html" %}
+  {% endif %}
 {% endblock %}

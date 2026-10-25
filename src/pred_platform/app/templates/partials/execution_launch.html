@@ -4,8 +4,8 @@
 
 <section class="pred-section" id="lanzar">
   {# Plegado cuando ya hay una corrida que mostrar, para que su avance quede a la vista. #}
-  <details class="pred-details pred-details--launch"{% if not run or form_errors or form_error %} open{% endif %}>
-  <summary><h2>Lanzar ejecución</h2></summary>
+  <details class="pred-details pred-details--launch"{% if not run or request.query_params.get("ingest_id") or form_errors or form_error %} open{% endif %}>
+  <summary><h2>Configurar nueva ejecución</h2></summary>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
 
   {% if not ingests %}
@@ -39,6 +39,9 @@
     <div class="pred-filters">
       {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", error=form_errors.get("min_train", "")) }}
       {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", error=form_errors.get("horizon", "")) }}
+    </div>
+    <details class="pred-details pred-launch__advanced"{% if form_errors %} open{% endif %}><summary>Ajustes de búsqueda y reproducibilidad</summary>
+    <div class="pred-filters">
       {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
       {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
       {{ field("trials", "Ensayos por estudio", value=form.trials, input_type="number", placeholder="los del motor", hint="Vacío: el presupuesto de cada familia.", error=form_errors.get("trials", "")) }}
@@ -46,6 +49,7 @@
       {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
     </div>
 
+    </details>
     <p class="pred-actions">
       {{ button("Lanzar ejecución", variant="secondary" if finished else "primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
     </p>
