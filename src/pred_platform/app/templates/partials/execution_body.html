@@ -6,6 +6,7 @@
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/run_line.html" import run_line %}
 
+<span hidden data-pred-poll="{{ 'true' if poll else 'false' }}" data-pred-run-state="{{ run.estado if run else 'sin_ejecucion' }}" data-pred-run-summary="{% if run %}Ejecución {{ run.id }}: {{ describe_status('run', run.estado).label }}{% else %}Sin ejecución{% endif %}"></span>
 {% if status_error %}
   {{ unavailable_state(status_error.title, status_error.detail or "No fue posible leer la ejecución.", status_error.code, status_error.blocked_by) }}
 {% elif not run %}
@@ -23,18 +24,19 @@
   {% endif %}
 {% else %}
 <section class="pred-section" id="ejecucion-activa">
-  <h2>Ejecución activa</h2>
+  <h2>{{ "Ejecución activa" if run.estado in ("pendiente", "ejecutando") else "Estado de la ejecución" }}</h2>
+
   {{ run_line(status) }}
 
   <div class="pred-actions">
     {% if run.estado in ("pendiente", "ejecutando") %}
-    <form method="post" action="/ejecucion/detener">
+    <form method="post" action="/ejecucion/detener" id="accion-detener">
       <input type="hidden" name="ejecucion" value="{{ run.id }}">
       {{ button("Detener", variant="secondary", type="submit", icon="i-stop", disabled=not actions.can_stop) }}
     </form>
     {% endif %}
     {% if run.estado in ("detenida", "completada_con_fallos") %}
-    <form method="post" action="/ejecucion/reanudar">
+    <form method="post" action="/ejecucion/reanudar" id="accion-reanudar">
       <input type="hidden" name="ejecucion" value="{{ run.id }}">
       {{ button("Reanudar" if run.estado == "detenida" else "Reintentar las tareas con fallos", variant="secondary", type="submit", icon="i-rotate", disabled=not actions.can_resume) }}
     </form>
@@ -66,13 +68,14 @@
   {{ progress_bar(done, progress.tareas_total, pct, bar_label) }}
   <ul class="pred-statelist">
     {% for code, count in state_counts %}
-    <li>{{ status_indicator(describe_status("task", code)) }} <span class="mono">{{ format_count(count) }}</span></li>
+    <li><a href="/ejecucion?{{ query.query_string(estado=code, page=1) }}#tareas"{% if query.estado == code %} aria-current="true"{% endif %}>{{ status_indicator(describe_status("task", code)) }} <span class="mono">{{ format_count(count) }}</span></a></li>
     {% endfor %}
   </ul>
   {% endif %}
 
-  <details class="pred-details">
-    <summary>Configuración y corte de la reserva</summary>
+  <details class="pred-details" id="configuracion-corrida">
+    <summary>Explorar configuración y trazabilidad</summary>
+    <p class="pred-meta">El avance corresponde a las tareas informadas. La etapa analítica actual no está informada en este contrato.</p>
     <dl class="pred-kv">
       {% for label, value in settings_rows %}<dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
       {% if reserve %}
@@ -86,7 +89,8 @@
 </section>
 
 <section class="pred-section" id="tareas">
-  <h2>Tareas</h2>
+  <details class="pred-details" id="detalle-tareas"{% if query.estado or query.family or query.sku or query.page > 1 or "estado" in request.query_params %} open{% endif %}>
+  <summary>Explorar tareas{% if status.page %} · {{ format_count(status.page.total) }} en esta consulta{% endif %}</summary>
   <form method="get" action="/ejecucion" class="pred-filters" id="filtros-tareas" hx-preserve="true">
     {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
     {{ field("estado", "Estado", value=query.estado or "", input_type="select", options=[
@@ -97,15 +101,16 @@
       ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
     ]) }}
     {{ field("sku", "SKU", value=query.sku or "", placeholder="FIL-0001") }}
+    <input type="hidden" name="size" value="{{ query.size }}">
     {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
   </form>
 
-  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"]) }}
+  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"], "Tareas de la ejecución filtrada") }}
   {% if rows %}
     {% for item in rows %}
     {% set task = item.task %}
     <tr>
-      <td><span class="mono">{{ task.sku or "—" }}</span></td>
+      <th scope="row" class="pred-sku"><span class="mono">{{ task.sku or "—" }}</span></th>
       <td>{{ family_label(task.family) if task.family else "—" }}</td>
       <td><span class="mono">{{ task.modelo }}</span></td>
       <td>{{ status_indicator(describe_status("task", task.estado)) }}</td>
@@ -113,9 +118,13 @@
       <td class="wrap">
         {% if item.error %}
         <strong>{{ item.error.title }}</strong>
-        {% if item.error.detail %}<span class="pred-meta"> {{ item.error.detail }}</span>{% endif %}
+
         {% if item.error.action %}<br><span class="pred-note">{{ item.error.action }}</span>{% endif %}
-        <br><span class="pred-meta">Etapa {{ item.error.stage }} · <span class="mono">{{ item.error.code }}</span></span>
+        <details class="pred-details">
+          <summary>Detalle técnico</summary>
+          {% if item.error.detail %}<p>{{ item.error.detail }}</p>{% endif %}
+          <p class="pred-meta">Etapa {{ item.error.stage or "no informada" }} · <span class="mono">{{ item.error.code }}</span></p>
+        </details>
         {% else %}—{% endif %}
       </td>
     </tr>
@@ -132,5 +141,6 @@
     {% if pages.has_next %}<a href="/ejecucion?{{ query.query_string(page=status.page.number + 1) }}">Siguiente</a>{% endif %}
   </nav>
   {% endif %}
+  </details>
 </section>
 {% endif %}

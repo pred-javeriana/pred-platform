@@ -1,7 +1,7 @@
 {% from "components/buttons.html" import button %}
 {# La acción de C2: lanzar se hace en Ejecución; aquí solo se habilita o se explica por qué no. #}
 <div class="pred-actions" id="accion-seleccion">
-  {{ button("Ejecutar selección", variant="primary", href="/ejecucion", icon="i-play", disabled=not action.enabled) }}
+  {{ button("Configurar nueva ejecución", variant="primary", href="/ejecucion", icon="i-play", disabled=not action.enabled) }}
 </div>
 {% if not action.enabled %}
 <p class="pred-meta" id="accion-razon">La acción está deshabilitada. Falta:</p>

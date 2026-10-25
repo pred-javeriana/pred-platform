@@ -11,9 +11,10 @@
   {% block head %}{% endblock %}
 </head>
 <body class="pred-shell">
+  <a class="pred-skip" href="#contenido">Saltar al contenido</a>
   {% include "partials/icons.html" %}
   {% include "partials/navigation.html" %}
-  <main class="pred-main">
+  <main class="pred-main" id="contenido" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
   {% block scripts %}{% endblock %}

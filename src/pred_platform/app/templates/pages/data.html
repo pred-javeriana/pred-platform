@@ -2,7 +2,7 @@
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
-{% from "components/states.html" import unavailable_state %}
+{% from "components/states.html" import unavailable_state, error_state %}
 
 {% block title %}PRED — Datos{% endblock %}
 
@@ -18,24 +18,6 @@
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
 
-  <section class="pred-section" id="carga">
-    <h2>Cargar archivo</h2>
-    <form method="post" action="/datos/cargar" enctype="multipart/form-data">
-      {{ field(
-        "archivo",
-        "Archivo CSV",
-        input_type="file",
-        accept=".csv",
-        hint=csv_hint,
-        error=form_error or ""
-      ) }}
-      {{ button("Cargar y validar", variant="primary", type="submit", icon="i-upload") }}
-    </form>
-    {% if not has_ingest %}
-    <p class="pred-meta">Carga un archivo para comenzar.</p>
-    {% endif %}
-  </section>
-
   {% if query_error %}
   <section class="pred-section">
     {{ alert(query_error, variant="warning") }}
@@ -44,6 +26,9 @@
 
   {% if report_error and not report %}
   <section class="pred-section" id="diagnostico">
+    {% if report_error.code not in ("platform.artifact_missing", "platform.engine_unavailable") %}
+    {{ error_state(report_error.title, report_error.detail or "Vuelva a intentar la operación.", report_error.code, "Reintentar", "/datos") }}
+    {% else %}
     {{ unavailable_state(
       report_error.title,
       report_error.detail or "La integración con el motor todavía no está habilitada.",
@@ -53,6 +38,7 @@
     {% if report_error.retryable %}
     <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
     {% endif %}
+  {% endif %}
   </section>
   {% endif %}
 
@@ -64,8 +50,29 @@
     {% include "partials/data_topology.html" %}
   {% endif %}
 
+  <section class="pred-section" id="carga">
+    {% if report and report.status == "accepted" and not form_error %}
+    <details class="pred-details" id="cambiar-archivo"><summary>Cargar otro archivo</summary>
+    {% else %}<h2>Cargar archivo</h2>{% endif %}
+    <form method="post" action="/datos/cargar" enctype="multipart/form-data">
+      {{ field(
+        "archivo",
+        "Archivo CSV",
+        input_type="file",
+        accept=".csv",
+        hint=csv_hint,
+        error=form_error or ""
+      ) }}
+      {{ button("Cargar y validar", variant="secondary" if can_continue or pending_token else "primary", type="submit", icon="i-upload") }}
+    </form>
+    {% if not has_ingest %}
+    <p class="pred-meta">Carga un archivo para comenzar.</p>
+    {% endif %}
+    {% if report and report.status == "accepted" and not form_error %}</details>{% endif %}
+  </section>
+
   <section class="pred-section" id="historial">
-    <h2>Ingestas</h2>
+    <details class="pred-details" id="historial-ingestas"{% if request.query_params.get("history_page") %} open{% endif %}><summary>Explorar ingestas anteriores</summary>
     {% if list_error %}
       {{ unavailable_state(
         list_error.title,
@@ -73,10 +80,11 @@
         list_error.code,
         list_error.blocked_by
       ) }}
-    {% elif listing and listing.items %}
+    {% elif listing and (listing.items or listing.page.total) %}
       {% include "partials/data_history.html" %}
     {% else %}
       <p class="pred-meta">Todavía no hay ingestas registradas.</p>
     {% endif %}
+    </details>
   </section>
 {% endblock %}

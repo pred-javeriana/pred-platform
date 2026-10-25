@@ -1,7 +1,7 @@
 {% from "components/status.html" import status_indicator %}
-{% from "components/tables.html" import table_start, table_end %}
+{% from "components/tables.html" import table_start, table_end, table_empty %}
 
-{{ table_start(["Nombre", "Estado", "Filas", "SKU", "Fecha"]) }}
+{{ table_start(["Nombre", "Estado", "Filas", "SKU", "Fecha"], "Historial de ingestas") }}
 {% for item in listing.items %}
 <tr>
   <td>
@@ -22,5 +22,15 @@
   <td class="mono">{{ format_count(item.n_skus) if item.n_skus is not none else "—" }}</td>
   <td class="mono">{{ format_when(item.published_at) }}</td>
 </tr>
+{% else %}
+{{ table_empty(5, "Página sin ingestas", "Vuelva a la primera página del historial.") }}
 {% endfor %}
 {{ table_end() }}
+{% if history_pages and (history_pages.show or listing.page.number > 1) %}
+<nav class="pred-pager" aria-label="Paginación de ingestas">
+  <span>Página {{ listing.page.number }} · {{ format_count(listing.page.total) }} ingestas</span>
+  {% if history_pages.has_prev %}<a href="{{ history_prev_href }}">Anterior</a>{% endif %}
+  {% if history_pages.has_next %}<a href="{{ history_next_href }}">Siguiente</a>{% endif %}
+  <a href="{{ history_reset_href }}">Primera página</a>
+</nav>
+{% endif %}

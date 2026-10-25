@@ -31,10 +31,7 @@ from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
 
-_CSV_HINT = (
-    "Solo archivos .csv. La validación de columnas y filas la realiza el repositorio, "
-    "no esta vista."
-)
+_CSV_HINT = "Seleccione un archivo .csv. Al cargarlo se validarán sus columnas y filas."
 
 
 @router.get("/datos", response_class=HTMLResponse)
@@ -120,10 +117,20 @@ def _render_page(
     form_error: str | None = None,
     layer_error: dict[str, object] | None = None,
 ) -> HTMLResponse:
+    params = dict(request.query_params)
     listing = None
     list_error = None
+    history_query_error = None
+    history_page = 1
     try:
-        listing = repository.list_ingests()
+        history_page = int(params.get("history_page") or "1")
+        if history_page < 1:
+            raise ValueError
+    except ValueError:
+        history_query_error = "La página del historial debe ser un entero mayor que cero."
+        history_page = 1
+    try:
+        listing = repository.list_ingests(page=history_page, size=20)
     except DataLayerError as exc:
         list_error = error_view(exc)
 
@@ -138,7 +145,7 @@ def _render_page(
     topology_metrics = None
     topology_pages = None
     chart_svg = None
-    query_error = None
+    query_error = history_query_error
 
     if pending_token:
         stored = peek_pending(request, pending_token)
@@ -202,6 +209,16 @@ def _render_page(
         "capabilities": repository.get_capabilities(),
         "listing": listing,
         "list_error": list_error,
+        "history_pages": page_meta(listing.page) if listing else None,
+        "history_reset_href": "/datos?"
+        + urlencode({key: value for key, value in params.items() if key != "history_page"})
+        + "#historial",
+        "history_prev_href": "/datos?"
+        + urlencode({**params, "history_page": history_page - 1})
+        + "#historial",
+        "history_next_href": "/datos?"
+        + urlencode({**params, "history_page": history_page + 1})
+        + "#historial",
         "report": report,
         "report_error": report_error,
         "form_error": form_error,

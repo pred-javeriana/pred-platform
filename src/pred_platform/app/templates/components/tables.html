@@ -1,11 +1,11 @@
-{% macro table_start(headers) %}
-<div class="pred-table-wrap">
+{# Región desplazable accesible con teclado y encabezados de columna explícitos. #}
+{% macro table_start(headers, caption="Tabla de datos") %}
+<div class="pred-table-wrap" role="region" aria-label="{{ caption }}" tabindex="0">
   <table class="pred-table">
+    <caption class="pred-sr-only">{{ caption }}</caption>
     <thead>
       <tr>
-        {% for header in headers %}
-        <th>{{ header }}</th>
-        {% endfor %}
+        {% for header in headers %}<th scope="col">{{ header }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>

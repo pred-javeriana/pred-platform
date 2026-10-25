@@ -26,11 +26,12 @@
       listing.availability.blocked_by
     ) }}
   {% elif listing %}
+    <details class="pred-details" id="filtrar-resultados"{% if query.q or query.family or query.estado or query.sku_class or "sort" in request.query_params %} open{% endif %}><summary>Filtrar y ordenar SKU</summary>
     <form method="get" action="/resultados" class="pred-filters" id="filtros-seleccion">
       <input type="hidden" name="vista" value="sku">
       {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
       {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=[
-        ("", "Todas"), ("smooth", "Smooth"), ("erratic", "Erratic"), ("intermittent", "Intermittent"), ("lumpy", "Lumpy")
+        ("", "Todas"), ("smooth", "Smooth (Suave)"), ("erratic", "Erratic (Errática)"), ("intermittent", "Intermittent (Intermitente)"), ("lumpy", "Lumpy (Grumosa)")
       ]) }}
       {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
         ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
@@ -44,45 +45,49 @@
         ("sku_id", "SKU"), ("valor", "Mejor valor")
       ]) }}
       {{ field("descending", "Descendente", value=query.descending, input_type="checkbox") }}
+      <input type="hidden" name="size" value="{{ query.size }}">
       {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
+      <a href="/resultados?{{ query.query_string(sku_class='', family='', estado='', q='', sort='sku_id', descending='', page=1) }}">Limpiar filtros</a>
     </form>
+    </details>
 
-    {{ table_start(["SKU", "Clase", "Perfil"] + FAMILY_HEADERS + ["Campeón"]) }}
+    <p class="pred-meta">{{ format_count(listing.page.total) }} SKU coinciden con la consulta. Los estados corresponden a cada familia; no representan un veredicto global del SKU.</p>
+    {{ table_start(["SKU", "Clase", "Campeón", "Evidencia por familia"], "Selección por SKU de la ejecución") }}
     {% if rows %}
       {% for item in rows %}
       <tr>
-        <td><a class="mono" href="/resultados/sku/{{ item.row.sku_id }}?{{ query.detail_query() }}">{{ item.row.sku_id }}</a></td>
+        <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ item.row.sku_id | urlencode }}?{{ query.detail_query() }}" aria-label="Ver evidencia del SKU {{ item.row.sku_id }}">{{ item.row.sku_id }}</a></th>
         <td>{{ sku_class_label(item.row.sku_class) }}</td>
-        <td>{{ profile_label(item.row.profile) }}</td>
-        {% for family in FAMILY_ORDER %}
-        {% set brief = item.cells.get(family) %}
-        <td>
-          {% if brief %}
-          <div class="pred-cell">
-            {{ status_indicator(describe_status("family", brief.estado)) }}
-            {% if brief.valor is not none %}
-            <span class="pred-cell__value">{{ brief.metrica_objetivo }} {{ format_decimal(brief.valor, 3) }}</span>
-            {% endif %}
-          </div>
-          {% else %}
-          <span class="pred-cell--none" aria-label="Sin dato">—</span>
-          {% endif %}
-        </td>
-        {% endfor %}
         <td>
           {% if item.row.champion %}
           <div class="pred-cell">
             <span>{{ family_label(item.row.champion.family) if item.row.champion.family else "" }}</span>
             <span class="pred-cell__value">{{ item.row.champion.modelo }} · {{ item.row.champion.metrica_seleccion }} {{ format_decimal(item.row.champion.valor_seleccion, 3) }}</span>
           </div>
-          {% else %}
-          <span class="pred-cell--none">pendiente de M3</span>
-          {% endif %}
+          {% else %}<span class="pred-cell--none">No informado</span>{% endif %}
+        </td>
+        <td>
+          <details class="pred-details">
+            <summary>Ver familias de {{ item.row.sku_id }}</summary>
+            <p class="pred-meta">Perfil: {{ profile_label(item.row.profile) }}</p>
+            <dl class="pred-kv">
+              {% for family in FAMILY_ORDER %}
+              {% set brief = item.cells.get(family) %}
+              <dt>{{ family_label(family) }}</dt>
+              <dd>
+                {% if brief %}
+                {{ status_indicator(describe_status("family", brief.estado)) }}
+                {% if brief.valor is not none %}<span class="pred-cell__value">{{ brief.metrica_objetivo }} {{ format_decimal(brief.valor, 3) }}</span>{% endif %}
+                {% else %}<span class="pred-cell--none" aria-label="Sin dato">—</span>{% endif %}
+              </dd>
+              {% endfor %}
+            </dl>
+          </details>
         </td>
       </tr>
       {% endfor %}
     {% else %}
-      {{ table_empty(4 + (FAMILY_ORDER | length), "Sin coincidencias", "No hay SKU que coincidan con los filtros seleccionados.") }}
+      {{ table_empty(4, "Sin coincidencias", "No hay SKU que coincidan con los filtros seleccionados.") }}
     {% endif %}
     {{ table_end() }}
 
