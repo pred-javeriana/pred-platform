@@ -2,7 +2,7 @@
 
 Auditoría: 2026-10-24. Alcance: Datos → Ejecución → Resultados y detalle por SKU.
 
-Estado: **implementación refinada y verificación funcional/manual realizada; aprobación visual y CI del último refinamiento pendientes**. No se cierra D2 por aplicar código. No se identificaron hallazgos críticos. Los hallazgos altos tienen evidencia explícita abajo; la aprobación del auditor sobre el nuevo flujo sigue siendo necesaria.
+Estado: **implementación refinada y verificación funcional/manual realizada; CI completo aprobado; aprobación visual pendiente**. No se cierra D2 por aplicar código. No se identificaron hallazgos críticos. Los hallazgos altos tienen evidencia explícita abajo; la aprobación del auditor sobre el nuevo flujo sigue siendo necesaria.
 
 | ID | Superficie | Tipo | Severidad | Hallazgo | Resolución |
 | --- | --- | --- | --- | --- | --- |
@@ -49,9 +49,9 @@ M4 debe consumir solo PUBLICADA y conservar null con causa. No se eligen campeon
 
 ### CI y checks
 
-En la revisión `dfa2ed288a64896bc3e438d4773f275f9600c2b6`, [CI completo](https://github.com/pred-javeriana/pred-platform/actions/runs/40146083695) pasó sus seis jobs. El log del job Tests confirma **735 tests passed y 96.10% de cobertura total** (103,47s), por encima de 80%. Es evidencia del código auditado antes del refinamiento visual de esta ronda; la revisión más reciente debe volver a pasar CI antes de merge.
+En la revisión `dfa2ed288a64896bc3e438d4773f275f9600c2b6`, [CI completo](https://github.com/pred-javeriana/pred-platform/actions/runs/40146083695) pasó sus seis jobs. El log del job Tests confirma **735 tests passed y 96.10% de cobertura total** (103,47s), por encima de 80%. Después del refinamiento, el [CI de aa83b9d](https://github.com/pred-javeriana/pred-platform/actions/runs/40149108091) también pasó los seis jobs: **735 tests passed y 96.10% de cobertura total**. La corrida intermedia 3eac9b9 tuvo 734 aprobadas y una aserción de gráfico que todavía esperaba Smooth; se actualizó a las cuatro etiquetas españolas y se volvió a ejecutar la suite completa sin omitir casos.
 
-El baseline local Windows de esta ronda volvió a mostrar 40 hashes del contrato con CRLF y una interrupción a los 208 casos aprobados. No se tocaron contratos, activos vendorizados ni locks. Una exportación aislada para comprobación tampoco permitió acreditar el gate completo local; no se usa para sustituir CI. Ruff, formato, Pyright y lock se ejecutan sobre el checkout real. Después del refinamiento, 99 regresiones de UI, Datos, Ejecución, Resultados, presentación y componentes pasaron en 32,22s; un warning de deprecación de TestClient. Ruff check, ruff format --check (81 archivos), Pyright (0 errores/avisos), uv lock --check y git diff --check pasaron.
+El baseline local Windows de esta ronda volvió a mostrar 40 hashes del contrato con CRLF y una interrupción a los 208 casos aprobados. No se tocaron contratos, activos vendorizados ni locks. Una exportación aislada para comprobación tampoco permitió acreditar el gate completo local; no se usa para sustituir CI. Ruff, formato, Pyright y lock se ejecutan sobre el checkout real. Después del refinamiento, 101 regresiones de UI, Datos, Ejecución, Resultados, presentación, componentes y gráficos pasaron en 13,63s; un warning de deprecación de TestClient. Ruff check, ruff format --check (81 archivos), Pyright (0 errores/avisos), uv lock --check y git diff --check pasaron.
 
 ### Evidencia manual y de navegador (2026-10-24, America/Bogota)
 
@@ -67,8 +67,8 @@ Las instancias/harness y datos de auditoría viven en project/ (ignorado); no se
 
 ## Condición de cierre
 
-- [ ] Formatter y checks completos pasan para la última revisión refinada; CI debe volver a ejecutarse después del push.
-- [ ] Cobertura >=80% para esa última revisión; baseline CI confirmado: 735 aprobadas, 96.10%.
+- [x] Formatter y los seis checks completos pasan para el código refinado aa83b9d (CI 40149108091).
+- [x] Cobertura >=80% para ese código refinado: 735 aprobadas, 96.10%.
 - [x] Recorrido de teclado registrado (E-04).
 - [x] Zoom 200% y lector de pantalla confirmados manualmente por el auditor (E-06).
 - [x] Carreras HTMX, pausa/reanudación y terminal 286 con foco probadas en navegador real (E-02).
