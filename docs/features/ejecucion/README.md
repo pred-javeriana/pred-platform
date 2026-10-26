@@ -29,8 +29,11 @@ its closed tasks as progress: its bar counts the successful ones.
   which looks at the run's state every 0.2 s, sees it, terminates the engine's process group and
   closes the open tasks with that error without settling the run as if it had finished.
 - **Resume** (`dal.resume_run`) queues a `detenida` or `completada_con_fallos` run again with its
-  own parameters and engine `run_id` (the engine reuses its stored HPO studies) and puts the tasks
-  that ended badly back to `pendiente`, so nothing looks finished until the engine starts it.
+  own parameters and engine `run_id` and puts only unsuccessful tasks back to `pendiente`.
+  Successful tasks keep their state and evidence. With the accompanying engine checkpoint change,
+  successful L2/L3 units are restored without selection, fitting or evaluation being called again.
+  New attempts follow only new progress events; importing a final trace records its original
+  timestamps without presenting it as live work.
   Launching a run identical to an existing one returns that one.
 - **Live view.** The body (`partials/execution_body.html`) polls `/ejecucion/estado` every 2 s while
   the run is in progress; the server answers 286 when it is not, so htmx stops. The task filter form
@@ -55,4 +58,6 @@ its closed tasks as progress: its bar counts the successful ones.
   `ejecuciones.error_json` but the `run_status` read model has no field for it (contract 1.0.0);
   the screen shows the errors of the tasks and, for a run without tasks, points to `motor.log`.
   An optional `ejecucion.error` would be an additive contract change.
-- Resuming does not skip units that had finished (the engine reuses HPO studies only, G3).
+- Skipping completed units requires the accompanying `pred-engine` checkpoint implementation and
+  preserving the run directory. Earlier engine versions reuse HPO studies but repeat L2/L3 work.
+  See [recovery](../reanudacion/README.md) for deployment, compatibility and verification.

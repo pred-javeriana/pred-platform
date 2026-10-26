@@ -35,6 +35,13 @@ Environment variables (see `.env.example`):
 
 An unknown `PRED_DATA_SOURCE` or `PRED_FIXTURE_SCENARIO` stops the app at startup with the valid options.
 
+On Windows, `PRED_ENGINE_CMD` preserves backslashes; quote paths containing spaces. For example,
+in PowerShell:
+
+```powershell
+$env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-engine.exe"'
+```
+
 ## Data access
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
@@ -189,12 +196,15 @@ make worker                                     # follow the queue in its own pr
   is the reserve cut t\*. A SKU the engine skips becomes one `no_ejecutable` task per configured
   family, with the cause.
 - **Run state.** `completada` when every task is `exitosa`; `completada_con_fallos` when some are
-  `fallida` or `no_ejecutable`; `detenida` when the engine process died, the app was closed or a
+  `fallida` or `no_ejecutable`; `detenida` when the engine process died, the operator stopped it or a
   stage left no results (see the table in section 7.4 of the contract).
 - **Resume.** The run id derives from the ingestion and the settings (not the number of
-  processes), so launching the same run again resumes it: the engine reuses its stored HPO studies
-  and the same task rows are updated. A run left running by a crash is queued again on start. The
-  engine does not skip units that had already finished.
+  processes), so launching the same run again resumes it with the same task rows. Successful
+  tasks retain their state; historical progress is not replayed as live work. Graceful app shutdown
+  queues interrupted work, and a crash is recovered on startup. Closing a browser tab leaves the
+  server worker running. The accompanying engine checkpoint change also skips successful L2/L3
+  units; updating platform alone cannot provide that guarantee. See
+  [recovery and verification](docs/features/reanudacion/README.md).
 - **Reading it.** `get_run_status` returns the run, its settings, reserve cut, progress over all its
   tasks and a filtered, paged list of tasks; `/ejecucion` will show it (task C4).
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 import time
 from datetime import UTC, datetime
@@ -462,6 +463,15 @@ def main() -> int:
         stages.append({"id": "L4", "state": "failed", "message": "evaluación M3 falló: timeout"})
     else:
         stages.append({"id": "L4", "state": "blocked"})
+
+    if scenario == "publishes_before_exit":
+        with sqlite3.connect(os.environ["PRED_DB_PATH"]) as conn:
+            conn.execute(
+                "UPDATE ejecuciones SET estado=? WHERE run_id=?",
+                (os.environ.get("FAKE_ENGINE_TERMINAL_STATE", "completada"), args.run_id),
+            )
+        # El motor ya confirmo M3 y aun debe publicar los artefactos de la CLI.
+        time.sleep(0.7)
 
     (folder / "unidades.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in unit_rows), encoding="utf-8"

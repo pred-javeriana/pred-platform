@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 from pred_platform.config import Settings
 from pred_platform.dal.ejecuciones import Ejecucion
 
@@ -103,6 +105,8 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
 
 def is_alive(pid: int) -> bool:
     """Whether a process with this id exists (used to clean up after a crashed platform)."""
+    if sys.platform == "win32":
+        return _windows_is_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -112,11 +116,59 @@ def is_alive(pid: int) -> bool:
     return True
 
 
+def _windows_is_alive(pid: int) -> bool:
+    """Consulta el objeto de proceso sin enviar señales ni confundir un PID ya terminado."""
+    if sys.platform != "win32":
+        raise OSError("La consulta nativa requiere Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    # SYNCHRONIZE permite consultar si el objeto de proceso ya fue señalado.
+    handle = kernel.OpenProcess(0x00100000, False, pid)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == 5:  # Acceso denegado no significa proceso ausente.
+            return True
+        if error == 87:  # ERROR_INVALID_PARAMETER: el PID no identifica un proceso.
+            return False
+        raise ctypes.WinError(error)
+    try:
+        state = kernel.WaitForSingleObject(handle, 0)
+        if state not in (0, 258):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return state == 258  # WAIT_TIMEOUT: el proceso todavía está activo.
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def terminate(pid: int, *, grace: float = 5.0) -> None:
-    """Stop the engine and its worker processes: SIGTERM to the group, SIGKILL after ``grace``."""
-    if sys.platform == "win32":  # pragma: no cover - the platform targets POSIX hosts
-        with contextlib.suppress(OSError):
-            os.kill(pid, signal.SIGTERM)
+    """Stop the engine tree: process-group signals on POSIX, taskkill /T on Windows."""
+    if sys.platform == "win32":
+        try:
+            parent = psutil.Process(pid)
+            processes = [parent, *parent.children(recursive=True)]
+        except psutil.NoSuchProcess:
+            return
+        # /T incluye el pool del motor; terminar solo el padre deja hijos calculando.
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=max(1.0, grace + 5.0),
+            check=False,
+        )
+        if result.returncode and is_alive(pid):
+            raise OSError(f"No se pudo detener el árbol del proceso {pid}.")
+        _, alive = psutil.wait_procs(processes, timeout=max(0.0, grace))
+        if alive:
+            raise TimeoutError(f"El árbol del proceso {pid} no terminó dentro del plazo.")
         return
     try:
         group = os.getpgid(pid)

@@ -77,7 +77,7 @@ class Settings:
             raise ValueError(f"{WORKER_VAR}={worker!r} is not valid; use one of {options}")
         raw_command = env.get(ENGINE_COMMAND_VAR, "").strip()
         try:
-            command = tuple(shlex.split(raw_command)) if raw_command else DEFAULT_ENGINE_COMMAND
+            command = _split_engine_command(raw_command) if raw_command else DEFAULT_ENGINE_COMMAND
         except ValueError as error:
             raise ValueError(f"{ENGINE_COMMAND_VAR} cannot be parsed: {error}") from error
         return cls(
@@ -88,6 +88,16 @@ class Settings:
             engine_command=command,
             worker=worker,  # type: ignore[arg-type]  # validated just above
         )
+
+
+def _split_engine_command(value: str) -> tuple[str, ...]:
+    lexer = shlex.shlex(value, posix=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    if os.name == "nt":
+        # En rutas Windows, la barra inversa es literal, no un escape del shell POSIX.
+        lexer.escape = ""
+    return tuple(lexer)
 
 
 def _check_scenario(name: str) -> None:

@@ -9,6 +9,7 @@ and one that never started is ``no_ejecutable``. Then the selection per SKU the 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,7 @@ def finalize(
     corte: str,
     families: list[str],
     log_path: Path,
+    previous_summary: os.stat_result | None = None,
 ) -> str:
     """Settle ``run`` after its engine process ended and return its final ``estado``."""
     corrida_path = run_dir / "corrida.json"
@@ -53,9 +55,16 @@ def finalize(
     skipped = platform_error(
         "pipeline.stage_failed", "La unidad no llegó a empezar: una etapa anterior falló."
     )
-    if not corrida_path.is_file():
+    current_summary = corrida_path.stat() if corrida_path.is_file() else None
+    unchanged = (
+        current_summary is not None
+        and previous_summary is not None
+        and (current_summary.st_ino, current_summary.st_mtime_ns, current_summary.st_size)
+        == (previous_summary.st_ino, previous_summary.st_mtime_ns, previous_summary.st_size)
+    )
+    if current_summary is None or unchanged:
         detail = log_tail(log_path) or (
-            f"El motor terminó con código {returncode} sin dejar corrida.json."
+            f"El motor terminó con código {returncode} sin publicar corrida.json de este intento."
         )
         dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
         dal.finish_run(
@@ -82,6 +91,7 @@ def finalize(
                 corte=corte,
                 seed=run.seed,
                 iniciada_en=str(unit["started_at"]),
+                running=False,
             )
         completed = unit.get("state") == "completada"
         dal.task_stage_finished(

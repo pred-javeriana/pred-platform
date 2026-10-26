@@ -44,6 +44,7 @@ from pred_platform.worker.errores import (
     exclusion_reason,
     run_stopped_error,
 )
+from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.service import (
     LaunchSettings,
@@ -498,6 +499,58 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
 
 
 # ------------------------------------------------------------------- engine problems
+def test_subsecond_summary_rewrite_is_not_confused_with_an_old_attempt(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    folder = env.settings.data_root / "runs" / queued.run_id
+    current = (folder / "corrida.json").stat()
+    # stat_result compara su tupla con tiempos enteros; su atributo ns conserva
+    # la diferencia que identifica dos escrituras dentro del mismo segundo.
+    previous = os.stat_result(current, {"st_mtime_ns": current.st_mtime_ns - 1})
+    assert previous == current and previous.st_mtime_ns != current.st_mtime_ns
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, queued.ejecucion_id)
+        assert run is not None and run.t_star is not None
+        assert (
+            finalize(
+                conn,
+                run,
+                run_dir=folder,
+                returncode=7,
+                corte=run.t_star,
+                families=["classical", "ml", "dl"],
+                log_path=folder / "motor.log",
+                previous_summary=previous,
+            )
+            == "completada"
+        )
+
+
+def test_retry_that_crashes_cannot_import_the_previous_attempt_as_its_final_result(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    folder = env.settings.data_root / "runs" / queued.run_id
+    previous = (folder / "corrida.json").read_bytes()
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, queued.ejecucion_id)
+    _scenario(monkeypatch, "crash")
+    env.worker().run_next()
+    state, error = _run_state(env)
+    assert state == "detenida"
+    assert error is not None
+    assert json.loads(error)["code"] == "platform.artifact_missing"
+    assert (folder / "corrida.json").read_bytes() == previous
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
+        (0,)
+    ]
+
+
 def test_an_engine_that_dies_leaves_a_stopped_run_and_no_task_in_flight(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -604,7 +657,7 @@ def test_the_run_can_be_followed_while_it_runs(env: Env, monkeypatch: pytest.Mon
     assert env.repo().get_run_status("1").progress.avance_pct == 100.0  # type: ignore[union-attr]
 
 
-def test_closing_the_platform_stops_the_engine_and_marks_the_run(
+def test_closing_the_platform_reaps_the_engine_and_keeps_the_run_queued(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "slow")
@@ -622,12 +675,87 @@ def test_closing_the_platform_stops_the_engine_and_marks_the_run(
     thread.join(timeout=20)
 
     estado, error_json = _run_state(env)
-    assert estado == "detenida"
-    assert json.loads(error_json or "{}")["retryable"] is True
+    assert estado == "pendiente" and error_json is None
     assert not engine.is_alive(pid)
-    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
-        (0,)
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'ejecutando'") == [(0,)]
+    _scenario(monkeypatch, "ok")
+    env.worker().run_next()
+    assert _run_state(env)[0] == "completada"
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_engine_publication_before_cli_exit_is_not_an_operator_stop(
+    env: Env, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    _scenario(monkeypatch, "publishes_before_exit")
+    monkeypatch.setenv("FAKE_ENGINE_TERMINAL_STATE", state)
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    assert _run_state(env) == ("completada", None)
+    assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
+    assert env.rows("SELECT COUNT(*) FROM selecciones")[0][0] == 3
+    assert (env.settings.data_root / "runs" / queued.run_id / "corrida.json").is_file()
+
+
+def test_resumed_follower_ignores_history_but_applies_events_written_after_its_creation(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    path = env.settings.data_root / "runs" / queued.run_id / "progreso.jsonl"
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, queued.ejecucion_id)
+        run = dal.get_run(conn, queued.ejecucion_id)
+        assert run is not None and run.t_star is not None
+        follower = ProgressFollower(conn, run, path, corte=run.t_star, skip_history=True)
+        before = env.rows("SELECT * FROM tareas ORDER BY id")
+        assert follower.poll() == 0
+        assert env.rows("SELECT * FROM tareas ORDER BY id") == before
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "event": "unit_started",
+                        "stage": "L2",
+                        "sku_id": "FIL-0002",
+                        "family": "ml",
+                        "model": "lightgbm",
+                        "started_at": dal.now_iso(),
+                    }
+                )
+                + "\n"
+            )
+        assert follower.poll() == 1
+    assert env.rows("SELECT estado FROM tareas WHERE sku='FIL-0002' AND modelo='ml:lightgbm'") == [
+        ("ejecutando",)
     ]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado='exitosa'") == [(8,)]
+
+
+def test_final_trace_import_never_marks_completed_work_running_again(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    original = dal.task_started
+    regressions = []
+
+    def observed(conn, run_id, **kwargs):
+        key = (run_id, kwargs["sku"], kwargs["modelo"])
+        before = conn.execute(
+            "SELECT estado FROM tareas WHERE ejecucion_id=? AND sku=? AND modelo=?", key
+        ).fetchone()
+        original(conn, run_id, **kwargs)
+        after = conn.execute(
+            "SELECT estado FROM tareas WHERE ejecucion_id=? AND sku=? AND modelo=?", key
+        ).fetchone()
+        if before and before[0] == "exitosa" and after[0] != "exitosa":
+            regressions.append(key)
+
+    monkeypatch.setattr(dal, "task_started", observed)
+    env.worker().run_next()
+    assert _run_state(env)[0] == "completada" and regressions == []
 
 
 def test_resuming_a_stopped_run_reuses_its_rows(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -662,6 +790,26 @@ def test_a_run_left_running_by_a_crash_is_queued_again_and_finishes(
     assert _run_state(env)[0] == "pendiente"
     worker.run_next()
 
+    assert _run_state(env)[0] == "completada"
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_recovery_after_m3_publication_only_requeues_unreaped_claims(
+    env: Env, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    env.worker().recover()
+    assert _run_state(env)[0] == "completada"
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ejecuciones SET estado=?, pid=42424242", (state,))
+    monkeypatch.setattr(engine, "is_alive", lambda pid: False)
+    env.worker().recover()
+    assert _run_state(env)[0] == "pendiente"
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado='exitosa'") == [(9,)]
+    assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
+    env.worker().run_next()
     assert _run_state(env)[0] == "completada"
 
 

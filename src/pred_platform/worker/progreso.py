@@ -24,12 +24,20 @@ SUPPORTED_MAJOR = 1
 class ProgressFollower:
     """Reads new lines of one run's progress file and applies them."""
 
-    def __init__(self, conn: sqlite3.Connection, run: Ejecucion, path: Path, *, corte: str) -> None:
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        run: Ejecucion,
+        path: Path,
+        *,
+        corte: str,
+        skip_history: bool = False,
+    ) -> None:
         self._conn = conn
         self._run = run
         self._path = path
         self._corte = corte
-        self._offset = 0
+        self._offset = path.stat().st_size if skip_history and path.exists() else 0
         self.finished: dict[str, Any] | None = None
         self.failed_stages: list[str] = []
 
