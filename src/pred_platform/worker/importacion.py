@@ -55,7 +55,14 @@ def finalize(
     skipped = platform_error(
         "pipeline.stage_failed", "La unidad no llegó a empezar: una etapa anterior falló."
     )
-    if not corrida_path.is_file() or corrida_path.stat() == previous_summary:
+    current_summary = corrida_path.stat() if corrida_path.is_file() else None
+    unchanged = (
+        current_summary is not None
+        and previous_summary is not None
+        and (current_summary.st_ino, current_summary.st_mtime_ns, current_summary.st_size)
+        == (previous_summary.st_ino, previous_summary.st_mtime_ns, previous_summary.st_size)
+    )
+    if current_summary is None or unchanged:
         detail = log_tail(log_path) or (
             f"El motor terminó con código {returncode} sin publicar corrida.json de este intento."
         )

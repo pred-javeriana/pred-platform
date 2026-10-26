@@ -26,7 +26,9 @@ Esto también cubre unidades de un proceso del pool que terminan mientras el pad
 Platform fija el desplazamiento de `progreso.jsonl` antes de lanzar cada intento, conserva el
 historial y consume únicamente eventos nuevos. La traza final sigue reparando eventos perdidos,
 sin transiciones ficticias a ejecutando. El resumen de un intento anterior no se acepta como
-resultado de un intento nuevo que terminó antes de publicar sus artefactos.
+resultado de un intento nuevo que terminó antes de publicar sus artefactos. La comprobación
+compara inodo, tamaño y modificación en nanosegundos, para distinguir escrituras que ocurren
+dentro del mismo segundo sin depender de la precisión reducida de la tupla `stat_result`.
 
 La publicación M3 puede cambiar el estado global antes de que la CLI termine de escribir los
 archivos. Ese cambio no es una orden de detener: el worker espera y finaliza la importación.
@@ -74,8 +76,8 @@ En cada caso, el segundo intento:
 - conservó los bytes de los tres checkpoints anteriores;
 - terminó `completada`, con dos tareas exitosas, dos selecciones y PID liberado.
 
-Verificación local del 26 de octubre de 2026 en Linux: 755 pruebas de platform aprobadas, cobertura
-96,00 %, lockfile, Ruff, formato, Pyright y smoke HTTP correctos. El motor pasó 1185 pruebas de la
+Verificación local del 26 de octubre de 2026 en Linux: 756 pruebas de platform aprobadas, cobertura
+96,08 %, lockfile, Ruff, formato, Pyright y smoke HTTP correctos. El motor pasó 1185 pruebas de la
 suite principal con cobertura 94,01 %, 81 pruebas lentas, verificación integrada y smoke M0–M3
 con comprobación de artefactos y base central. Las dos omisiones de su suite principal corresponden
 a Chronos real sin extra instalado y al dataset oficial ausente.

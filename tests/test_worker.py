@@ -44,6 +44,7 @@ from pred_platform.worker.errores import (
     exclusion_reason,
     run_stopped_error,
 )
+from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.service import (
     LaunchSettings,
@@ -498,6 +499,36 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
 
 
 # ------------------------------------------------------------------- engine problems
+def test_subsecond_summary_rewrite_is_not_confused_with_an_old_attempt(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    env.worker().run_next()
+    folder = env.settings.data_root / "runs" / queued.run_id
+    current = (folder / "corrida.json").stat()
+    # stat_result compara su tupla con tiempos enteros; su atributo ns conserva
+    # la diferencia que identifica dos escrituras dentro del mismo segundo.
+    previous = os.stat_result(current, {"st_mtime_ns": current.st_mtime_ns - 1})
+    assert previous == current and previous.st_mtime_ns != current.st_mtime_ns
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, queued.ejecucion_id)
+        assert run is not None and run.t_star is not None
+        assert (
+            finalize(
+                conn,
+                run,
+                run_dir=folder,
+                returncode=7,
+                corte=run.t_star,
+                families=["classical", "ml", "dl"],
+                log_path=folder / "motor.log",
+                previous_summary=previous,
+            )
+            == "completada"
+        )
+
+
 def test_retry_that_crashes_cannot_import_the_previous_attempt_as_its_final_result(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
