@@ -52,8 +52,8 @@ Esta carrera también corresponde al diagnóstico de
   Para iniciar otra, el operador debe crear una configuración distinta o usar otro `run_id` por CLI.
 - Reintentar no garantiza corregir un fallo determinista. Se conservan las restricciones de
   recuperación del HPO y el protocolo congelado de M3; esta corrección no los sustituye.
-- El cierre y la recuperación de procesos se verifican en Linux, la plataforma POSIX del worker.
-  No se certifica aquí el cierre del árbol de procesos en Windows.
+- El cierre y la recuperación se verifican en Linux y Windows nativo. En Windows se espera el
+  cierre del motor y su pool antes de reanudar; véase la [evidencia Windows](WINDOWS.md).
 - No cambian cálculos, particiones Walk-Forward, selección de candidatos, métricas ni M4/D3.
   La descripción G3 de `pred-docs/diseno/contratos/contrato-frontend-motor.md`, que aún describe
   reutilización exclusiva de HPO, necesita una actualización en su propio repositorio.

@@ -12,6 +12,8 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "bcrypt>=4.1",
     "itsdangerous>=2.2",
+    # Espera el cierre del pool del motor antes de reanudar en Windows.
+    "psutil>=5.9",
     # The data contract's models. 2.13 is the version its JSON Schemas were exported with.
     "pydantic>=2.13",
     # pred-engine (private repo) — not wired yet; see DEPENDENCIES.md

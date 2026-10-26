@@ -35,6 +35,13 @@ Environment variables (see `.env.example`):
 
 An unknown `PRED_DATA_SOURCE` or `PRED_FIXTURE_SCENARIO` stops the app at startup with the valid options.
 
+On Windows, `PRED_ENGINE_CMD` preserves backslashes; quote paths containing spaces. For example,
+in PowerShell:
+
+```powershell
+$env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-engine.exe"'
+```
+
 ## Data access
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
