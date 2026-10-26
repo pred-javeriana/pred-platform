@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "components/states.html" import empty_state, unavailable_state %}
 {% from "components/tabs.html" import tabs %}
+{% from "components/run_line.html" import run_line %}
 
 {% block title %}PRED — Resultados{% endblock %}
 
@@ -14,7 +15,8 @@
   {% if source == "fixture" %}
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
-  {% include "partials/results_scope.html" %}
+  <div class="pred-workspace pred-workspace--results">
+  <div class="pred-panel pred-panel--main">
   {{ tabs(
     [
       {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
@@ -39,4 +41,16 @@
       champion_capability.blocked_by
     ) }}
   {% endif %}
+  </div>
+  <aside class="pred-panel pred-panel--side" aria-labelledby="contexto-resultados">
+    <p class="pred-eyebrow">Contexto de la consulta</p>
+    <h2 id="contexto-resultados">Sobre estos resultados</h2>
+    {{ run_line(run, listing.run_id if listing else none) }}
+    {% include "partials/results_scope.html" %}
+    <div class="pred-next-action">
+      <p>Prepare otra corrida desde Ejecución.</p>
+      {% include "partials/results_action.html" %}
+    </div>
+  </aside>
+  </div>
 {% endblock %}

@@ -31,6 +31,116 @@
     });
   }
 
+  const seccionesActivas = new Map();
+  const evidenciaCompacta = window.matchMedia("(max-width: 48rem)");
+
+  function gruposEvidencia(raiz) {
+    const grupos = Array.from(raiz.querySelectorAll("[data-evidence-tabs]"));
+    if (raiz.matches && raiz.matches("[data-evidence-tabs]")) grupos.unshift(raiz);
+    return grupos;
+  }
+
+  function destinoEvidencia(grupo) {
+    let id;
+    try { id = decodeURIComponent(window.location.hash.slice(1)); }
+    catch (_) { return null; }
+    if (!id) return null;
+    const destino = document.getElementById(id);
+    return Array.from(grupo.querySelectorAll("[data-evidence-panel]")).find(function (panel) {
+      return panel.id === id || panel.dataset.evidenceAlias === id || panel.contains(destino);
+    });
+  }
+
+  function activarEvidencia(grupo, id, navegar) {
+    const paneles = Array.from(grupo.querySelectorAll("[data-evidence-panel]"));
+    if (!paneles.some(function (panel) { return panel.id === id; })) return;
+    grupo.querySelectorAll("[data-evidence-target]").forEach(function (enlace) {
+      const activo = enlace.dataset.evidenceTarget === id;
+      enlace.setAttribute("aria-selected", String(activo));
+      enlace.tabIndex = activo ? 0 : -1;
+    });
+    paneles.forEach(function (panel) { panel.hidden = panel.id !== id; });
+    seccionesActivas.set(grupo.id, id);
+    if (navegar) {
+      window.history.replaceState(window.history.state, "", "#" + id);
+      grupo.scrollIntoView({ block: "start" });
+    }
+  }
+
+  function prepararEvidencia(raiz) {
+    gruposEvidencia(raiz).forEach(function (grupo) {
+      const lista = grupo.querySelector("[data-evidence-nav]");
+      if (!lista || grupo.classList.contains("is-ready")) return;
+      const enlaces = Array.from(lista.querySelectorAll("[data-evidence-target]"));
+      lista.setAttribute("role", "tablist");
+      lista.setAttribute("aria-orientation", evidenciaCompacta.matches ? "horizontal" : "vertical");
+      enlaces.forEach(function (enlace) {
+        enlace.setAttribute("role", "tab");
+        enlace.setAttribute("aria-controls", enlace.dataset.evidenceTarget);
+      });
+      const paneles = Array.from(grupo.querySelectorAll("[data-evidence-panel]"));
+      paneles.forEach(function (panel) {
+        panel.setAttribute("role", "tabpanel");
+        panel.setAttribute("aria-labelledby", panel.id + "-tab");
+        panel.tabIndex = 0;
+      });
+      const destino = destinoEvidencia(grupo);
+      const preferido = seccionesActivas.get(grupo.id) || (destino && destino.id) ||
+        (grupo.querySelector("[data-evidence-active]") || {}).id;
+      const seleccionado = enlaces.find(function (enlace) {
+        return enlace.dataset.evidenceTarget === preferido;
+      }) || enlaces[0];
+      if (!seleccionado) return;
+      activarEvidencia(grupo, seleccionado.dataset.evidenceTarget, false);
+      grupo.classList.add("is-ready");
+      // Un enlace explícito debe seguir llevando a su evidencia después de mejorar la vista.
+      if (destino && raiz === document) {
+        requestAnimationFrame(function () { destino.scrollIntoView({ block: "start" }); });
+      }
+    });
+  }
+
+  document.addEventListener("click", function (evento) {
+    const enlace = evento.target.closest && evento.target.closest("[data-evidence-target]");
+    if (!enlace || !enlace.closest(".is-ready[data-evidence-tabs]")) return;
+    evento.preventDefault();
+    activarEvidencia(enlace.closest("[data-evidence-tabs]"), enlace.dataset.evidenceTarget, true);
+  });
+
+  document.addEventListener("keydown", function (evento) {
+    const enlace = evento.target.closest && evento.target.closest('[data-evidence-target][role="tab"]');
+    if (!enlace) return;
+    const lista = enlace.closest("[data-evidence-nav]");
+    const enlaces = Array.from(lista.querySelectorAll("[data-evidence-target]"));
+    const indice = enlaces.indexOf(enlace);
+    const vertical = lista.getAttribute("aria-orientation") === "vertical";
+    let siguiente = indice;
+    if (evento.key === (vertical ? "ArrowDown" : "ArrowRight")) siguiente = (indice + 1) % enlaces.length;
+    else if (evento.key === (vertical ? "ArrowUp" : "ArrowLeft")) siguiente = (indice + enlaces.length - 1) % enlaces.length;
+    else if (evento.key === "Home") siguiente = 0;
+    else if (evento.key === "End") siguiente = enlaces.length - 1;
+    else if (evento.key !== "Enter" && evento.key !== " ") return;
+    evento.preventDefault();
+    enlaces[siguiente].focus();
+    activarEvidencia(enlace.closest("[data-evidence-tabs]"), enlaces[siguiente].dataset.evidenceTarget, true);
+  });
+
+  evidenciaCompacta.addEventListener("change", function () {
+    document.querySelectorAll("[data-evidence-nav][role='tablist']").forEach(function (lista) {
+      lista.setAttribute("aria-orientation", evidenciaCompacta.matches ? "horizontal" : "vertical");
+    });
+  });
+
+  window.addEventListener("hashchange", function () {
+    gruposEvidencia(document).forEach(function (grupo) {
+      const destino = destinoEvidencia(grupo);
+      if (destino) {
+        activarEvidencia(grupo, destino.id, false);
+        destino.scrollIntoView({ block: "start" });
+      }
+    });
+  });
+
   let pausado = false;
   let estadoAnterior = null;
   let aperturas = new Map();
@@ -109,11 +219,14 @@
   });
 
   document.addEventListener("DOMContentLoaded", function () {
+    prepararEvidencia(document);
     pintarBarras(document);
     actualizarSondeo();
     // Tras un envío inválido, el primer campo lleva al error sin recorrer la página de nuevo.
     const invalido = document.querySelector('[aria-invalid="true"]:not(:disabled)');
     if (invalido) {
+      const panel = invalido.closest("[data-evidence-panel]");
+      if (panel) activarEvidencia(panel.closest("[data-evidence-tabs]"), panel.id, false);
       let contenedor = invalido.parentElement;
       while (contenedor) {
         if (contenedor.tagName === "DETAILS") contenedor.open = true;
@@ -123,6 +236,7 @@
     }
   });
   document.body.addEventListener("htmx:afterSwap", function (evento) {
+    prepararEvidencia(evento.target);
     pintarBarras(evento.target);
     if (evento.target === cuerpo()) {
       evento.target.querySelectorAll("details[id]").forEach(function (detalle) {

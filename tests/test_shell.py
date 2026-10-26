@@ -48,5 +48,5 @@ def test_catalog_is_not_in_product_navigation() -> None:
     assert "/_dev/componentes" not in nav
     catalog = client.get("/_dev/componentes")
     assert catalog.status_code == 200
-    assert "podada" in catalog.text
+    assert "Podada" in catalog.text
     assert "Catálogo de componentes" in catalog.text

@@ -34,27 +34,27 @@ class StatusPresentation:
 
 # Estados de tarea: el contrato y la interfaz usan las mismas claves.
 _TASK: dict[str, StatusPresentation] = {
-    "pendiente": StatusPresentation("i-clock", "pendiente", "neutral"),
-    "ejecutando": StatusPresentation("i-play", "ejecutando", "info"),
-    "exitosa": StatusPresentation("i-check", "exitosa", "ok"),
-    "fallida": StatusPresentation("i-x", "fallida", "err"),
-    "no_ejecutable": StatusPresentation("i-ban", "no ejecutable", "warn"),
+    "pendiente": StatusPresentation("i-clock", "Pendiente", "neutral"),
+    "ejecutando": StatusPresentation("i-play", "Ejecutando", "info"),
+    "exitosa": StatusPresentation("i-check", "Exitosa", "ok"),
+    "fallida": StatusPresentation("i-x", "Fallida", "err"),
+    "no_ejecutable": StatusPresentation("i-ban", "No Ejecutable", "warn"),
 }
 
 # Estados de una familia en la selección de un SKU: los de tarea más `excluida` (la política o la
 # configuración de la corrida no la incluye; no es un fallo).
 _FAMILY: dict[str, StatusPresentation] = {
     **_TASK,
-    "excluida": StatusPresentation("i-minus-circle", "excluida", "neutral"),
+    "excluida": StatusPresentation("i-minus-circle", "Excluida", "neutral"),
 }
 
 # Trials HPO: claves del contrato (EstadoTrial); etiquetas de A1/B2.
 _TRIAL: dict[str, StatusPresentation] = {
-    "pendiente": StatusPresentation("i-clock", "pendiente", "neutral"),
-    "corriendo": StatusPresentation("i-play", "ejecutando", "info"),
-    "completado": StatusPresentation("i-check", "completada", "ok"),
-    "podado": StatusPresentation("i-prune", "podada", "pruned"),
-    "fallido": StatusPresentation("i-x", "fallida", "err"),
+    "pendiente": StatusPresentation("i-clock", "Pendiente", "neutral"),
+    "corriendo": StatusPresentation("i-play", "Ejecutando", "info"),
+    "completado": StatusPresentation("i-check", "Completada", "ok"),
+    "podado": StatusPresentation("i-prune", "Podada", "pruned"),
+    "fallido": StatusPresentation("i-x", "Fallida", "err"),
 }
 
 # Veredictos retrospectivos: claves del contrato (Veredicto).
@@ -66,11 +66,11 @@ _VERDICT: dict[str, StatusPresentation] = {
 
 # Corrida: claves de EstadoEjecucion. sin_ejecucion es estado de página, no de chip.
 _RUN: dict[str, StatusPresentation] = {
-    "pendiente": StatusPresentation("i-clock", "pendiente", "neutral"),
-    "ejecutando": StatusPresentation("i-play", "ejecutando", "info"),
-    "completada": StatusPresentation("i-check", "completada", "ok"),
-    "completada_con_fallos": StatusPresentation("i-warn", "completada con fallos", "warn"),
-    "detenida": StatusPresentation("i-stop", "detenida", "err"),
+    "pendiente": StatusPresentation("i-clock", "Pendiente", "neutral"),
+    "ejecutando": StatusPresentation("i-play", "Ejecutando", "info"),
+    "completada": StatusPresentation("i-check", "Completada", "ok"),
+    "completada_con_fallos": StatusPresentation("i-warn", "Completada con fallos", "warn"),
+    "detenida": StatusPresentation("i-stop", "Detenida", "err"),
 }
 
 # Ingesta: claves del contrato; frases de A1 para el diagnóstico.

@@ -266,8 +266,8 @@ def test_pruned_and_failed_trials_look_different_and_keep_their_reason() -> None
     failed = re.search(
         r'<span class="pred-status pred-status--err">.*?</span>\s*</span>', html, re.S
     )
-    assert pruned is not None and "podada" in pruned.group(0) and "#i-prune" in pruned.group(0)
-    assert failed is not None and "fallida" in failed.group(0) and "#i-x" in failed.group(0)
+    assert pruned is not None and "Podada" in pruned.group(0) and "#i-prune" in pruned.group(0)
+    assert failed is not None and "Fallida" in failed.group(0) and "#i-x" in failed.group(0)
     text = _text(html)
     assert "poda_semantica:prediccion_nula" in text
     assert "ajuste_fallido: AjusteModeloError: no converge" in text
@@ -278,7 +278,7 @@ def test_a_failed_family_shows_its_error_and_an_unrunnable_one_its_state() -> No
     client, _ = _client("errores")
     text = _text(client.get("/resultados/sku/FIL-0001").text)
 
-    assert "fallida" in text and "no ejecutable" in text
+    assert "Fallida" in text and "No Ejecutable" in text
     assert "Etapa" in text and re.search(r"[a-z]+\.[a-z_]+", text)
     assert "Traceback" not in text
 
@@ -287,7 +287,7 @@ def test_the_policy_exclusions_are_explained_with_their_reason() -> None:
     client, _ = _client("normal")
     text = _text(client.get("/resultados/sku/FIL-0004").text)
 
-    assert "excluida" in text
+    assert "Excluida" in text
     # The engine's own sentence explains a policy exclusion; no second sentence is stacked on it.
     assert "La politica 2.2.0-initial no asigna ml a la clase lumpy." in text
     assert "La política de selección no asigna" not in text
@@ -353,14 +353,14 @@ def test_the_real_dal_feeds_the_table_and_the_detail(
     assert page.status_code == 200
     for sku in ("FIL-0001", "FIL-0002", "FIL-0003"):
         assert sku in text
-    assert "Ejecución #1" in text and "completada con fallos" in text
+    assert "Ejecución #1" in text and "Completada con fallos" in text
     assert "La acción está deshabilitada" not in text  # the DAL has all three capabilities
 
     detail = client.get("/resultados/sku/FIL-0002?ventanas=1")
     detail_text = _text(detail.text)
     assert detail.status_code == 200
     assert "El modelo no pudo ajustarse." in detail_text  # model.fit_failed, from the failed ml
-    assert "ajuste_fallido" in detail_text and "podada" in detail_text and "fallida" in detail_text
+    assert "ajuste_fallido" in detail_text and "Podada" in detail_text and "Fallida" in detail_text
     assert "Entrenamiento" in detail_text  # windows of the classical family that did succeed
     assert "disperso y estable" in detail_text
 
@@ -373,7 +373,7 @@ def test_the_real_dal_answers_for_a_run_that_has_not_finished(env: Env) -> None:
 
     assert "Todavía no hay selección por SKU." in text
     assert "cuando termine la ejecución" in text
-    assert "Ejecución #1" in text and "pendiente" in text
+    assert "Ejecución #1" in text and "Pendiente" in text
 
 
 # --------------------------------------------------------------------------- las ayudas

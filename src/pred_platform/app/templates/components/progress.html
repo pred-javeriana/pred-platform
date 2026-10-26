@@ -1,5 +1,19 @@
-{% macro progress_bar(completed, total, percent, label="", status_label="") %}
-<div class="pred-progress" data-pred-progress="{{ percent }}"{% if status_label %} data-pred-progress-status="{{ status_label }}"{% endif %}>
+{% macro progress_bar(completed, total, percent, label="", status_label="", circular=false) %}
+<div class="pred-progress{% if circular %} pred-progress--circular{% endif %}" data-pred-progress="{{ percent }}"{% if status_label %} data-pred-progress-status="{{ status_label }}"{% endif %}>
+  {% if circular %}
+  <div class="pred-progress__ring{% if percent >= 100 %} is-complete{% endif %}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}" aria-valuetext="{{ completed }} de {{ total }} tareas · {{ percent }} %">
+    <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+      <circle class="pred-progress__ring-track" cx="60" cy="60" r="52" />
+      <circle class="pred-progress__arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="{{ percent }} 100" transform="rotate(-90 60 60)" />
+    </svg>
+    <span class="pred-progress__ring-value" aria-hidden="true">{{ percent }} <span>%</span></span>
+  </div>
+  <div class="pred-progress__reading">
+    <p class="pred-progress__label">{{ label or "Progreso de la corrida" }}</p>
+    <p class="pred-progress__counts">{{ completed }} / {{ total }} tareas</p>
+    <p class="pred-meta">Seleccione un estado para explorar sus tareas.</p>
+  </div>
+  {% else %}
   <div class="pred-progress__meta">
     {% if label %}<span class="pred-progress__label">{{ label }}</span>{% endif %}
     <span class="pred-progress__counts">{{ completed }} / {{ total }} tareas</span>
@@ -8,5 +22,6 @@
   <div class="pred-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}">
     <span class="pred-progress__fill"></span>
   </div>
+  {% endif %}
 </div>
 {% endmacro %}

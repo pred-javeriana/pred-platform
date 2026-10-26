@@ -53,7 +53,14 @@ def client_for(scenario: str = "normal", repo: Any = None) -> TestClient:
 
 @pytest.mark.parametrize("scenario", ["normal", "vacio", "errores"])
 @pytest.mark.parametrize(
-    "path", ["/datos", "/ejecucion", "/resultados", "/resultados/sku/FIL-0001"]
+    "path",
+    [
+        "/datos",
+        f"/datos?ingest_id={ACCEPTED}",
+        "/ejecucion",
+        "/resultados",
+        "/resultados/sku/FIL-0001",
+    ],
 )
 def test_routes_keep_unique_ids_labels_and_skip_link(scenario: str, path: str) -> None:
     response = client_for(scenario).get(path)
@@ -138,6 +145,53 @@ def test_execution_live_region_is_small_and_pause_control_is_outside_fragment() 
     assert any("estado=no_ejecutable" in (a.get("href") or "") for a in links)
 
 
+def test_accepted_file_keeps_the_next_action_before_optional_evidence() -> None:
+    html = client_for().get(f"/datos?ingest_id={ACCEPTED}").text
+    assert html.index("Continuar a Ejecución") < html.index('id="diagnostico-completo"')
+    page = Markup(html)
+    evidence = [attrs for _, attrs in page.tags if "data-evidence-panel" in attrs]
+    evidence_ids = {"diagnostico-completo", "explorar-topologia", "carga", "historial"}
+    assert {attrs["id"] for attrs in evidence} == evidence_ids
+    assert all("hidden" not in attrs for attrs in evidence)  # Alternativa funcional sin JS.
+    assert {
+        attrs["data-evidence-target"]
+        for attrs in page.select("a")
+        if "data-evidence-target" in attrs
+    } == evidence_ids
+
+
+def test_circular_progress_preserves_accessible_values_and_stopped_run_meaning() -> None:
+    html = client_for().get("/ejecucion").text
+    progress = [attrs for _, attrs in Markup(html).tags if attrs.get("role") == "progressbar"]
+    assert len(progress) == 1
+    assert progress[0]["aria-valuenow"] == "57.1"
+    assert progress[0]["aria-valuetext"] == "4 de 7 tareas · 57.1 %"
+    repo = FixtureRepository("normal")
+    status = repo.get_run_status("latest")
+    assert status.ejecucion and status.progress
+    stopped = status.model_copy(
+        update={
+            "ejecucion": status.ejecucion.model_copy(update={"estado": "detenida"}),
+            "progress": status.progress.model_copy(
+                update={
+                    "tareas_total": 7,
+                    "avance_pct": 100.0,
+                    "tareas_por_estado": {"exitosa": 0, "fallida": 7},
+                }
+            ),
+        }
+    )
+
+    class Stopped(FixtureRepository):
+        def get_run_status(self, run_id: str, **kwargs: Any) -> models.RunStatus:
+            return stopped
+
+    html = client_for(repo=Stopped()).get("/ejecucion").text
+    progress = [attrs for _, attrs in Markup(html).tags if attrs.get("role") == "progressbar"]
+    assert progress[0]["aria-valuenow"] == "0.0"
+    assert progress[0]["aria-label"] == "Tareas exitosas antes de detenerse"
+
+
 class Portfolio(FixtureRepository):
     """Simula un contrato paginado grande sin ejecutar modelos ni fabricar métricas."""
 
@@ -210,15 +264,18 @@ def test_filter_form_keeps_page_size_after_submission() -> None:
         assert any(
             a.get("name") == "size" and a.get("value") == "20" for a in Markup(html).select("input")
         )
-    # Ordenar sin otros filtros o volver a todos los estados conserva el explorador abierto.
+    # Ordenar o volver a todos los estados conserva la sección elegida al recargar.
     for path, disclosure in (
         ("/resultados?sort=valor", "filtrar-resultados"),
         ("/ejecucion?estado=", "detalle-tareas"),
         (f"/datos?ingest_id={ACCEPTED}&sort=adi", "explorar-topologia"),
     ):
         html = client_for().get(path).text
-        details = Markup(html).select("details")
-        assert any(a.get("id") == disclosure and "open" in a for a in details)
+        tags = Markup(html).tags
+        assert any(
+            attrs.get("id") == disclosure and ("open" in attrs or "data-evidence-active" in attrs)
+            for _, attrs in tags
+        )
 
 
 def test_result_navigation_remains_links_and_preserves_run() -> None:

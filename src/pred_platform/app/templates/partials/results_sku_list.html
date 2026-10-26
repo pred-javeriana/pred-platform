@@ -6,11 +6,8 @@
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/states.html" import unavailable_state %}
 
-<section class="pred-section" id="seleccion-por-sku">
+<section class="pred-results-list" id="seleccion-por-sku">
   <h2>Selección por SKU</h2>
-  {{ run_line(run, listing.run_id if listing else none) }}
-
-  {% include "partials/results_action.html" %}
 
   {% if query_error %}
     {{ alert(query_error, variant="warning") }}
@@ -37,7 +34,7 @@
         ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
       ]) }}
       {{ field("estado", "Estado de la familia", value=query.estado or "", input_type="select", options=[
-        ("", "Todos"), ("exitosa", "Exitosa"), ("fallida", "Fallida"), ("no_ejecutable", "No ejecutable"),
+        ("", "Todos"), ("exitosa", "Exitosa"), ("fallida", "Fallida"), ("no_ejecutable", "No Ejecutable"),
         ("excluida", "Excluida"), ("ejecutando", "Ejecutando"), ("pendiente", "Pendiente")
       ]) }}
       {{ field("q", "Buscar SKU", value=query.q or "", placeholder="FIL-0001") }}
@@ -51,13 +48,14 @@
     </form>
     </details>
 
-    <p class="pred-meta">{{ format_count(listing.page.total) }} SKU coinciden con la consulta. Los estados corresponden a cada familia; no representan un veredicto global del SKU.</p>
+    <p class="pred-query-count"><strong class="mono">{{ format_count(listing.page.total) }}</strong> SKU coinciden con la consulta.</p>
+    <p class="pred-meta">Los estados corresponden a cada familia; no representan un veredicto global del SKU.</p>
     {{ table_start(["SKU", "Clase", "Campeón", "Evidencia por familia"], "Selección por SKU de la ejecución") }}
     {% if rows %}
       {% for item in rows %}
       <tr>
         <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ item.row.sku_id | urlencode }}?{{ query.detail_query() }}" aria-label="Ver evidencia del SKU {{ item.row.sku_id }}">{{ item.row.sku_id }}</a></th>
-        <td>{{ sku_class_label(item.row.sku_class) }}</td>
+        <td class="pred-demand-class">{{ sku_class_label(item.row.sku_class) }}</td>
         <td>
           {% if item.row.champion %}
           <div class="pred-cell">

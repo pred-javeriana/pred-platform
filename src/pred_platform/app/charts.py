@@ -16,7 +16,7 @@ _HEIGHT = 400
 _LEFT = 52
 _RIGHT = 18
 _TOP = 16
-_BOTTOM = 72
+_BOTTOM = 92
 _RADIUS = 5.0
 
 # Forma + color: la leyenda textual evita que el color sea el único canal.
@@ -38,8 +38,8 @@ def topology_scatter_svg(report: TopologyReport) -> str:
     desc = (
         "Cada marca es un SKU del reporte. El eje horizontal es ADI y el vertical es CV². "
         "Las líneas de puntos marcan los umbrales del motor. "
-        "Las clases se distinguen por forma: círculo regular, cuadrado errática, "
-        "triángulo intermitente y rombo irregular."
+        "Las clases se distinguen por forma: círculo Smooth (Suave), cuadrado Erratic (Errática), "
+        "triángulo Intermittent (Intermitente) y rombo Lumpy (Grumosa)."
     )
     parts = [
         f'<svg role="img" viewBox="0 0 {_WIDTH} {_HEIGHT}" width="{_WIDTH}" height="{_HEIGHT}" '
@@ -92,7 +92,7 @@ def _axes(x_max: float, y_max: float) -> str:
     return (
         f'<line x1="{x0}" y1="{y0}" x2="{x1}" y2="{y0}" class="pred-chart__axis" />'
         f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y1}" class="pred-chart__axis" />'
-        f'<text x="{(x0 + x1) / 2:.1f}" y="{_HEIGHT - 28}" class="pred-chart__axis-label" '
+        f'<text x="{(x0 + x1) / 2:.1f}" y="{y0 + 44:.1f}" class="pred-chart__axis-label" '
         'text-anchor="middle">ADI</text>'
         f'<text x="14" y="{(y0 + y1) / 2:.1f}" class="pred-chart__axis-label" '
         'text-anchor="middle" transform="rotate(-90 14 '
@@ -135,10 +135,10 @@ def _point(row: TopologyMetrics, x_max: float, y_max: float) -> str:
 
 
 def _legend() -> str:
-    y = _HEIGHT - 12
-    x = _LEFT
     chunks = ['<g class="pred-chart__legend">']
-    for code, (shape, fill) in _MARKERS.items():
+    for index, (code, (shape, fill)) in enumerate(_MARKERS.items()):
+        x = _LEFT + (index % 2) * 290
+        y = _HEIGHT - 30 + (index // 2) * 20
         if shape == "square":
             glyph = f'<rect x="{x:.1f}" y="{y - 8:.1f}" width="8" height="8" fill="{fill}" />'
         elif shape == "triangle":
@@ -158,6 +158,5 @@ def _legend() -> str:
             f'<text x="{x + 12:.1f}" y="{y:.1f}" class="pred-chart__legend-label">'
             f"{escape(sku_class_label(code))}</text>"
         )
-        x += 110
     chunks.append("</g>")
     return "".join(chunks)

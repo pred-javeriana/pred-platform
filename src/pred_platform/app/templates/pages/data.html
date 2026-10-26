@@ -3,6 +3,7 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 {% from "components/states.html" import unavailable_state, error_state %}
+{% from "components/evidence.html" import evidence_nav, evidence_panel %}
 
 {% block title %}PRED — Datos{% endblock %}
 
@@ -43,17 +44,46 @@
   {% endif %}
 
   {% if report %}
+  <div class="pred-workspace">
     {% include "partials/data_diagnosis.html" %}
-  {% endif %}
-
-  {% if report and report.status == "accepted" %}
+    {% if report.status == "accepted" %}
     {% include "partials/data_topology.html" %}
+    {% else %}
+    <aside class="pred-panel pred-panel--side" aria-labelledby="siguiente-datos">
+      <p class="pred-eyebrow">Siguiente paso</p>
+      {% if report.status == "needs_confirmation" %}
+      <h2 id="siguiente-datos">Confirme cómo continuar</h2>
+      <p class="pred-note">Revise el conflicto indicado antes de confirmar o cancelar la carga.</p>
+      <a href="#diagnostico">Revisar confirmación</a>
+      {% else %}
+      <h2 id="siguiente-datos">Revise el archivo</h2>
+      <p class="pred-note">Consulte la causa indicada en el diagnóstico antes de volver a cargar el CSV.</p>
+      <a href="#carga">Volver a cargar el archivo</a>
+      {% endif %}
+    </aside>
+    {% endif %}
+  </div>
+  <div class="pred-evidence-area" id="detalle-datos" data-evidence-tabs>
+    <header class="pred-area-heading"><h2>Detalle de los datos</h2><p>Elija una sección para consultarla.</p></header>
+    {% set data_sections = [{"id": "diagnostico-completo", "label": "Diagnóstico", "hint": "Validación y calidad"}] %}
+    {% if report.status == "accepted" and topology and not topology_error %}
+    {% set data_sections = data_sections + [{"id": "explorar-topologia", "label": "Clases y SKU", "hint": "Distribución y consulta"}] %}
+    {% endif %}
+    {{ evidence_nav(data_sections + [
+      {"id": "carga", "label": "Cambiar archivo", "hint": "Seleccionar otro CSV"},
+      {"id": "historial", "label": "Historial", "hint": "Ingestas anteriores"}
+    ], "Secciones de datos") }}
+    {% with diagnosis_details=true %}{% include "partials/data_diagnosis.html" %}{% endwith %}
+    {% if report.status == "accepted" %}
+    {% with topology_details=true %}{% include "partials/data_topology.html" %}{% endwith %}
+    {% endif %}
   {% endif %}
 
-  <section class="pred-section" id="carga">
-    {% if report and report.status == "accepted" and not form_error %}
-    <details class="pred-details" id="cambiar-archivo"><summary>Cargar otro archivo</summary>
-    {% else %}<h2>Cargar archivo</h2>{% endif %}
+  {% if not report %}<div class="pred-workspace">{% endif %}
+  <section class="{{ 'pred-evidence-panel' if report else 'pred-panel pred-panel--main' }}" id="carga"{% if report %} data-evidence-panel aria-labelledby="carga-title"{% if form_error %} data-evidence-active{% endif %}{% endif %}>
+    {% if report %}
+    <header class="pred-evidence-panel__heading"><h3 id="carga-title">Cargar otro archivo</h3><p>Seleccione el CSV que quiere analizar en lugar del actual.</p></header>
+    {% else %}<p class="pred-eyebrow">Empiece aquí</p><h2 class="pred-panel-title">Cargar archivo</h2><p class="pred-note">Seleccione el CSV que quiere analizar.</p>{% endif %}
     <form method="post" action="/datos/cargar" enctype="multipart/form-data">
       {{ field(
         "archivo",
@@ -68,11 +98,19 @@
     {% if not has_ingest %}
     <p class="pred-meta">Carga un archivo para comenzar.</p>
     {% endif %}
-    {% if report and report.status == "accepted" and not form_error %}</details>{% endif %}
   </section>
+  {% if not report %}
+    <aside class="pred-panel pred-panel--side" aria-labelledby="preparar-archivo">
+      <p class="pred-eyebrow">Antes de continuar</p>
+      <h2 id="preparar-archivo">De sus datos a la ejecución</h2>
+      <ol class="pred-guide"><li><strong>Cargue su CSV</strong><span>Seleccione el archivo de demanda.</span></li><li><strong>Revise la validación</strong><span>Consulte su estado y las clases de demanda.</span></li><li><strong>Configure la ejecución</strong><span>Continúe cuando los datos sean válidos.</span></li></ol>
+    </aside>
+  </div>
+  <div class="pred-evidence-area">
+    <header class="pred-area-heading"><h2>Archivos anteriores</h2><p>Recupere una ingesta ya registrada.</p></header>
+  {% endif %}
 
-  <section class="pred-section" id="historial">
-    <details class="pred-details" id="historial-ingestas"{% if request.query_params.get("history_page") %} open{% endif %}><summary>Explorar ingestas anteriores</summary>
+  {% call evidence_panel("historial", "Historial de ingestas", "Seleccione un archivo registrado para revisar sus datos.", active=request.query_params.get("history_page")) %}
     {% if list_error %}
       {{ unavailable_state(
         list_error.title,
@@ -85,6 +123,6 @@
     {% else %}
       <p class="pred-meta">Todavía no hay ingestas registradas.</p>
     {% endif %}
-    </details>
-  </section>
+  {% endcall %}
+  </div>
 {% endblock %}
