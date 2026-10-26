@@ -5,6 +5,7 @@
 {% from "components/forms.html" import field %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/run_line.html" import run_line %}
+{% from "components/evidence.html" import evidence_nav, evidence_panel %}
 
 <span hidden data-pred-poll="{{ 'true' if poll else 'false' }}" data-pred-run-state="{{ run.estado if run else 'sin_ejecucion' }}" data-pred-run-summary="{% if run %}Ejecución {{ run.id }}: {{ describe_status('run', run.estado).label }}{% else %}Sin ejecución{% endif %}"></span>
 {% if status_error %}
@@ -23,27 +24,11 @@
     ) }}
   {% endif %}
 {% else %}
-<section class="pred-section" id="ejecucion-activa">
-  <h2>{{ "Ejecución activa" if run.estado in ("pendiente", "ejecutando") else "Estado de la ejecución" }}</h2>
-
-  {{ run_line(status) }}
-
-  <div class="pred-actions">
-    {% if run.estado in ("pendiente", "ejecutando") %}
-    <form method="post" action="/ejecucion/detener" id="accion-detener">
-      <input type="hidden" name="ejecucion" value="{{ run.id }}">
-      {{ button("Detener", variant="secondary", type="submit", icon="i-stop", disabled=not actions.can_stop) }}
-    </form>
-    {% endif %}
-    {% if run.estado in ("detenida", "completada_con_fallos") %}
-    <form method="post" action="/ejecucion/reanudar" id="accion-reanudar">
-      <input type="hidden" name="ejecucion" value="{{ run.id }}">
-      {{ button("Reanudar" if run.estado == "detenida" else "Reintentar las tareas con fallos", variant="secondary", type="submit", icon="i-rotate", disabled=not actions.can_resume) }}
-    </form>
-    {% endif %}
-    {% if finished and results_href %}{{ button("Ver resultados", variant="primary", href=results_href) }}{% endif %}
-  </div>
-  {% if actions.disabled_reason %}<p class="pred-meta">Detener y reanudar están deshabilitados. {{ actions.disabled_reason }}</p>{% endif %}
+<div class="pred-workspace">
+<section class="pred-panel pred-panel--main pred-run-summary" id="ejecucion-activa" aria-labelledby="titulo-ejecucion">
+  <p class="pred-eyebrow">Ejecución <span class="mono">#{{ run.id }}</span></p>
+  <h2 class="pred-hero-status" id="titulo-ejecucion">{{ status_indicator(describe_status("run", run.estado)) }}</h2>
+  <p class="pred-meta">Iniciada {{ format_when(run.iniciada_en) }}{% if run.ingest_id %} · Ingesta <span class="mono">{{ abbreviate_id(run.ingest_id) }}</span>{% endif %}</p>
   {% if run.estado == "pendiente" and not worker_active and not control_reason %}
   <p class="pred-meta">En cola: esta aplicación no ejecuta el worker (PRED_WORKER=off); inícielo con <span class="mono">make worker</span>.</p>
   {% elif run.estado == "pendiente" %}
@@ -65,16 +50,47 @@
     {% set pct = progress.avance_pct %}
     {% set bar_label = "Avance de la ejecución" %}
   {% endif %}
-  {{ progress_bar(done, progress.tareas_total, pct, bar_label) }}
-  <ul class="pred-statelist">
+  {{ progress_bar(done, progress.tareas_total, pct, bar_label, circular=true) }}
+  {% endif %}
+</section>
+<section class="pred-panel pred-panel--side" aria-labelledby="titulo-tareas-resumen">
+  <p class="pred-eyebrow">Estado de las tareas</p>
+  <h2 id="titulo-tareas-resumen">Siga lo que ocurre</h2>
+  {% if progress %}
+  <ul class="pred-statelist pred-statelist--summary">
     {% for code, count in state_counts %}
     <li><a href="/ejecucion?{{ query.query_string(estado=code, page=1) }}#tareas"{% if query.estado == code %} aria-current="true"{% endif %}>{{ status_indicator(describe_status("task", code)) }} <span class="mono">{{ format_count(count) }}</span></a></li>
     {% endfor %}
   </ul>
   {% endif %}
+  <div class="pred-next-action">
+    <div class="pred-actions">
+      {% if run.estado in ("pendiente", "ejecutando") %}
+      <form method="post" action="/ejecucion/detener" id="accion-detener">
+        <input type="hidden" name="ejecucion" value="{{ run.id }}">
+        {{ button("Detener", variant="secondary", type="submit", icon="i-stop", disabled=not actions.can_stop) }}
+      </form>
+      {% endif %}
+      {% if run.estado in ("detenida", "completada_con_fallos") %}
+      <form method="post" action="/ejecucion/reanudar" id="accion-reanudar">
+        <input type="hidden" name="ejecucion" value="{{ run.id }}">
+        {{ button("Reanudar" if run.estado == "detenida" else "Reintentar las tareas con fallos", variant="secondary", type="submit", icon="i-rotate", disabled=not actions.can_resume) }}
+      </form>
+      {% endif %}
+      {% if finished and results_href %}{{ button("Ver resultados", variant="primary", href=results_href) }}{% endif %}
+    </div>
+    {% if actions.disabled_reason %}<details class="pred-details"><summary>{{ "Acciones no disponibles en modo de prueba" if source == "fixture" else "Disponibilidad de las acciones" }}</summary><p class="pred-meta">Detener y reanudar están deshabilitados. {{ actions.disabled_reason }}</p></details>{% endif %}
+  </div>
+</section>
+</div>
 
-  <details class="pred-details" id="configuracion-corrida">
-    <summary>Explorar configuración y trazabilidad</summary>
+<div class="pred-evidence-area" id="detalle-ejecucion" data-evidence-tabs>
+  <header class="pred-area-heading"><h2>Detalle de la ejecución</h2><p>Elija qué necesita revisar.</p></header>
+  {{ evidence_nav([
+    {"id": "detalle-tareas", "label": "Tareas", "hint": "Estados, filtros y causas"},
+    {"id": "configuracion-corrida", "label": "Configuración", "hint": "Parámetros y trazabilidad"}
+  ], "Secciones de la ejecución", action={"label": "Nueva ejecución", "href": "/ejecucion?ingest_id=" ~ selected_ingest ~ "#lanzar"} if selected_ingest else {"label": "Cargar datos", "href": "/datos"}) }}
+{% call evidence_panel("configuracion-corrida", "Configuración y trazabilidad", "Consulte los parámetros de esta corrida y la reserva registrada.") %}
     <p class="pred-meta">El avance corresponde a las tareas informadas. La etapa analítica actual no está informada en este contrato.</p>
     <dl class="pred-kv">
       {% for label, value in settings_rows %}<dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
@@ -85,17 +101,15 @@
       <dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd>
       {% if run.ingest_id %}<dt>Ingesta</dt><dd class="mono">{{ run.ingest_id }}</dd>{% endif %}
     </dl>
-  </details>
-</section>
+{% endcall %}
 
-<section class="pred-section" id="tareas">
-  <details class="pred-details" id="detalle-tareas"{% if query.estado or query.family or query.sku or query.page > 1 or "estado" in request.query_params %} open{% endif %}>
-  <summary>Explorar tareas{% if status.page %} · {{ format_count(status.page.total) }} en esta consulta{% endif %}</summary>
+{% call evidence_panel("detalle-tareas", "Tareas de la ejecución", "Filtre por estado, familia o SKU para revisar una tarea y su causa.", active=true, alias="tareas") %}
+  {% if status.page %}<p class="pred-meta"><strong>{{ format_count(status.page.total) }}</strong> tareas en esta consulta.</p>{% endif %}
   <form method="get" action="/ejecucion" class="pred-filters" id="filtros-tareas" hx-preserve="true">
     {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
     {{ field("estado", "Estado", value=query.estado or "", input_type="select", options=[
       ("", "Todos"), ("pendiente", "Pendiente"), ("ejecutando", "Ejecutando"), ("exitosa", "Exitosa"),
-      ("fallida", "Fallida"), ("no_ejecutable", "No ejecutable")
+      ("fallida", "Fallida"), ("no_ejecutable", "No Ejecutable")
     ]) }}
     {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
       ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
@@ -141,6 +155,6 @@
     {% if pages.has_next %}<a href="/ejecucion?{{ query.query_string(page=status.page.number + 1) }}">Siguiente</a>{% endif %}
   </nav>
   {% endif %}
-  </details>
-</section>
+{% endcall %}
+</div>
 {% endif %}

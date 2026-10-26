@@ -70,20 +70,31 @@ Ver `docs/features/ejecucion/README.md`.
 `EstadoEjecucion`: `pendiente`, `ejecutando`, `completada`, `completada_con_fallos`,
 `detenida`.
 
-**Estados de tarea** (`EstadoTarea`, contrato = interfaz): `pendiente`, `ejecutando`,
-`exitosa`, `fallida`, `no_ejecutable`.
+**Estados de tarea** (`EstadoTarea`, claves de contrato): `pendiente`, `ejecutando`,
+`exitosa`, `fallida`, `no_ejecutable`. La presentación usa Pendiente, Ejecutando,
+Exitosa, Fallida y No Ejecutable; no se alteran las claves almacenadas ni los filtros.
 
 **Estados de trial HPO** (contrato → etiqueta de interfaz):
 
 | Contrato (`EstadoTrial`) | Etiqueta UI | No es fallo |
 | --- | --- | --- |
-| `pendiente` | pendiente | — |
-| `corriendo` | ejecutando | — |
-| `completado` | completada | — |
-| `podado` | podada | sí: poda de Optuna, no error |
-| `fallido` | fallida | — |
+| `pendiente` | Pendiente | — |
+| `corriendo` | Ejecutando | — |
+| `completado` | Completada | — |
+| `podado` | Podada | sí: poda de Optuna, no error |
+| `fallido` | Fallida | — |
 
 `podada` tiene representación propia. No reutiliza el tratamiento de `fallida`.
+
+El formulario permite seleccionar Fundacional (Chronos-2); sus dependencias y pesos
+deben estar disponibles en el entorno del motor. También permite declarar el origen
+de los datos: Reales, Sintéticos o no declarar/conservar el registro existente.
+La opción por defecto no afirma que sean reales. El formulario entrega la declaración
+a `LaunchSettings.datos_sinteticos` y `RunControl`; el servicio existente conserva la
+procedencia y rechaza contradicciones. El worker ya transmite `--datos-reales` o
+`--datos-sinteticos`. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
+determina si el contraste es aplicable. Estos ajustes corrigen #36 y #39, fuera del
+alcance visual de D2, sin implementar funcionalidad analítica de M4.
 
 ## 3. Resultados
 
@@ -115,7 +126,7 @@ Tabs internas (misma ruta, `?vista=resumen|clase|sku`): Resumen | Por clase | Po
 pantallas nuevas. **Por SKU** (C2) está implementada: tabla compacta con evidencia familiar desplegable y detalle
 en `/resultados/sku/{sku_id}`; **Resumen** y **Por clase** dependen de evidencia publicada integrada mediante el contrato M4 y se
 muestran como no disponibles. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
-La acción «Ejecutar selección» lleva a Ejecución y se habilita solo con `parquet_read`,
+La acción «Configurar nueva ejecución» lleva a Ejecución y se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.
 
@@ -176,8 +187,22 @@ Los agregados de cartera/clase, procedencia declarada, cinco veredictos, DM/BH/c
 
 ## Exploración progresiva en la revisión final D2
 
-Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con archivo/estado/conteos y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cambiar archivo e historial son disclosures. Un filtro o página explícitos reabren el explorador correspondiente.
+Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con archivo/estado/conteos y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cambiar archivo e historial se consultan en la navegación secundaria. Un filtro o página explícitos activan el panel correspondiente.
 
-Ejecución sin contexto comienza con la corrida actual. Los conteos por estado son enlaces al explorador de tareas filtrado, que se abre al navegar a esa consulta. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
+Ejecución sin contexto comienza con la corrida actual. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
 
 Resultados mantiene la lista por SKU como entrada actual: filtros plegables, familias por fila y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. Origen no informado y alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
+
+## Composición espacial para la auditoría de UX
+
+Datos: estado del archivo y conteos en el área principal; topología global y continuar en el lateral. Diagnóstico, clases/SKU, carga e historial se consultan debajo mediante un menú persistente y un panel activo. Una consulta de topología o historial selecciona el panel correspondiente.
+
+Ejecución: estado y progreso circular en el área principal; conteos interactivos por estado y detener/reanudar/resultados en el lateral. Configuración y tareas permanecen debajo, dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él. La configuración contextual conserva su formulario principal y una columna de revisión/acción.
+
+Resultados: consulta por SKU paginada en el área principal; corrida, alcance y configurar otra ejecución en el lateral. Detalle SKU: decisión y familias en el área principal; clase, perfil, procedencia y navegación en el lateral; trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
+
+## Navegación secundaria después de la revisión del pie de página
+
+La revisión posterior sustituye los acordeones inferiores de Datos por un navegador persistente: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cambiar archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
+
+Ejecución presenta Tareas y Configuración en ese mismo patrón dentro del fragmento que ya se sondea; la sección elegida se conserva al actualizar. El enlace Nueva ejecución lleva a la configuración contextual existente mediante ingest_id. Esa configuración continúa fuera del fragmento de polling; ya no se despliega otro formulario largo al final de la página de monitoreo. Detener/reanudar y sus comprobaciones de capacidad no cambian. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import threading
@@ -25,7 +26,9 @@ from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract import models
 from pred_platform.contract.errors import InvalidQuery
+from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
+from pred_platform.worker.engine import build_command
 from tests.test_worker import Env, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -65,10 +68,10 @@ def test_the_active_run_shows_its_state_progress_settings_and_tasks() -> None:
     text = _text(response.text)
 
     assert response.status_code == 200 and repo.status_calls[-1][0] == "latest"
-    assert "Ejecución #1" in text and "ejecutando" in text
+    assert "Ejecución #1" in text and "Ejecutando" in text
     assert "4 / 7 tareas" in text and "57.1 %" in text
     assert "Mínimo de entrenamiento 60 días" in text and "Corte t* 2026-06-29" in text
-    for state in ("pendiente", "ejecutando", "exitosa"):
+    for state in ("Pendiente", "Ejecutando", "Exitosa"):
         assert state in text
     assert "FIL-0001" in text and "classical:sarima" in text
 
@@ -80,7 +83,7 @@ def test_every_task_state_has_icon_text_and_colour_and_errors_have_a_next_step()
     for modifier in ("neutral", "info", "ok", "err", "warn"):
         assert f"pred-status--{modifier}" in html
     text = _text(html)
-    assert "fallida" in text and "no ejecutable" in text
+    assert "Fallida" in text and "No Ejecutable" in text
     assert "Etapa" in text and re.search(r"\b[a-z]+\.[a-z_]+\b", text)
     assert "Traceback" not in text
 
@@ -113,11 +116,16 @@ def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
 
 
 def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
-    client, _ = _fixture_client("normal")
+    client, repo = _fixture_client("normal")
     html = client.get("/ejecucion").text
 
-    assert re.search(r'<button class="pred-btn pred-btn--primary"[^>]*disabled', html)
-    assert "Lanzar está deshabilitado. Estás viendo datos de prueba" in html
+    assert "Nueva ejecución" in html
+    ingest_id = next(
+        item.ingest_id for item in repo.list_ingests().items if item.status == "accepted"
+    )
+    launch_html = client.get(f"/ejecucion?ingest_id={ingest_id}").text
+    assert re.search(r'<button class="pred-btn pred-btn--primary"[^>]*disabled', launch_html)
+    assert "Lanzar está deshabilitado. Estás viendo datos de prueba" in launch_html
     assert re.search(
         r'<button class="pred-btn pred-btn--secondary"[^>]*disabled[^>]*>\s*<svg[^>]*>'
         r'<use href="#i-stop"',
@@ -207,7 +215,72 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     )
     page = client.get(response.headers["location"]).text
     assert "La ejecución quedó en cola" in page
-    assert "pendiente" in _text(page) and "PRED_WORKER=off" in page  # no worker in this app
+    assert "Pendiente" in _text(page) and "PRED_WORKER=off" in page  # no worker in this app
+
+
+@pytest.mark.parametrize(
+    ("origin", "stored", "flag"),
+    [
+        ("real", False, "--datos-reales"),
+        ("synthetic", True, "--datos-sinteticos"),
+        ("unknown", None, None),
+    ],
+)
+def test_form_origin_reaches_the_existing_worker_command(
+    env: Env, origin: str, stored: bool | None, flag: str | None
+) -> None:
+    # La ingesta de esta prueba no tiene una declaración previa.
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    response = _launch(_dal_client(env), env, data_origin=origin)
+    assert response.status_code == 303
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, 1)
+    assert run is not None and run.parametros["datos_sinteticos"] is stored
+    command = build_command(
+        env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
+    )
+    if flag is None:
+        assert "--datos-reales" not in command and "--datos-sinteticos" not in command
+    else:
+        assert flag in command
+        opposite = "--datos-sinteticos" if flag == "--datos-reales" else "--datos-reales"
+        assert opposite not in command
+
+
+def test_form_rejects_an_invalid_origin_and_keeps_valid_origin_after_other_errors(env: Env) -> None:
+    client = _dal_client(env)
+    invalid = _launch(client, env, data_origin="inventado")
+    assert "Elija uno de los orígenes de la lista." in invalid.text
+    assert 'id="data_origin"' in invalid.text and 'aria-invalid="true"' in invalid.text
+    retry = _launch(client, env, data_origin="real", horizon="0")
+    assert '<option value="real" selected>' in retry.text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_form_cannot_contradict_an_existing_origin(env: Env) -> None:
+    response = _launch(_dal_client(env), env, data_origin="synthetic")
+    assert response.status_code == 200 and "no puede cambiar" in response.text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_foundation_is_selectable_and_reaches_the_worker_and_results(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    html = client.get(f"/ejecucion?ingest_id={env.ingest_id}").text
+    control = re.search(r'<input[^>]*id="fam-foundation"[^>]*>', html)
+    assert control is not None and "disabled" not in control.group(0)
+    response = _launch(client, env, families=["foundation"], data_origin="real")
+    assert response.status_code == 303
+    ((parameters,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(parameters)["families"] == ["foundation"]
+    env.worker().run_next()
+    assert env.rows("SELECT DISTINCT modelo FROM tareas") == [("foundation:chronos2",)]
+    detail = client.get("/resultados/sku/FIL-0001?ejecucion=1").text
+    assert "foundation:chronos2" in detail and "Fundacional" in detail
 
 
 def test_launching_the_same_run_again_says_it_already_exists(env: Env) -> None:
@@ -285,7 +358,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     )
 
     live = client.get("/ejecucion")
-    assert "every 2s" in live.text and "ejecutando" in _text(live.text)
+    assert "every 2s" in live.text and "Ejecutando" in _text(live.text)
     assert client.get("/ejecucion/estado").status_code == 200  # keep polling
     assert re.search(
         r'<button class="pred-btn pred-btn--secondary"[^>]*>\s*<svg[^>]*><use href="#i-stop"',
@@ -298,7 +371,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
 
     after = client.get(stopped.headers["location"])
     text = _text(after.text)
-    assert "detenida" in text and "Se pidió detener la ejecución." in text
+    assert "Detenida" in text and "Se pidió detener la ejecución." in text
     assert "Reanude la ejecución cuando quiera." in text  # the next step for platform.run_stopped
     assert "La ejecución se detuvo a petición del operador." in text
     assert client.get("/ejecucion/estado").status_code == 286  # nothing left to poll
@@ -308,7 +381,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=reanudada"
     env.worker().run_next()
     done = client.get("/ejecucion").text
-    assert "completada" in _text(done) and 'href="/resultados?ejecucion=1"' in done
+    assert "Completada" in _text(done) and 'href="/resultados?ejecucion=1"' in done
     assert env.rows("SELECT COUNT(*) FROM tareas") == [(6,)]  # the same rows, no duplicates
 
 
@@ -345,7 +418,7 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
     env.worker().run_next()
 
     text = _text(client.get("/ejecucion").text)
-    assert "completada con fallos" in text and "Reintentar las tareas con fallos" in text
+    assert "Completada con fallos" in text and "Reintentar las tareas con fallos" in text
     assert "El modelo no pudo ajustarse." in text
     assert "Pruebe con más ensayos o con otra familia" in text
     assert "Ver resultados" in text

@@ -1,0 +1,25 @@
+{# Enlaces funcionales sin JS; el navegador los mejora como pestañas locales accesibles. #}
+{% macro evidence_nav(items, label, action=none) %}
+<div class="pred-evidence-menu">
+  <nav class="pred-evidence-nav" aria-label="{{ label }}" data-evidence-nav>
+    {% for item in items %}
+    <a href="#{{ item.id }}" id="{{ item.id }}-tab" data-evidence-target="{{ item.id }}">
+      <span class="pred-evidence-nav__label">{{ item.label }}</span>
+      <span class="pred-evidence-nav__hint">{{ item.hint }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+  {% if action %}<a class="pred-evidence-menu__action" href="{{ action.href }}">{{ action.label }} <span aria-hidden="true">↗</span></a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro evidence_panel(panel_id, title, description, active=false, alias=none) %}
+<section class="pred-evidence-panel" id="{{ panel_id }}" aria-labelledby="{{ panel_id }}-title" data-evidence-panel{% if active %} data-evidence-active{% endif %}{% if alias %} data-evidence-alias="{{ alias }}"{% endif %}>
+  {% if alias %}<span class="pred-anchor" id="{{ alias }}" aria-hidden="true"></span>{% endif %}
+  <header class="pred-evidence-panel__heading">
+    <h3 id="{{ panel_id }}-title">{{ title }}</h3>
+    <p>{{ description }}</p>
+  </header>
+  {{ caller() }}
+</section>
+{% endmacro %}

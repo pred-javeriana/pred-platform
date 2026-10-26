@@ -18,22 +18,31 @@ def test_task_states_are_five_and_distinguishable_without_sharing_icons() -> Non
     shown = [describe_status("task", code) for code in codes]
     assert len({item.icon for item in shown}) == 5
     assert len({item.label for item in shown}) == 5
+    assert [item.label for item in shown] == [
+        "Pendiente",
+        "Ejecutando",
+        "Exitosa",
+        "Fallida",
+        "No Ejecutable",
+    ]
+    assert describe_status("run", "ejecutando").label == "Ejecutando"
+    assert describe_status("run", "completada_con_fallos").label == "Completada con fallos"
 
 
 def test_pruned_trial_is_not_rendered_as_failure() -> None:
     pruned = describe_status("trial", "podado")
     failed = describe_status("trial", "fallido")
-    assert pruned.label == "podada"
+    assert pruned.label == "Podada"
     assert pruned.modifier == "pruned"
     assert pruned.icon != failed.icon
     assert pruned.modifier != failed.modifier
-    assert failed.label == "fallida"
+    assert failed.label == "Fallida"
     assert failed.modifier == "err"
 
 
 def test_trial_contract_codes_map_to_interface_labels() -> None:
-    assert describe_status("trial", "corriendo").label == "ejecutando"
-    assert describe_status("trial", "completado").label == "completada"
+    assert describe_status("trial", "corriendo").label == "Ejecutando"
+    assert describe_status("trial", "completado").label == "Completada"
 
 
 def test_verdicts_keep_their_own_vocabulary() -> None:
@@ -89,7 +98,7 @@ def test_sku_class_labels_and_decimal_helpers() -> None:
 def test_a_family_can_be_excluded_without_being_a_failure() -> None:
     excluded = describe_status("family", "excluida")
     failed = describe_status("family", "fallida")
-    assert excluded.label == "excluida" and excluded.modifier == "neutral"
+    assert excluded.label == "Excluida" and excluded.modifier == "neutral"
     assert excluded.icon != failed.icon and excluded.modifier != failed.modifier
     for code in ("pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable"):
         assert describe_status("family", code) == describe_status("task", code)

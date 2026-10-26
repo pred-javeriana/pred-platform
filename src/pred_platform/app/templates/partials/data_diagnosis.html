@@ -3,16 +3,17 @@
 {% from "components/buttons.html" import button %}
 {% from "components/metrics.html" import metrics_row %}
 {% from "components/tables.html" import table_start, table_end %}
+{% from "components/evidence.html" import evidence_panel %}
 
 {% set ingest_status = describe_status("ingest", report.status) %}
-<section class="pred-section" id="diagnostico">
-  <h2>Archivo seleccionado</h2>
-  {{ status_indicator(ingest_status) }}
-  <p class="pred-meta">
-    <span class="mono">{{ report.source_file.name }}</span>
-    · {{ format_count(report.source_file.row_count) }} filas
-    · <span class="mono" title="{{ report.ingest_id }}">{{ abbreviate_id(report.ingest_id) }}</span>
-  </p>
+{% if not diagnosis_details %}
+<section class="pred-panel pred-panel--main pred-file-summary" id="diagnostico" aria-labelledby="estado-archivo">
+  <p class="pred-eyebrow">Archivo seleccionado</p>
+  <h2 class="pred-hero-status" id="estado-archivo">{{ status_indicator(ingest_status) }}</h2>
+  <div class="pred-file-summary__identity">
+    <p class="pred-file-summary__name">{{ report.source_file.name }}</p>
+    <p class="pred-meta">{{ format_count(report.source_file.row_count) }} filas · <span class="mono" title="{{ report.ingest_id }}">{{ abbreviate_id(report.ingest_id) }}</span></p>
+  </div>
 
   {% if report.status == "needs_confirmation" and pending_token %}
     {{ alert("Ya existe un archivo en el destino indicado. Confirme si desea sobrescribirlo.", variant="warning") }}
@@ -58,17 +59,20 @@
     ]) }}
   {% endif %}
 
-  <details class="pred-details" id="diagnostico-completo"><summary>Explorar diagnóstico y validación</summary>
+</section>
+{% else %}
+{% call evidence_panel("diagnostico-completo", "Diagnóstico y validación", "Revise la publicación, los encabezados y los registros de calidad.") %}
   {% if report.published %}
-    <p class="pred-meta">
-      Publicado: {{ format_count(report.published.rows) }} filas,
-      {{ format_count(report.published.n_skus) }} SKU,
-      columnas {{ report.published.columns | join(", ") }}.
-    </p>
+    <h4>Publicación</h4>
+    <dl class="pred-kv">
+      <dt>Filas publicadas</dt><dd class="mono">{{ format_count(report.published.rows) }}</dd>
+      <dt>SKU publicados</dt><dd class="mono">{{ format_count(report.published.n_skus) }}</dd>
+      <dt>Columnas</dt><dd>{{ report.published.columns | join(", ") }}</dd>
+    </dl>
   {% endif %}
 
   {% if report.header_diagnostic %}
-    <h3>Encabezado</h3>
+    <h4>Encabezado</h4>
     <p class="pred-meta">Estado: {{ {"accepted": "Aceptado", "rejected": "Requiere corrección", "needs_confirmation": "Requiere confirmación", "failed": "Fallido"}.get(report.header_diagnostic.status, report.header_diagnostic.status) }}</p>
     {% if report.header_diagnostic.entries %}
       {{ table_start(["Campo", "Severidad", "Mensaje", "Acción sugerida"]) }}
@@ -107,5 +111,5 @@
     </div>
     </details>
   {% endif %}
-  </details>
-</section>
+{% endcall %}
+{% endif %}

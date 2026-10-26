@@ -27,19 +27,11 @@
       detail_error.blocked_by
     ) }}
   {% elif selection %}
-    {{ run_line(run, selection.run_id) }}
-    {% include "partials/results_scope.html" %}
-    <nav class="pred-section-links" aria-label="Detalle del SKU">
-      <a href="#campeon">Decisión</a><a href="#familias">Comparación por familia</a><a href="#trazabilidad-sku">Trazabilidad</a>
-    </nav>
-
-    <p class="pred-meta">
-      Clase {{ sku_class_label(selection.sku_class) }} · perfil {{ profile_label(selection.profile) }}
-
-    </p>
-
+    <div class="pred-workspace pred-workspace--results">
+    <div class="pred-panel pred-panel--main">
     <section class="pred-section" id="campeon">
-      <h2>Campeón</h2>
+      <p class="pred-eyebrow">Decisión disponible</p>
+      <h2 class="pred-panel-title">{{ family_label(selection.champion.family) if selection.champion and selection.champion.family else "Campeón informado" if selection.champion else "Campeón no informado" }}</h2>
       {% if selection.champion %}
       <p class="pred-note"><span class="mono">{{ selection.champion.modelo }}</span> · {{ selection.champion.metrica_seleccion }} <span class="mono">{{ format_decimal(selection.champion.valor_seleccion, 3) }}</span></p>
       {% else %}
@@ -47,8 +39,8 @@
       {% endif %}
     </section>
 
-    <section class="pred-section" id="familias">
-      <h2>Familias</h2>
+    <section class="pred-section pred-family-explorer" id="familias">
+      <h2>Comparación por familia</h2>
       <p class="pred-meta">La comparación puede estar incompleta. Cada familia conserva su estado y su causa; una exclusión no es un fallo técnico.</p>
       {% for entry in entries %}
       {% set wf = entry.walk_forward %}
@@ -161,15 +153,32 @@
       <p class="pred-note"><a href="{{ hide_windows_href }}">Ocultar las ventanas</a></p>
       {% endif %}
     </section>
-    <section class="pred-section" id="trazabilidad-sku">
-      <h2>Trazabilidad</h2>
-      <details class="pred-details" id="traza-sku"><summary>Corrida, ingesta, política y topología</summary>
+    </div>
+    <aside class="pred-panel pred-panel--side" aria-labelledby="contexto-sku">
+      <p class="pred-eyebrow">Contexto del SKU</p>
+      <h2 id="contexto-sku">Demanda y procedencia</h2>
+      <dl class="pred-summary-list">
+        <div><dt>Clase</dt><dd>{{ sku_class_label(selection.sku_class) }}</dd></div>
+        <div><dt>Perfil</dt><dd>{{ profile_label(selection.profile) }}</dd></div>
+      </dl>
+      {{ run_line(run, selection.run_id) }}
+      {% include "partials/results_scope.html" %}
+      <nav class="pred-section-links pred-section-links--vertical" aria-label="Detalle del SKU">
+        <a href="#campeon">Decisión</a><a href="#familias">Comparación por familia</a><a href="#trazabilidad-sku">Trazabilidad</a>
+      </nav>
+    </aside>
+    </div>
+    <div class="pred-evidence-area">
+    <header class="pred-area-heading"><h2>Datos de referencia</h2><p>Identificadores y caracterización de este SKU.</p></header>
+    <section class="pred-evidence-panel" id="trazabilidad-sku" aria-labelledby="traza-sku">
+      <h3 id="traza-sku">Trazabilidad</h3>
         <dl class="pred-kv">
           <dt>Corrida</dt><dd class="mono">{{ selection.run_id or "No informada" }}</dd>
           <dt>Ingesta</dt><dd class="mono">{{ run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "No informada" }}</dd>
           <dt>Política</dt><dd class="mono">{{ selection.policy_version or "No informada" }}</dd>
         </dl>
     {% if selection.topology %}
+    <h4>Topología de demanda</h4>
     {{ metrics_row([
       {"label": "Periodos", "value": format_count(selection.topology.n_periods), "tone": "data"},
       {"label": "Periodos con demanda", "value": format_count(selection.topology.n_positive), "tone": "data"},
@@ -178,7 +187,7 @@
     ]) }}
     {% endif %}
 
-      </details>
     </section>
+    </div>
   {% endif %}
 {% endblock %}

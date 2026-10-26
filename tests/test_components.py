@@ -49,10 +49,10 @@ def _catalog_html() -> str:
 
 def test_catalog_renders_every_task_and_trial_label() -> None:
     html = _catalog_html()
-    for label in ("pendiente", "ejecutando", "exitosa", "fallida", "no ejecutable"):
+    for label in ("Pendiente", "Ejecutando", "Exitosa", "Fallida", "No Ejecutable"):
         assert label in html
-    assert "podada" in html
-    assert html.count("podada") >= 1
+    assert "Podada" in html
+    assert html.count("Podada") >= 1
     assert "i-prune" in html
     assert "se sostiene parcialmente" in html
 
@@ -60,7 +60,7 @@ def test_catalog_renders_every_task_and_trial_label() -> None:
 def test_catalog_does_not_paint_pruned_as_failure_class() -> None:
     html = _catalog_html()
     assert "pred-status--pruned" in html
-    pruned_at = html.index("podada")
+    pruned_at = html.index("Podada")
     nearby = html[max(0, pruned_at - 200) : pruned_at + 20]
     assert "pred-status--err" not in nearby
 

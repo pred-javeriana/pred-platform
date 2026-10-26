@@ -36,7 +36,4 @@
        hx-target="this" aria-live="off">
     {% include "partials/execution_body.html" %}
   </div>
-  {% if run and not request.query_params.get("ingest_id") and not form_errors and not form_error %}
-  {% include "partials/execution_launch.html" %}
-  {% endif %}
 {% endblock %}

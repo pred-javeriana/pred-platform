@@ -3,9 +3,12 @@
 {% from "components/metrics.html" import metrics_row %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/states.html" import unavailable_state %}
+{% from "components/evidence.html" import evidence_panel %}
 
-<section class="pred-section" id="topologia">
-  <h2>Topología de demanda</h2>
+{% if not topology_details %}
+<section class="pred-panel pred-panel--side" id="topologia" aria-labelledby="titulo-topologia">
+  <p class="pred-eyebrow">Composición del archivo</p>
+  <h2 id="titulo-topologia">Topología de demanda</h2>
 
   {% if topology_error %}
     {{ unavailable_state(
@@ -15,20 +18,27 @@
       topology_error.blocked_by
     ) }}
   {% elif topology %}
-    {{ metrics_row(topology_metrics) }}
+    <dl class="pred-summary-list pred-topology-summary">
+      {% for metric in topology_metrics %}
+      <div><dt>{{ metric.label }}</dt><dd class="mono">{{ metric.value }}</dd></div>
+      {% endfor %}
+    </dl>
 
     {% if can_continue %}
-    <p class="pred-actions">{{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id) }}</p>
+    <div class="pred-next-action">
+      <p>El archivo está listo para configurar una ejecución.</p>
+      {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id, icon="i-play") }}
+    </div>
     {% endif %}
-    <details class="pred-details" id="explorar-topologia"{% if topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params %} open{% endif %}>
-    <summary>Explorar clases y SKU · gráfico y tabla</summary>
-    <p class="pred-meta">
-      Umbrales del motor: ADI {{ format_decimal(topology.thresholds.adi) }}
-      · CV² {{ format_decimal(topology.thresholds.cv2) }}
-      {% if topology.t_star %}
-      · Clasificación calculada con historia hasta: {{ topology.t_star }}
-      {% endif %}
-    </p>
+  {% endif %}
+</section>
+{% elif topology and not topology_error %}
+{% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Explore la distribución ADI–CV² y consulte los SKU de la página filtrada.", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
+    <dl class="pred-evidence-facts">
+      <div><dt>Umbral ADI</dt><dd class="mono">{{ format_decimal(topology.thresholds.adi) }}</dd></div>
+      <div><dt>Umbral CV²</dt><dd class="mono">{{ format_decimal(topology.thresholds.cv2) }}</dd></div>
+      {% if topology.t_star %}<div><dt>Historia hasta</dt><dd class="mono">{{ topology.t_star }}</dd></div>{% endif %}
+    </dl>
 
     {% if topology.availability.status == "available" %}
       <p class="pred-meta" id="alcance-topologia">Los conteos resumen toda la ingesta. El gráfico y la tabla muestran únicamente los SKU de la página filtrada actual.</p>
@@ -67,7 +77,7 @@
         {{ field("descending", "Descendente", value=topology_query.descending, input_type="checkbox") }}
         <input type="hidden" name="size" value="{{ topology_query.size }}">
         {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
-        <a href="/datos?ingest_id={{ topology.ingest_id }}#topologia">Limpiar filtros</a>
+        <a href="/datos?ingest_id={{ topology.ingest_id }}#explorar-topologia">Limpiar filtros</a>
       </form>
 
       {{ table_start(["SKU", "Clase", "ADI", "CV²", "Periodos", "Periodos con demanda"], "Topología por SKU de la página filtrada") }}
@@ -75,7 +85,7 @@
         {% for row in topology.items %}
         <tr>
           <th scope="row" class="pred-sku"><span class="mono">{{ row.sku_id }}</span></th>
-          <td>{{ sku_class_label(row.sku_class) }}</td>
+          <td class="pred-demand-class">{{ sku_class_label(row.sku_class) }}</td>
           <td class="num">{{ format_decimal(row.adi, 3) }}</td>
           <td class="num">{{ format_decimal(row.cv2, 3) }}</td>
           <td class="num">{{ format_count(row.n_periods) }}</td>
@@ -99,6 +109,5 @@
       </nav>
       {% endif %}
     {% endif %}
-    </details>
-  {% endif %}
-</section>
+{% endcall %}
+{% endif %}

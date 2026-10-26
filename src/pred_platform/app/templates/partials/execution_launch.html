@@ -2,16 +2,19 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 
-<section class="pred-section" id="lanzar">
+<section class="pred-detail-section pred-launch-section" id="lanzar">
   {# Plegado cuando ya hay una corrida que mostrar, para que su avance quede a la vista. #}
   <details class="pred-details pred-details--launch"{% if not run or request.query_params.get("ingest_id") or form_errors or form_error %} open{% endif %}>
-  <summary><h2>Configurar nueva ejecución</h2></summary>
+  <summary><span><strong>Configurar nueva ejecución</strong><span class="pred-disclosure-hint">Elija los datos, modelos y horizonte de análisis</span></span></summary>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
 
   {% if not ingests %}
     <p class="pred-note pred-note--muted">Todavía no hay ninguna ingesta aceptada. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
   {% else %}
-  <form method="post" action="/ejecucion/lanzar" class="pred-launch">
+  <form method="post" action="/ejecucion/lanzar" class="pred-launch pred-workspace">
+    <div class="pred-panel pred-panel--main">
+    <p class="pred-eyebrow">Configuración</p>
+    <h2 class="pred-panel-title">Prepare su ejecución</h2>
     <div class="pred-filters">
       <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
         <label class="pred-field__label" for="ingest_id">Ingesta</label>
@@ -25,12 +28,14 @@
       {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
     </div>
 
+    {{ field("data_origin", "Origen de los datos", value=form.data_origin, input_type="select", options=origin_choices, hint="Declare el origen solo si lo conoce. No puede contradecir el origen ya registrado de la ingesta. El motor determina si corresponde realizar las pruebas estadísticas.", error=form_errors.get("data_origin", "")) }}
+
     <fieldset class="pred-fieldset"{% if form_errors.get('families') %} aria-describedby="families-error"{% endif %}>
       <legend>Familias de modelos</legend>
       {% for code, label in family_choices %}
       <label class="pred-field__check" for="fam-{{ code }}">
-        <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}{% if code in form.families %} checked{% endif %}{% if code == "foundation" %} disabled{% endif %}>
-        <span>{{ label }}{% if code == "foundation" %} · exige instalar torch y chronos-forecasting{% endif %}</span>
+        <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}{% if code in form.families %} checked{% endif %}>
+        <span>{{ label }}{% if code == "foundation" %} · requiere torch y chronos-forecasting en el entorno del motor{% endif %}</span>
       </label>
       {% endfor %}
       {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
@@ -50,11 +55,19 @@
     </div>
 
     </details>
+    </div>
+    <aside class="pred-panel pred-panel--side" aria-labelledby="revisar-lanzamiento">
+      <p class="pred-eyebrow">Antes de lanzar</p>
+      <h2 id="revisar-lanzamiento">Revise su configuración</h2>
+      <ol class="pred-guide"><li><strong>Datos de entrada</strong><span>Compruebe la ingesta seleccionada.</span></li><li><strong>Modelos y objetivo</strong><span>Elija las familias y la métrica de selección.</span></li><li><strong>Horizonte</strong><span>Defina los días de entrenamiento y evaluación.</span></li></ol>
+    <div class="pred-next-action">
     <p class="pred-actions">
       {{ button("Lanzar ejecución", variant="secondary" if finished else "primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
     </p>
-    {% if control_reason %}<p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p>{% endif %}
+    {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Disponibilidad del lanzamiento" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
     {% if not worker_active and control_reason is none %}<p class="pred-meta">Esta aplicación no ejecuta el worker (PRED_WORKER=off): la corrida quedará en cola hasta que lo inicie con <span class="mono">make worker</span>.</p>{% endif %}
+    </div>
+    </aside>
   </form>
   {% endif %}
   </details>
