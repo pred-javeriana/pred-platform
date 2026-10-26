@@ -53,7 +53,7 @@ class Worker:
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
-        """Process queued runs until ``stop`` is set (the running one is stopped and marked)."""
+        """Process queued runs until shutdown, leaving interrupted work queued for restart."""
         try:
             self.recover()
         except Exception:  # noqa: BLE001 - the loop must start even if recovery fails
@@ -182,6 +182,12 @@ class Worker:
                 )
             run = replace(run, parametros=parametros)
             command = engine.build_command(self.settings, run, parquet)
+            # Fijar el desplazamiento antes de lanzar: el motor puede terminar muy rapido.
+            follower = ProgressFollower(
+                conn, run, folder / "progreso.jsonl", corte=corte, skip_history=True
+            )
+            summary_path = folder / "corrida.json"
+            previous_summary = summary_path.stat() if summary_path.exists() else None
             process = self._launch(command, settings=self.settings, log_path=log_path)
         except ValueError as exc:
             dal.finish_run(
@@ -213,7 +219,6 @@ class Worker:
                 pid=process.pid,
                 ruta_corrida=folder.relative_to(self.settings.data_root.resolve()).as_posix(),
             )
-            follower = ProgressFollower(conn, run, folder / "progreso.jsonl", corte=corte)
             while process.poll() is None:
                 follower.poll()
                 if stop.is_set():
@@ -221,9 +226,9 @@ class Worker:
                     engine.terminate(process.pid)
                     break
                 state, error = dal.run_estado(conn, run.id)
-                if state != "ejecutando":
+                if state == "detenida" and error and error.get("code") == "platform.run_stopped":
                     # The operator stopped the run from the interface (`request_stop`).
-                    stopped_by_user = error or run_stopped_error()
+                    stopped_by_user = error
                     engine.terminate(process.pid)
                     break
                 time.sleep(0.2)
@@ -258,10 +263,10 @@ class Worker:
             return
 
         if stopped:
-            detail = "La plataforma se cerró durante la corrida; puede reanudarla."
-            error = platform_error("platform.engine_unavailable", detail, retryable=True)
-            dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
-            dal.finish_run(conn, run.id, estado="detenida", error=error)
+            # El cierre de la aplicacion no es una orden del operador de cancelar.
+            # El siguiente worker retoma la cola con la misma identidad y checkpoints.
+            if not dal.requeue(conn, run.id):
+                dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
             return
 
         estado = finalize(
@@ -272,5 +277,6 @@ class Worker:
             corte=corte,
             families=follower.families,
             log_path=log_path,
+            previous_summary=previous_summary,
         )
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)

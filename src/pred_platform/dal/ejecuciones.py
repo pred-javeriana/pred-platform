@@ -234,18 +234,35 @@ def claim_pending(conn: sqlite3.Connection) -> Ejecucion | None:
 
 
 def interrupted_runs(conn: sqlite3.Connection) -> list[Ejecucion]:
-    """Runs left ``ejecutando`` by a platform that went away (they have no live worker)."""
-    rows = conn.execute(f"{_SELECT_RUN} WHERE e.estado = 'ejecutando' ORDER BY e.id").fetchall()
+    """Claims left unfinished, including M3 publication before the CLI was reaped."""
+    rows = conn.execute(
+        f"{_SELECT_RUN} WHERE e.estado = 'ejecutando' OR "
+        "(e.pid IS NOT NULL AND e.estado IN ('completada', 'completada_con_fallos')) "
+        "ORDER BY e.id"
+    ).fetchall()
     return [_row_to_run(r) for r in rows]
 
 
-def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> None:
+def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
     with conn:
-        conn.execute(
-            "UPDATE ejecuciones SET estado = 'pendiente', pid = NULL WHERE id = ? "
-            "AND estado = 'ejecutando'",
-            (ejecucion_id,),
+        _begin_immediate(conn)
+        queued = (
+            conn.execute(
+                "UPDATE ejecuciones SET estado = 'pendiente', pid = NULL, "
+                "finalizada_en = NULL, error_json = NULL WHERE id = ? "
+                "AND (estado = 'ejecutando' OR "
+                "(pid IS NOT NULL AND estado IN ('completada', 'completada_con_fallos')))",
+                (ejecucion_id,),
+            ).rowcount
+            == 1
         )
+        if queued:
+            conn.execute(
+                "UPDATE tareas SET estado = 'pendiente', detalle_error = NULL, "
+                "finalizada_en = NULL WHERE ejecucion_id = ? AND estado != 'exitosa'",
+                (ejecucion_id,),
+            )
+        return queued
 
 
 def stop_claimed(
@@ -343,14 +360,17 @@ def task_started(
     corte: str,
     seed: int,
     iniciada_en: str,
+    running: bool = True,
 ) -> None:
     with conn:
         _ensure_task(conn, ejecucion_id, sku, modelo, corte, seed)
         conn.execute(
-            "UPDATE tareas SET estado = 'ejecutando', iniciada_en = COALESCE(iniciada_en, ?), "
-            "finalizada_en = NULL, detalle_error = NULL "
+            "UPDATE tareas SET estado = CASE WHEN ? THEN 'ejecutando' ELSE estado END, "
+            "iniciada_en = COALESCE(iniciada_en, ?), "
+            "finalizada_en = CASE WHEN ? THEN NULL ELSE finalizada_en END, "
+            "detalle_error = CASE WHEN ? THEN NULL ELSE detalle_error END "
             "WHERE ejecucion_id = ? AND sku = ? AND modelo = ? AND corte = ?",
-            (iniciada_en, ejecucion_id, sku, modelo, corte),
+            (running, iniciada_en, running, running, ejecucion_id, sku, modelo, corte),
         )
 
 
@@ -389,7 +409,8 @@ def task_stage_finished(
             )
         elif stage == "L2":
             conn.execute(
-                "UPDATE tareas SET tiempo_l2_s = ?, tiempo_pared_s = ?, "
+                "UPDATE tareas SET tiempo_l2_s = ?, "
+                "tiempo_pared_s = CASE WHEN estado = 'exitosa' THEN tiempo_pared_s ELSE ? END, "
                 "estado = CASE WHEN estado = 'pendiente' THEN 'ejecutando' ELSE estado END "
                 f"{where}",
                 (seconds, seconds, *key),
