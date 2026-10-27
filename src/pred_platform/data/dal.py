@@ -510,7 +510,8 @@ class DalRepository:
     # -------------------------------------------------------------------- verdicts
     def get_validation_verdicts(self, run_id: str) -> models.ValidationVerdicts:
         availability = capabilities.unavailable(
-            "retrospective_validation", "La validación retrospectiva (L4) no está implementada."
+            "retrospective_validation",
+            "La lectura de los veredictos publicados por M3 (contrato M4 4.1) no está integrada.",
         )
         return models.ValidationVerdicts(
             **_envelope(availability),  # type: ignore[arg-type]

@@ -224,8 +224,7 @@ trials in `ensayos` (completed, pruned and failed, each with its reason); the wi
   never repeats that policy. A SKU the engine could not run keeps its cause as the exclusion.
 - A bad line only loses its SKU and a file of another major version is refused; neither changes how
   the run ended. Importing again replaces each SKU's rows, so a resume leaves no duplicates.
-- The champion is not here: it is read from `resultados_comparativos` and is `null` until M3 writes
-  it.
+- The champion comes from M3's published evidence (`m3_veredictos`) once the M4 read contract (Notion 4.1) is integrated; until then the column shows unavailable.
 - The views read it through `/resultados` and `/resultados/sku/{sku_id}` (task C2, see
   `docs/features/resultados/README.md`). Wherever the repository takes a run id it also accepts
   `latest`, the run with the highest id.
