@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import closing
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -49,15 +49,12 @@ class LaunchSettings:
     families: tuple[str, ...] = ("classical", "ml", "dl")
     trials: int | None = None
     seed: int = 0
-    datos_sinteticos: bool | None = None
     workers: int = 2
     # The engine's evaluation defaults; recorded so the run's settings are complete (RunSettings).
     aggregation: str = ENGINE_AGGREGATION
     trim: float = ENGINE_TRIM
 
     def __post_init__(self) -> None:
-        if self.datos_sinteticos is not None and type(self.datos_sinteticos) is not bool:
-            raise ValueError("datos_sinteticos debe ser booleano o nulo")
         for name in ("min_train", "horizon", "step", "seasonality", "workers"):
             value = getattr(self, name)
             if type(value) is not int or value < 1:
@@ -84,7 +81,7 @@ class LaunchSettings:
             "families": list(self.families),
             "trials": self.trials,
             "seed": self.seed,
-            "datos_sinteticos": self.datos_sinteticos,
+            "datos_sinteticos": False,  # la plataforma solo trabaja con datos reales
             "workers": self.workers,
             "aggregation": self.aggregation,
             "trim": self.trim,
@@ -127,10 +124,9 @@ def enqueue_run(
         conn.execute("BEGIN IMMEDIATE")
         dal.accepted_ingestion_id(conn, ingest_id)
         try:
-            origen = resolver_procedencia(conn, ingest_id, chosen.datos_sinteticos)
+            origen = resolver_procedencia(conn, ingest_id, False)
         except ValueError as exc:
             raise RunRequestError(str(exc)) from exc
-        chosen = replace(chosen, datos_sinteticos=origen)
         run_id = run_id_for(ingest_id, chosen)
         previa = conn.execute(
             "SELECT c.id, c.parametros, i.sha256, e.estado FROM ejecuciones e "
@@ -144,14 +140,14 @@ def enqueue_run(
             # origin, which only a run that has not started yet may still resolve.
             antigua = "datos_sinteticos" not in parametros
             origen_previo = parametros.get("datos_sinteticos")
-            cambia = not antigua and origen_previo != chosen.datos_sinteticos
+            cambia = not antigua and origen_previo != origen
             if previa[2] != ingest_id or (
                 cambia and (origen_previo is not None or previa[3] != "pendiente")
             ):
                 # Raising rolls back the whole transaction, including the provenance resolved above.
                 raise RunRequestError("la identidad o procedencia de la ejecucion no puede cambiar")
             if antigua or cambia:
-                parametros["datos_sinteticos"] = chosen.datos_sinteticos
+                parametros["datos_sinteticos"] = origen
                 conn.execute(
                     "UPDATE configuraciones SET parametros=? WHERE id=?",
                     (json.dumps(parametros, sort_keys=True), previa[0]),

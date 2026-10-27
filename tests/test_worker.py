@@ -19,7 +19,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import closing
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +63,6 @@ SMALL = LaunchSettings(
     trials=1,
     workers=2,
     seed=17,
-    datos_sinteticos=False,
 )
 
 
@@ -120,68 +119,10 @@ def env(tmp_path: Path) -> Env:
     return Env(settings, _fixture_id("accepted"))
 
 
-def test_procedencia_importada_se_fija_y_viaja_al_cli(env):
-    from pred_platform.dal.importacion import import_reports
-
-    report_path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
-    report = json.loads(report_path.read_text())
-    report["ingest_id"] = report["source_file"]["sha256"] = "b" * 64
-    report["source_file"]["datos_sinteticos"] = True
-    report["published"]["sha256"] = "f" * 64
-    path = report_path.with_name("b" * 64 + ".json")
-    path.write_text(json.dumps(report))
-    assert import_reports(env.db, env.settings.data_root).ok is True
-    queued = enqueue_run(env.db, "b" * 64)
-    with closing(dal.connect(env.db)) as conn:
-        run = dal.get_run(conn, queued.ejecucion_id)
-    assert run is not None
-    assert run.parametros["datos_sinteticos"] is True
-    command = engine.build_command(
-        env.settings, run, env.settings.data_root / "processed/synthetic.parquet"
-    )
-    assert "--datos-sinteticos" in command and "--datos-reales" not in command
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.db, "b" * 64, LaunchSettings(datos_sinteticos=False))
-    report["source_file"]["datos_sinteticos"] = False
-    path.write_text(json.dumps(report))
-    rejected = import_reports(env.db, env.settings.data_root)
-    assert rejected.ok is False
-    assert env.rows(
-        "SELECT datos_sinteticos FROM m3_ingestas WHERE ingesta_sha256=?", "b" * 64
-    ) == [(1,)]
-
-
-def test_bytes_publicados_compartidos_no_reciben_origenes_opuestos(env):
-    report_path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
-    base = json.loads(report_path.read_text())
-
-    def importar(ingest_id: str, origen: bool | None) -> bool:
-        report = json.loads(json.dumps(base))
-        report["ingest_id"] = report["source_file"]["sha256"] = ingest_id
-        report["source_file"]["datos_sinteticos"] = origen
-        report["published"]["sha256"] = "f" * 64  # the same published Parquet bytes
-        report_path.with_name(f"{ingest_id}.json").write_text(json.dumps(report))
-        return import_reports(env.db, env.settings.data_root).ok
-
-    assert importar("a" * 64, True)  # a synthetic export
-    assert importar("c" * 64, None)  # a byte-different export of the same table, origin unknown
-    # The bytes are already known synthetic, so the unknown export inherits that origin.
-    assert env.rows(
-        "SELECT datos_sinteticos, origen_declarado FROM m3_ingestas WHERE ingesta_sha256=?",
-        "c" * 64,
-    ) == [(1, 1)]
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.db, "c" * 64, replace(SMALL, datos_sinteticos=False))
-    assert env.rows(
-        "SELECT COUNT(*) FROM ejecuciones e JOIN ingestas i ON i.id=e.ingesta_id WHERE i.sha256=?",
-        "c" * 64,
-    ) == [(0,)]
-    # A report declaring those bytes real is rejected too; a matching declaration is accepted.
-    assert importar("d" * 64, False) is False
-    queued = enqueue_run(env.db, "c" * 64, replace(SMALL, datos_sinteticos=True))
-    with closing(dal.connect(env.db)) as conn:
-        run = dal.get_run(conn, queued.ejecucion_id)
-    assert run is not None and run.parametros["datos_sinteticos"] is True
+def test_la_configuracion_de_lanzamiento_no_admite_origen() -> None:
+    with pytest.raises(TypeError):
+        LaunchSettings(datos_sinteticos=True)  # type: ignore[call-arg]
+    assert LaunchSettings().to_parametros()["datos_sinteticos"] is False
 
 
 def test_id_publico_no_cambia_al_resolver_procedencia_de_m1(env):
@@ -192,77 +133,6 @@ def test_id_publico_no_cambia_al_resolver_procedencia_de_m1(env):
     with closing(dal.connect(env.db)) as conn:
         run = dal.get_run(conn, queued.ejecucion_id)
     assert run is not None and run.parametros["datos_sinteticos"] is False
-
-
-def test_procedencia_ausente_no_se_infiere_real(env):
-    with closing(dal.connect(env.db)) as conn:
-        conn.execute("DELETE FROM m3_ingestas")
-        conn.commit()
-    unknown = enqueue_run(env.db, env.ingest_id)
-    with closing(dal.connect(env.db)) as conn:
-        pending = dal.get_run(conn, unknown.ejecucion_id)
-    assert pending is not None and pending.parametros["datos_sinteticos"] is None
-    command = engine.build_command(
-        env.settings, pending, env.settings.data_root / "processed/demo_canonico.parquet"
-    )
-    assert "--datos-reales" not in command and "--datos-sinteticos" not in command
-    queued = enqueue_run(env.db, env.ingest_id, LaunchSettings(datos_sinteticos=False))
-    assert queued.run_id == unknown.run_id
-    with closing(dal.connect(env.db)) as conn:
-        run = dal.get_run(conn, queued.ejecucion_id)
-    assert run is not None
-    assert run.parametros["datos_sinteticos"] is False
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.db, env.ingest_id, LaunchSettings(datos_sinteticos=True))
-    assert "--datos-reales" in engine.build_command(
-        env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
-    )
-
-
-def test_declaraciones_de_todas_las_configuraciones_tienen_un_solo_origen(env):
-    first = enqueue_run(env.db, env.ingest_id, SMALL)
-    with closing(dal.connect(env.db)) as conn:
-        conn.execute("DELETE FROM m3_ingestas")
-        conn.commit()
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.db, env.ingest_id, LaunchSettings(seed=99, datos_sinteticos=True))
-    assert env.rows("SELECT run_id FROM ejecuciones") == [(first.run_id,)]
-    path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
-    report = json.loads(path.read_text())
-    report["source_file"]["datos_sinteticos"] = True
-    report["source_file"]["row_count"] = 999
-    path.write_text(json.dumps(report))
-    ingesta_id = env.rows("SELECT id FROM ingestas WHERE sha256=?", env.ingest_id)[0][0]
-    queries = {
-        "ingestas": ("SELECT * FROM ingestas WHERE sha256=?", env.ingest_id),
-        "series": ("SELECT * FROM series WHERE ingesta_id=?", ingesta_id),
-        "bitacora_calidad": ("SELECT * FROM bitacora_calidad WHERE ingesta_id=?", ingesta_id),
-        "m3_ingestas": ("SELECT * FROM m3_ingestas WHERE ingesta_sha256=?", env.ingest_id),
-    }
-    before = {t: env.rows(q, arg) for t, (q, arg) in queries.items()}
-    result = import_reports(env.db, env.settings.data_root)
-    assert result.ok is False
-    assert any(error.path == path and path.name in str(error) for error in result.failed)
-    assert {t: env.rows(q, arg) for t, (q, arg) in queries.items()} == before
-
-
-def test_ejecucion_completada_de_origen_desconocido_conserva_su_configuracion(env, monkeypatch):
-    _scenario(monkeypatch, "ok")
-    with closing(dal.connect(env.db)) as conn:
-        conn.execute("UPDATE m3_ingestas SET datos_sinteticos=0, origen_declarado=0")
-        conn.commit()
-    unknown = replace(SMALL, datos_sinteticos=None)
-    queued = enqueue_run(env.db, env.ingest_id, unknown)
-    assert env.worker().run_next() is True
-    assert _run_state(env) == ("completada", None)
-    before = env.rows("SELECT parametros FROM configuraciones")
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.db, env.ingest_id, SMALL)
-    assert env.rows("SELECT parametros FROM configuraciones") == before
-    assert json.loads(before[0][0])["datos_sinteticos"] is None
-    assert env.rows("SELECT datos_sinteticos, origen_declarado FROM m3_ingestas") == [(0, 0)]
-    again = enqueue_run(env.db, env.ingest_id, unknown)
-    assert (again.ejecucion_id, again.queued) == (queued.ejecucion_id, False)
 
 
 @pytest.mark.parametrize("known", [True, False])
@@ -1016,6 +886,31 @@ def test_the_cli_rejects_a_launch_without_a_valid_ingestion(
     assert worker_main(["--launch"]) == 2
     assert worker_main(["--launch", "--ingest", "c" * 64]) == 1
     assert "no existe la ingesta" in capsys.readouterr().err
+
+
+def test_lanzamiento_por_linea_de_comandos_declara_datos_reales(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Una ingesta sin origen declarado, ni en su informe ni en la base.
+    path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    report = json.loads(path.read_text())
+    report["source_file"]["datos_sinteticos"] = None
+    path.write_text(json.dumps(report))
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    monkeypatch.setenv("PRED_DATA_ROOT", str(env.settings.data_root))
+    monkeypatch.setenv("PRED_DB_PATH", str(env.db))
+
+    assert worker_main(["--launch", "--ingest", env.ingest_id]) == 0
+
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, 1)
+    assert run is not None and run.parametros["datos_sinteticos"] is False
+    command = engine.build_command(
+        env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
+    )
+    assert "--datos-reales" in command and "--datos-sinteticos" not in command
 
 
 # -------------------------------------------------------------------- the app

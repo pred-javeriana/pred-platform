@@ -218,51 +218,27 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     assert "Pendiente" in _text(page) and "PRED_WORKER=off" in page  # no worker in this app
 
 
-@pytest.mark.parametrize(
-    ("origin", "stored", "flag"),
-    [
-        ("real", False, "--datos-reales"),
-        ("synthetic", True, "--datos-sinteticos"),
-        ("unknown", None, None),
-    ],
-)
-def test_form_origin_reaches_the_existing_worker_command(
-    env: Env, origin: str, stored: bool | None, flag: str | None
-) -> None:
-    # La ingesta de esta prueba no tiene una declaración previa.
+def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
+    html = _dal_client(env).get(f"/ejecucion?ingest_id={env.ingest_id}").text
+    assert 'action="/ejecucion/lanzar"' in html  # the form is there
+    assert "data_origin" not in html and "Origen de los datos" not in html
+    assert "Sintéticos" not in html
+
+
+def test_a_form_launch_is_recorded_as_real_data_even_if_origin_is_posted(env: Env) -> None:
+    # Sin declaración previa de la ingesta, y con un origen enviado a mano.
     with closing(dal.connect(env.db)) as conn:
         conn.execute("DELETE FROM m3_ingestas")
         conn.commit()
-    response = _launch(_dal_client(env), env, data_origin=origin)
+    response = _launch(_dal_client(env), env, data_origin="synthetic")
     assert response.status_code == 303
     with closing(dal.connect(env.db)) as conn:
         run = dal.get_run(conn, 1)
-    assert run is not None and run.parametros["datos_sinteticos"] is stored
+    assert run is not None and run.parametros["datos_sinteticos"] is False
     command = build_command(
         env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
     )
-    if flag is None:
-        assert "--datos-reales" not in command and "--datos-sinteticos" not in command
-    else:
-        assert flag in command
-        opposite = "--datos-sinteticos" if flag == "--datos-reales" else "--datos-reales"
-        assert opposite not in command
-
-
-def test_form_rejects_an_invalid_origin_and_keeps_valid_origin_after_other_errors(env: Env) -> None:
-    client = _dal_client(env)
-    invalid = _launch(client, env, data_origin="inventado")
-    assert "Elija uno de los orígenes de la lista." in invalid.text
-    assert 'id="data_origin"' in invalid.text and 'aria-invalid="true"' in invalid.text
-    retry = _launch(client, env, data_origin="real", horizon="0")
-    assert '<option value="real" selected>' in retry.text
-    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
-
-
-def test_form_cannot_contradict_an_existing_origin(env: Env) -> None:
-    response = _launch(_dal_client(env), env, data_origin="synthetic")
-    assert response.status_code == 200 and "no puede cambiar" in response.text
-    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+    assert "--datos-reales" in command and "--datos-sinteticos" not in command
 
 
 def test_foundation_is_selectable_and_reaches_the_worker_and_results(
