@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "generated_at": "2026-10-02T06:30:00Z",
   "source": "fixture",
   "availability": {
@@ -7,7 +7,7 @@
   },
   "items": [
     {
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "generated_at": "2026-10-02T06:30:00Z",
       "source": "fixture",
       "availability": {
@@ -66,7 +66,7 @@
       }
     },
     {
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "generated_at": "2026-10-02T06:30:00Z",
       "source": "fixture",
       "availability": {

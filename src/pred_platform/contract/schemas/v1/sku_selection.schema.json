@@ -1099,5 +1099,5 @@
   ],
   "title": "SkuSelection",
   "type": "object",
-  "x-contract-version": "1.0.0"
+  "x-contract-version": "1.1.0"
 }

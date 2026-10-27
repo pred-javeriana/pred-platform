@@ -53,6 +53,28 @@ _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
 
 
+def _etapa_en_curso(progreso: Path) -> str | None:
+    """La etapa del último ``stage_started`` del intento actual (tras el último ``run_started``)."""
+    # shortcut: lee todo el archivo en cada consulta; leer solo la cola si a escala completa pesa.
+    try:
+        lineas = progreso.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    etapa = None
+    for linea in lineas:
+        try:
+            evento = json.loads(linea)
+        except ValueError:
+            continue  # una línea rota por escrituras concurrentes no detiene la lectura
+        if not isinstance(evento, dict):
+            continue
+        if evento.get("event") == "run_started":
+            etapa = None
+        elif evento.get("event") == "stage_started":
+            etapa = evento.get("stage")
+    return etapa
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -332,6 +354,9 @@ class DalRepository:
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
+        etapa = None
+        if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
+            etapa = _etapa_en_curso(self.data_root / run.ruta_corrida / "progreso.jsonl")
         parametros = json.loads(run.parametros)
         return models.RunStatus(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
@@ -361,6 +386,7 @@ class DalRepository:
                 tareas_total=total_tasks,
                 tareas_por_estado=by_state,  # type: ignore[arg-type]
                 avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
+                etapa_actual=etapa,  # type: ignore[arg-type]  # lo escribe el motor (L1 a L4)
             ),
             tasks=[
                 models.Tarea(

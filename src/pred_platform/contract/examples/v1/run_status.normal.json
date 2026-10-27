@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "generated_at": "2026-10-02T06:30:00Z",
   "source": "fixture",
   "availability": {
@@ -45,7 +45,10 @@
       "fallida": 0,
       "no_ejecutable": 0
     },
-    "avance_pct": 57.1
+    "avance_pct": 57.1,
+    "etapa_actual": "L2",
+    "m3_skus_total": null,
+    "m3_skus_terminados": null
   },
   "tasks": [
     {

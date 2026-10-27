@@ -298,6 +298,50 @@
           "minimum": 0,
           "title": "Avance Pct",
           "type": "number"
+        },
+        "etapa_actual": {
+          "anyOf": [
+            {
+              "enum": [
+                "L1",
+                "L2",
+                "L3",
+                "L4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Etapa Actual"
+        },
+        "m3_skus_total": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "M3 Skus Total"
+        },
+        "m3_skus_terminados": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "M3 Skus Terminados"
         }
       },
       "required": [
@@ -687,5 +731,5 @@
   ],
   "title": "RunStatus",
   "type": "object",
-  "x-contract-version": "1.0.0"
+  "x-contract-version": "1.1.0"
 }

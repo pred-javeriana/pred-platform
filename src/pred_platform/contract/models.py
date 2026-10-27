@@ -1,4 +1,4 @@
-"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.0.0).
+"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.1.0).
 
 Describen lo que leen las vistas de `pred-platform` desde su DAL (SQLite, SRS 3.6).
 Son la fuente de los esquemas de `../schemas/v1/` y de las reglas entre campos que
@@ -336,6 +336,10 @@ class Progress(_Base):
     tareas_total: int = Field(ge=0)
     tareas_por_estado: dict[EstadoTarea, int]
     avance_pct: float = Field(ge=0, le=100)
+    # Desde 1.1.0: etapa en curso y SKU que M3 (L4) ya terminó; null si el motor no lo informó.
+    etapa_actual: Literal["L1", "L2", "L3", "L4"] | None = None
+    m3_skus_total: int | None = Field(default=None, ge=0)
+    m3_skus_terminados: int | None = Field(default=None, ge=0)
 
 
 class Reserve(_Base):

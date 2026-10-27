@@ -798,6 +798,52 @@ def test_no_run_yet_is_an_empty_state_and_an_unknown_run_is_missing(env: Env) ->
         env.repo().get_run_status("999")
 
 
+def _escribir_progreso(env: Env, run_id: str, *eventos: dict[str, Any]) -> None:
+    ruta = env.settings.data_root / "runs" / run_id / "progreso.jsonl"
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with ruta.open("a", encoding="utf-8") as archivo:
+        archivo.writelines(json.dumps(evento) + "\n" for evento in eventos)
+
+
+def test_el_estado_de_la_ejecucion_informa_la_etapa_en_curso(env: Env) -> None:
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+
+    def etapa() -> str | None:
+        progress = env.repo().get_run_status(queued.run_id).progress
+        assert progress is not None
+        return progress.etapa_actual
+
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L1"},
+        {"event": "stage_finished", "stage": "L1", "state": "completed"},
+        {"event": "stage_started", "stage": "L2"},
+    )
+    assert etapa() == "L2"
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "stage_finished", "stage": "L2", "state": "completed"},
+        {"event": "stage_started", "stage": "L3"},
+    )
+    assert etapa() == "L3"
+    # Una reanudación empieza un intento nuevo: la etapa del intento anterior ya no está en curso.
+    _escribir_progreso(env, queued.run_id, {"event": "run_started", "attempt": 2})
+    assert etapa() is None
+    _escribir_progreso(env, queued.run_id, {"event": "stage_started", "stage": "L4"})
+    assert etapa() == "L4"
+    # Una ejecución que terminó ya no tiene etapa en curso.
+    with closing(dal.connect(env.db)) as conn:
+        dal.finish_run(conn, run.id, estado="completada")
+    assert etapa() is None
+
+
 def test_the_capability_of_orchestration_is_available(env: Env) -> None:
     by_id = {c.id: c for c in env.repo().get_capabilities().items}
     assert by_id["run_orchestration"].available is True
