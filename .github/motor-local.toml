@@ -1,0 +1,46 @@
+# Niveles de la verificacion local del motor por ruta cambiada
+# (docs/features/motor-local/README.md). pred-engine es dueno del formato y del
+# comando: `make motor-local` y el control `motor-local` de CI corren sus scripts
+# con este mapa; CI usa siempre la copia de la rama base.
+#
+# Cada ruta cambiada toma los niveles de la PRIMERA regla que coincide. Una ruta
+# sin regla exige todos los niveles, para que una carpeta nueva no evite la
+# corrida. El PR exige la union de los niveles de sus rutas.
+# Patrones: `*` no cruza `/`; `**` cruza carpetas.
+
+repo = "pred-platform"
+
+# El caso de integracion con el motor real; va antes de `tests/**`.
+[[reglas]]
+niveles = ["plataforma"]
+rutas = ["tests/test_integracion_motor.py"]
+
+# Docs, UI y autenticacion: el caso de integracion prueba la lectura por la DAL,
+# no las paginas.
+[[reglas]]
+niveles = []
+rutas = [
+  "docs/**",
+  "**/*.md",
+  "LICENSE",
+  ".gitignore",
+  ".env.example",
+  ".pre-commit-config.yaml",
+  "tests/**",
+  ".github/**",
+  "src/pred_platform/app/**",
+  "src/pred_platform/auth/**",
+]
+
+# Lecturas, migraciones e importacion; el worker que lanza el motor; el contrato
+# de datos y el entorno de la plataforma.
+[[reglas]]
+niveles = ["plataforma"]
+rutas = [
+  "src/pred_platform/dal/**",
+  "src/pred_platform/worker/**",
+  "src/pred_platform/data/**",
+  "src/pred_platform/contract/**",
+  "pyproject.toml",
+  "uv.lock",
+]
