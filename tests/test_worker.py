@@ -63,7 +63,6 @@ SMALL = LaunchSettings(
     trials=1,
     workers=2,
     seed=17,
-    datos_sinteticos=False,
 )
 
 
@@ -120,17 +119,10 @@ def env(tmp_path: Path) -> Env:
     return Env(settings, _fixture_id("accepted"))
 
 
-@pytest.mark.parametrize("origin", [True, False, None])
-def test_el_veredicto_del_motor_se_guarda_y_viaja_al_cli(env: Env, monkeypatch, origin):
-    monkeypatch.setenv("FAKE_ENGINE_ORIGIN", json.dumps(origin))
-    queued = enqueue_run(env.settings, env.ingest_id)
-    with closing(dal.connect(env.db)) as conn:
-        run = dal.get_run(conn, queued.ejecucion_id)
-    assert run is not None and run.parametros["datos_sinteticos"] is origin
-    assert queued.run_id == run_id_for(env.ingest_id, LaunchSettings())
-    command = engine.build_command(env.settings, run, Path("data.parquet"))
-    assert ("--datos-sinteticos" in command) is (origin is True)
-    assert ("--datos-reales" in command) is (origin is False)
+def test_la_configuracion_de_lanzamiento_no_admite_origen() -> None:
+    with pytest.raises(TypeError):
+        LaunchSettings(datos_sinteticos=True)  # type: ignore[call-arg]
+    assert LaunchSettings().to_parametros()["datos_sinteticos"] is False
 
 
 def test_el_conflicto_del_motor_no_crea_una_ejecucion(env: Env, monkeypatch):
@@ -224,20 +216,6 @@ def test_consulta_el_origen_sin_bloquear_la_base(env: Env, monkeypatch):
 
     monkeypatch.setattr(engine.subprocess, "run", consult)
     assert enqueue_run(env.settings, env.ingest_id, SMALL).queued
-
-
-def test_ejecucion_completada_de_origen_desconocido_conserva_su_configuracion(env: Env):
-    unknown = replace(SMALL, datos_sinteticos=None)
-    queued = enqueue_run(env.settings, env.ingest_id, unknown)
-    assert env.worker().run_next() is True
-    assert _run_state(env) == ("completada", None)
-    before = env.rows("SELECT parametros FROM configuraciones")
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.settings, env.ingest_id, SMALL)
-    assert env.rows("SELECT parametros FROM configuraciones") == before
-    assert json.loads(before[0][0])["datos_sinteticos"] is None
-    again = enqueue_run(env.settings, env.ingest_id, unknown)
-    assert (again.ejecucion_id, again.queued) == (queued.ejecucion_id, False)
 
 
 def test_configuracion_antigua_sin_origen_exige_volver_a_encolar(env: Env):
@@ -1307,6 +1285,31 @@ def test_the_cli_rejects_a_launch_without_a_valid_ingestion(
     assert worker_main(["--launch"]) == 2
     assert worker_main(["--launch", "--ingest", "c" * 64]) == 1
     assert "no existe la ingesta" in capsys.readouterr().err
+
+
+def test_lanzamiento_por_linea_de_comandos_declara_datos_reales(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Una ingesta sin origen declarado, ni en su informe ni en la base.
+    path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    report = json.loads(path.read_text())
+    report["source_file"]["datos_sinteticos"] = None
+    path.write_text(json.dumps(report))
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    monkeypatch.setenv("PRED_DATA_ROOT", str(env.settings.data_root))
+    monkeypatch.setenv("PRED_DB_PATH", str(env.db))
+
+    assert worker_main(["--launch", "--ingest", env.ingest_id]) == 0
+
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, 1)
+    assert run is not None and run.parametros["datos_sinteticos"] is False
+    command = engine.build_command(
+        env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
+    )
+    assert "--datos-reales" in command and "--datos-sinteticos" not in command
 
 
 # -------------------------------------------------------------------- the app

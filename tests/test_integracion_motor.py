@@ -15,12 +15,11 @@ import hashlib
 import json
 import shutil
 import sqlite3
-import subprocess
 import threading
 import time
 from collections.abc import Callable
 from contextlib import closing
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -30,13 +29,13 @@ from pred_platform.config import ENGINE_COMMAND_VAR, Settings
 from pred_platform.contract import models_v2
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
-from pred_platform.dal.importacion import import_reports
 from pred_platform.dal.migrate import migrate
 from pred_platform.data.dal import DalRepository
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import DalRunControl
 from pred_platform.worker.engine import engine_origin
+from pred_platform.worker.ingesta import submit_csv
 from pred_platform.worker.service import LaunchSettings, enqueue_run
 
 pytestmark = pytest.mark.integration
@@ -102,24 +101,7 @@ def caso(tmp_path_factory: pytest.TempPathFactory) -> Caso:
     settings = Settings(data_root=root, db_path=root / "pred.db", engine_command=_engine_command())
     migrate(settings.db_path)
     panel = _panel()
-    source = root / "panel_sintetico_reducido.csv"
-    source.write_bytes(panel)
-    subprocess.run(
-        [
-            *settings.engine_command,
-            "classify",
-            "--csv",
-            str(source),
-            "--data-root",
-            str(root),
-            "--datos-sinteticos",
-        ],
-        capture_output=True,
-        check=True,
-        timeout=120,
-    )
-    assert import_reports(settings.db_path, root).ok
-    sha = hashlib.sha256(panel).hexdigest()
+    sha = submit_csv(settings, "panel_sintetico_reducido.csv", panel)
     launch = LaunchSettings(
         min_train=40,
         horizon=HORIZONTE,
@@ -193,7 +175,8 @@ def test_unpublished_run_shows_progress_only_then_publishes(caso: Caso) -> None:
     publicada = caso.repo.get_m3_run_status(caso.run_id)
     assert publicada.run is not None and publicada.progress is not None
     assert (publicada.run.run_id_m2, publicada.run.estado) == (caso.run_id_m2, "PUBLICADA")
-    assert (publicada.run.datos_sinteticos, publicada.run.origen_declarado) == (True, True)
+    # La plataforma declara toda corrida como datos reales.
+    assert (publicada.run.datos_sinteticos, publicada.run.origen_declarado) == (False, True)
     assert publicada.run.publicadas_misma_identidad == [caso.run_id]
     assert publicada.run.aviso is None
     progress = publicada.progress
@@ -207,29 +190,24 @@ def test_unpublished_run_shows_progress_only_then_publishes(caso: Caso) -> None:
     assert run is not None and (run.estado, run.pid) == ("completada", None)
 
 
-def test_enqueue_without_declaration_stores_the_engine_origin(caso: Caso) -> None:
+def test_the_run_is_stored_as_real_data(caso: Caso) -> None:
     with closing(dal.connect(caso.db)) as conn:
         run = dal.get_run(conn, caso.ejecucion_id)
         [(m3_sinteticos,)] = conn.execute(
             "SELECT datos_sinteticos FROM m3_corridas WHERE run_id = ?", (caso.run_id,)
         )
-    assert caso.launch.datos_sinteticos is None
-    assert run is not None and run.parametros["datos_sinteticos"] is True
-    assert m3_sinteticos == 1
+    assert run is not None and run.parametros["datos_sinteticos"] is False
+    assert m3_sinteticos == 0
 
 
 def test_the_engine_answers_the_origin_of_the_ingest(caso: Caso) -> None:
-    assert engine_origin(caso.settings, caso.ingesta_sha256, None) is True
-    assert engine_origin(caso.settings, caso.ingesta_sha256, True) is True
+    assert engine_origin(caso.settings, caso.ingesta_sha256, None) is False
+    assert engine_origin(caso.settings, caso.ingesta_sha256, False) is False
 
 
 def test_a_contrary_declaration_keeps_the_engine_detail_and_creates_no_run(caso: Caso) -> None:
     with pytest.raises(RunRequestError) as error:
-        enqueue_run(
-            caso.settings,
-            caso.ingesta_sha256,
-            replace(caso.launch, datos_sinteticos=False),
-        )
+        engine_origin(caso.settings, caso.ingesta_sha256, True)
     assert "No se pudo consultar" not in str(error.value)
     assert str(error.value)
     with closing(dal.connect(caso.db)) as conn:
@@ -261,11 +239,8 @@ def test_the_verdicts_and_the_funnel_follow_the_published_cutoff_metadata(caso: 
     assert evidencia.eligibility_exclusions is not None
     assert evidencia.eligibility_exclusions.items == []
     assert evidencia.funnel.eligibility_excluded_count == 0
-    # Datos sintéticos: sin prueba HLN-DM ni p-valores, con la causa visible.
-    assert {(v.dm_causa, v.dm_p_valor) for v in evidencia.items} == {("datos_sinteticos", None)}
     for veredicto in evidencia.items:
         assert (veredicto.run_id, veredicto.ingesta_sha256) == (caso.run_id, caso.ingesta_sha256)
-        assert veredicto.veredicto != "VALIDADO"
 
 
 def test_every_row_keeps_run_sku_origin_and_ingest_identity(caso: Caso) -> None:
@@ -343,4 +318,4 @@ def test_sku_read_carries_the_run_origin(caso: Caso) -> None:
         metricas.run.ingesta_sha256,
         metricas.run.datos_sinteticos,
         metricas.run.origen_declarado,
-    ) == (caso.ingesta_sha256, True, True)
+    ) == (caso.ingesta_sha256, False, True)
