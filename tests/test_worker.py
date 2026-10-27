@@ -844,6 +844,49 @@ def test_el_estado_de_la_ejecucion_informa_la_etapa_en_curso(env: Env) -> None:
     assert etapa() is None
 
 
+def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> None:
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+
+    def m3() -> tuple[int | None, int | None]:
+        progress = env.repo().get_run_status(queued.run_id).progress
+        assert progress is not None
+        return progress.m3_skus_terminados, progress.m3_skus_total
+
+    plan_m3 = {"event": "planned", "stage": "L4", "units": [{"sku_id": s} for s in "ABC"]}
+
+    def fin(sku: str) -> dict[str, Any]:
+        return {"event": "unit_finished", "stage": "L4", "sku_id": sku, "state": "completada"}
+
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L3"},
+    )
+    assert m3() == (None, None)  # M3 todavía no empezó
+    _escribir_progreso(env, queued.run_id, {"event": "stage_started", "stage": "L4"}, plan_m3)
+    assert m3() == (0, 3)
+    _escribir_progreso(env, queued.run_id, fin("A"), fin("B"))
+    assert m3() == (2, 3)
+    # Al reanudar, el motor vuelve a anunciar el plan y los SKU ya guardados: no cuentan doble.
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 2},
+        {"event": "stage_started", "stage": "L4"},
+        plan_m3,
+        fin("A"),
+        fin("B"),
+    )
+    assert m3() == (2, 3)
+    _escribir_progreso(env, queued.run_id, fin("C"))
+    assert m3() == (3, 3)
+
+
 def test_the_capability_of_orchestration_is_available(env: Env) -> None:
     by_id = {c.id: c for c in env.repo().get_capabilities().items}
     assert by_id["run_orchestration"].available is True

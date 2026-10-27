@@ -53,14 +53,18 @@ _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
 
 
-def _etapa_en_curso(progreso: Path) -> str | None:
-    """La etapa del último ``stage_started`` del intento actual (tras el último ``run_started``)."""
+def _avance_en_curso(progreso: Path) -> tuple[str | None, int | None, int | None]:
+    """Etapa en curso y ``(total, terminados)`` de M3 del intento actual de ``progreso.jsonl``.
+
+    El intento actual empieza en el último ``run_started``; M3 cuenta desde su último ``planned``
+    de L4, así que los SKU que una reanudación vuelve a anunciar no se cuentan dos veces.
+    """
     # shortcut: lee todo el archivo en cada consulta; leer solo la cola si a escala completa pesa.
     try:
         lineas = progreso.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return None
-    etapa = None
+        return None, None, None
+    etapa, total, terminados = None, None, set()
     for linea in lineas:
         try:
             evento = json.loads(linea)
@@ -68,11 +72,16 @@ def _etapa_en_curso(progreso: Path) -> str | None:
             continue  # una línea rota por escrituras concurrentes no detiene la lectura
         if not isinstance(evento, dict):
             continue
-        if evento.get("event") == "run_started":
-            etapa = None
-        elif evento.get("event") == "stage_started":
+        tipo, l4 = evento.get("event"), evento.get("stage") == "L4"
+        if tipo == "run_started":
+            etapa, total, terminados = None, None, set()
+        elif tipo == "stage_started":
             etapa = evento.get("stage")
-    return etapa
+        elif tipo == "planned" and l4:
+            total, terminados = len(evento.get("units", [])), set()
+        elif tipo == "unit_finished" and l4 and total is not None:
+            terminados.add(evento.get("sku_id"))
+    return etapa, total, None if total is None else len(terminados)
 
 
 def _now() -> datetime:
@@ -354,9 +363,11 @@ class DalRepository:
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
-        etapa = None
+        etapa, m3_total, m3_terminados = None, None, None
         if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
-            etapa = _etapa_en_curso(self.data_root / run.ruta_corrida / "progreso.jsonl")
+            etapa, m3_total, m3_terminados = _avance_en_curso(
+                self.data_root / run.ruta_corrida / "progreso.jsonl"
+            )
         parametros = json.loads(run.parametros)
         return models.RunStatus(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
@@ -387,6 +398,8 @@ class DalRepository:
                 tareas_por_estado=by_state,  # type: ignore[arg-type]
                 avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
                 etapa_actual=etapa,  # type: ignore[arg-type]  # lo escribe el motor (L1 a L4)
+                m3_skus_total=m3_total,
+                m3_skus_terminados=m3_terminados,
             ),
             tasks=[
                 models.Tarea(
