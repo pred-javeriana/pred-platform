@@ -170,6 +170,8 @@ class EngineIngestFile(_Format):
                 raise ValueError("una ingesta aceptada exige published, topology y reserve")
             if self.published.columns != PANEL_COLUMNS:
                 raise ValueError(f"published.columns debe ser {PANEL_COLUMNS}")
+            if self.source_file.datos_sinteticos is not None and self.published.sha256 is None:
+                raise ValueError("un origen declarado exige published.sha256")
         if self.status == "needs_confirmation" and not (
             self.deposit is not None and self.deposit.would_overwrite
         ):
