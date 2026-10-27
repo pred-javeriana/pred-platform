@@ -30,6 +30,7 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.metadatos_parquet import read_cutoff_metadata
 from pred_platform.dal.migrate import migrate
 from pred_platform.data.dal import DalRepository
+from pred_platform.data.query import MAX_SIZE
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import DalRunControl
 from pred_platform.worker.ingesta import submit_csv
@@ -231,9 +232,14 @@ def test_resume_reuses_committed_units_and_leaves_no_duplicates(caso: Caso) -> N
     detenida = caso.estado_detenida.progress
     assert detenida is not None and detenida.n_unidades_previstas is not None
     previstas = detenida.n_unidades_previstas
-    unidades = repo.get_m3_units(caso.run_id, size=500)
-    assert unidades.page.total == previstas <= 500
-    emitidas = {(u.sku, u.candidato_id, u.origen): u.emitido_en for u in unidades.items}
+    # Todas las páginas: el panel tiene más unidades de las que caben en una página.
+    unidades: list[models_v2.M3Unit] = []
+    page = repo.get_m3_units(caso.run_id, size=MAX_SIZE)
+    while page.items:
+        unidades += page.items
+        page = repo.get_m3_units(caso.run_id, page=page.page.number + 1, size=MAX_SIZE)
+    assert page.page.total == len(unidades) == previstas
+    emitidas = {(u.sku, u.candidato_id, u.origen): u.emitido_en for u in unidades}
     assert len(emitidas) == previstas
     # Las unidades confirmadas antes de detener la corrida no se recalcularon.
     assert {key: emitidas[key] for key in caso.unidades_previas} == {
