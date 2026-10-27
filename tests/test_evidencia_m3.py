@@ -318,3 +318,71 @@ def test_status_reads_schema_and_rows_from_one_snapshot_during_an_upgrade(
     monkeypatch.setattr(evidencia, "_open_readonly", real_open)
     status = m3_run_status(db, "m2-race")
     assert [(s["datos_sinteticos"], s["origen_declarado"]) for s in status] == [(0, 0)]
+
+
+def test_sku_read_includes_m3_corridas_origin_and_metadata(tmp_path: Path) -> None:
+    db = tmp_path / "platform.db"
+    _database(db)
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("UPDATE m3_corridas SET estado = 'PUBLICADA'")
+        conn.commit()
+
+    # Synthetic-origin PUBLICADA run
+    evidence = read_m3_evidence(db, "m3-test", sku="B")
+    assert "m3_corridas" in evidence
+    assert len(evidence["m3_corridas"]) == 1
+    corrida = evidence["m3_corridas"][0]
+    assert corrida["run_id"] == "m3-test"
+    assert corrida["datos_sinteticos"] == 1
+    assert corrida["origen_declarado"] == 1
+    assert corrida["ingesta_sha256"] == "source"
+    assert corrida["identidad"] == "{}"
+
+    # SKU-scoped tables still filtered to that SKU, run-scoped tables without SKU excluded
+    assert [row["sku"] for row in evidence["m3_veredictos"]] == ["B"]
+    assert "m3_cartera" not in evidence
+    assert "m3_categorias" not in evidence
+
+    # Querying by M2 alias returns the matching M3 corrida
+    evidence_m2 = read_m3_evidence(db, "m2-test", sku="B")
+    assert "m3_corridas" in evidence_m2
+    assert evidence_m2["m3_corridas"][0]["run_id"] == "m3-test"
+
+
+def test_sku_read_of_unknown_origin_run_returns_undeclared_marker(tmp_path: Path) -> None:
+    db = tmp_path / "platform.db"
+    _database(db)
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "UPDATE m3_corridas SET datos_sinteticos = 0, origen_declarado = 0, "
+            "estado = 'PUBLICADA' WHERE run_id = 'm3-test'"
+        )
+        conn.commit()
+
+    evidence = read_m3_evidence(db, "m3-test", sku="A")
+    assert "m3_corridas" in evidence
+    assert len(evidence["m3_corridas"]) == 1
+    corrida = evidence["m3_corridas"][0]
+    assert corrida["origen_declarado"] == 0
+    assert corrida["datos_sinteticos"] == 0
+    assert corrida["ingesta_sha256"] == "source"
+    assert corrida["run_id"] == "m3-test"
+
+    # Querying by M2 alias also returns origen_declarado == 0
+    evidence_m2 = read_m3_evidence(db, "m2-test", sku="A")
+    assert evidence_m2["m3_corridas"][0]["origen_declarado"] == 0
+
+
+def test_sku_read_of_unpublished_run_returns_no_corridas_rows(tmp_path: Path) -> None:
+    db = tmp_path / "platform.db"
+    _database(db)
+    # The run in _database is in state 'EN_CURSO' (not PUBLICADA)
+    evidence = read_m3_evidence(db, "m3-test", sku="A")
+    assert evidence.get("m3_corridas", []) == []
+    for table_rows in evidence.values():
+        assert len(table_rows) == 0
+
+    # Missing evidencia_publicada view returns empty dict
+    with closing(sqlite3.connect(tmp_path / "no_view.db")) as conn:
+        conn.execute("CREATE TABLE m3_corridas (run_id TEXT, estado TEXT)")
+    assert read_m3_evidence(tmp_path / "no_view.db", "m3-test", sku="A") == {}

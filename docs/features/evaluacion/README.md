@@ -59,9 +59,9 @@ sku = read_m3_evidence(Path("data/pred.db"), "identidad-m2", sku="SKU-1")
 
 Las consultas aceptan una identidad M2 o M3. `read_m3_evidence` devuelve listas
 de registros por tabla, solo para corridas PUBLICADA. Con `sku`, devuelve
-únicamente las tablas que contienen esa columna. No incorpora métricas de una
-corrida parcial ni transforma los cinco veredictos al vocabulario histórico
-v1 de presentación.
+la fila de `m3_corridas` junto con las tablas que contienen esa columna. No
+incorpora métricas de una corrida parcial ni transforma los cinco veredictos
+al vocabulario histórico v1 de presentación.
 
 La función materializa el conjunto completo de filas que coinciden, no pagina.
 Todas las tablas pertenecen a una sola instantánea SQLite. Una identidad M2
