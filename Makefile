@@ -1,4 +1,4 @@
-.PHONY: run test lint format typecheck lock check sync-contract migrate import worker launch
+.PHONY: run test integration lint format typecheck lock check sync-contract migrate import worker launch
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
@@ -11,6 +11,11 @@ run:
 
 test:
 	uv run pytest
+
+# The reduced-panel case against the real engine (PRED_ENGINE_CMD, for example
+# "uv run --project ../pred-engine pred-engine"); it is skipped when the engine is not installed.
+integration:
+	uv run pytest -m integration --no-cov -ra $(ARGS)
 
 lint:
 	uv run ruff check .

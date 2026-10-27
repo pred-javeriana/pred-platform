@@ -41,6 +41,9 @@ packages = ["src/pred_platform"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=pred_platform --cov-report=term-missing --cov-fail-under=80"
+markers = [
+    "integration: runs the real engine (PRED_ENGINE_CMD); skipped when it is not installed",
+]
 
 [tool.coverage.run]
 source = ["pred_platform"]

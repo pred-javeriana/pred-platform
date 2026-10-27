@@ -98,10 +98,32 @@ publicación. La interfaz visual de M4 no cambia en esta entrega.
 
 `tests/test_evidencia_m3.py` comprueba publicación, progreso, filtrado por SKU,
 lecturas sin escritura y transmisión de la ruta central al proceso del motor.
+También comprueba bases ausentes, corruptas o anteriores a M3 y la lectura
+durante una actualización del esquema.
 Las pruebas de migraciones conservan los hashes de todas las versiones
 publicadas y la compatibilidad con datos previos.
 
-La integración de ambos paquetes se verifica con una base temporal creada
-por el migrador real, una corrida multi-SKU del motor y lectura posterior
-mediante este DAL. También se comprueban una actualización pendiente y el
-rechazo de una base ausente, sin sustituir ninguno de los procesos.
+`tests/test_integracion_motor.py` es el caso de integración sobre un panel
+reducido (TASK-EVAL-3.5-A2). Genera un panel sintético de seis SKU, lo ingiere
+con `pred-engine classify`, encola la corrida y deja que el worker lance
+`pred-engine run`. El operador la detiene cuando M3 ya confirmó unidades, se
+borra el traspaso local del motor (`candidatos.json`) y la corrida se reanuda.
+La prueba comprueba, mediante `read_m3_evidence` y `m3_run_status`:
+
+- Antes de publicar solo se ve el avance; después, la corrida PUBLICADA completa.
+- Cada fila conserva `run_id` y SKU, y la corrida su ingesta y su origen.
+- La reanudación conserva las unidades ya confirmadas y no duplica corridas,
+  unidades ni pronósticos.
+
+La lectura por SKU con la fila de la corrida (issue #29) está marcada como
+fallo esperado hasta que se corrija. El caso cubre la pérdida del traspaso
+local de pred-engine#41, pero no el fallo transitorio de ajuste de la familia
+DL que ese issue también necesita.
+
+El caso se omite si el motor no está instalado. CI no lo corre todavía, porque
+instalar el motor exige la llave de despliegue descrita en `DEPENDENCIES.md`.
+Para correrlo en local, con el motor en `../pred-engine`:
+
+```bash
+PRED_ENGINE_CMD="uv run --project ../pred-engine pred-engine" make integration
+```
