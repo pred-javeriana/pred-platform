@@ -46,7 +46,9 @@ $env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-eng
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
 (`pred_platform.data`) that returns documents of the frontend <-> engine data contract
-(`pred_platform.contract`, v1.0.0, authored in `pred-docs/diseno/contratos/`).
+(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.0.0 for M3's published
+evidence (the `*_m3_*` operations) and v1.0.0 for ingestion, M2 selection, run status and
+capabilities.
 
 ```python
 from fastapi import Depends
@@ -62,10 +64,11 @@ def ingests(repository: DataRepository = Depends(get_repository)):
 
 - **Two sources, one switch.** `PRED_DATA_SOURCE=fixture` serves the contract's examples (scenarios
   `normal`, `vacio`, `errores`); `dal` reads the platform's database. Views do not change.
-- **`dal` is honest.** The engine's results do not reach the DAL yet (gaps G1 to G4, G8), so only
-  the list of ingests is real. The rest answers `availability.status == "unavailable"` with the gap
-  in `blocked_by`, or raises `ArtifactMissing` naming it. When a gap closes, its entry in
-  `data/capabilities.py` changes and its read is implemented in `data/dal.py`.
+- **`dal` is honest.** Ingestion, run status, the M2 selection and M3's published evidence are read
+  from the DAL. What does not reach it yet (the synthetic log, G8) answers
+  `availability.status == "unavailable"` with the gap in `blocked_by`, or raises `ArtifactMissing`
+  naming it. When a gap closes, its entry in `data/capabilities.py` changes and its read is
+  implemented in `data/dal.py`.
 - **Invalid data is rejected.** Every document is validated by the contract's Pydantic models.
   Failures raise explicit errors with the contract's codes (`pred_platform.contract.errors`):
   `ContractInvalid`, `SchemaVersionUnsupported`, `ArtifactMissing`, `EngineUnavailable`; call
@@ -76,17 +79,19 @@ def ingests(repository: DataRepository = Depends(get_repository)):
 
 ### The contract copy
 
-`src/pred_platform/contract/` holds a byte-for-byte copy of the contract's reference models, JSON
-Schemas and examples (the examples are the fixtures). Do not edit it: change the contract in
-`pred-docs` first, then
+`src/pred_platform/contract/` holds a byte-for-byte copy of the contract's reference models
+(`models.py` for v1, `models_v2.py` for v2), JSON Schemas and examples of every major version (the
+examples are the fixtures). Do not edit it: change the contract in `pred-docs` first, then
 
 ```bash
 make sync-contract                 # copies from ../pred-docs and rewrites contract.lock.json
 make sync-contract ARGS=--check    # only report differences
 ```
 
-`contract.lock.json` pins the SHA-256 of every copied file and the tests verify it, so an edited
-copy fails the build. The sync also checks that the source is consistent before it writes.
+`contract.lock.json` pins the version of each major and the SHA-256 of every copied file, and the
+tests verify it, so an edited copy fails the build. The sync also checks that the source is
+consistent before it writes. Each document is validated against its own major: a v1 document with
+`schema_version: "2.x"` (or the reverse) is `SchemaVersionUnsupported`.
 
 ## Database migrations
 
@@ -139,12 +144,14 @@ standalone result database. It applies pending M3 migrations itself on an existi
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
 5 through 9, so both processes agree on `user_version`.
 
-`pred_platform.dal.evidencia.read_m3_evidence` reads only PUBLICADA runs by M2/M3 run id, optionally filtered by SKU.
-One call materializes all matching rows within one read snapshot. An M2 alias can match several
-M3 runs; use an exact M3 id and SKU for bounded reads, or group results by their retained `run_id`.
-`m3_run_status` exposes durable progress and rejections without partial metrics. The platform
-reads precalculated descriptive metrics, verdicts, HLN-DM/BH and portfolio distributions; it does
-not evaluate models. See [the M3 data interface](docs/features/evaluacion/README.md).
+The views read it through `DataRepository` as contract v2 documents (M4, Notion 4.1):
+`list_m3_runs` resolves an M2 reference or an identity to its exact M3 runs and names the newest
+PUBLICADA one; `get_m3_run_status` gives state and durable progress without partial metrics; and
+`get_m3_evidence`, `get_m3_metrics`, `get_m3_categories`, `get_m3_portfolio`, `get_m3_forecasts`,
+`get_m3_failures` and `get_m3_units` return one exact PUBLICADA run's rows, filtered and paged in
+SQLite within one read snapshot. The platform reads precalculated verdicts, metrics, HLN-DM/BH
+and portfolio distributions; it does not evaluate models. See
+[the M3 data interface](docs/features/evaluacion/README.md).
 
 ## Importing ingest reports
 
@@ -224,7 +231,8 @@ trials in `ensayos` (completed, pruned and failed, each with its reason); the wi
   never repeats that policy. A SKU the engine could not run keeps its cause as the exclusion.
 - A bad line only loses its SKU and a file of another major version is refused; neither changes how
   the run ended. Importing again replaces each SKU's rows, so a resume leaves no duplicates.
-- The champion comes from M3's published evidence (`m3_veredictos`) once the M4 read contract (Notion 4.1) is integrated; until then the column shows unavailable.
+- The champion comes from M3's published evidence (`m3_veredictos`, `get_m3_evidence`); the v1
+  `champion` field of the selection is always empty and `resultados_comparativos` is not read.
 - The views read it through `/resultados` and `/resultados/sku/{sku_id}` (task C2, see
   `docs/features/resultados/README.md`). Wherever the repository takes a run id it also accepts
   `latest`, the run with the highest id.
