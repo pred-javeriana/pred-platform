@@ -79,6 +79,7 @@ def finalize(
     summary: dict[str, Any] = corrida.get("summary", {})
 
     # The unit trace is final: reapplying it is idempotent and corrects any missed event.
+    m2_completas: list[tuple[str, str, str]] = []
     for unit in _read_units(run_dir / "unidades.jsonl"):
         modelo = model_id(str(unit["family"]), str(unit.get("model") or unit["family"]))
         stage, sku = str(unit.get("stage", "L2")), str(unit["sku_id"])
@@ -107,6 +108,26 @@ def finalize(
             finished_at=str(unit.get("finished_at") or ""),
             error=None if completed else error_info(stage, unit.get("error"), unit.get("code")),
         )
+        if stage == "L3" and completed:
+            m2_completas.append((sku, modelo, str(unit.get("finished_at") or "")))
+    # unidades.jsonl stops at L3; without M3 in the run (L4 blocked), L3 is the unit's last stage.
+    # A published M3 stored every candidate, even when it was reused and sent no L4 events.
+    l4 = next((s for s in summary.get("stages", []) if s.get("id") == "L4"), {})
+    if l4.get("state") == "blocked" or summary.get("m3", {}).get("estado") == "PUBLICADA":
+        for sku, modelo, finished_at in m2_completas:
+            dal.task_stage_finished(
+                conn,
+                run.id,
+                sku=sku,
+                modelo=modelo,
+                corte=corte,
+                seed=run.seed,
+                stage="L4",
+                completed=True,
+                seconds=None,
+                finished_at=finished_at,
+                error=None,
+            )
     for exclusion in summary.get("exclusions", []):
         for family in families:
             dal.task_excluded(

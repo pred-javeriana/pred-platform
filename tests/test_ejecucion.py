@@ -246,7 +246,7 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
         {"event": "stage_started", "stage": "L2"},
     )
     assert "Etapa en curso: Ajuste e HPO (M2)" in fragmento()
-    assert "M3:" not in fragmento()
+    assert "Ajuste e HPO (M2) ·" not in fragmento()  # sin plan de la etapa no hay contador
     _escribir_progreso(
         env,
         run.run_id,
@@ -256,9 +256,36 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
         {"event": "unit_finished", "stage": "L4", "sku_id": "B", "state": "completada"},
     )
     texto = fragmento()
-    assert "Etapa en curso: Evaluación M3" in texto and "M3: 2 de 3 SKU" in texto
+    assert "Etapa en curso: Evaluación retrospectiva (M3) · 2 de 3 SKU" in texto
     page = client.get("/ejecucion?ejecucion=1").text
     assert "La etapa analítica actual no está informada" not in page
+
+
+def test_ejecutar_muestra_las_tareas_que_terminaron_m2(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        dal.task_stage_finished(
+            conn,
+            run.id,
+            sku="FIL-0001",
+            modelo="classical:sarima",
+            corte=run.t_star,
+            seed=run.seed,
+            stage="L3",
+            completed=True,
+            seconds=1.0,
+            finished_at="2026-10-27T12:00:00+00:00",
+            error=None,
+        )
+    etiqueta = "Terminó configuración con HPO, esperando evaluación retrospectiva"
+
+    # El resumen de estados la cuenta y el filtro por estado la encuentra.
+    assert f"{etiqueta} 1" in _text(client.get("/ejecucion?ejecucion=1").text)
+    filtrada = _text(client.get("/ejecucion?ejecucion=1&estado=finalizo_m2").text)
+    assert "FIL-0001" in filtrada and etiqueta in filtrada
 
 
 def test_a_form_launch_is_recorded_as_real_data_even_if_origin_is_posted(env: Env) -> None:

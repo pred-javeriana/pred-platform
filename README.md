@@ -96,8 +96,10 @@ Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs an
 selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, frozen protocols and
 precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
 8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
-The current schema is version 9. An undeclared origin stays unknown and cannot
-produce statistical inference. The file-only website upload does not declare real data.
+Version 10 adds the task state `finalizo_m2` (M2 done, waiting for M3); the engine knows this
+version and must be updated before the platform migrates to it. The current schema is version 10.
+The platform declares every run as real data: launching offers no origin choice. A run queued
+before that may still carry an unknown origin, which cannot produce statistical inference.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
   folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.

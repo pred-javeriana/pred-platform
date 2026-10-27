@@ -102,6 +102,37 @@ def test_the_packaged_migrations_build_the_real_schema(tmp_path: Path) -> None:
     assert {"ingestas", "tareas", "reportes_validacion"} <= tables
 
 
+def test_la_migracion_0010_conserva_las_tareas_y_admite_finalizo_m2(tmp_path: Path) -> None:
+    db = tmp_path / "pred.db"
+    migrate(db, load_migrations()[:9])  # una base de antes del estado finalizo_m2
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "INSERT INTO ingestas (id, sha256, nombre_archivo, filas, skus) "
+            "VALUES (1, 'a', 'v.csv', 1, 1)"
+        )
+        conn.execute("INSERT INTO configuraciones (id, version, parametros) VALUES (1, 1, '{}')")
+        conn.execute(
+            "INSERT INTO ejecuciones (id, ingesta_id, configuracion_id, seed) VALUES (1, 1, 1, 0)"
+        )
+        conn.execute(
+            "INSERT INTO tareas (id, ejecucion_id, sku, modelo, corte, estado, seed, "
+            "tiempo_pared_s, tiempo_l2_s) "
+            "VALUES (7, 1, 'A', 'ml:lightgbm', '2026-01-01', 'exitosa', 0, 3.5, 1.5)"
+        )
+        conn.commit()
+        antes = conn.execute("SELECT * FROM tareas").fetchall()
+
+    assert migrate(db).applied == (10,)
+
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("SELECT * FROM tareas").fetchall() == antes
+        conn.execute("UPDATE tareas SET estado = 'finalizo_m2' WHERE id = 7")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("UPDATE tareas SET estado = 'inventado' WHERE id = 7")
+        indices = {fila[1] for fila in conn.execute("PRAGMA index_list(tareas)")}
+        assert "ix_tareas_ejecucion_estado" in indices
+
+
 # ----------------------------------------------------------------------- legacy database
 def test_a_database_from_before_versioning_adopts_version_1_and_is_backed_up(
     tmp_path: Path,

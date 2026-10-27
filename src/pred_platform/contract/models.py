@@ -59,7 +59,10 @@ Source = Literal["dal", "fixture"]
 
 # Vocabulario del DAL (dal/schema.py), que es el que leen las vistas.
 Severidad = Literal["info", "advertencia", "error"]
-EstadoTarea = Literal["pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable"]
+# Desde 1.1.0, `finalizo_m2`: la unidad termino M2 (L2 y L3) y espera la evaluacion de M3.
+EstadoTarea = Literal[
+    "pendiente", "ejecutando", "finalizo_m2", "exitosa", "fallida", "no_ejecutable"
+]
 EstadoEjecucion = Literal[
     "pendiente", "ejecutando", "completada", "completada_con_fallos", "detenida"
 ]
@@ -304,7 +307,8 @@ class RunSettings(_Base):
 class Tarea(_Base):
     """Fila de `tareas`: una por unidad del motor, es decir, por SKU x modelo (decision D6).
 
-    El estado resume las etapas L2 y L3 de esa unidad; la traza por etapa queda en el motor.
+    El estado resume las etapas L2 a L4 de esa unidad: `finalizo_m2` cuando termino L2 y L3,
+    `exitosa` cuando M3 (L4) guardo su candidato. La traza por etapa queda en el motor.
     """
 
     id: str = Field(min_length=1)
@@ -336,10 +340,11 @@ class Progress(_Base):
     tareas_total: int = Field(ge=0)
     tareas_por_estado: dict[EstadoTarea, int]
     avance_pct: float = Field(ge=0, le=100)
-    # Desde 1.1.0: etapa en curso y SKU que M3 (L4) ya terminó; null si el motor no lo informó.
+    # Desde 1.1.0: etapa en curso y sus SKU (un SKU termina cuando terminan todas sus unidades
+    # de esa etapa); null si el motor no lo informó.
     etapa_actual: Literal["L1", "L2", "L3", "L4"] | None = None
-    m3_skus_total: int | None = Field(default=None, ge=0)
-    m3_skus_terminados: int | None = Field(default=None, ge=0)
+    skus_total: int | None = Field(default=None, ge=0)
+    skus_terminados: int | None = Field(default=None, ge=0)
 
 
 class Reserve(_Base):
@@ -453,7 +458,8 @@ class Exclusion(_Base):
     detail: str | None = None
 
 
-# Estado de una familia para un SKU: los cinco de `tareas` mas `excluida`.
+# Estado de una familia para un SKU (la seleccion de M2): los de `tareas` salvo `finalizo_m2`,
+# mas `excluida`.
 EstadoFamilia = Literal[
     "pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable", "excluida"
 ]

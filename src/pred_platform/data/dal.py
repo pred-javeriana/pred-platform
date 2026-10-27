@@ -20,7 +20,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Never, get_args
+from typing import Any, Never, get_args
 
 from pred_platform.config import DataSource
 from pred_platform.contract import CONTRACT_VERSION, models
@@ -53,18 +53,23 @@ _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
 
 
-def _avance_en_curso(progreso: Path) -> tuple[str | None, int | None, int | None]:
-    """Etapa en curso y ``(total, terminados)`` de M3 del intento actual de ``progreso.jsonl``.
+def _unidad(evento: dict[str, Any]) -> tuple[Any, Any, Any]:
+    return evento.get("sku_id"), evento.get("family"), evento.get("model")
 
-    El intento actual empieza en el último ``run_started``; M3 cuenta desde su último ``planned``
-    de L4, así que los SKU que una reanudación vuelve a anunciar no se cuentan dos veces.
+
+def _avance_en_curso(progreso: Path) -> tuple[str | None, int | None, int | None]:
+    """Etapa en curso y ``(total, terminados)`` de sus SKU según ``progreso.jsonl``.
+
+    El intento actual empieza en el último ``run_started``; cada etapa cuenta desde su último
+    ``planned``, así que lo que una reanudación vuelve a anunciar no se cuenta dos veces. Un SKU
+    termina la etapa cuando terminan, bien o mal, todas sus unidades de ese plan.
     """
     # shortcut: lee todo el archivo en cada consulta; leer solo la cola si a escala completa pesa.
     try:
         lineas = progreso.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return None, None, None
-    etapa, total, terminados = None, None, set()
+    etapa, plan, terminadas = None, None, set()
     for linea in lineas:
         try:
             evento = json.loads(linea)
@@ -72,16 +77,21 @@ def _avance_en_curso(progreso: Path) -> tuple[str | None, int | None, int | None
             continue  # una línea rota por escrituras concurrentes no detiene la lectura
         if not isinstance(evento, dict):
             continue
-        tipo, l4 = evento.get("event"), evento.get("stage") == "L4"
+        tipo, de_la_etapa = evento.get("event"), evento.get("stage") == etapa
         if tipo == "run_started":
-            etapa, total, terminados = None, None, set()
-        elif tipo == "stage_started":
-            etapa = evento.get("stage")
-        elif tipo == "planned" and l4:
-            total, terminados = len(evento.get("units", [])), set()
-        elif tipo == "unit_finished" and l4 and total is not None:
-            terminados.add(evento.get("sku_id"))
-    return etapa, total, None if total is None else len(terminados)
+            etapa, plan, terminadas = None, None, set()
+        elif tipo == "stage_started" and not de_la_etapa:
+            etapa, plan, terminadas = evento.get("stage"), None, set()
+        elif tipo == "planned" and de_la_etapa:
+            # Cada etapa se anuncia por SKU x familia (o candidato); el avance cuenta SKU.
+            plan, terminadas = {_unidad(u) for u in evento.get("units", [])}, set()
+        elif tipo == "unit_finished" and de_la_etapa and plan is not None:
+            terminadas.add(_unidad(evento))
+    if plan is None:
+        return etapa, None, None
+    skus = {sku for sku, _, _ in plan}
+    pendientes = {sku for sku, _, _ in plan - terminadas}
+    return etapa, len(skus), len(skus - pendientes)
 
 
 def _now() -> datetime:
@@ -363,9 +373,9 @@ class DalRepository:
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
-        etapa, m3_total, m3_terminados = None, None, None
+        etapa, skus_total, skus_terminados = None, None, None
         if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
-            etapa, m3_total, m3_terminados = _avance_en_curso(
+            etapa, skus_total, skus_terminados = _avance_en_curso(
                 self.data_root / run.ruta_corrida / "progreso.jsonl"
             )
         parametros = json.loads(run.parametros)
@@ -398,8 +408,8 @@ class DalRepository:
                 tareas_por_estado=by_state,  # type: ignore[arg-type]
                 avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
                 etapa_actual=etapa,  # type: ignore[arg-type]  # lo escribe el motor (L1 a L4)
-                m3_skus_total=m3_total,
-                m3_skus_terminados=m3_terminados,
+                skus_total=skus_total,
+                skus_terminados=skus_terminados,
             ),
             tasks=[
                 models.Tarea(

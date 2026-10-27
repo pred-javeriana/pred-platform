@@ -146,7 +146,8 @@ def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
 
     The tasks that ended badly (``fallida`` or ``no_ejecutable``, including the ones the stop or
     the failure closed) go back to ``pendiente``: the engine starts them again, and until it does
-    the screen must not show them as finished. Successful tasks keep their result.
+    the screen must not show them as finished. Successful tasks keep their result, and the ones
+    in ``finalizo_m2`` keep M2: the engine restores it and only M3 is left to run.
     """
     queued = (
         conn.execute(
@@ -362,13 +363,17 @@ def task_started(
     iniciada_en: str,
     running: bool = True,
 ) -> None:
+    # A unit that already finished M2 or M3 is not in flight again: a replayed start, or the start
+    # of its M3 evaluation, cannot take it back to ``ejecutando`` (every CASE reads the row before
+    # the update).
+    en_curso = "? AND estado NOT IN ('finalizo_m2', 'exitosa')"
     with conn:
         _ensure_task(conn, ejecucion_id, sku, modelo, corte, seed)
         conn.execute(
-            "UPDATE tareas SET estado = CASE WHEN ? THEN 'ejecutando' ELSE estado END, "
+            f"UPDATE tareas SET estado = CASE WHEN {en_curso} THEN 'ejecutando' ELSE estado END, "
             "iniciada_en = COALESCE(iniciada_en, ?), "
-            "finalizada_en = CASE WHEN ? THEN NULL ELSE finalizada_en END, "
-            "detalle_error = CASE WHEN ? THEN NULL ELSE detalle_error END "
+            f"finalizada_en = CASE WHEN {en_curso} THEN NULL ELSE finalizada_en END, "
+            f"detalle_error = CASE WHEN {en_curso} THEN NULL ELSE detalle_error END "
             "WHERE ejecucion_id = ? AND sku = ? AND modelo = ? AND corte = ?",
             (running, iniciada_en, running, running, ejecucion_id, sku, modelo, corte),
         )
@@ -388,7 +393,11 @@ def task_stage_finished(
     finished_at: str,
     error: dict[str, Any] | None,
 ) -> None:
-    """Apply the end of one stage (L2 or L3) of a unit; replaying it changes nothing."""
+    """Apply the end of one stage (L2, L3 or L4) of a unit; replaying it changes nothing.
+
+    The end of L3 records the M2 time and leaves the unit in ``finalizo_m2``; it is ``exitosa``
+    only when M3 (L4) has stored its candidate.
+    """
     with conn:
         _ensure_task(conn, ejecucion_id, sku, modelo, corte, seed)
         key = (ejecucion_id, sku, modelo, corte)
@@ -415,11 +424,18 @@ def task_stage_finished(
                 f"{where}",
                 (seconds, seconds, *key),
             )
+        elif stage == "L3":
+            conn.execute(
+                "UPDATE tareas SET estado = CASE WHEN estado IN ('pendiente', 'ejecutando') "
+                "THEN 'finalizo_m2' ELSE estado END, "
+                f"tiempo_pared_s = ROUND(COALESCE(tiempo_l2_s, 0) + COALESCE(?, 0), 3) {where}",
+                (seconds, *key),
+            )
         else:
             conn.execute(
-                "UPDATE tareas SET estado = 'exitosa', finalizada_en = ?, detalle_error = NULL, "
-                f"tiempo_pared_s = ROUND(COALESCE(tiempo_l2_s, 0) + COALESCE(?, 0), 3) {where}",
-                (finished_at, seconds, *key),
+                "UPDATE tareas SET estado = 'exitosa', finalizada_en = ?, detalle_error = NULL "
+                f"{where}",
+                (finished_at, *key),
             )
 
 

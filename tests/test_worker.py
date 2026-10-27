@@ -465,12 +465,24 @@ def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
     error = json.loads(error_json or "{}")
     assert error["code"] == "pipeline.stage_failed"
     assert "L4" in error["detail"]
-    # The successful L2/L3 tasks stay stored.
+    # M3 did not finish: the tasks that completed L2/L3 stay in finalizo_m2, not failed.
     counts = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
-    assert counts.get("exitosa", 0) == 9  # 3 SKU × 3 families
-    assert counts.get("fallida", 0) == 0
+    assert counts == {"finalizo_m2": 9}  # 3 SKU × 3 families
     # The per-SKU selection (G4) was imported and linked.
     assert env.rows("SELECT COUNT(*) FROM selecciones")[0][0] > 0
+
+
+def test_al_cerrar_una_corrida_con_m3_publicado_las_tareas_quedan_exitosas(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "m3_ok")
+    enqueue_run(env.db, env.ingest_id, SMALL)
+
+    env.worker().run_next()
+
+    # El progreso no trae eventos de L4: el cierre lee en corrida.json que M3 quedó publicado.
+    assert _run_state(env)[0] == "completada"
+    assert env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado") == [("exitosa", 9)]
 
 
 def test_a_missing_engine_command_is_a_clear_stopped_run(env: Env) -> None:
@@ -725,6 +737,62 @@ def test_applying_the_progress_twice_leaves_the_same_tasks(
     assert after == before
 
 
+def test_una_tarea_pasa_por_finalizo_m2_y_queda_exitosa_al_terminar_m3(env: Env) -> None:
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    unidad = {"sku_id": "FIL-0001", "family": "classical", "model": "sarima"}
+
+    def fin(etapa: str) -> dict[str, Any]:
+        return {
+            "event": "unit_finished",
+            "stage": etapa,
+            **unidad,
+            "state": "completada",
+            "seconds": 2.0,
+            "finished_at": "2026-10-27T12:00:00+00:00",
+        }
+
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        ruta = env.settings.data_root / "runs" / queued.run_id / "progreso.jsonl"
+        follower = ProgressFollower(conn, run, ruta, corte=run.t_star)
+
+        def estado() -> str:
+            follower.poll()
+            ((valor,),) = env.rows("SELECT estado FROM tareas WHERE sku = 'FIL-0001'")
+            return str(valor)
+
+        _escribir_progreso(
+            env,
+            queued.run_id,
+            {"event": "planned", "stage": "L2", "units": [unidad]},
+            {
+                "event": "unit_started",
+                "stage": "L2",
+                **unidad,
+                "started_at": "2026-10-27T11:59:00+00:00",
+            },
+            fin("L2"),
+            {"event": "planned", "stage": "L3", "units": [unidad]},
+            fin("L3"),
+        )
+        assert estado() == "finalizo_m2"  # M2 terminó; M3 todavía no guardó su candidato
+        _escribir_progreso(
+            env,
+            queued.run_id,
+            {"event": "planned", "stage": "L4", "units": [unidad]},
+            {
+                "event": "unit_started",
+                "stage": "L4",
+                **unidad,
+                "started_at": "2026-10-27T12:00:30+00:00",
+            },
+        )
+        assert estado() == "finalizo_m2"  # empezar M3 no la devuelve a ejecutando
+        _escribir_progreso(env, queued.run_id, fin("L4"))
+        assert estado() == "exitosa"
+
+
 # ----------------------------------------------------------------- reading the run
 def _conforms(document: Any) -> None:
     validator = Draft202012Validator(
@@ -854,7 +922,7 @@ def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> 
     def m3() -> tuple[int | None, int | None]:
         progress = env.repo().get_run_status(queued.run_id).progress
         assert progress is not None
-        return progress.m3_skus_terminados, progress.m3_skus_total
+        return progress.skus_terminados, progress.skus_total
 
     plan_m3 = {"event": "planned", "stage": "L4", "units": [{"sku_id": s} for s in "ABC"]}
 
@@ -885,6 +953,76 @@ def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> 
     assert m3() == (2, 3)
     _escribir_progreso(env, queued.run_id, fin("C"))
     assert m3() == (3, 3)
+
+
+def test_el_contador_de_m3_cuenta_sku_distintos(env: Env) -> None:
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    # El motor anuncia M3 por SKU x candidato: dos SKU con dos candidatos cada uno.
+    unidades = [{"sku_id": s, "family": f} for s in "AB" for f in ("classical", "ml")]
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L4"},
+        {"event": "planned", "stage": "L4", "units": unidades},
+        *(
+            {"event": "unit_finished", "stage": "L4", **u, "state": "completada"}
+            for u in unidades[:2]
+        ),
+    )
+
+    progress = env.repo().get_run_status(queued.run_id).progress
+    assert progress is not None
+    assert (progress.skus_terminados, progress.skus_total) == (1, 2)
+
+
+def test_el_contador_cuenta_un_sku_de_m2_solo_cuando_terminan_todas_sus_familias(
+    env: Env,
+) -> None:
+    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    a_clasica, a_ml, b_clasica, b_ml = (
+        {"sku_id": s, "family": f} for s in "AB" for f in ("classical", "ml")
+    )
+    plan = [a_clasica, a_ml, b_clasica, b_ml]
+
+    def fin(etapa: str, unidad: dict[str, str], estado: str = "completada") -> dict[str, Any]:
+        return {"event": "unit_finished", "stage": etapa, **unidad, "state": estado}
+
+    def avance() -> tuple[str | None, int | None, int | None]:
+        progress = env.repo().get_run_status(queued.run_id).progress
+        assert progress is not None
+        return progress.etapa_actual, progress.skus_terminados, progress.skus_total
+
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L2"},
+        {"event": "planned", "stage": "L2", "units": plan},
+        fin("L2", a_clasica),
+        fin("L2", a_ml),
+        fin("L2", b_clasica, "fallida"),  # una unidad fallida también terminó
+    )
+    assert avance() == ("L2", 1, 2)  # B todavía tiene una familia en HPO
+    _escribir_progreso(env, queued.run_id, fin("L2", b_ml))
+    assert avance() == ("L2", 2, 2)
+    # La etapa siguiente empieza su propio conteo con su plan.
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "stage_started", "stage": "L3"},
+        {"event": "planned", "stage": "L3", "units": [a_clasica, a_ml, b_ml]},
+        fin("L3", b_ml),
+    )
+    assert avance() == ("L3", 1, 2)
 
 
 def test_the_capability_of_orchestration_is_available(env: Env) -> None:

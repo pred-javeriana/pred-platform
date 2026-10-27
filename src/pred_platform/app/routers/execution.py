@@ -39,7 +39,7 @@ from pred_platform.worker.control import ControlUnavailable, RunControl
 
 router = APIRouter()
 
-_TASK_STATES = ("pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable")
+_TASK_STATES = ("pendiente", "ejecutando", "finalizo_m2", "exitosa", "fallida", "no_ejecutable")
 
 
 def _control(request: Request) -> RunControl:

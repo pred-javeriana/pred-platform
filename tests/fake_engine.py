@@ -13,6 +13,8 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     l4_fails      L2 and L3 complete, L4 fails as a whole (exit 1)
     slow          plans and starts one unit, then waits until it is killed
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
+    slow_m3       L2 and L3 complete, M3 stores the first SKU, then waits until it is killed
+    m3_ok         like ok, but M3 is published (exit 0) without L4 events, as a resume reusing it
     future_schema writes a progress stream of an unsupported major version
 
 ``classify --csv <file> --data-root <root> [--confirm-overwrite]`` plays the ingestion the browser
@@ -452,6 +454,15 @@ def main() -> int:
             run_unit("L3", sku, family)
         stream.emit("stage_finished", stage="L3", state="completed")
         stages.append({"id": "L3", "state": "completed"})
+    if scenario == "slow_m3":
+        labels = [{"sku_id": s, "family": f, "model": MODELS[f]} for s, f in ok_units]
+        stream.emit("stage_started", stage="L4")
+        stream.emit("planned", stage="L4", units=labels)
+        for label in labels:
+            if label["sku_id"] == ok_units[0][0]:
+                stream.emit("unit_finished", stage="L4", **label, state="completada")
+        time.sleep(60)
+        return 0
     if scenario == "l4_fails":
         stream.emit("stage_started", stage="L4")
         stream.emit(
@@ -461,6 +472,8 @@ def main() -> int:
             message="evaluación M3 falló: timeout",
         )
         stages.append({"id": "L4", "state": "failed", "message": "evaluación M3 falló: timeout"})
+    elif scenario == "m3_ok":
+        stages.append({"id": "L4", "state": "completed"})
     else:
         stages.append({"id": "L4", "state": "blocked"})
 
@@ -512,6 +525,9 @@ def main() -> int:
             if r["state"] == "fallida"
         ],
     }
+    published = scenario == "m3_ok"
+    if published:
+        summary.update(complete=True, blocked_stage=None, m3={"estado": "PUBLICADA"})
     (folder / "corrida.json").write_text(
         json.dumps({"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}),
         encoding="utf-8",
@@ -521,11 +537,11 @@ def main() -> int:
     stream.emit(
         "run_finished",
         state="failed" if failed else "completed",
-        exit_code=1 if failed else 7,
+        exit_code=1 if failed else 0 if published else 7,
         failed_stage=failed_stage,
-        blocked_stage=None if scenario == "l4_fails" else "L4",
+        blocked_stage=None if failed_stage == "L4" or published else "L4",
     )
-    return 1 if failed else 7
+    return 1 if failed else 0 if published else 7
 
 
 if __name__ == "__main__":

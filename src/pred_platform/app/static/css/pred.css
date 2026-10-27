@@ -1511,6 +1511,7 @@ samp,
 }
 
 .pred-statelist--summary li > a > .mono {
+  flex-shrink: 0; /* una etiqueta larga se parte en líneas; el conteo no */
   font-size: 1.125rem;
 }
 

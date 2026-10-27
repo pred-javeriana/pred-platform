@@ -41,14 +41,15 @@
     "tareas_por_estado": {
       "pendiente": 2,
       "ejecutando": 1,
+      "finalizo_m2": 0,
       "exitosa": 4,
       "fallida": 0,
       "no_ejecutable": 0
     },
     "avance_pct": 57.1,
     "etapa_actual": "L2",
-    "m3_skus_total": null,
-    "m3_skus_terminados": null
+    "skus_total": null,
+    "skus_terminados": null
   },
   "tasks": [
     {
