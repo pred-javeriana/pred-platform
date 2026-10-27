@@ -40,11 +40,7 @@ The font files come from the design reference in `pred-docs/diseno/fonts/`.
 
 ## pred-engine (private repo)
 
-`pred-platform` depends on `pred-engine`, the pure-Python forecasting library
-in the same GitHub org. This dependency is **not yet wired** in `pyproject.toml`.
-Wiring it is deferred to the worker task (the first code that imports the engine);
-it is documented here so CI can be configured before it is activated. When wiring,
-pin it to a commit (or tag) so installs stay reproducible.
+The platform runs the `pred-engine` CLI as a subprocess (`PRED_ENGINE_CMD`) and does not import it; the git dependency stays commented until a module needs the library.
 
 The engine pulls in heavy scientific dependencies (LightGBM, statsmodels, Optuna), so a
 fresh install gets noticeably larger once it is activated. On macOS, LightGBM needs the OpenMP

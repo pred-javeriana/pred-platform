@@ -13,8 +13,7 @@ request, every window with its metrics. Excluded families say why (policy matrix
 series too short) and failed ones show their error.
 
 The **Resumen** and **Por clase** tabs need the champion and the retrospective verdicts (M3, L4): they
-say so instead of inventing anything. The champion column reads "pendiente de M3" until M3 writes
-`resultados_comparativos`.
+say so instead of inventing anything. The champion comes from M3's published evidence (`m3_veredictos`) once the M4 read contract (Notion 4.1) is integrated; until then the column shows unavailable.
 
 ## How
 
