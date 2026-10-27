@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "summary": "Corrige redacción obsoleta que afirmaba la ausencia de M3 y aclara la integración del motor y la lectura de veredictos.",
+  "files": [
+    {
+      "path": "DEPENDENCIES.md",
+      "summary": "Documenta que pred-engine se invoca vía CLI como subproceso y no se importa en Python.",
+      "annotations": [
+        {
+          "newRange": [43, 43],
+          "summary": "Aclara que la plataforma invoca pred-engine como subproceso y mantiene comentada la dependencia.",
+          "rationale": "El worker ya ejecuta el motor mediante PRED_ENGINE_CMD sin importarlo, por lo que el texto que difería la integración quedaba obsoleto. Verificado documentalmente y mediante inspección de worker/engine.py.",
+          "author": "fm/pred-platform-m3-wording"
+        }
+      ]
+    },
+    {
+      "path": "README.md",
+      "summary": "Actualiza la fuente esperada para la selección de campeón.",
+      "annotations": [
+        {
+          "newRange": [227, 227],
+          "summary": "Indica que el campeón proviene de m3_veredictos cuando se integre el contrato M4 4.1.",
+          "rationale": "M3 ya existe y persiste veredictos en m3_veredictos en lugar de la tabla histórica resultados_comparativos. Verificado contractualmente con el esquema de evidencia M3.",
+          "author": "fm/pred-platform-m3-wording"
+        }
+      ]
+    },
+    {
+      "path": "docs/features/resultados/README.md",
+      "summary": "Actualiza el estado documental del campeón en las vistas de resultados.",
+      "annotations": [
+        {
+          "newRange": [16, 16],
+          "summary": "Actualiza la referencia de resultados_comparativos hacia m3_veredictos y el contrato M4 4.1.",
+          "rationale": "Mantiene consistencia con la documentación raíz sobre la publicación de evidencia de M3 y el estado no disponible hasta la integración del contrato de lectura M4.",
+          "author": "fm/pred-platform-m3-wording"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/dal.py",
+      "summary": "Actualiza el detalle del estado no disponible de veredictos de validación.",
+      "annotations": [
+        {
+          "newRange": [513, 514],
+          "summary": "Precisa que la validación retrospectiva no está integrada en el contrato M4 4.1.",
+          "rationale": "M3 implementa L4 y publica veredictos; la falta actual es la lectura integrada en plataforma. Se conserva stage_not_implemented porque el contrato v1 restringe blocked_by al patrón ^G[1-8]$. Verificado con tests/test_data_dal.py.",
+          "author": "fm/pred-platform-m3-wording"
+        }
+      ]
+    },
+    {
+      "path": "tests/test_data_dal.py",
+      "summary": "Valida el nuevo texto de detalle en el DAL.",
+      "annotations": [
+        {
+          "newRange": [202, 205],
+          "summary": "Añade aserción sobre doc.availability.detail con el nuevo texto del contrato M4 4.1.",
+          "rationale": "Garantiza que la respuesta del DAL exponga la nueva redacción frente a regresiones. Verificado con pytest tests/test_data_dal.py.",
+          "author": "fm/pred-platform-m3-wording"
+        }
+      ]
+    }
+  ]
+}
