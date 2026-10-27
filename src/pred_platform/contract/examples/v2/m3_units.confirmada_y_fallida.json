@@ -1,0 +1,67 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "PUBLICADA",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [
+      "m3-real-02"
+    ],
+    "aviso": null
+  },
+  "items": [
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-VALIDADO",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "candidato_id": "SKU-VALIDADO/classical/sarima",
+      "origen": "2026-06-30",
+      "familia": "classical",
+      "modelo": "sarima",
+      "estado": "confirmada",
+      "causa": null,
+      "emitido_en": "2026-10-27T09:00:00Z",
+      "codigo_version": "f8678bf",
+      "semilla": 42
+    },
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-FALLO",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "candidato_id": "SKU-FALLO/classical/sarima",
+      "origen": "2026-06-30",
+      "familia": "classical",
+      "modelo": "sarima",
+      "estado": "fallida",
+      "causa": "El candidato no produjo pronosticos finitos.",
+      "emitido_en": "2026-10-27T09:00:00Z",
+      "codigo_version": "f8678bf",
+      "semilla": 42
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 2
+  }
+}

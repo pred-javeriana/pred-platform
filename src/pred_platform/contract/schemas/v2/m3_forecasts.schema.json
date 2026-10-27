@@ -1,0 +1,357 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v2/m3_forecasts.schema.json",
+  "x-contract-version": "2.0.0",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_published",
+                "metadata_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason Code"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status",
+        "reason_code",
+        "detail"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "M3Forecast": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "minLength": 1,
+          "title": "Sku",
+          "type": "string"
+        },
+        "candidato_id": {
+          "minLength": 1,
+          "title": "Candidato Id",
+          "type": "string"
+        },
+        "origen": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Origen",
+          "type": "string"
+        },
+        "h": {
+          "minimum": 1,
+          "title": "H",
+          "type": "integer"
+        },
+        "fecha": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Fecha",
+          "type": "string"
+        },
+        "valor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valor"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "candidato_id",
+        "origen",
+        "h",
+        "fecha",
+        "valor"
+      ],
+      "title": "M3Forecast",
+      "type": "object"
+    },
+    "M3Run": {
+      "additionalProperties": false,
+      "properties": {
+        "datos_sinteticos": {
+          "title": "Datos Sinteticos",
+          "type": "boolean"
+        },
+        "origen_declarado": {
+          "title": "Origen Declarado",
+          "type": "boolean"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "title": "Sku",
+          "type": "null"
+        },
+        "run_id_m2": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id M2"
+        },
+        "identidad": {
+          "minLength": 1,
+          "title": "Identidad",
+          "type": "string"
+        },
+        "estado": {
+          "enum": [
+            "EN_CURSO",
+            "EVALUADA",
+            "SELECCIONADA",
+            "PUBLICADA",
+            "RECHAZADA"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "causa_rechazo": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Causa Rechazo"
+        },
+        "creado_en": {
+          "format": "date-time",
+          "title": "Creado En",
+          "type": "string"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectionPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publicadas_misma_identidad": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Publicadas Misma Identidad",
+          "type": "array"
+        },
+        "aviso": {
+          "anyOf": [
+            {
+              "const": "varias_publicadas_misma_identidad",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Aviso"
+        }
+      },
+      "required": [
+        "datos_sinteticos",
+        "origen_declarado",
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "run_id_m2",
+        "identidad",
+        "estado",
+        "causa_rechazo",
+        "creado_en",
+        "policy",
+        "publicadas_misma_identidad",
+        "aviso"
+      ],
+      "title": "M3Run",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "SelectionPolicy": {
+      "additionalProperties": false,
+      "description": "Proyeccion de m3_protocolos.protocolo.politica; no son ajustes de la vista.",
+      "properties": {
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "n_min": {
+          "minimum": 1,
+          "title": "N Min",
+          "type": "integer"
+        },
+        "n_min_dm": {
+          "minimum": 2,
+          "title": "N Min Dm",
+          "type": "integer"
+        },
+        "alfa_dm": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Alfa Dm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "version",
+        "n_min",
+        "n_min_dm",
+        "alfa_dm"
+      ],
+      "title": "SelectionPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^2\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "run": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/M3Run"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/M3Forecast"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/Page"
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "run",
+    "items",
+    "page"
+  ],
+  "title": "M3Forecasts",
+  "type": "object"
+}

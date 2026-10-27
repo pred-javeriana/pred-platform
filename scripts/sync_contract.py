@@ -1,9 +1,11 @@
 """Copy the frontend <-> engine data contract from pred-docs into the platform package.
 
 The contract is authored in pred-docs (``diseno/contratos/``). This script copies, byte for byte,
-the reference models, the JSON Schemas and the examples (which are the fixtures) into
-``src/pred_platform/contract/`` and writes ``contract.lock.json`` with the SHA-256 of every copied
-file. Tests verify that lock, so an accidental edit to a copy fails the build.
+every major version it publishes: the reference models (``referencia/modelos_v1.py`` becomes
+``models.py``, ``modelos_v2.py`` becomes ``models_v2.py``), the JSON Schemas and the examples
+(which are the fixtures) into ``src/pred_platform/contract/``, and writes ``contract.lock.json``
+with the version of each major and the SHA-256 of every copied file. Tests verify that lock, so an
+accidental edit to a copy fails the build.
 
 Before writing anything it checks the source the way pred-docs' CI does, plus one more thing: the
 schema exported from the models must equal the published one, which proves the platform's pydantic
@@ -39,7 +41,7 @@ def sha256(path: Path) -> str:
 
 
 def load_models(path: Path) -> ModuleType:
-    spec = importlib.util.spec_from_file_location("_contract_source_models", path)
+    spec = importlib.util.spec_from_file_location(f"_contract_source_{path.stem}", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
@@ -94,18 +96,32 @@ def contract_version(schemas: Path) -> str:
     return versions.pop()
 
 
+def majors(source: Path) -> list[str]:
+    """The published major versions (``v1``, ``v2``...), one per reference models file."""
+    return sorted(
+        p.stem.removeprefix("modelos_") for p in (source / "referencia").glob("modelos_v*.py")
+    )
+
+
+def models_name(major: str) -> str:
+    """``models.py`` for v1, as it always was; ``models_<major>.py`` for the later ones."""
+    return "models.py" if major == "v1" else f"models_{major}.py"
+
+
 def plan(source: Path) -> dict[Path, Path]:
     """Destination file -> source file, for every file the package must contain."""
-    mapping: dict[Path, Path] = {DEST / "models.py": source / "referencia" / "modelos_v1.py"}
-    for folder, target in (("schemas/v1", "schemas/v1"), ("ejemplos/v1", "examples/v1")):
-        for file in sorted((source / folder).glob("*.json")):
-            mapping[DEST / target / file.name] = file
+    mapping: dict[Path, Path] = {}
+    for major in majors(source):
+        mapping[DEST / models_name(major)] = source / "referencia" / f"modelos_{major}.py"
+        for folder, target in ((f"schemas/{major}", "schemas"), (f"ejemplos/{major}", "examples")):
+            for file in sorted((source / folder).glob("*.json")):
+                mapping[DEST / target / major / file.name] = file
     return mapping
 
 
-def build_lock(mapping: dict[Path, Path], version: str) -> str:
+def build_lock(mapping: dict[Path, Path], versions: dict[str, str]) -> str:
     lock = {
-        "contract_version": version,
+        "contract_versions": versions,
         "pydantic_version": pydantic.VERSION,
         "files": {
             dest.relative_to(DEST).as_posix(): sha256(src) for dest, src in sorted(mapping.items())
@@ -118,17 +134,30 @@ def stale_files(mapping: dict[Path, Path]) -> list[Path]:
     """Copies in the package whose source no longer exists."""
     wanted = set(mapping)
     found = [p for sub in ("schemas", "examples") for p in (DEST / sub).rglob("*.json")]
+    found += list(DEST.glob("models_v*.py"))
     return sorted(p for p in found if p not in wanted)
 
 
 def sync(source: Path, *, check: bool) -> int:
-    for needed in ("referencia/modelos_v1.py", "schemas/v1", "ejemplos/v1"):
-        if not (source / needed).exists():
-            print(f"error: {source / needed} does not exist", file=sys.stderr)
-            return 2
+    published = majors(source)
+    if "v1" not in published:
+        print(f"error: {source / 'referencia' / 'modelos_v1.py'} does not exist", file=sys.stderr)
+        return 2
+    for major in published:
+        for needed in (f"schemas/{major}", f"ejemplos/{major}"):
+            if not (source / needed).exists():
+                print(f"error: {source / needed} does not exist", file=sys.stderr)
+                return 2
 
-    models = load_models(source / "referencia" / "modelos_v1.py")
-    problems = check_source(models, source / "schemas" / "v1", source / "ejemplos" / "v1")
+    problems: list[str] = []
+    for major in published:
+        models = load_models(source / "referencia" / f"modelos_{major}.py")
+        problems += [
+            f"{major}: {problem}"
+            for problem in check_source(
+                models, source / "schemas" / major, source / "ejemplos" / major
+            )
+        ]
     if problems:
         print("The contract source is inconsistent:", file=sys.stderr)
         for problem in problems:
@@ -136,8 +165,8 @@ def sync(source: Path, *, check: bool) -> int:
         return 1
 
     mapping = plan(source)
-    version = contract_version(source / "schemas" / "v1")
-    lock = build_lock(mapping, version)
+    versions = {major: contract_version(source / "schemas" / major) for major in published}
+    lock = build_lock(mapping, versions)
 
     changes = [
         dest.relative_to(DEST).as_posix()
@@ -157,7 +186,7 @@ def sync(source: Path, *, check: bool) -> int:
         if changes or removals or lock_changed:
             print("The platform's copy is out of sync. Run `make sync-contract`.")
             return 1
-        print(f"In sync with contract v{version} ({len(mapping)} files).")
+        print(f"In sync with contract {_describe(versions)} ({len(mapping)} files).")
         return 0
 
     for dest, src in mapping.items():
@@ -167,14 +196,18 @@ def sync(source: Path, *, check: bool) -> int:
         path.unlink()
     LOCK.write_text(lock, encoding="utf-8")
     print(
-        f"Contract v{version}: {len(mapping)} files copied, {len(changes)} changed, "
+        f"Contract {_describe(versions)}: {len(mapping)} files copied, {len(changes)} changed, "
         f"{len(removals)} removed."
     )
     return 0
 
 
+def _describe(versions: dict[str, str]) -> str:
+    return ", ".join(f"{major} {version}" for major, version in versions.items())
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
         "--source", type=Path, default=DEFAULT_SOURCE, help="pred-docs contracts dir"
     )

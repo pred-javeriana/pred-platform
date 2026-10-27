@@ -1,0 +1,79 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "PUBLICADA",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [
+      "m3-real-02"
+    ],
+    "aviso": null
+  },
+  "items": [
+    {
+      "run_id": "m3-real-02",
+      "sku": null,
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sku_class": "smooth",
+      "familia_campeona": "classical",
+      "motivo": "menor_mediana",
+      "adverso": false,
+      "medianas_r": {
+        "classical": 0.95
+      },
+      "skus_comparables": [
+        "SKU-VALIDADO",
+        "SKU-EXPLORATORIO"
+      ],
+      "excluidos": {
+        "SKU-FALLO": "sin_razon_calculable:classical",
+        "SKU-NO-EVALUABLE": "sin_razon_calculable:classical",
+        "SKU-INSUFICIENTE": "sin_razon_calculable:classical"
+      },
+      "familias_excluidas": {
+        "ml": "no_entregada"
+      },
+      "conteos": {
+        "FALLO_TECNICO": 1,
+        "NO_EVALUABLE": 1,
+        "EVIDENCIA_INSUFICIENTE": 1,
+        "VALIDADO": 1,
+        "EXPLORATORIO": 1
+      },
+      "porcentajes": {
+        "FALLO_TECNICO": 20.0,
+        "NO_EVALUABLE": 20.0,
+        "EVIDENCIA_INSUFICIENTE": 20.0,
+        "VALIDADO": 20.0,
+        "EXPLORATORIO": 20.0
+      },
+      "mediana_r": 0.95,
+      "n_adversos": 1
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 1
+  }
+}

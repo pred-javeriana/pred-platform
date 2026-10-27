@@ -8,7 +8,9 @@ It describes the platform's point of view (can *this platform* read it from its 
 narrower than the engine's: ``synthetic_log_read`` works in the engine, but the platform does not
 read the Phase 0 log until G8 lands. ``parquet_read`` is available since the worker launches the
 engine on the ingestion's Parquet (G3), and the selection per SKU, its trials and its Walk-Forward
-windows are in the DAL (G2 and G4).
+windows are in the DAL (G2 and G4). ``champion_selection`` and ``retrospective_validation`` are
+available since the platform reads M3's published champion, verdicts and evidence (contract v2,
+the ``*_m3_*`` operations of ``DataRepository``).
 """
 
 from __future__ import annotations
@@ -39,8 +41,8 @@ REGISTRY: dict[CapabilityId, CapabilityState] = {
     "selection_results_persisted": CapabilityState(True),
     "trial_detail_persisted": CapabilityState(True),
     "walkforward_evidence_persisted": CapabilityState(True),
-    "champion_selection": CapabilityState(False, "stage_not_implemented"),
-    "retrospective_validation": CapabilityState(False, "stage_not_implemented"),
+    "champion_selection": CapabilityState(True),
+    "retrospective_validation": CapabilityState(True),
     "synthetic_log_read": _blocked("G8"),
 }
 

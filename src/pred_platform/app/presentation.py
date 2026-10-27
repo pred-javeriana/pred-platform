@@ -57,11 +57,16 @@ _TRIAL: dict[str, StatusPresentation] = {
     "fallido": StatusPresentation("i-x", "Fallida", "err"),
 }
 
-# Veredictos retrospectivos: claves del contrato (Veredicto).
+# Los cinco veredictos que publica M3 (contrato v2): la etiqueta es el valor literal, sin
+# traducirlo ni reducirlo a otro vocabulario; el ícono y el color solo lo acompañan.
 _VERDICT: dict[str, StatusPresentation] = {
-    "mantiene": StatusPresentation("i-check-circle", "se sostiene", "ok"),
-    "parcial": StatusPresentation("i-minus-circle", "se sostiene parcialmente", "warn"),
-    "falla": StatusPresentation("i-x-circle", "no se sostiene", "err"),
+    "VALIDADO": StatusPresentation("i-check-circle", "VALIDADO", "ok"),
+    "EXPLORATORIO": StatusPresentation("i-info", "EXPLORATORIO", "info"),
+    "EVIDENCIA_INSUFICIENTE": StatusPresentation(
+        "i-minus-circle", "EVIDENCIA_INSUFICIENTE", "warn"
+    ),
+    "NO_EVALUABLE": StatusPresentation("i-ban", "NO_EVALUABLE", "neutral"),
+    "FALLO_TECNICO": StatusPresentation("i-x-circle", "FALLO_TECNICO", "err"),
 }
 
 # Corrida: claves de EstadoEjecucion. sin_ejecucion es estado de página, no de chip.

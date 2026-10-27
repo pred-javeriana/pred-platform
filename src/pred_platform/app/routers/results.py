@@ -2,11 +2,14 @@
 
 Dos páginas sobre ``DataRepository``: la tabla «Por SKU» (``/resultados``) y el detalle de un SKU
 (``/resultados/sku/{sku_id}``). Filtros, orden y paginación se delegan al repositorio; aquí solo se
-arma la consulta y se presentan los documentos tal como llegan.
+arma la consulta y se presentan los documentos tal como llegan. La selección es la de M2; el
+campeón y el veredicto de cada SKU son los que publicó M3 en una corrida exacta
+(``resultados_m3``), y los enlaces conservan esa corrida resuelta.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 from urllib.parse import urlencode
 
@@ -14,6 +17,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from pred_platform.app.datos import error_view, page_meta
+from pred_platform.app.resultados_m3 import M3Decision, decision
 from pred_platform.app.seleccion import (
     FAMILY_ORDER,
     SelectionQuery,
@@ -75,6 +79,8 @@ def resultados(
         rows=[],
         pages=None,
         run=None,
+        m3=M3Decision(),
+        m3_hrefs={},
         tab_query=urlencode({"ejecucion": query.ejecucion}) if query.ejecucion != LATEST else "",
     )
     if vista == "sku" or vista is None:
@@ -95,6 +101,15 @@ def _fill_list(repository: DataRepository, query: SelectionQuery, context: dict[
         return
     context["listing"] = listing
     context["pages"] = page_meta(listing.page)
+    if listing.availability.status == "available":
+        m3 = decision(repository, listing.run_id, [row.sku_id for row in listing.items], query.m3)
+        context["m3"] = m3
+        if m3.run is not None:
+            # Filtros, páginas y detalle conservan la corrida M3 resuelta, no «la más nueva».
+            context["query"] = replace(query, m3=m3.run.run_id)
+        context["m3_hrefs"] = {
+            other: "/resultados?" + query.query_string(m3=other, page="") for other in m3.others
+        }
     # Una celda por familia, en el orden del contrato; una familia que el documento no trae es «—».
     context["rows"] = [
         {"row": row, "cells": {brief.family: brief for brief in row.families}}
@@ -110,36 +125,19 @@ def sku_detalle(
 ) -> HTMLResponse:
     params = dict(request.query_params)
     reference = (params.get("ejecucion") or "").strip() or LATEST
+    wanted_m3 = (params.get("m3") or "").strip() or None
     with_windows = params.get("ventanas") == "1"
     back = params.get("volver", "")
     context = _base_context(repository, "sku")
-    base = {
-        k: v
-        for k, v in (("ejecucion", reference if reference != LATEST else ""), ("volver", back))
-        if v
-    }
-    context.update(
-        sku_id=sku_id,
-        selection=None,
-        detail_error=None,
-        not_found=False,
-        with_windows=with_windows,
-        back_href="/resultados" + (f"?{back}" if back else ""),
-        windows_href=f"/resultados/sku/{sku_id}?{urlencode({**base, 'ventanas': 1})}",
-        hide_windows_href=f"/resultados/sku/{sku_id}" + (f"?{urlencode(base)}" if base else ""),
-        family_order=FAMILY_ORDER,
-        run=None,
-    )
     status = 200
     selection: SkuSelection | None = None
+    detail_error: dict[str, Any] | None = None
     try:
         selection = repository.get_sku_selection(reference, sku_id, include_windows=with_windows)
     except ArtifactMissing as exc:
-        context["not_found"] = True
-        context["detail_error"] = error_view(exc)
-        status = 404
+        detail_error, status = error_view(exc), 404
     except InvalidQuery as exc:
-        context["detail_error"] = {
+        detail_error = {
             "title": "La consulta no es válida.",
             "detail": str(exc),
             "code": "platform.invalid_query",
@@ -147,9 +145,42 @@ def sku_detalle(
         }
         status = 400
     except DataLayerError as exc:
-        context["detail_error"] = error_view(exc)
+        detail_error = error_view(exc)
+    m3 = (
+        decision(repository, selection.run_id, [sku_id], wanted_m3)
+        if selection is not None
+        else M3Decision()
+    )
+    # Los enlaces de esta página conservan la corrida M3 resuelta.
+    resolved_m3 = m3.run.run_id if m3.run is not None else wanted_m3
+    base = {
+        k: v
+        for k, v in (
+            ("ejecucion", reference if reference != LATEST else ""),
+            ("m3", resolved_m3 or ""),
+            ("volver", back),
+        )
+        if v
+    }
+    context.update(
+        sku_id=sku_id,
+        selection=selection,
+        detail_error=detail_error,
+        not_found=status == 404,
+        with_windows=with_windows,
+        back_href="/resultados" + (f"?{back}" if back else ""),
+        windows_href=f"/resultados/sku/{sku_id}?{urlencode({**base, 'ventanas': 1})}",
+        hide_windows_href=f"/resultados/sku/{sku_id}" + (f"?{urlencode(base)}" if base else ""),
+        family_order=FAMILY_ORDER,
+        run=None,
+        m3=m3,
+        m3_hrefs={
+            other: f"/resultados/sku/{sku_id}?{urlencode({**base, 'm3': other})}"
+            for other in m3.others
+        },
+        verdict=m3.verdicts.get(sku_id),
+    )
     if selection is not None:
-        context["selection"] = selection
         context["run"] = _run_header(repository, selection.run_id or reference)
         context["entries"] = sorted(
             selection.families,

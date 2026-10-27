@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "unavailable",
+    "reason_code": "not_published",
+    "detail": "La corrida RECHAZADA no publica evidencia."
+  },
+  "run": {
+    "run_id": "m3-rechazada",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-rechazada\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "RECHAZADA",
+    "causa_rechazo": "manifiesto incompatible con la ingesta",
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": null,
+    "publicadas_misma_identidad": [],
+    "aviso": null
+  },
+  "items": [],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 0
+  },
+  "funnel": null,
+  "late_launches": null
+}
