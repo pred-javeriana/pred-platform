@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "summary": "La plataforma consume el origen y los ajustes del motor sin duplicar sus reglas.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/service.py",
+      "summary": "El encolado consulta el origen antes de escribir y usa parámetros de versión 2.",
+      "annotations": [
+        {
+          "newRange": [104, 109],
+          "summary": "enqueue_run consulta el origen sin mantener una transacción de escritura.",
+          "rationale": "El motor lee la misma base, por eso la consulta ocurre antes de BEGIN IMMEDIATE. Las pruebas comprueban la ausencia de bloqueo y de filas nuevas cuando existe un conflicto. La integración con el motor real espera su nuevo comando.",
+          "author": "fm/pred-platform-p2-use-engine"
+        },
+        {
+          "newRange": [21, 21],
+          "summary": "La versión 2 cambia la identidad de las corridas nuevas.",
+          "rationale": "El hash ya no incluye copias de agregación ni recorte, por eso cambia el formato de sus parámetros. Las corridas existentes conservan su configuración y origen al reanudarse.",
+          "author": "fm/pred-platform-p2-use-engine"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/importacion.py",
+      "summary": "La finalización valida y conserva los ajustes que publica corrida.json.",
+      "annotations": [
+        {
+          "newRange": [157, 164],
+          "summary": "finalize guarda agregación y recorte junto con el estado final.",
+          "rationale": "La actualización queda pendiente hasta la confirmación de finish_run, por eso ambos ajustes y el estado final se guardan juntos. Las pruebas cubren publicaciones válidas, fallos de etapa, valores inválidos y motores anteriores sin evaluation.",
+          "author": "fm/pred-platform-p2-use-engine"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/bucle.py",
+      "summary": "El trabajador usa el origen guardado y comprueba disponibilidad de escritura antes de lanzar.",
+      "annotations": [
+        {
+          "newRange": [148, 148],
+          "summary": "El trabajador conserva la comprobación de escritura sin volver a resolver el origen.",
+          "rationale": "Una base bloqueada debe impedir arrancar un proceso que no se puede registrar. La prueba de bloqueo anterior al lanzamiento conserva esa garantía y exige que no se lance ningún proceso.",
+          "author": "fm/pred-platform-p2-use-engine"
+        }
+      ]
+    }
+  ]
+}
