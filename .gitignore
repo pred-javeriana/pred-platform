@@ -13,3 +13,4 @@ htmlcov/
 *.bak
 .env
 project/
+local_data/

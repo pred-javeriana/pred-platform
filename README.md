@@ -246,14 +246,16 @@ make lint        # ruff check + ruff format --check
 make typecheck   # pyright
 make test        # pytest (coverage must stay at or above 80%)
 make integration # the reduced-panel case against the real engine (PRED_ENGINE_CMD)
+make motor-local # that case with ../pred-engine, plus the receipt the motor-local check reads
 make format      # apply ruff fixes and formatting
 ```
 
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
 runtime dependencies only and requests `/health` and `/` (which redirects to `/datos`).
-CI cannot install the engine yet, so the integration case is skipped there; see
-[the M3 data interface](docs/features/evaluacion/README.md#verificación).
+CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches
+the engine boundary carries a receipt from `make motor-local`, and the `motor-local` check reads it;
+see [the local engine check](docs/features/motor-local/README.md).
 
 ## Pre-commit hooks
 
@@ -273,7 +275,7 @@ entry together. License texts are in `static/licenses/`.
 
 ## Dependencies
 
-See [DEPENDENCIES.md](DEPENDENCIES.md) for the pred-engine git dependency and CI auth approach.
+See [DEPENDENCIES.md](DEPENDENCIES.md) for the pred-engine git dependency and why CI does not install it.
 
 ## UI/frontend work
 
