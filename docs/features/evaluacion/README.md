@@ -114,11 +114,10 @@ La prueba comprueba, mediante `read_m3_evidence` y `m3_run_status`:
 - Cada fila conserva `run_id` y SKU, y la corrida su ingesta y su origen.
 - La reanudación conserva las unidades ya confirmadas y no duplica corridas,
   unidades ni pronósticos.
+- La lectura por SKU incluye la fila de la corrida con su ingesta y su origen.
 
-La lectura por SKU con la fila de la corrida (issue #29) está marcada como
-fallo esperado hasta que se corrija. El caso cubre la pérdida del traspaso
-local de pred-engine#41, pero no el fallo transitorio de ajuste de la familia
-DL que ese issue también necesita.
+El caso cubre la pérdida del traspaso local de pred-engine#41, pero no el
+fallo transitorio de ajuste de la familia DL que ese issue también necesita.
 
 El caso se omite si el motor no está instalado. CI no lo corre todavía, porque
 instalar el motor exige la llave de despliegue descrita en `DEPENDENCIES.md`.

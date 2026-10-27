@@ -215,11 +215,6 @@ def test_resume_reuses_committed_units_and_leaves_no_duplicates(caso: Caso) -> N
         assert conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone() == (1,)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=KeyError,
-    reason="#29: la lectura por SKU todavía omite la fila de la corrida y su origen",
-)
 def test_sku_read_carries_the_run_origin(caso: Caso) -> None:
     sku = sorted(SERIES)[0]
     evidencia = read_m3_evidence(caso.db, caso.estado_detenida["run_id"], sku=sku)
