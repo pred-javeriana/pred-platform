@@ -368,7 +368,7 @@ def test_the_real_dal_feeds_the_table_and_the_detail(
 def test_the_real_dal_answers_for_a_run_that_has_not_finished(env: Env) -> None:
     from tests.test_worker import SMALL, enqueue_run
 
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     text = _text(_dal_client(env).get("/resultados").text)
 
     assert "Todavía no hay selección por SKU." in text

@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import sqlite3
+import subprocess
 import threading
 import time
 from collections.abc import Callable
@@ -28,10 +29,10 @@ import pytest
 from pred_platform.config import ENGINE_COMMAND_VAR, Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.evidencia import m3_run_status, read_m3_evidence
+from pred_platform.dal.importacion import import_reports
 from pred_platform.dal.migrate import migrate
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import DalRunControl
-from pred_platform.worker.ingesta import submit_csv
 from pred_platform.worker.service import LaunchSettings, enqueue_run
 
 pytestmark = pytest.mark.integration
@@ -92,9 +93,26 @@ def caso(tmp_path_factory: pytest.TempPathFactory) -> Caso:
     settings = Settings(data_root=root, db_path=root / "pred.db", engine_command=_engine_command())
     migrate(settings.db_path)
     panel = _panel()
-    sha = submit_csv(settings, "panel_sintetico_reducido.csv", panel)
+    source = root / "panel_sintetico_reducido.csv"
+    source.write_bytes(panel)
+    subprocess.run(
+        [
+            *settings.engine_command,
+            "classify",
+            "--csv",
+            str(source),
+            "--data-root",
+            str(root),
+            "--datos-sinteticos",
+        ],
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+    assert import_reports(settings.db_path, root).ok
+    sha = hashlib.sha256(panel).hexdigest()
     queued = enqueue_run(
-        settings.db_path,
+        settings,
         sha,
         LaunchSettings(
             min_train=40,
@@ -104,10 +122,9 @@ def caso(tmp_path_factory: pytest.TempPathFactory) -> Caso:
             trials=1,
             seed=17,
             workers=1,
-            datos_sinteticos=True,
         ),
     )
-    control = DalRunControl(settings.db_path)
+    control = DalRunControl(settings)
 
     worker = threading.Thread(target=Worker(settings, poll_interval=0.05).run_next)
     worker.start()

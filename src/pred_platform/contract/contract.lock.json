@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "1.1.0",
   "pydantic_version": "2.13.4",
   "files": {
     "examples/v1/capabilities.actual.json": "75fdc57e653591388493299d288bbd9db33c21cf099163510f0fadcaf1b28494",
@@ -26,21 +26,22 @@
     "examples/v1/synthetic_list.vacio.json": "89e7174d5b8d930d863142bb36cb69cdb9473f8d805b28dcbe2220517bc1288f",
     "examples/v1/synthetic_run.bitacora_anterior.json": "d599d8505d1abf51913a2ad0d166deb892c3c37783e467826a94bb6df7b58ead",
     "examples/v1/synthetic_run.normal.json": "52c8ed5f1dca490f73eb70ea30dbc74fc42ebe495b3ee835e0999f0d6e13e1f0",
+    "examples/v1/topology_report.no_aceptada.json": "72abe2bef404689d5fb58b02207db1d1f694437ba4e2dfa7c81015678f607c89",
     "examples/v1/topology_report.normal.json": "23c650c8e82cbcb835a753615b06f6f71738fb84ba7ff480c40a3c4d540f56d1",
     "examples/v1/topology_report.vacio.json": "1a70d24c3fa87cf8bff95a9c4177c39d760723a02c13972774404fcff8f41cfe",
     "examples/v1/validation_verdicts.con_veredictos.json": "254125566e36bf4f5f2054475d7a43c7bcc832c1144581c07878c09b1d7c7cce",
     "examples/v1/validation_verdicts.no_disponible.json": "7feee37c82cd07e5965d40d1df31153b52552ebd65a9702b9e67fa394b1b0dec",
-    "models.py": "16f20c2518d5e976f5510ee0f97b545b7168657be6657f971513d35477c5371d",
-    "schemas/v1/capabilities.schema.json": "50fcf6650c298c1f0367fda8a40cb2b9bf9b483b8312140b22c114cf71204f38",
-    "schemas/v1/error.schema.json": "10e660e1f87714daa0eee2e80e7b112d93ee27a8e37c15b79c21e1a892c581fb",
-    "schemas/v1/ingest_list.schema.json": "568b084210ad1b64a45bb86aa2f355faf881e39987b3a1f1bd4be508373554c0",
-    "schemas/v1/ingest_report.schema.json": "f760c2256e805e15298a2681de22b804fc20d7dfbeed3d5fb06e26a8615eca5e",
-    "schemas/v1/run_status.schema.json": "01df7b463a9c75d5cf0efd633e11a5276d687b0f93c450686df8fe0623d4748d",
-    "schemas/v1/sku_selection.schema.json": "fb71097a82d1ea68322528525624738809357fa0012e4a42ced8d24a6b69207d",
-    "schemas/v1/sku_selection_list.schema.json": "58c3d55d86f694648945cbd7a9c114246eb1b67e24a6ef1f3a8b2719b2929d8d",
-    "schemas/v1/synthetic_list.schema.json": "6fdfee9120bc0f792022c7a2cb8f50bddf77dd5e80ffb016aef87b35dd7ed9ed",
-    "schemas/v1/synthetic_run.schema.json": "0ef2613a5734e215470f57c2e490aaa1b73edad7aa74319418860173d61df9ed",
-    "schemas/v1/topology_report.schema.json": "f3a72c70acf4587d5dac4a9d25e713d0e2d4db985196aa6a6da6c49a1302940c",
-    "schemas/v1/validation_verdicts.schema.json": "498513314dc715239d681e47a2bae0ae25164f9d21378908797b5b38044db7d7"
+    "models.py": "ab6d9dcfe43d5aa75ca8b294cb5abefc856acc755fd7009d601cfa93168e8c29",
+    "schemas/v1/capabilities.schema.json": "0d91bfe3c39903999e9389d323d0572bfd878e3bd65fcc4fa5ed84b149b91334",
+    "schemas/v1/error.schema.json": "88634f29b3d8b166ebf69b4671512c7a9a94016839d5e8cbd2d4716e5cb8d508",
+    "schemas/v1/ingest_list.schema.json": "641d4637eb644665dd1840a84d92061a827968992e9e6f1bf64d6a0a14b7aaa1",
+    "schemas/v1/ingest_report.schema.json": "d02b0f930acc55e87daef88a5a6a45b02cb3bfd6ad399014e9e55dffe6589d87",
+    "schemas/v1/run_status.schema.json": "8d4fcf9d7aa30e6a1af6d67cbe7fc8bec9344b4474f2baafa89d581b5f61aa2e",
+    "schemas/v1/sku_selection.schema.json": "dd3d3268745a0ad7a9acaecfa98a484567f5a342a4eca1eea0e300f7f2c1d447",
+    "schemas/v1/sku_selection_list.schema.json": "28d0a25de43f0f07a7e3b7a8bb44efb43e766ee1f7a1b5bd4a349a166c183f64",
+    "schemas/v1/synthetic_list.schema.json": "157e2dd1ce8c0d75888e1e2af91b78dfc2039b729c99f4d0c6cb0000dc9de7d3",
+    "schemas/v1/synthetic_run.schema.json": "9686ecd3c05f624225fd89d96605ecb86ace732e4e4fd216ac21c8f3b77ad73a",
+    "schemas/v1/topology_report.schema.json": "20763c8e5fc8678076587e27d9aecfc74d8a756cc2d1db0869a52f9815b203b5",
+    "schemas/v1/validation_verdicts.schema.json": "4799c7bd793b9a116b58a3344326f4377a675f72196e1bd1fdd749cfb8258029"
   }
 }

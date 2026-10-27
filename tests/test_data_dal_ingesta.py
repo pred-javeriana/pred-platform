@@ -10,9 +10,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel
 
+from pred_platform.app.main import create_app
+from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.contract.resources import read_schema
 from pred_platform.dal.importacion import import_reports
@@ -53,7 +56,7 @@ def _conforms(kind: str, document: BaseModel) -> None:
     validator = Draft202012Validator(
         read_schema(kind), format_checker=Draft202012Validator.FORMAT_CHECKER
     )
-    data: Any = json.loads(document.model_dump_json(exclude_none=True))
+    data: Any = json.loads(document.model_dump_json())
     assert [e.message for e in validator.iter_errors(data)] == []
 
 
@@ -146,6 +149,7 @@ def test_the_topology_summarises_the_whole_ingestion(repo: DalRepository) -> Non
 
     assert doc.availability.status == "available"
     assert doc.t_star == "2026-03-13"
+    assert doc.thresholds is not None
     assert (doc.thresholds.adi, doc.thresholds.cv2) == (1.32, 0.49)
     assert doc.summary.n_skus == 3
     assert doc.summary.by_class == {"smooth": 1, "intermittent": 1, "erratic": 0, "lumpy": 1}
@@ -214,7 +218,50 @@ def test_an_ingestion_that_was_not_accepted_has_no_topology(
     assert doc.availability.reason_code == "prerequisite_missing"
     assert "no fue aceptada" in (doc.availability.detail or "")
     assert doc.items == [] and doc.summary.n_skus == 0
+    assert doc.thresholds is None
     _conforms("topology_report", doc)
+
+
+@pytest.mark.parametrize("column", ["adi", "cv2", "n_positive"])
+def test_una_metrica_nula_no_se_inventa_ni_cuenta_en_la_pagina(repo: DalRepository, column):
+    with closing(sqlite3.connect(repo.db_path)) as conn, conn:
+        conn.execute(f"UPDATE series SET {column}=NULL WHERE sku='FIL-0001'")
+    doc = repo.get_topology_report(ACCEPTED, size=1)
+    assert doc.page.total == 2 and len(doc.items) == 1
+    assert doc.items[0].sku_id == "FIL-0002"
+    assert repo.get_topology_report(ACCEPTED, q="FIL-0001").page.total == 0
+    assert repo.get_topology_report(ACCEPTED, page=2, size=1).items[0].sku_id == "FIL-0003"
+    _conforms("topology_report", doc)
+
+
+def test_las_metricas_cero_se_conservan(repo: DalRepository):
+    with closing(sqlite3.connect(repo.db_path)) as conn, conn:
+        conn.execute("UPDATE series SET adi=0.2, cv2=0, n_positive=0 WHERE sku='FIL-0001'")
+    [row] = repo.get_topology_report(ACCEPTED, q="FIL-0001").items
+    assert (row.adi, row.cv2, row.n_positive) == (0.2, 0.0, 0)
+
+
+@pytest.mark.parametrize("column", ["umbral_adi", "umbral_cv2"])
+def test_no_suplanta_un_umbral_ausente(repo: DalRepository, column):
+    with closing(sqlite3.connect(repo.db_path)) as conn, conn:
+        conn.execute(f"UPDATE ingestas SET {column}=NULL WHERE sha256=?", (ACCEPTED,))
+    doc = repo.get_topology_report(ACCEPTED)
+    assert doc.thresholds is None and doc.items == []
+    assert doc.availability.status == "unavailable"
+    _conforms("topology_report", doc)
+
+
+def test_la_pagina_de_una_ingesta_rechazada_oculta_los_umbrales(repo: DalRepository):
+    app = create_app(
+        Settings(data_root=repo.db_path.parent / "data", db_path=repo.db_path, worker="off")
+    )
+    app.state.repository = repo
+    response = TestClient(app).get(f"/datos?ingest_id={REJECTED}")
+    assert response.status_code == 200
+    assert "Umbral ADI" not in response.text and "Umbral CV²" not in response.text
+    assert 'class="pred-chart__threshold"' not in response.text
+    assert "El archivo necesita correcciones" in response.text
+    assert "Topología de demanda" not in response.text
 
 
 # ----------------------------------------------------------------- compatibility

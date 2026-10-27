@@ -10,7 +10,6 @@ say why.
 from __future__ import annotations
 
 from contextlib import closing
-from pathlib import Path
 from typing import Protocol
 
 from pred_platform.config import Settings
@@ -18,12 +17,9 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.worker.errores import run_stopped_error
 from pred_platform.worker.service import (
-    ENGINE_AGGREGATION,
-    ENGINE_TRIM,
     EnqueueResult,
     LaunchSettings,
     enqueue_run,
-    unsupported_evaluation,
 )
 
 
@@ -47,8 +43,9 @@ class RunControl(Protocol):
 class DalRunControl:
     """Queues, stops and resumes runs in the platform's database."""
 
-    def __init__(self, db_path: Path) -> None:
-        self._db_path = db_path
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._db_path = settings.db_path
 
     @property
     def reason(self) -> str | None:
@@ -60,7 +57,7 @@ class DalRunControl:
         Raises:
             RunRequestError: the ingestion is unknown or was not accepted.
         """
-        return enqueue_run(self._db_path, ingest_id, settings)
+        return enqueue_run(self._settings, ingest_id, settings)
 
     def stop(self, ejecucion_id: int) -> bool:
         """Stop a queued or running run. False if it had already finished."""
@@ -68,24 +65,8 @@ class DalRunControl:
             return dal.request_stop(conn, ejecucion_id, error=run_stopped_error())
 
     def resume(self, ejecucion_id: int) -> bool:
-        """Queue again a stopped run or one that ended with failures. False if it cannot be.
-
-        A run whose stored settings the engine does not apply (queued before ``LaunchSettings``
-        validated them) stays as it is: resuming it would only run it with other settings.
-        """
+        """Queue again a stopped run or one that ended with failures. False if it cannot be."""
         with closing(dal.connect(self._db_path)) as conn:
-            run = dal.get_run(conn, ejecucion_id)
-            if run is None:
-                return False
-            parametros = run.parametros
-            if (
-                unsupported_evaluation(
-                    parametros.get("aggregation", ENGINE_AGGREGATION),
-                    parametros.get("trim", ENGINE_TRIM),
-                )
-                is not None
-            ):
-                return False
             return dal.resume_run(conn, ejecucion_id)
 
 
@@ -116,7 +97,7 @@ def build_run_control(settings: Settings) -> RunControl:
             "Estás viendo datos de prueba: lanzar, detener y reanudar necesitan la base real "
             "(PRED_DATA_SOURCE=dal)."
         )
-    return DalRunControl(settings.db_path)
+    return DalRunControl(settings)
 
 
 __all__ = [

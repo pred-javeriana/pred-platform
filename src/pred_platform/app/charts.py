@@ -30,15 +30,15 @@ _MARKERS: dict[str, tuple[str, str]] = {
 
 def topology_scatter_svg(report: TopologyReport) -> str:
     """SVG inline con ejes ADI (x) y CV² (y), umbrales y un punto por ítem."""
-    x_max = _span([row.adi for row in report.items], report.thresholds.adi)
-    y_max = _span([row.cv2 for row in report.items], report.thresholds.cv2)
-    adi_line = _map_x(report.thresholds.adi, x_max)
-    cv2_line = _map_y(report.thresholds.cv2, y_max)
+    thresholds = report.thresholds
+    x_max = _span([row.adi for row in report.items], thresholds.adi if thresholds else 0.0)
+    y_max = _span([row.cv2 for row in report.items], thresholds.cv2 if thresholds else 0.0)
     title = "Distribución ADI–CV² de la demanda"
     desc = (
         "Cada marca es un SKU del reporte. El eje horizontal es ADI y el vertical es CV². "
-        "Las líneas de puntos marcan los umbrales del motor. "
-        "Las clases se distinguen por forma: círculo Smooth (Suave), cuadrado Erratic (Errática), "
+        + ("Las líneas de puntos marcan los umbrales del motor. " if thresholds else "")
+        + "Las clases se distinguen por forma: círculo Smooth (Suave), "
+        "cuadrado Erratic (Errática), "
         "triángulo Intermittent (Intermitente) y rombo Lumpy (Grumosa)."
     )
     parts = [
@@ -47,24 +47,31 @@ def topology_scatter_svg(report: TopologyReport) -> str:
         f"<title>{escape(title)}</title>",
         f"<desc>{escape(desc)}</desc>",
         _axes(x_max, y_max),
-        (
-            f'<line x1="{adi_line:.1f}" y1="{_TOP}" x2="{adi_line:.1f}" '
-            f'y2="{_HEIGHT - _BOTTOM}" class="pred-chart__threshold" />'
-        ),
-        (
-            f'<line x1="{_LEFT}" y1="{cv2_line:.1f}" x2="{_WIDTH - _RIGHT}" '
-            f'y2="{cv2_line:.1f}" class="pred-chart__threshold" />'
-        ),
-        (
-            f'<text x="{adi_line:.1f}" y="{_TOP + 12}" class="pred-chart__threshold-label" '
-            f'text-anchor="middle">ADI {escape(format_decimal(report.thresholds.adi))}</text>'
-        ),
-        (
-            f'<text x="{_WIDTH - _RIGHT}" y="{cv2_line - 6:.1f}" '
-            f'class="pred-chart__threshold-label" '
-            f'text-anchor="end">CV² {escape(format_decimal(report.thresholds.cv2))}</text>'
-        ),
     ]
+    if thresholds is not None:
+        adi_line = _map_x(thresholds.adi, x_max)
+        cv2_line = _map_y(thresholds.cv2, y_max)
+        parts.extend(
+            [
+                (
+                    f'<line x1="{adi_line:.1f}" y1="{_TOP}" x2="{adi_line:.1f}" '
+                    f'y2="{_HEIGHT - _BOTTOM}" class="pred-chart__threshold" />'
+                ),
+                (
+                    f'<line x1="{_LEFT}" y1="{cv2_line:.1f}" x2="{_WIDTH - _RIGHT}" '
+                    f'y2="{cv2_line:.1f}" class="pred-chart__threshold" />'
+                ),
+                (
+                    f'<text x="{adi_line:.1f}" y="{_TOP + 12}" class="pred-chart__threshold-label" '
+                    f'text-anchor="middle">ADI {escape(format_decimal(thresholds.adi))}</text>'
+                ),
+                (
+                    f'<text x="{_WIDTH - _RIGHT}" y="{cv2_line - 6:.1f}" '
+                    f'class="pred-chart__threshold-label" '
+                    f'text-anchor="end">CV² {escape(format_decimal(thresholds.cv2))}</text>'
+                ),
+            ]
+        )
     parts.extend(_point(row, x_max, y_max) for row in report.items)
     parts.append(_legend())
     parts.append("</svg>")

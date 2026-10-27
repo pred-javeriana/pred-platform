@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-10-02T06:30:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "unavailable",
+    "reason_code": "no_data",
+    "detail": "Ingesta no aceptada; no contiene informe de topologia."
+  },
+  "ingest_id": "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e",
+  "t_star": null,
+  "thresholds": null,
+  "summary": {
+    "n_skus": 0,
+    "by_class": {
+      "smooth": 0,
+      "intermittent": 0,
+      "erratic": 0,
+      "lumpy": 0
+    }
+  },
+  "items": [],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 0
+  }
+}

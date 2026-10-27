@@ -18,7 +18,7 @@ from pred_platform.contract.resources import example_names, read_example
 
 
 def test_the_contract_version_is_the_locked_one() -> None:
-    assert CONTRACT_VERSION == "1.0.0"
+    assert CONTRACT_VERSION == "1.1.0"
     assert CONTRACT_MAJOR == 1
 
 

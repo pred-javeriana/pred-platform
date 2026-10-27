@@ -164,9 +164,9 @@ def test_topology_of_an_ingest_loaded_before_the_report_existed_is_unavailable(
     # The fixture rows were inserted without a report (estado NULL): there is no topology.
     doc = repo.get_topology_report(SHA_A)
     assert _gap(doc) == ("prerequisite_missing", [])
-    assert "antes de que la plataforma guardara" in (doc.availability.detail or "")
+    assert "no tiene los umbrales" in (doc.availability.detail or "")
     assert doc.ingest_id == SHA_A
-    assert (doc.thresholds.adi, doc.thresholds.cv2) == (1.32, 0.49)
+    assert doc.thresholds is None
     assert doc.items == [] and doc.summary.n_skus == 0
     assert set(doc.summary.by_class) == {"smooth", "intermittent", "erratic", "lumpy"}
 

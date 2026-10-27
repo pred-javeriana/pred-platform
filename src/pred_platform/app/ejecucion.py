@@ -236,5 +236,10 @@ def settings_items(settings: RunSettings) -> list[tuple[str, str]]:
         ("Horizonte", f"{settings.horizon} días"),
         ("Paso", f"{settings.step} días"),
         ("Estacionalidad", f"{settings.seasonality} días"),
-        ("Agregación", f"{settings.aggregation} (recorte {format_decimal(settings.trim, 2)})"),
+        (
+            "Agregación",
+            "Lo informa el motor al terminar la corrida"
+            if settings.aggregation is None or settings.trim is None
+            else f"{settings.aggregation} (recorte {format_decimal(settings.trim, 2)})",
+        ),
     ]
