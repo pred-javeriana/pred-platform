@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -29,7 +30,7 @@ from pred_platform.contract.errors import InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker.engine import build_command
-from tests.test_worker import Env, _scenario, _wait
+from tests.test_worker import Env, _escribir_progreso, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
@@ -223,6 +224,41 @@ def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
     assert 'action="/ejecucion/lanzar"' in html  # the form is there
     assert "data_origin" not in html and "Origen de los datos" not in html
     assert "Sintéticos" not in html
+
+
+def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    assert run.run_id is not None
+
+    def fragmento() -> str:
+        # Lo que la página vuelve a pedir cada 2 s: el dato cambia sin recargar.
+        return _text(client.get("/ejecucion/estado?ejecucion=1").text)
+
+    _escribir_progreso(
+        env,
+        run.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L2"},
+    )
+    assert "Etapa en curso: Ajuste e HPO (M2)" in fragmento()
+    assert "M3:" not in fragmento()
+    _escribir_progreso(
+        env,
+        run.run_id,
+        {"event": "stage_started", "stage": "L4"},
+        {"event": "planned", "stage": "L4", "units": [{"sku_id": s} for s in "ABC"]},
+        {"event": "unit_finished", "stage": "L4", "sku_id": "A", "state": "completada"},
+        {"event": "unit_finished", "stage": "L4", "sku_id": "B", "state": "completada"},
+    )
+    texto = fragmento()
+    assert "Etapa en curso: Evaluación M3" in texto and "M3: 2 de 3 SKU" in texto
+    page = client.get("/ejecucion?ejecucion=1").text
+    assert "La etapa analítica actual no está informada" not in page
 
 
 def test_a_form_launch_is_recorded_as_real_data_even_if_origin_is_posted(env: Env) -> None:

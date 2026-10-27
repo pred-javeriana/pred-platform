@@ -51,6 +51,10 @@
     {% set bar_label = "Avance de la ejecución" %}
   {% endif %}
   {{ progress_bar(done, progress.tareas_total, pct, bar_label, circular=true) }}
+  {% if progress.etapa_actual %}
+  {% set etapas = {"L1": "Ingesta de datos (M1)", "L2": "Ajuste e HPO (M2)", "L3": "Validación walk-forward (M2)", "L4": "Evaluación M3"} %}
+  <p class="pred-meta">Etapa en curso: <strong>{{ etapas.get(progress.etapa_actual, progress.etapa_actual) }}</strong>{% if progress.m3_skus_total is not none %} · M3: {{ format_count(progress.m3_skus_terminados) }} de {{ format_count(progress.m3_skus_total) }} SKU{% endif %}</p>
+  {% endif %}
   {% endif %}
 </section>
 <section class="pred-panel pred-panel--side" aria-labelledby="titulo-tareas-resumen">
@@ -91,7 +95,7 @@
     {"id": "configuracion-corrida", "label": "Configuración", "hint": "Parámetros y trazabilidad"}
   ], "Secciones de la ejecución", action={"label": "Nueva ejecución", "href": "/ejecucion?ingest_id=" ~ selected_ingest ~ "#lanzar"} if selected_ingest else {"label": "Cargar datos", "href": "/datos"}) }}
 {% call evidence_panel("configuracion-corrida", "Configuración y trazabilidad", "Consulte los parámetros de esta corrida y la reserva registrada.") %}
-    <p class="pred-meta">El avance corresponde a las tareas informadas. La etapa analítica actual no está informada en este contrato.</p>
+    <p class="pred-meta">El avance corresponde a las tareas informadas; la etapa en curso y el avance de M3 se muestran junto a la barra mientras la ejecución corre.</p>
     <dl class="pred-kv">
       {% for label, value in settings_rows %}<dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
       {% if reserve %}
