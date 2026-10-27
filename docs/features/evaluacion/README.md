@@ -119,8 +119,7 @@ La prueba comprueba, mediante `read_m3_evidence` y `m3_run_status`:
 El caso cubre la pérdida del traspaso local de pred-engine#41, pero no el
 fallo transitorio de ajuste de la familia DL que ese issue también necesita.
 
-El caso se omite si el motor no está instalado. CI no lo corre todavía, porque
-instalar el motor exige la llave de despliegue descrita en `DEPENDENCIES.md`.
+El caso se omite si el motor no está instalado. CI no corre este caso; el motor se corre en local.
 Para correrlo en local, con el motor en `../pred-engine`:
 
 ```bash
