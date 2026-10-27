@@ -199,6 +199,10 @@ def test_selection_list_without_any_run_is_an_empty_state(repo: DalRepository) -
 def test_verdicts_are_unavailable_because_the_stage_does_not_exist(repo: DalRepository) -> None:
     doc = repo.get_validation_verdicts(RUN)
     assert _gap(doc) == ("stage_not_implemented", [])
+    assert (
+        doc.availability.detail
+        == "La lectura de los veredictos publicados por M3 (contrato M4 4.1) no está integrada."
+    )
 
 
 def test_synthetic_list_is_unavailable_and_blocked_by_g8(repo: DalRepository) -> None:

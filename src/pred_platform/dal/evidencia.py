@@ -22,11 +22,12 @@ def read_m3_evidence(
 ) -> dict[str, list[dict[str, Any]]]:
     """Published evidence by M2 or M3 run id; all values come directly from SQLite.
 
-    With ``sku``, return only the SKU-scoped tables. Portfolio distributions
-    remain run-scoped and are available through the unfiltered call.
-    Materializes the full matching run(s) in one read snapshot. An M2 alias
-    can match several M3 runs; choose a specific M3 id and SKU to bound reads.
-    Missing databases and databases predating M3 return an empty mapping.
+    With ``sku``, return the run's ``m3_corridas`` row alongside the SKU-scoped
+    tables. Portfolio distributions remain run-scoped and are available through
+    the unfiltered call. Materializes the full matching run(s) in one read
+    snapshot. An M2 alias can match several M3 runs; choose a specific M3 id
+    and SKU to bound reads. Missing databases and databases predating M3 return
+    an empty mapping.
     """
     with _open_readonly(db_path) as conn:
         if conn is None:
@@ -44,7 +45,9 @@ def read_m3_evidence(
         for (table,) in tables:
             quoted = '"' + table.replace('"', '""') + '"'
             columns = {row[1] for row in conn.execute(f"PRAGMA table_info({quoted})")}
-            if "run_id" not in columns or (sku is not None and "sku" not in columns):
+            if "run_id" not in columns or (
+                sku is not None and "sku" not in columns and table != "m3_corridas"
+            ):
                 continue
             sql = (
                 f"SELECT * FROM {quoted} WHERE run_id IN ("
@@ -52,7 +55,7 @@ def read_m3_evidence(
                 "AND (run_id = ? OR run_id_m2 = ?))"
             )
             params = [run_id, run_id]
-            if sku is not None:
+            if sku is not None and "sku" in columns:
                 sql += " AND sku = ?"
                 params.append(sku)
             result[table] = [dict(row) for row in conn.execute(sql + " ORDER BY rowid", params)]
