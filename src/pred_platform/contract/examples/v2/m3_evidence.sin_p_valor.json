@@ -1,0 +1,112 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-sin-prueba",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-sin-prueba\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "PUBLICADA",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [
+      "m3-sin-prueba"
+    ],
+    "aviso": null
+  },
+  "items": [
+    {
+      "run_id": "m3-sin-prueba",
+      "sku": "SKU-VALIDADO",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-sin-prueba\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": false,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "VALIDADO",
+      "familia_campeona": "classical",
+      "candidato_campeon": "SKU-VALIDADO/classical/sarima",
+      "n_ventanas": 40,
+      "n_min": 30,
+      "cobertura": 1.0,
+      "razon_sn": 0.8,
+      "pierde_frente_a_linea_base": false,
+      "comparacion_incompleta": false,
+      "iqr_diferencia_mae": 0.5,
+      "dm_n_ventanas": 40,
+      "dm_horizonte": 7,
+      "dm_estadistico": null,
+      "dm_p_valor": null,
+      "dm_p_ajustado": null,
+      "dm_alfa": null,
+      "dm_significativa": null,
+      "dm_causa": "varianza_no_positiva",
+      "justificacion": "VALIDADO: datos reales, ventanas suficientes y r < 1 (descriptivo)",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-sin-prueba",
+          "sku": "SKU-VALIDADO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-VALIDADO/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": 1.0
+        },
+        {
+          "run_id": "m3-sin-prueba",
+          "sku": "SKU-VALIDADO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-VALIDADO/classical/sarima",
+          "familia": "classical",
+          "modelo": "sarima",
+          "razon_sn": 0.8
+        }
+      ]
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 1
+  },
+  "funnel": {
+    "run_id": "m3-sin-prueba",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "total_productos": 1,
+    "excluded_count": 0,
+    "tras_exclusiones": 1,
+    "no_evaluados": 0,
+    "evaluados": 1,
+    "conteos": {
+      "FALLO_TECNICO": 0,
+      "NO_EVALUABLE": 0,
+      "EVIDENCIA_INSUFICIENTE": 0,
+      "VALIDADO": 1,
+      "EXPLORATORIO": 0
+    }
+  },
+  "late_launches": {
+    "run_id": "m3-sin-prueba",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t_star": "2026-06-30",
+    "excluded_count": 0,
+    "items": []
+  }
+}

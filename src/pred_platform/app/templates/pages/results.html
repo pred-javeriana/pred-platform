@@ -31,7 +31,7 @@
   {% elif champion_capability.available %}
     {{ empty_state(
       "Esta vista todavía no está construida.",
-      "El campeón por SKU ya existe, pero el resumen y la vista por clase aún no se han implementado en la interfaz. «Por SKU» muestra la evidencia de cada familia."
+      "M3 ya publica el campeón y el veredicto de cada SKU, pero el resumen y la vista por clase aún no se han implementado en la interfaz. «Por SKU» muestra el campeón y el veredicto publicados junto a la evidencia de cada familia."
     ) }}
   {% else %}
     {{ unavailable_state(
@@ -46,6 +46,7 @@
     <p class="pred-eyebrow">Contexto de la consulta</p>
     <h2 id="contexto-resultados">Sobre estos resultados</h2>
     {{ run_line(run, listing.run_id if listing else none) }}
+    {% include "partials/results_m3.html" %}
     {% include "partials/results_scope.html" %}
     <div class="pred-next-action">
       <p>Prepare otra corrida desde Ejecución.</p>

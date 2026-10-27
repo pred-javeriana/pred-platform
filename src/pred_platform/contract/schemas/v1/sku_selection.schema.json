@@ -61,7 +61,7 @@
     },
     "Champion": {
       "additionalProperties": false,
-      "description": "Fila de `resultados_comparativos`. Hoy nadie la escribe (M3 no existe).",
+      "description": "Campeon historico v1 de `resultados_comparativos`; M3 publica en `m3_veredictos`.",
       "properties": {
         "modelo": {
           "pattern": "^(classical|ml|dl|foundation):[a-z0-9][a-z0-9._-]*$",

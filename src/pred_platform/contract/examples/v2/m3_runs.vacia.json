@@ -1,0 +1,17 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "unavailable",
+    "reason_code": "no_data",
+    "detail": "No hay corridas M3 para la consulta."
+  },
+  "items": [],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 0
+  },
+  "selected_run_id": null
+}

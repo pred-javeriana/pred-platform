@@ -1,7 +1,13 @@
-"""M3 reads are publication-gated, read-only and do not recalculate metrics."""
+"""M3's published evidence read by the ``dal`` source as contract v2 documents (M4, section 4.1).
+
+Every read goes through ``DalRepository``: publication-gated, one snapshot, typed rows that keep the
+run, the SKU and the ingest SHA, and a funnel built from the published counts and the late-launch
+metadata of the ingestion's Parquet, never from the visible page.
+"""
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 from contextlib import closing, contextmanager
@@ -9,231 +15,543 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from pred_platform.config import Settings
+from pred_platform.contract import M3_CONTRACT_VERSION
+from pred_platform.contract.errors import ContractInvalid, InvalidQuery
+from pred_platform.contract.resources import read_schema
 from pred_platform.dal import evidencia
-from pred_platform.dal.evidencia import m3_run_status, read_m3_evidence
 from pred_platform.dal.lectura import _open_readonly
-from pred_platform.dal.migrate import migrate
+from pred_platform.dal.migrate import apply_migrations, load_migrations, migrate
+from pred_platform.data.dal import DalRepository
 from pred_platform.worker.engine import launch
+from tests.m3_publicada import LATE, identity, publish, write_parquet
+
+SHA = "c" * 64
+PARQUET = "processed/panel.parquet"
+RUN = "m3-real-1"
+M2 = "m2-run-1"
+FIVE = {
+    "SKU-A": ("smooth", "VALIDADO"),
+    "SKU-B": ("smooth", "EXPLORATORIO"),
+    "SKU-C": ("smooth", "EVIDENCIA_INSUFICIENTE"),
+    "SKU-D": ("lumpy", "NO_EVALUABLE"),
+    "SKU-E": ("lumpy", "FALLO_TECNICO"),
+}
 
 
-def _database(path: Path) -> None:
-    migrate(path)
-    with closing(sqlite3.connect(path)) as conn:
-        conn.execute("PRAGMA foreign_keys = ON")
+@pytest.fixture
+def root(tmp_path: Path) -> Path:
+    data = tmp_path / "data"
+    migrate(tmp_path / "pred.db")
+    with closing(sqlite3.connect(tmp_path / "pred.db")) as conn:
         conn.execute(
-            "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus) "
-            "VALUES ('source', 'source.csv', 35, 2)"
+            "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus, ruta_parquet) "
+            "VALUES (?, 'panel.csv', 100, 7, ?)",
+            (SHA, PARQUET),
         )
-        conn.execute(
-            "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, "
-            "datos_sinteticos, estado) "
-            "VALUES ('m3-test', 'source', 'm2-test', '{}', 1, 'EN_CURSO')"
-        )
-        conn.execute(
-            "INSERT INTO m3_protocolos (run_id, protocolo, manifiesto, procedencia, "
-            "reserva_abierta_en, n_unidades_previstas) "
-            "VALUES ('m3-test', '{}', '{}', '{}', '2026-10-18T12:00:00+00:00', 12)"
-        )
-        conn.execute(
-            "INSERT INTO m3_categorias (run_id, sku_class, familia_campeona, motivo, adverso, "
-            "medianas_r, skus_comparables, excluidos, familias_excluidas, conteos, "
-            "porcentajes, n_adversos) VALUES ('m3-test', 'smooth', 'classical', "
-            "'menor_mediana', 0, '{}', '[]', '{}', '{}', '{}', '{}', 0)"
-        )
-        for sku in ("A", "B"):
-            conn.execute("INSERT INTO m3_skus VALUES ('m3-test', ?)", (sku,))
-            conn.execute(
-                "INSERT INTO m3_veredictos (run_id, sku, sku_class, veredicto, familia_campeona, "
-                "n_ventanas, cobertura, razon_sn, comparacion_incompleta, dm_n_ventanas, "
-                "dm_horizonte, dm_causa, justificacion, modelos_evaluados) "
-                "VALUES ('m3-test', ?, 'smooth', 'EXPLORATORIO', 'classical', 40, "
-                "1.0, 0.75, 0, 0, 0, 'datos_sinteticos', 'datos aumentados', '[]')",
-                (sku,),
-            )
-        conn.execute(
-            "INSERT INTO m3_cartera VALUES "
-            "('m3-test', 'smooth', 'classical', 'rmse', 2, 2, 2, 0, 3.0, 3.0, 2.0, 4.0)"
-        )
+        conn.commit()
+    write_parquet(data / PARQUET, late=("SKU-TARDIO-1", "SKU-TARDIO-2"))
+    return tmp_path
+
+
+def _db(root: Path) -> Path:
+    return root / "pred.db"
+
+
+def _repo(root: Path) -> DalRepository:
+    return DalRepository(_db(root), root / "data")
+
+
+def _publish(root: Path, **options: Any) -> None:
+    options.setdefault("verdicts", FIVE)
+    publish(_db(root), ingesta_sha256=SHA, run_id_m2=M2, **options)
+
+
+def _sql(root: Path, statement: str, *params: object) -> None:
+    with closing(sqlite3.connect(_db(root))) as conn:
+        conn.execute(statement, params)
         conn.commit()
 
 
-def test_unpublished_run_has_status_but_no_evidence(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    hidden = read_m3_evidence(db, "m2-test")
-    assert set(hidden) == {
-        "m3_cartera",
-        "m3_categorias",
-        "m3_corridas",
-        "m3_fallos",
-        "m3_metricas",
-        "m3_pronosticos",
-        "m3_protocolos",
-        "m3_skus",
-        "m3_unidades",
-        "m3_veredictos",
+def _conforms(document: Any, kind: str) -> None:
+    validator = Draft202012Validator(
+        read_schema(kind), format_checker=Draft202012Validator.FORMAT_CHECKER
+    )
+    data = json.loads(document.model_dump_json())
+    assert [e.message for e in validator.iter_errors(data)] == []
+
+
+# ----------------------------------------------------------------------- evidence
+def test_published_evidence_keeps_the_five_verdicts_their_numbers_and_identity(
+    root: Path,
+) -> None:
+    _publish(root)
+    doc = _repo(root).get_m3_evidence(RUN)
+
+    _conforms(doc, "m3_evidence")
+    assert (doc.source, doc.schema_version, doc.availability.status) == (
+        "dal",
+        M3_CONTRACT_VERSION,
+        "available",
+    )
+    assert doc.run is not None and doc.run.policy is not None
+    assert (doc.run.run_id, doc.run.run_id_m2, doc.run.estado) == (RUN, M2, "PUBLICADA")
+    assert doc.run.policy.n_min == 30 and doc.run.identidad == identity()
+    assert doc.run.creado_en.isoformat() == "2026-10-27T10:00:00+00:00"
+    verdicts = {row.sku: row for row in doc.items}
+    assert {sku: row.veredicto for sku, row in verdicts.items()} == {
+        sku: verdict for sku, (_, verdict) in FIVE.items()
     }
-    assert list(map(len, hidden.values())) == [0] * 10
-    assert m3_run_status(db, "m2-test")[0]["estado"] == "EN_CURSO"
-    assert m3_run_status(db, "m2-test")[0]["n_unidades_previstas"] == 12
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("UPDATE m3_corridas SET estado = 'PUBLICADA' WHERE run_id = 'm3-test'")
-        conn.commit()
-    published = read_m3_evidence(db, "m2-test")
-    assert [
-        (row["sku"], row["veredicto"], row["razon_sn"]) for row in published["m3_veredictos"]
-    ] == [("A", "EXPLORATORIO", 0.75), ("B", "EXPLORATORIO", 0.75)]
-    assert published["m3_cartera"][0]["mediana"] == 3.0
+    validated = verdicts["SKU-A"]
+    assert (validated.familia_campeona, validated.candidato_campeon) == (
+        "classical",
+        "SKU-A/classical/sarima",
+    )
+    assert (validated.n_ventanas, validated.n_min, validated.razon_sn) == (40, 30, 0.8)
+    assert (validated.dm_p_ajustado, validated.dm_significativa, validated.dm_causa) == (
+        0.08,
+        False,
+        None,
+    )
+    assert (validated.datos_sinteticos, validated.origen_declarado) == (False, True)
+    failed = verdicts["SKU-E"]
+    assert (failed.candidato_campeon, failed.dm_causa, failed.dm_p_valor) == (
+        None,
+        "veredicto:FALLO_TECNICO",
+        None,
+    )
+    for row in doc.items:
+        assert (row.run_id, row.ingesta_sha256) == (RUN, SHA)
+        assert {(m.run_id, m.sku, m.ingesta_sha256) for m in row.modelos_evaluados} == {
+            (RUN, row.sku, SHA)
+        }
 
 
-def test_progress_separates_successes_from_failed_durable_units(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute(
-            "INSERT INTO m3_unidades "
-            "(run_id, sku, candidato_id, origen, familia, modelo, estado, causa) "
-            "VALUES ('m3-test', 'A', 'A/ml', '2024-01-14', 'ml', 'lightgbm', 'confirmada', NULL)"
-        )
-        conn.execute(
-            "INSERT INTO m3_unidades "
-            "(run_id, sku, candidato_id, origen, familia, modelo, estado, causa) "
-            "VALUES ('m3-test', 'B', 'B/ml', '2024-01-14', 'ml', 'lightgbm', 'fallida', 'error')"
-        )
-        conn.commit()
-    status = m3_run_status(db, "m2-test")[0]
-    assert (status["n_resueltas"], status["n_confirmadas"], status["n_fallidas"]) == (2, 1, 1)
-    assert status == {
-        "run_id": "m3-test",
-        "run_id_m2": "m2-test",
-        "estado": "EN_CURSO",
-        "causa_rechazo": None,
-        "datos_sinteticos": 1,
-        "origen_declarado": 1,
-        "n_unidades_previstas": 12,
-        "n_resueltas": 2,
-        "n_confirmadas": 1,
-        "n_fallidas": 1,
-    }
-    hidden = read_m3_evidence(db, "m2-test")
-    assert len(hidden) == 10 and [len(rows) for rows in hidden.values()] == [0] * 10
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("UPDATE m3_corridas SET estado = 'PUBLICADA'")
-        conn.commit()
-    assert [
-        (r["sku"], r["veredicto"]) for r in read_m3_evidence(db, "m2-test")["m3_veredictos"]
-    ] == [("A", "EXPLORATORIO"), ("B", "EXPLORATORIO")]
+def test_the_funnel_counts_every_product_and_the_late_launches_from_the_parquet(
+    root: Path,
+) -> None:
+    _publish(root)
+    doc = _repo(root).get_m3_evidence(RUN, skus=["SKU-A"])
 
-
-def test_published_sku_scope_and_reads_never_write(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("UPDATE m3_corridas SET estado = 'PUBLICADA'")
-        conn.commit()
-    before = db.read_bytes()
-    one = read_m3_evidence(db, "m3-test", sku="B")
-    assert [(row["sku"], row["dm_causa"]) for row in one["m3_veredictos"]] == [
-        ("B", "datos_sinteticos")
+    assert doc.funnel is not None and doc.late_launches is not None
+    funnel = doc.funnel
+    assert (funnel.total_productos, funnel.excluded_count, funnel.tras_exclusiones) == (7, 2, 5)
+    assert (funnel.no_evaluados, funnel.evaluados) == (3, 2)
+    assert funnel.conteos.model_dump() == dict.fromkeys(
+        ("FALLO_TECNICO", "NO_EVALUABLE", "EVIDENCIA_INSUFICIENTE", "VALIDADO", "EXPLORATORIO"), 1
+    )
+    assert (funnel.sku, funnel.run_id, funnel.ingesta_sha256) == (None, RUN, SHA)
+    late = doc.late_launches
+    assert late.t_star == "2026-03-13"
+    assert [(row.sku, row.causa) for row in late.items] == [
+        ("SKU-TARDIO-1", LATE),
+        ("SKU-TARDIO-2", LATE),
     ]
-    assert "m3_cartera" not in one
-    assert m3_run_status(db, "m3-test")[0]["n_confirmadas"] == 0
-    assert db.read_bytes() == before
-    with evidencia._open_readonly(db) as conn:
+    # The page is filtered; the funnel still describes the whole run.
+    assert [row.sku for row in doc.items] == ["SKU-A"] and doc.page.total == 1
+
+
+def test_missing_cutoff_metadata_is_not_zero_exclusions(root: Path) -> None:
+    _publish(root)
+    (root / "data" / PARQUET).unlink()
+    repo = _repo(root)
+
+    doc = repo.get_m3_evidence(RUN)
+    assert (doc.availability.status, doc.availability.reason_code) == (
+        "unavailable",
+        "metadata_missing",
+    )
+    assert doc.availability.detail and "no significa cero exclusiones" in doc.availability.detail
+    assert doc.items == [] and doc.funnel is None and doc.late_launches is None
+    assert doc.run is not None and doc.run.estado == "PUBLICADA"
+    # The auxiliary evidence of the same PUBLICADA run is still complete and available.
+    assert repo.get_m3_metrics(RUN).availability.status == "available"
+
+    # A Parquet written before M1 kept the metadata reads the same way.
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    pq.write_table(pa.table({"sku_id": ["SKU-A"]}), root / "data" / PARQUET)
+    assert repo.get_m3_evidence(RUN).availability.reason_code == "metadata_missing"
+
+
+def test_malformed_cutoff_metadata_is_a_contract_error(root: Path) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    _publish(root)
+    table = pa.table({"sku_id": ["SKU-A"]}).replace_schema_metadata(
+        {b"pred_engine": b'{"t_star": "13/03/2026"}'}
+    )
+    pq.write_table(table, root / "data" / PARQUET)
+    with pytest.raises(ContractInvalid, match="t_star"):
+        _repo(root).get_m3_evidence(RUN)
+
+
+def test_a_late_launch_cause_that_is_not_the_published_one_is_rejected(root: Path) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    _publish(root)
+    metadata = {"t_star": "2026-03-13", "exclusions": [{"sku_id": "X", "cause": "otra causa"}]}
+    table = pa.table({"sku_id": ["SKU-A"]}).replace_schema_metadata(
+        {b"pred_engine": json.dumps(metadata).encode()}
+    )
+    pq.write_table(table, root / "data" / PARQUET)
+    with pytest.raises(ContractInvalid, match="late_launches"):
+        _repo(root).get_m3_evidence(RUN)
+
+
+def test_filters_groups_order_and_pages_are_applied_by_sqlite(root: Path) -> None:
+    _publish(root)
+    repo = _repo(root)
+
+    def skus(**query: Any) -> list[str]:
+        return [row.sku for row in repo.get_m3_evidence(RUN, **query).items]
+
+    assert skus(grupo="evaluados") == ["SKU-A", "SKU-B"]
+    assert skus(grupo="no_evaluados") == ["SKU-C", "SKU-D", "SKU-E"]
+    assert skus(veredicto="VALIDADO") == ["SKU-A"]
+    assert skus(sku_class="lumpy") == ["SKU-D", "SKU-E"]
+    assert skus(q="sku-d") == ["SKU-D"]
+    assert skus(q="%") == [] and skus(q="_") == []
+    assert skus(skus=["SKU-E", "SKU-A", "SKU-Z"]) == ["SKU-A", "SKU-E"]
+    assert skus(skus=[]) == []
+    assert skus(familia_campeona="seasonal_naive") == []
+    # r ascending, the SKUs without r last in either direction, ties broken by SKU.
+    assert skus(sort="razon_sn") == ["SKU-A", "SKU-B", "SKU-C", "SKU-D", "SKU-E"]
+    assert skus(sort="razon_sn", descending=True) == ["SKU-B", "SKU-A", "SKU-C", "SKU-D", "SKU-E"]
+    second = repo.get_m3_evidence(RUN, size=2, page=2)
+    assert [r.sku for r in second.items] == ["SKU-C", "SKU-D"] and second.page.total == 5
+    beyond = repo.get_m3_evidence(RUN, size=2, page=9)
+    assert beyond.items == [] and beyond.page.total == 5
+    assert beyond.funnel is not None and beyond.funnel.tras_exclusiones == 5
+    bad: list[dict[str, Any]] = [
+        {"veredicto": "mantiene"},
+        {"grupo": "todos"},
+        {"sort": "valor"},
+        {"size": 501},
+    ]
+    for query in bad:
+        with pytest.raises(InvalidQuery):
+            repo.get_m3_evidence(RUN, **query)
+
+
+def test_unknown_and_synthetic_origins_are_never_read_as_real_data(root: Path) -> None:
+    _publish(
+        root,
+        origin="desconocido",
+        verdicts={"SKU-A": ("smooth", "EXPLORATORIO")},
+    )
+    _publish(
+        root,
+        run_id="m3-sintetica",
+        origin="sintetico",
+        configuracion="config-2",
+        verdicts={"SKU-A": ("smooth", "EXPLORATORIO")},
+    )
+    repo = _repo(root)
+    [unknown] = repo.get_m3_evidence(RUN).items
+    [synthetic] = repo.get_m3_evidence("m3-sintetica").items
+    assert (unknown.datos_sinteticos, unknown.origen_declarado, unknown.dm_causa) == (
+        False,
+        False,
+        "origen_desconocido",
+    )
+    assert (synthetic.datos_sinteticos, synthetic.origen_declarado, synthetic.dm_causa) == (
+        True,
+        True,
+        "datos_sinteticos",
+    )
+    assert unknown.dm_p_valor is None and synthetic.dm_p_valor is None
+
+
+# ------------------------------------------------------------------ publication gate
+def test_an_unpublished_run_shows_its_progress_and_metadata_but_no_evidence(root: Path) -> None:
+    _publish(root, estado="EN_CURSO")
+    repo = _repo(root)
+
+    status = repo.get_m3_run_status(RUN)
+    _conforms(status, "m3_run_status")
+    assert status.availability.status == "available"
+    assert status.run is not None and status.run.estado == "EN_CURSO"
+    assert status.progress is not None
+    progress = status.progress
+    assert (progress.n_unidades_previstas, progress.n_resueltas) == (20, 18)
+    assert (progress.n_confirmadas, progress.n_fallidas) == (17, 1)
+    for doc in (
+        repo.get_m3_evidence(RUN),
+        repo.get_m3_metrics(RUN),
+        repo.get_m3_categories(RUN),
+        repo.get_m3_portfolio(RUN),
+        repo.get_m3_forecasts(RUN),
+        repo.get_m3_failures(RUN),
+        repo.get_m3_units(RUN),
+    ):
+        assert (doc.availability.status, doc.availability.reason_code) == (
+            "unavailable",
+            "not_published",
+        )
+        assert doc.items == [] and doc.page.total == 0
+        assert doc.run is not None and doc.run.run_id == RUN
+        assert (
+            doc.availability.detail
+            == f"La corrida M3 {RUN} está EN_CURSO; su evidencia aparece al publicarse."
+        )
+
+    _sql(root, "UPDATE m3_corridas SET estado = 'PUBLICADA'")
+    assert len(repo.get_m3_evidence(RUN).items) == 5
+
+
+def test_a_rejected_run_names_its_cause_and_never_its_rows(root: Path) -> None:
+    _publish(root, estado="RECHAZADA")
+    doc = _repo(root).get_m3_evidence(RUN)
+    assert doc.availability.reason_code == "not_published" and doc.items == []
+    assert doc.run is not None and doc.run.causa_rechazo == "manifiesto incompatible con la ingesta"
+    assert doc.availability.detail == (
+        f"La corrida M3 {RUN} fue RECHAZADA: manifiesto incompatible con la ingesta"
+    )
+
+
+def test_an_unknown_run_is_no_data(root: Path) -> None:
+    repo = _repo(root)
+    for doc in (repo.get_m3_evidence("otra"), repo.get_m3_units("otra")):
+        assert doc.availability.reason_code == "no_data" and doc.run is None
+    assert repo.get_m3_run_status("otra").run is None
+
+
+def test_publication_during_the_read_keeps_one_snapshot(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _publish(root, estado="SELECCIONADA")
+    published = False
+
+    @contextmanager
+    def publishing_reader(path: Path) -> Any:
+        with _open_readonly(path) as conn:
+            assert conn is not None
+
+            def publish_after_the_state_is_read(sql: str) -> None:
+                nonlocal published
+                if not published and sql.startswith("SELECT run_id FROM m3_corridas WHERE"):
+                    published = True
+                    with closing(sqlite3.connect(_db(root))) as writer:
+                        writer.execute("UPDATE m3_corridas SET estado = 'PUBLICADA'")
+                        writer.commit()
+
+            conn.set_trace_callback(publish_after_the_state_is_read)
+            yield conn
+
+    monkeypatch.setattr(evidencia, "_open_readonly", publishing_reader)
+    during = _repo(root).get_m3_evidence(RUN)
+    assert published
+    # The snapshot started before the writer committed: the run and its rows agree.
+    assert during.availability.reason_code == "not_published" and during.items == []
+    assert during.run is not None and during.run.estado == "SELECCIONADA"
+    monkeypatch.setattr(evidencia, "_open_readonly", _open_readonly)
+    assert len(_repo(root).get_m3_evidence(RUN).items) == 5
+
+
+def test_the_status_reads_schema_and_rows_from_one_snapshot_during_an_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = tmp_path / "platform.db"
+    migrate(db, load_migrations()[:7])  # version 7: no origin declaration marker yet
+
+    def upgrade_and_store_unknown_origin() -> None:
+        with closing(sqlite3.connect(db)) as writer:
+            apply_migrations(writer, load_migrations())
+            writer.execute(
+                "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, "
+                "datos_sinteticos, origen_declarado, estado) "
+                "VALUES ('m3-race', ?, 'm2-race', '{}', 0, 0, 'EN_CURSO')",
+                (SHA,),
+            )
+            writer.commit()
+
+    @contextmanager
+    def racing_open(path: Path) -> Any:
+        with _open_readonly(path) as conn:
+            assert conn is not None
+
+            def trace(sql: str) -> None:
+                # The engine upgrades and writes between the schema probe and the row read.
+                if sql.startswith("SELECT c.run_id"):
+                    conn.set_trace_callback(None)
+                    upgrade_and_store_unknown_origin()
+
+            conn.set_trace_callback(trace)
+            yield conn
+
+    monkeypatch.setattr(evidencia, "_open_readonly", racing_open)
+    assert DalRepository(db).get_m3_run_status("m3-race").run is None
+    monkeypatch.setattr(evidencia, "_open_readonly", _open_readonly)
+    run = DalRepository(db).get_m3_run_status("m3-race").run
+    assert run is not None and (run.datos_sinteticos, run.origen_declarado) == (False, False)
+
+
+def test_reads_never_write_and_missing_or_old_databases_have_no_runs(root: Path) -> None:
+    _publish(root)
+    before = _db(root).read_bytes()
+    repo = _repo(root)
+    repo.get_m3_evidence(RUN)
+    repo.list_m3_runs()
+    repo.get_m3_units(RUN)
+    assert _db(root).read_bytes() == before
+    with evidencia._open_readonly(_db(root)) as conn:
         assert conn is not None
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             conn.execute("UPDATE m3_corridas SET estado = 'EN_CURSO'")
-    assert m3_run_status(db, "m3-test")[0]["estado"] == "PUBLICADA"
+
+    missing = root / "missing.db"
+    assert DalRepository(missing).list_m3_runs().availability.reason_code == "no_data"
+    assert DalRepository(missing).get_m3_evidence(RUN).run is None
+    assert not missing.exists()
+    with closing(sqlite3.connect(root / "old.db")) as conn:
+        conn.execute("CREATE TABLE sentinel (value INTEGER)")
+    assert DalRepository(root / "old.db").get_m3_run_status(RUN).run is None
 
 
-def test_publication_during_read_keeps_one_sqlite_snapshot(tmp_path, monkeypatch):
-    db = tmp_path / "snapshot.db"
-    _database(db)
-    scheduled = False
+def test_a_corrupt_database_is_an_error_not_missing_evidence(tmp_path: Path) -> None:
+    corrupt = tmp_path / "corrupt.db"
+    corrupt.write_bytes(b"not a sqlite database")
+    with pytest.raises(sqlite3.DatabaseError, match="not a database"):
+        DalRepository(corrupt).get_m3_evidence(RUN)
 
-    @contextmanager
-    def scheduled_reader(path):
-        nonlocal scheduled
-        with _open_readonly(path) as conn:
 
-            def publish(sql):
-                nonlocal scheduled
-                if not scheduled and sql.startswith('SELECT * FROM "m3_categorias"'):
-                    scheduled = True
-                    with closing(sqlite3.connect(db)) as writer:
-                        writer.execute("UPDATE m3_corridas SET estado='PUBLICADA'")
-                        writer.commit()
+# ----------------------------------------------------------------------------- runs
+def test_the_newest_publicada_is_selected_and_duplicates_are_announced(root: Path) -> None:
+    _publish(root, creado_en="2026-10-26 10:00:00", run_id="m3-real-0")
+    _publish(root, creado_en="2026-10-27 10:00:00")
+    # A newer rejected run of another configuration does not displace the publication.
+    _publish(
+        root,
+        run_id="m3-rechazada",
+        estado="RECHAZADA",
+        configuracion="config-2",
+        creado_en="2026-10-28 10:00:00",
+    )
+    repo = _repo(root)
 
-            assert conn is not None
-            conn.set_trace_callback(publish)
-            yield conn
+    runs = repo.list_m3_runs(run_id_m2=M2)
+    _conforms(runs, "m3_runs")
+    assert [r.run_id for r in runs.items] == ["m3-rechazada", RUN, "m3-real-0"]
+    assert runs.selected_run_id == RUN
+    current = runs.items[1]
+    assert current.publicadas_misma_identidad == [RUN, "m3-real-0"]
+    assert current.aviso == "varias_publicadas_misma_identidad"
+    assert runs.items[0].aviso is None and runs.items[0].publicadas_misma_identidad == []
+    # The newest PUBLICADA is resolved over every match, not over the visible page.
+    first = repo.list_m3_runs(run_id_m2=M2, size=1)
+    assert [r.run_id for r in first.items] == ["m3-rechazada"] and first.selected_run_id == RUN
+    assert first.page.total == 3
+    assert [r.run_id for r in repo.list_m3_runs(estado="RECHAZADA").items] == ["m3-rechazada"]
+    assert repo.list_m3_runs(identidad=identity("config-2")).page.total == 1
+    assert repo.list_m3_runs(ingesta_sha256=SHA).page.total == 3
+    empty = repo.list_m3_runs(run_id_m2="otra")
+    assert (empty.availability.reason_code, empty.selected_run_id) == ("no_data", None)
+    with pytest.raises(InvalidQuery):
+        repo.list_m3_runs(estado="publicada")
 
-    monkeypatch.setattr(evidencia, "_open_readonly", scheduled_reader)
-    result = read_m3_evidence(db, "m2-test")
-    assert scheduled is True
-    assert {table: len(rows) for table, rows in result.items()} == {
-        "m3_cartera": 0,
-        "m3_categorias": 0,
-        "m3_corridas": 0,
-        "m3_fallos": 0,
-        "m3_metricas": 0,
-        "m3_pronosticos": 0,
-        "m3_protocolos": 0,
-        "m3_skus": 0,
-        "m3_unidades": 0,
-        "m3_veredictos": 0,
+
+def test_a_platform_run_id_resolves_to_the_engine_run(root: Path) -> None:
+    _publish(root)
+    _sql(
+        root,
+        "INSERT INTO configuraciones (version, parametros) VALUES (1, '{}')",
+    )
+    _sql(
+        root,
+        "INSERT INTO ejecuciones (id, ingesta_id, configuracion_id, seed, estado, run_id) "
+        "VALUES (7, 1, 1, 0, 'completada', ?)",
+        M2,
+    )
+    _sql(
+        root,
+        "INSERT INTO ejecuciones (id, ingesta_id, configuracion_id, seed, estado) "
+        "VALUES (8, 1, 1, 0, 'pendiente')",
+    )
+    repo = _repo(root)
+    assert repo.list_m3_runs(run_id_m2="7").selected_run_id == RUN
+    assert repo.list_m3_runs(run_id_m2=M2).selected_run_id == RUN
+    assert repo.list_m3_runs(run_id_m2="8").availability.reason_code == "no_data"
+
+
+# ------------------------------------------------------------------ auxiliary tables
+def test_metrics_keep_me_r_and_null_values_with_their_cause(root: Path) -> None:
+    _publish(root)
+    repo = _repo(root)
+
+    champion = repo.get_m3_metrics(RUN, sku="SKU-A", candidato_id="SKU-A/classical/sarima")
+    _conforms(champion, "m3_metrics")
+    assert {(m.metrica, m.valor) for m in champion.items} == {
+        ("mae", 1.2),
+        ("rmse", 1.5),
+        ("mase", 0.9),
+        ("me", -0.2),
+        ("razon_sn", 0.8),
     }
-    complete = read_m3_evidence(db, "m2-test")
-    assert [r["sku"] for r in complete["m3_veredictos"]] == ["A", "B"]
-    assert complete["m3_cartera"][0]["mediana"] == 3.0
+    assert {m.ventana for m in champion.items} == {"agregada"}
+    [missing] = repo.get_m3_metrics(
+        RUN, sku="SKU-C", metrica="razon_sn", candidato_id="SKU-C/classical/sarima"
+    ).items
+    assert (missing.valor, missing.causa) == (None, "sin_ventanas_comunes")
+    assert repo.get_m3_metrics(RUN, ventana="2026-03-14").items == []
+    with pytest.raises(InvalidQuery):
+        repo.get_m3_metrics(RUN, metrica="smape")
+    with pytest.raises(InvalidQuery):
+        repo.get_m3_metrics(RUN, ventana="14/03/2026")
 
 
-def test_m2_alias_gates_each_run_and_keeps_run_identity(tmp_path):
-    db = tmp_path / "mixed.db"
-    _database(db)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("UPDATE m3_corridas SET estado='PUBLICADA'")
-        conn.execute(
-            "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, "
-            "datos_sinteticos, estado) VALUES "
-            "('m3-second', 'source', 'm2-test', 'second', 1, 'EVALUADA')"
-        )
-        for table in ("m3_protocolos", "m3_skus", "m3_categorias", "m3_veredictos", "m3_cartera"):
-            rows = conn.execute(f'SELECT * FROM "{table}" WHERE run_id=?', ("m3-test",)).fetchall()
-            for row in rows:
-                conn.execute(
-                    f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in row)})',
-                    ("m3-second", *row[1:]),
-                )
-        conn.commit()
-    assert [(r["run_id"], r["sku"]) for r in read_m3_evidence(db, "m2-test")["m3_veredictos"]] == [
-        ("m3-test", "A"),
-        ("m3-test", "B"),
+def test_categories_portfolio_forecasts_failures_and_units_keep_their_published_shape(
+    root: Path,
+) -> None:
+    _publish(root)
+    repo = _repo(root)
+
+    categories = repo.get_m3_categories(RUN)
+    _conforms(categories, "m3_categories")
+    smooth = categories.items[1]
+    assert [c.sku_class for c in categories.items] == ["lumpy", "smooth"]
+    assert (smooth.sku, smooth.familia_campeona, smooth.medianas_r["classical"]) == (
+        None,
+        "classical",
+        0.8,
+    )
+    assert smooth.skus_comparables == ["SKU-A", "SKU-B", "SKU-C"]
+    assert smooth.conteos.VALIDADO == 1 and smooth.familias_excluidas == {"dl": "no_entregada"}
+    assert repo.get_m3_categories(RUN, sku_class="lumpy").page.total == 1
+
+    portfolio = repo.get_m3_portfolio(RUN, familia="seasonal_naive")
+    _conforms(portfolio, "m3_portfolio")
+    assert [(p.sku_class, p.sku, p.n_calculables) for p in portfolio.items] == [
+        ("lumpy", None, 2),
+        ("smooth", None, 2),
     ]
-    assert sorted((r["run_id"], r["estado"]) for r in m3_run_status(db, "m2-test")) == [
-        ("m3-second", "EVALUADA"),
-        ("m3-test", "PUBLICADA"),
+
+    forecasts = repo.get_m3_forecasts(RUN, sku="SKU-A", h=1, origen="2026-03-21")
+    _conforms(forecasts, "m3_forecasts")
+    assert [(f.candidato_id, f.fecha) for f in forecasts.items] == [
+        ("SKU-A/classical/sarima", "2026-03-22"),
+        ("SKU-A/seasonal_naive/seasonal_naive", "2026-03-22"),
     ]
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("UPDATE m3_corridas SET estado='PUBLICADA'")
-        conn.commit()
-    assert sorted(
-        (r["run_id"], r["sku"]) for r in read_m3_evidence(db, "m2-test")["m3_veredictos"]
-    ) == [("m3-second", "A"), ("m3-second", "B"), ("m3-test", "A"), ("m3-test", "B")]
+
+    failures = repo.get_m3_failures(RUN)
+    _conforms(failures, "m3_failures")
+    assert [(f.sku, f.codigo_error) for f in failures.items] == [("SKU-E", "pronostico_invalido")]
+
+    units = repo.get_m3_units(RUN, estado="fallida")
+    _conforms(units, "m3_units")
+    [unit] = units.items
+    assert (unit.sku, unit.causa, unit.semilla) == ("SKU-E", "pronostico_invalido", 0)
+    assert unit.emitido_en is not None and unit.emitido_en.tzinfo is not None
+    for doc in (categories, portfolio, forecasts, failures, units):
+        assert {(row.run_id, row.ingesta_sha256) for row in doc.items} == {(RUN, SHA)}
 
 
-def test_corrupt_files_are_not_missing_evidence(tmp_path):
-    db = tmp_path / "corrupt.db"
-    db.write_bytes(b"not a sqlite database")
-    for reader in (read_m3_evidence, m3_run_status):
-        with pytest.raises(sqlite3.DatabaseError, match="not a database"):
-            reader(db, "run")
-    _database(tmp_path / "valid.db")
-    assert m3_run_status(tmp_path / "valid.db", "m2-test")[0]["n_unidades_previstas"] == 12
-
-
+# --------------------------------------------------------------------- the engine child
 def test_engine_child_receives_the_configured_central_database(tmp_path: Path, monkeypatch) -> None:
     db = tmp_path / "central.db"
     log = tmp_path / "child.log"
@@ -246,143 +564,3 @@ def test_engine_child_receives_the_configured_central_database(tmp_path: Path, m
     )
     assert process.wait(timeout=10) == 0
     assert log.read_text().strip() == str(db)
-
-
-def test_missing_and_old_databases_return_no_evidence(tmp_path: Path) -> None:
-    missing = tmp_path / "missing.db"
-    assert read_m3_evidence(missing, "run") == {}
-    assert m3_run_status(missing, "run") == []
-    assert not missing.exists()
-    with closing(sqlite3.connect(tmp_path / "old.db")) as conn:
-        conn.execute("CREATE TABLE sentinel (value INTEGER)")
-    assert read_m3_evidence(tmp_path / "old.db", "run") == {}
-    assert m3_run_status(tmp_path / "old.db", "run") == []
-    present = tmp_path / "current.db"
-    _database(present)
-    assert m3_run_status(present, "m2-test")[0]["estado"] == "EN_CURSO"
-
-
-def test_unknown_origin_is_not_read_as_declared_real_data(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute(
-            "UPDATE m3_corridas SET datos_sinteticos = 0, origen_declarado = 0, "
-            "estado = 'PUBLICADA' WHERE run_id = 'm3-test'"
-        )
-        conn.commit()
-        published = conn.execute(
-            "SELECT sku, datos_sinteticos, origen_declarado FROM evidencia_publicada"
-        ).fetchall()
-    assert published == [("A", 0, 0), ("B", 0, 0)]
-    status = m3_run_status(db, "m2-test")[0]
-    assert (status["datos_sinteticos"], status["origen_declarado"]) == (0, 0)
-
-
-def test_status_reads_schema_and_rows_from_one_snapshot_during_an_upgrade(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from pred_platform.dal.migrate import apply_migrations, load_migrations
-
-    db = tmp_path / "platform.db"
-    migrate(db, load_migrations()[:7])  # version 7: no origin declaration marker yet
-
-    def upgrade_and_publish_unknown_origin() -> None:
-        with closing(sqlite3.connect(db)) as writer:
-            apply_migrations(writer, load_migrations())
-            writer.execute(
-                "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, "
-                "datos_sinteticos, origen_declarado, estado) "
-                "VALUES ('m3-race', 'source', 'm2-race', '{}', 0, 0, 'EN_CURSO')"
-            )
-            writer.commit()
-
-    real_open = evidencia._open_readonly
-
-    @contextmanager
-    def racing_open(path: Path) -> Any:
-        with real_open(path) as conn:
-            assert conn is not None
-
-            def trace(sql: str) -> None:
-                # The engine upgrades and writes between the schema probe and the row read.
-                if sql.startswith("SELECT c.run_id"):
-                    conn.set_trace_callback(None)
-                    upgrade_and_publish_unknown_origin()
-
-            conn.set_trace_callback(trace)
-            yield conn
-
-    monkeypatch.setattr(evidencia, "_open_readonly", racing_open)
-    assert m3_run_status(db, "m2-race") == []
-    monkeypatch.setattr(evidencia, "_open_readonly", real_open)
-    status = m3_run_status(db, "m2-race")
-    assert [(s["datos_sinteticos"], s["origen_declarado"]) for s in status] == [(0, 0)]
-
-
-def test_sku_read_includes_m3_corridas_origin_and_metadata(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("UPDATE m3_corridas SET estado = 'PUBLICADA'")
-        conn.commit()
-
-    # Synthetic-origin PUBLICADA run
-    evidence = read_m3_evidence(db, "m3-test", sku="B")
-    assert "m3_corridas" in evidence
-    assert len(evidence["m3_corridas"]) == 1
-    corrida = evidence["m3_corridas"][0]
-    assert corrida["run_id"] == "m3-test"
-    assert corrida["datos_sinteticos"] == 1
-    assert corrida["origen_declarado"] == 1
-    assert corrida["ingesta_sha256"] == "source"
-    assert corrida["identidad"] == "{}"
-
-    # SKU-scoped tables still filtered to that SKU, run-scoped tables without SKU excluded
-    assert [row["sku"] for row in evidence["m3_veredictos"]] == ["B"]
-    assert "m3_cartera" not in evidence
-    assert "m3_categorias" not in evidence
-
-    # Querying by M2 alias returns the matching M3 corrida
-    evidence_m2 = read_m3_evidence(db, "m2-test", sku="B")
-    assert "m3_corridas" in evidence_m2
-    assert evidence_m2["m3_corridas"][0]["run_id"] == "m3-test"
-
-
-def test_sku_read_of_unknown_origin_run_returns_undeclared_marker(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute(
-            "UPDATE m3_corridas SET datos_sinteticos = 0, origen_declarado = 0, "
-            "estado = 'PUBLICADA' WHERE run_id = 'm3-test'"
-        )
-        conn.commit()
-
-    evidence = read_m3_evidence(db, "m3-test", sku="A")
-    assert "m3_corridas" in evidence
-    assert len(evidence["m3_corridas"]) == 1
-    corrida = evidence["m3_corridas"][0]
-    assert corrida["origen_declarado"] == 0
-    assert corrida["datos_sinteticos"] == 0
-    assert corrida["ingesta_sha256"] == "source"
-    assert corrida["run_id"] == "m3-test"
-
-    # Querying by M2 alias also returns origen_declarado == 0
-    evidence_m2 = read_m3_evidence(db, "m2-test", sku="A")
-    assert evidence_m2["m3_corridas"][0]["origen_declarado"] == 0
-
-
-def test_sku_read_of_unpublished_run_returns_no_corridas_rows(tmp_path: Path) -> None:
-    db = tmp_path / "platform.db"
-    _database(db)
-    # The run in _database is in state 'EN_CURSO' (not PUBLICADA)
-    evidence = read_m3_evidence(db, "m3-test", sku="A")
-    assert evidence.get("m3_corridas", []) == []
-    for table_rows in evidence.values():
-        assert len(table_rows) == 0
-
-    # Missing evidencia_publicada view returns empty dict
-    with closing(sqlite3.connect(tmp_path / "no_view.db")) as conn:
-        conn.execute("CREATE TABLE m3_corridas (run_id TEXT, estado TEXT)")
-    assert read_m3_evidence(tmp_path / "no_view.db", "m3-test", sku="A") == {}

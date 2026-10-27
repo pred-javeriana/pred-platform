@@ -484,7 +484,7 @@ class FamilyEntry(_Base):
 
 
 class Champion(_Base):
-    """Fila de `resultados_comparativos`. Hoy nadie la escribe (M3 no existe)."""
+    """Campeon historico v1 de `resultados_comparativos`; M3 publica en `m3_veredictos`."""
 
     modelo: ModeloId
     family: Family | None = None

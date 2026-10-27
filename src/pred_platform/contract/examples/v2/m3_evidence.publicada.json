@@ -1,0 +1,308 @@
+{
+  "schema_version": "2.0.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "PUBLICADA",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [
+      "m3-real-02"
+    ],
+    "aviso": null
+  },
+  "items": [
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-VALIDADO",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": false,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "VALIDADO",
+      "familia_campeona": "classical",
+      "candidato_campeon": "SKU-VALIDADO/classical/sarima",
+      "n_ventanas": 40,
+      "n_min": 30,
+      "cobertura": 1.0,
+      "razon_sn": 0.8,
+      "pierde_frente_a_linea_base": false,
+      "comparacion_incompleta": false,
+      "iqr_diferencia_mae": 0.5,
+      "dm_n_ventanas": 40,
+      "dm_horizonte": 7,
+      "dm_estadistico": -2.1,
+      "dm_p_valor": 0.04,
+      "dm_p_ajustado": 0.08,
+      "dm_alfa": 0.05,
+      "dm_significativa": false,
+      "dm_causa": null,
+      "justificacion": "VALIDADO: datos reales, ventanas suficientes y r < 1 (descriptivo)",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-VALIDADO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-VALIDADO/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": 1.0
+        },
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-VALIDADO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-VALIDADO/classical/sarima",
+          "familia": "classical",
+          "modelo": "sarima",
+          "razon_sn": 0.8
+        }
+      ]
+    },
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-EXPLORATORIO",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": false,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "EXPLORATORIO",
+      "familia_campeona": "classical",
+      "candidato_campeon": "SKU-EXPLORATORIO/classical/sarima",
+      "n_ventanas": 40,
+      "n_min": 30,
+      "cobertura": 1.0,
+      "razon_sn": 1.1,
+      "pierde_frente_a_linea_base": true,
+      "comparacion_incompleta": false,
+      "iqr_diferencia_mae": 0.5,
+      "dm_n_ventanas": 40,
+      "dm_horizonte": 7,
+      "dm_estadistico": 0.5,
+      "dm_p_valor": 0.6,
+      "dm_p_ajustado": 0.6,
+      "dm_alfa": 0.05,
+      "dm_significativa": false,
+      "dm_causa": null,
+      "justificacion": "EXPLORATORIO: r=1.100 >= 1 (resultado adverso)",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-EXPLORATORIO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-EXPLORATORIO/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": 1.0
+        },
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-EXPLORATORIO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-EXPLORATORIO/classical/sarima",
+          "familia": "classical",
+          "modelo": "sarima",
+          "razon_sn": 1.1
+        }
+      ]
+    },
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-FALLO",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": false,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "FALLO_TECNICO",
+      "familia_campeona": "classical",
+      "candidato_campeon": null,
+      "n_ventanas": 0,
+      "n_min": 30,
+      "cobertura": 0.0,
+      "razon_sn": null,
+      "pierde_frente_a_linea_base": null,
+      "comparacion_incompleta": true,
+      "iqr_diferencia_mae": null,
+      "dm_n_ventanas": 0,
+      "dm_horizonte": 0,
+      "dm_estadistico": null,
+      "dm_p_valor": null,
+      "dm_p_ajustado": null,
+      "dm_alfa": null,
+      "dm_significativa": null,
+      "dm_causa": "veredicto:FALLO_TECNICO",
+      "justificacion": "FALLO_TECNICO: la instancia campeona o todos los candidatos no produjeron pronostico",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-FALLO",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-FALLO/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": null
+        }
+      ]
+    },
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-NO-EVALUABLE",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": false,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "NO_EVALUABLE",
+      "familia_campeona": "classical",
+      "candidato_campeon": "SKU-NO-EVALUABLE/classical/sarima",
+      "n_ventanas": 0,
+      "n_min": 30,
+      "cobertura": 0.0,
+      "razon_sn": null,
+      "pierde_frente_a_linea_base": null,
+      "comparacion_incompleta": false,
+      "iqr_diferencia_mae": null,
+      "dm_n_ventanas": 0,
+      "dm_horizonte": 0,
+      "dm_estadistico": null,
+      "dm_p_valor": null,
+      "dm_p_ajustado": null,
+      "dm_alfa": null,
+      "dm_significativa": null,
+      "dm_causa": "veredicto:NO_EVALUABLE",
+      "justificacion": "NO_EVALUABLE: no hay observaciones validas en la reserva",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-NO-EVALUABLE",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-NO-EVALUABLE/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": null
+        },
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-NO-EVALUABLE",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-NO-EVALUABLE/classical/sarima",
+          "familia": "classical",
+          "modelo": "sarima",
+          "razon_sn": null
+        }
+      ]
+    },
+    {
+      "run_id": "m3-real-02",
+      "sku": "SKU-INSUFICIENTE",
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": false,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "EVIDENCIA_INSUFICIENTE",
+      "familia_campeona": "classical",
+      "candidato_campeon": "SKU-INSUFICIENTE/classical/sarima",
+      "n_ventanas": 12,
+      "n_min": 30,
+      "cobertura": 0.3,
+      "razon_sn": null,
+      "pierde_frente_a_linea_base": null,
+      "comparacion_incompleta": false,
+      "iqr_diferencia_mae": 0.5,
+      "dm_n_ventanas": 0,
+      "dm_horizonte": 0,
+      "dm_estadistico": null,
+      "dm_p_valor": null,
+      "dm_p_ajustado": null,
+      "dm_alfa": null,
+      "dm_significativa": null,
+      "dm_causa": "veredicto:EVIDENCIA_INSUFICIENTE",
+      "justificacion": "EVIDENCIA_INSUFICIENTE: 12 ventanas validas (< n_min=30)",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-INSUFICIENTE",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-INSUFICIENTE/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": null
+        },
+        {
+          "run_id": "m3-real-02",
+          "sku": "SKU-INSUFICIENTE",
+          "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidato_id": "SKU-INSUFICIENTE/classical/sarima",
+          "familia": "classical",
+          "modelo": "sarima",
+          "razon_sn": null
+        }
+      ]
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 5
+  },
+  "funnel": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "total_productos": 7,
+    "excluded_count": 2,
+    "tras_exclusiones": 5,
+    "no_evaluados": 3,
+    "evaluados": 2,
+    "conteos": {
+      "FALLO_TECNICO": 1,
+      "NO_EVALUABLE": 1,
+      "EVIDENCIA_INSUFICIENTE": 1,
+      "VALIDADO": 1,
+      "EXPLORATORIO": 1
+    }
+  },
+  "late_launches": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "t_star": "2026-06-30",
+    "excluded_count": 2,
+    "items": [
+      {
+        "run_id": "m3-real-02",
+        "sku": "SKU-TARDIO-1",
+        "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "causa": "lanzado despues del corte"
+      },
+      {
+        "run_id": "m3-real-02",
+        "sku": "SKU-TARDIO-2",
+        "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "causa": "lanzado despues del corte"
+      }
+    ]
+  }
+}

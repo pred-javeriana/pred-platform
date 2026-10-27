@@ -16,7 +16,9 @@ dependencies = [
     "psutil>=5.9",
     # The data contract's models. 2.13 is the version its JSON Schemas were exported with.
     "pydantic>=2.13",
-    # pred-engine (private repo) — not wired yet; see DEPENDENCIES.md
+    # Reads the cut and the late-launch exclusions M1 stores in the published Parquet's metadata.
+    "pyarrow>=17",
+    # pred-engine (public repo) — run as a CLI, not imported; see DEPENDENCIES.md
     # "pred-engine @ git+https://github.com/pred-javeriana/pred-engine.git",
 ]
 
@@ -53,6 +55,11 @@ omit = ["*/templates/*"]
 line-length = 100
 src = ["src"]
 
+[tool.ruff.format]
+# Byte-for-byte copy of the contract's v2 reference models (see contract/__init__.py): pred-docs
+# owns its layout, so reformatting it here would break the hash lock.
+exclude = ["src/pred_platform/contract/models_v2.py"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = []
@@ -61,6 +68,7 @@ ignore = []
 # Byte-for-byte copy of the contract's reference models (see contract/__init__.py): it cannot be
 # edited here, and its module docstring has one long line.
 "src/pred_platform/contract/models.py" = ["E501"]
+"src/pred_platform/contract/models_v2.py" = ["E501"]
 
 [tool.pyright]
 include = ["src", "tests"]

@@ -1,0 +1,22 @@
+{% from "components/alerts.html" import alert %}
+{# La corrida M3 cuyo campeón y veredicto se muestran (contrato v2). m3 es un M3Decision. #}
+<section class="pred-m3-run" aria-label="Corrida M3 mostrada">
+  {% if m3.run %}
+  <p class="pred-run-line">
+    <span>Corrida M3 <span class="mono">{{ m3.run.run_id }}</span></span>
+    <span>{{ m3.run.estado }}</span>
+    <span>Creada {{ format_when(m3.run.creado_en) }}</span>
+  </p>
+  {% endif %}
+  {% if m3.notice %}
+    {{ alert(m3.notice, variant="warning") }}
+    {% if m3.others %}
+    <p class="pred-meta">Otras corridas PUBLICADA con la misma identidad:
+      {% for other in m3.others %}<a class="mono" href="{{ m3_hrefs[other] }}">{{ other }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  {% endif %}
+  {% if m3.problem %}
+  <p class="pred-note"><strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}</p>
+  {% endif %}
+</section>
