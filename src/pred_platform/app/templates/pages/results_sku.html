@@ -33,10 +33,11 @@
       <p class="pred-eyebrow">Decisión publicada por M3</p>
       {% if verdict %}
       <h2 class="pred-panel-title">{{ family_label(verdict.familia_campeona) }}</h2>
-      <p class="pred-note">
+      <p class="pred-note pred-note--status">
         {{ status_indicator(describe_status("verdict", verdict.veredicto)) }}
         <span>{{ verdict_group(verdict.veredicto) }}</span>
-        {% if verdict.candidato_campeon %}· <span class="mono">{{ verdict.candidato_campeon }}</span>{% else %}· sin candidato campeón{% endif %}
+        <span aria-hidden="true">·</span>
+        {% if verdict.candidato_campeon %}<span class="mono">{{ verdict.candidato_campeon }}</span>{% else %}<span>sin candidato campeón</span>{% endif %}
       </p>
       <p class="pred-note" id="justificacion">{{ verdict.justificacion }}</p>
       <dl class="pred-kv" id="numeros-decisivos">

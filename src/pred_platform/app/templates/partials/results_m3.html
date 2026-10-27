@@ -8,8 +8,10 @@
     <span>Creada {{ format_when(m3.run.creado_en) }}</span>
   </p>
   {% endif %}
-  {% if m3.notice %}
-    {{ alert(m3.notice, variant="warning") }}
+  {% if m3.notice_parts %}
+    {% set before, run_id, after = m3.notice_parts %}
+    {% set notice %}{{ before }}<span class="mono pred-nowrap">{{ run_id }}</span>{{ after }}{% endset %}
+    {{ alert(notice, variant="warning") }}
     {% if m3.others %}
     <p class="pred-meta">Otras corridas PUBLICADA con la misma identidad:
       {% for other in m3.others %}<a class="mono" href="{{ m3_hrefs[other] }}">{{ other }}</a>{% if not loop.last %}, {% endif %}{% endfor %}

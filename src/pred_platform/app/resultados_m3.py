@@ -49,6 +49,14 @@ class M3Decision:
             return None
         return _DUPLICATES.format(run_id=self.run.run_id)
 
+    @property
+    def notice_parts(self) -> tuple[str, str, str] | None:
+        """El mismo aviso partido en (antes, run_id, después), para no cortar el identificador."""
+        if self.run is None or self.run.aviso is None:
+            return None
+        before, after = _DUPLICATES.split("{run_id}")
+        return before, self.run.run_id, after
+
 
 def _problem(title: str, availability: models_v2.Availability) -> M3Problem:
     return M3Problem(

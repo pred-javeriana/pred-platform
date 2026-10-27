@@ -67,6 +67,13 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
+def _notice(html: str) -> str:
+    """The text of the warning alert, as the reader sees it (inline markup adds no space)."""
+    found = re.search(r'pred-alert--warning".*?<div>(.*?)</div>', html, re.S)
+    assert found is not None
+    return re.sub(r"<[^>]+>", "", found.group(1)).strip()
+
+
 # --------------------------------------------------------------------------- la tabla
 def test_the_table_shows_compact_decisions_and_family_evidence_on_demand() -> None:
     client, _ = _client()
@@ -504,11 +511,14 @@ def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
     client = _dal_client(env)
 
     html = client.get("/resultados").text
-    text = _text(html)
-    assert "Hay varias corridas PUBLICADA con esta identidad. Se muestra m3-real-1." in text
+    # The contract's literal, with the run id kept on one line.
+    assert _notice(html) == (
+        "Hay varias corridas PUBLICADA con esta identidad. Se muestra m3-real-1."
+    )
+    assert '<span class="mono pred-nowrap">m3-real-1</span>' in html
     assert 'href="/resultados?vista=sku&amp;m3=m3-real-0"' in html
-    older = _text(client.get("/resultados?m3=m3-real-0").text)
-    assert "Se muestra m3-real-0." in older and "VALIDADO" in older
+    older = client.get("/resultados?m3=m3-real-0").text
+    assert _notice(older).endswith("Se muestra m3-real-0.") and "VALIDADO" in _text(older)
 
 
 def test_an_m3_run_of_another_execution_is_refused_and_an_unpublished_one_explained(
