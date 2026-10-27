@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "summary": "Adds a reduced-panel integration case that runs the real engine through the platform worker, publishes M3 evidence and reads it back.",
+  "files": [
+    {
+      "path": "tests/test_integracion_motor.py",
+      "summary": "Owns the integration case: ingest, queue, stop, resume and the M4 read contract checks.",
+      "annotations": [
+        {
+          "newRange": [89, 146],
+          "summary": "The module fixture runs the engine once, stops it after the first confirmed M3 unit, deletes candidatos.json and resumes.",
+          "rationale": "One engine run is shared by the four tests because each run takes about 16 s. The stop depends on timing, so a machine fast enough to publish before the stop lands fails the EN_CURSO assertion instead of passing silently. Five consecutive local runs against pred-engine main f8678bf passed. Behaviour on slower or faster machines is unverified.",
+          "author": "fm/pred-platform-m4-integration-case"
+        },
+        {
+          "newRange": [143, 143],
+          "summary": "Deleting candidatos.json reproduces the lost local handoff from pred-engine#41.",
+          "rationale": "Issue #41 also needs a transient DL fit failure, which the real CLI cannot inject without engine changes, so that half of #41 stays uncovered and is listed in the PR. If the engine renames the file, unlink raises and the case fails loudly.",
+          "author": "fm/pred-platform-m4-integration-case"
+        },
+        {
+          "newRange": [218, 232],
+          "summary": "The SKU-read run-row assertion is a strict xfail until #29 lands.",
+          "rationale": "Applying the evidencia.py change from PR #43 locally made this test XPASS, so the strict marker fails and forces its removal. Whichever of #43 or this PR lands second removes the marker and the #29 sentence in docs/features/evaluacion/README.md.",
+          "author": "fm/pred-platform-m4-integration-case"
+        }
+      ]
+    },
+    {
+      "path": "Makefile",
+      "summary": "Adds the integration target.",
+      "annotations": [
+        {
+          "newRange": [15, 19],
+          "summary": "make integration runs only integration-marked tests without the coverage gate.",
+          "rationale": "--no-cov is needed because a single test cannot meet the 80% gate. make test and CI keep the gate unchanged and skip the case when the engine is absent.",
+          "author": "fm/pred-platform-m4-integration-case"
+        }
+      ]
+    }
+  ]
+}
