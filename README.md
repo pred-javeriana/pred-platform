@@ -237,12 +237,15 @@ make lock        # uv.lock matches pyproject.toml (uv lock --check)
 make lint        # ruff check + ruff format --check
 make typecheck   # pyright
 make test        # pytest (coverage must stay at or above 80%)
+make integration # the reduced-panel case against the real engine (PRED_ENGINE_CMD)
 make format      # apply ruff fixes and formatting
 ```
 
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
 runtime dependencies only and requests `/health` and `/` (which redirects to `/datos`).
+CI cannot install the engine yet, so the integration case is skipped there; see
+[the M3 data interface](docs/features/evaluacion/README.md#verificación).
 
 ## Pre-commit hooks
 
