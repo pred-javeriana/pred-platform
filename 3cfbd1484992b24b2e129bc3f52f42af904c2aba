@@ -21,7 +21,7 @@
         {
           "newRange": [131, 147],
           "summary": "La evidencia responde metadata_missing si la corrida no tiene corte publicado.",
-          "rationale": "La ausencia de corte no significa cero exclusiones. Las pruebas y la aplicación local conservan ese diagnóstico para publicaciones antiguas. La misma aplicación presenta las exclusiones SQLite cuando no existe ningún Parquet. La integración con el motor nuevo requiere su rama de publicación M4.",
+          "rationale": "La ausencia de corte no significa cero exclusiones. Las pruebas y la aplicación local conservan ese diagnóstico para publicaciones antiguas. La misma aplicación presenta las exclusiones SQLite cuando no existe ningún Parquet. Las seis pruebas de integración pasan contra el motor 5c09f77, con recibo publicado para la cabeza 3cfbd14.",
           "author": "fm/pred-platform-p3-pr48-rework"
         }
       ]
