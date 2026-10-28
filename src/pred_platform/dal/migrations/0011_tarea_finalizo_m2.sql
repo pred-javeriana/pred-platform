@@ -1,5 +1,5 @@
 -- Una tarea que terminó M2 (L2 y L3) espera la evaluación de M3 en `finalizo_m2`, y queda
--- `exitosa` solo cuando M3 guarda su candidato (contrato 1.1.0). SQLite no altera un CHECK:
+-- `exitosa` solo cuando M3 guarda su candidato (contrato 1.2.0). SQLite no altera un CHECK:
 -- se reconstruye la tabla con los mismos id, columnas e índice. El motor conoce esta versión.
 CREATE TABLE tareas_nueva (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

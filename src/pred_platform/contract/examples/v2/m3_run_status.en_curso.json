@@ -1,0 +1,39 @@
+{
+  "schema_version": "2.1.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-en-curso",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "EN_CURSO",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [],
+    "aviso": null
+  },
+  "progress": {
+    "run_id": "m3-en-curso",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "n_unidades_previstas": 100,
+    "n_resueltas": 30,
+    "n_confirmadas": 25,
+    "n_fallidas": 5
+  }
+}

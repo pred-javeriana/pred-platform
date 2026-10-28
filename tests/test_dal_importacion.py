@@ -230,6 +230,57 @@ def test_an_accepted_report_without_topology_is_rejected(tmp_path: Path, db: Pat
     assert "exige published, topology y reserve" in str(_failure(tmp_path, db, path))
 
 
+def test_an_accepted_report_declaring_synthetic_origin_without_published_sha_is_rejected(
+    tmp_path: Path, db: Path
+) -> None:
+    source_file = dict(_fixture("accepted")["source_file"], datos_sinteticos=True)
+    path = _place(tmp_path, "accepted", source_file=source_file)
+    failure = _failure(tmp_path, db, path)
+    assert "un origen declarado exige published.sha256" in str(failure)
+    assert _rows(db, "SELECT COUNT(*) FROM ingestas") == [(0,)]
+
+
+def test_an_accepted_report_declaring_real_origin_without_published_sha_is_rejected(
+    tmp_path: Path, db: Path
+) -> None:
+    source_file = dict(_fixture("accepted")["source_file"], datos_sinteticos=False)
+    path = _place(tmp_path, "accepted", source_file=source_file)
+    failure = _failure(tmp_path, db, path)
+    assert "un origen declarado exige published.sha256" in str(failure)
+    assert _rows(db, "SELECT COUNT(*) FROM ingestas") == [(0,)]
+
+
+def test_an_accepted_report_with_null_origin_without_published_sha_is_accepted(
+    tmp_path: Path, db: Path
+) -> None:
+    source_file = dict(_fixture("accepted")["source_file"], datos_sinteticos=None)
+    _place(tmp_path, "accepted", source_file=source_file)
+    result = import_reports(db, tmp_path)
+    assert result.ok and result.imported == 1
+    assert _rows(db, "SELECT COUNT(*) FROM ingestas") == [(1,)]
+
+
+def test_an_accepted_report_with_declared_origin_and_valid_published_sha_is_accepted(
+    tmp_path: Path, db: Path
+) -> None:
+    source_file = dict(_fixture("accepted")["source_file"], datos_sinteticos=True)
+    published = dict(_fixture("accepted")["published"], sha256="a" * 64)
+    _place(tmp_path, "accepted", source_file=source_file, published=published)
+    result = import_reports(db, tmp_path)
+    assert result.ok and result.imported == 1
+    assert _rows(db, "SELECT COUNT(*) FROM ingestas") == [(1,)]
+
+
+def test_a_failed_report_with_declared_origin_without_published_sha_is_imported(
+    tmp_path: Path, db: Path
+) -> None:
+    source_file = dict(_fixture("failed")["source_file"], datos_sinteticos=True)
+    _place(tmp_path, "failed", source_file=source_file)
+    result = import_reports(db, tmp_path)
+    assert result.ok and result.imported == 1
+    assert _rows(db, "SELECT estado FROM ingestas") == [("failed",)]
+
+
 def test_a_failed_report_without_error_is_rejected(tmp_path: Path, db: Path) -> None:
     path = _place(tmp_path, "failed", error=None)
     assert "exige error" in str(_failure(tmp_path, db, path))

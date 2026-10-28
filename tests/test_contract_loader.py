@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from pred_platform.contract import CONTRACT_MAJOR, CONTRACT_VERSION, models
+from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION, models, models_v2
 from pred_platform.contract.errors import (
     ArtifactMissing,
     ContractInvalid,
@@ -14,17 +14,16 @@ from pred_platform.contract.errors import (
     SchemaVersionUnsupported,
 )
 from pred_platform.contract.loader import parse_as
-from pred_platform.contract.resources import example_names, read_example
+from pred_platform.contract.resources import document_model, example_names, read_example
 
 
-def test_the_contract_version_is_the_locked_one() -> None:
-    assert CONTRACT_VERSION == "1.1.0"
-    assert CONTRACT_MAJOR == 1
+def test_the_contract_versions_are_the_locked_ones() -> None:
+    assert (CONTRACT_VERSION, M3_CONTRACT_VERSION) == ("1.2.0", "2.1.0")
 
 
 @pytest.mark.parametrize("name", example_names())
 def test_loads_every_example_from_text_and_from_a_mapping(name: str) -> None:
-    model = models.DOCUMENTS[name.split(".")[0]]
+    model = document_model(name.split(".")[0])
     from_text = parse_as(model, read_example(name))
     from_mapping = parse_as(model, json.loads(read_example(name)))
     assert from_text == from_mapping
@@ -56,6 +55,14 @@ def test_another_major_version_is_unsupported_not_just_invalid() -> None:
         parse_as(models.RunStatus, document)
     assert raised.value.field == "schema_version"
     assert raised.value.code == "platform.schema_version_unsupported"
+
+
+def test_each_document_is_checked_against_its_own_major() -> None:
+    v1_as_v2 = json.loads(read_example("m3_runs.varias_publicadas"))
+    v1_as_v2["schema_version"] = "1.0.0"
+    with pytest.raises(SchemaVersionUnsupported, match="mayor 1 .* en la 2"):
+        parse_as(models_v2.M3Runs, v1_as_v2)
+    assert parse_as(models_v2.M3Runs, read_example("m3_runs.varias_publicadas")).items
 
 
 def test_a_newer_minor_version_of_the_same_major_is_accepted() -> None:

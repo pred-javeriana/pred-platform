@@ -1,4 +1,4 @@
-.PHONY: run test lint format typecheck lock check sync-contract migrate import worker launch
+.PHONY: run test integration motor-local lint format typecheck lock check sync-contract migrate import worker launch
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
@@ -11,6 +11,18 @@ run:
 
 test:
 	uv run pytest
+
+# The reduced-panel case against the real engine (PRED_ENGINE_CMD, for example
+# "uv run --project ../pred-engine pred-engine"); it is skipped when the engine is not installed.
+integration:
+	uv run pytest -m integration --no-cov -ra $(ARGS)
+
+# Local engine check before asking for review: runs the case above with ../pred-engine (override
+# with MOTOR=path) and writes the receipt that CI reads; see docs/features/motor-local/README.md.
+# Example: make motor-local ARGS=--publicar
+MOTOR ?= ../pred-engine
+motor-local:
+	uv run --project $(MOTOR) python $(MOTOR)/.github/scripts/motor_local.py --plataforma . $(ARGS)
 
 lint:
 	uv run ruff check .

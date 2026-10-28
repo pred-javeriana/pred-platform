@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pred-contrato/v1/sku_selection_list.schema.json",
+  "x-contract-version": "1.2.0",
   "$defs": {
     "Availability": {
       "additionalProperties": false,
@@ -61,7 +62,7 @@
     },
     "Champion": {
       "additionalProperties": false,
-      "description": "Fila de `resultados_comparativos`. Hoy nadie la escribe (M3 no existe).",
+      "description": "Campeon historico v1 de `resultados_comparativos`; M3 publica en `m3_veredictos`.",
       "properties": {
         "modelo": {
           "pattern": "^(classical|ml|dl|foundation):[a-z0-9][a-z0-9._-]*$",
@@ -312,6 +313,5 @@
     "page"
   ],
   "title": "SkuSelectionList",
-  "type": "object",
-  "x-contract-version": "1.1.0"
+  "type": "object"
 }

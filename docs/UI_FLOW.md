@@ -98,34 +98,32 @@ alcance visual de D2, sin implementar funcionalidad analítica de M4.
 
 ## 3. Resultados
 
-**Estado actual:** la vista Por SKU consume la selección por familia, el campeón si el
-contrato lo informa y la evidencia de un SKU. Resumen y Por clase siguen sin integración
-M4. El contrato actual v1/legacy también define `get_validation_verdicts(...)`; su presencia
-no equivale a que estas vistas consuman los cinco veredictos publicados por M3.
+**Estado actual:** la vista Por SKU consume la selección por familia, la evidencia de un SKU
+y, de una corrida M3 exacta de la ejecución, el campeón, el veredicto y su evidencia (contrato
+v2). Resumen y Por clase todavía no se construyen (Módulo 4, secciones 4.2 a 4.5).
 
 **Responsabilidad prevista al integrar M4:** presentar el resultado de la corrida, resumir
 por clase de demanda, mostrar la distribución de campeones y los veredictos publicados.
 La interfaz no selecciona ganadores ni recalcula métricas. Esta integración permanece
 fuera de D2.
 
-**Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`,
-`get_validation_verdicts(...)`.
+**Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
+`get_m3_run_status(...)`, `get_m3_evidence(...)`. Las demás lecturas M3 del contrato v2
+(`get_m3_metrics`, `get_m3_categories`, `get_m3_portfolio`, `get_m3_forecasts`,
+`get_m3_failures`, `get_m3_units`) quedan disponibles para las vistas de M4.
 
 **Estados de página:** `sin_resultados`, `parciales`, `disponibles`, `error`.
 
-**Vocabulario actual v1/legacy** (contrato → etiqueta): `mantiene` → se sostiene;
-`parcial` → se sostiene parcialmente; `falla` → no se sostiene. Se documenta por
-compatibilidad con el contrato copiado y sus fixtures; no es el vocabulario final de M4.
-
-**Evidencia M3 existente y dependencia de integración M4:** M3 ya publica
-`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`.
-Su consumo por estas vistas requiere el contrato/adaptador M4 pendiente. D2 no añade
-ese consumo ni transforma los cinco veredictos en las etiquetas legacy.
+**Veredictos:** las vistas muestran literalmente los cinco veredictos que publica M3:
+`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`. No
+se traducen a otras etiquetas. La significancia HLN-DM/BH, o su causa, se muestra aparte del
+veredicto. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
+cuando varias corridas PUBLICADA comparten identidad.
 
 Tabs internas (misma ruta, `?vista=resumen|clase|sku`): Resumen | Por clase | Por SKU. No son
 pantallas nuevas. **Por SKU** (C2) está implementada: tabla compacta con evidencia familiar desplegable y detalle
-en `/resultados/sku/{sku_id}`; **Resumen** y **Por clase** dependen de evidencia publicada integrada mediante el contrato M4 y se
-muestran como no disponibles. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
+en `/resultados/sku/{sku_id}`; **Resumen** y **Por clase** se
+muestran como no disponibles hasta que se construyan sobre las lecturas M3. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
 La acción «Configurar nueva ejecución» lleva a Ejecución y se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.
@@ -149,7 +147,7 @@ El interruptor fixture/DAL ya lo resuelve B4 (`PRED_DATA_SOURCE`). G1 está resu
 el historial, el informe de ingesta y la topología se leen desde DAL. La ausencia de
 un informe concreto o de datos sigue pudiendo producir un estado no disponible;
 no implica que G1 esté pendiente. `get_capabilities()` declara disponibilidad actual.
-La tabla distingue los gaps resueltos de la integración M4 todavía pendiente:
+La tabla resume los gaps resueltos:
 
 | Superficie | Dato | Capacidad | Estado |
 | --- | --- | --- | --- |
@@ -157,8 +155,8 @@ La tabla distingue los gaps resueltos de la integración M4 todavía pendiente:
 | Datos | Carga desde el navegador | — | Resuelto: `submit_ingest` corre `pred-engine classify` |
 | Ejecución | Orquestación, progreso, detener y reanudar | `run_orchestration` | Resuelto (G3 y C4) |
 | Resultados | Selección por SKU, ensayos HPO y ventanas | `selection_results_persisted`, `trial_detail_persisted`, `walkforward_evidence_persisted`, `family_comparison` | Resuelto (G2, G4); pantalla C2 |
-| Resultados | Campeón | `champion_selection` | integración de evidencia publicada pendiente en el contrato de la vista |
-| Resultados | Veredictos | `retrospective_validation` | contrato M4 pendiente para los cinco veredictos y contrastes publicados |
+| Resultados | Campeón | `champion_selection` | Resuelto: `m3_veredictos` mediante el contrato v2 |
+| Resultados | Veredictos | `retrospective_validation` | Resuelto: cinco veredictos, significancia y embudo mediante el contrato v2 |
 
 Códigos de error estables y exclusiones tipadas: resueltos (G6, G7); el texto en español de
 cada código vive en `pred_platform/mensajes.py`. Bitácora sintética (fuera de estas tres
@@ -178,11 +176,11 @@ selección de campeones.
 
 Resumen de cartera → Por clase de demanda → Por SKU → Decisión y comparación → Evidencia técnica bajo demanda.
 
-Por SKU conserva la entrada actual hasta que la integración M4 publique los datos requeridos para Resumen. La tabla principal presenta cuatro columnas (SKU, clase, campeón informado y evidencia familiar desplegable); no incorpora columnas de trials, ventanas ni p-valores. Los filtros y la paginación se delegan al repositorio. Configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
+Por SKU conserva la entrada actual hasta que se construya Resumen. La tabla principal presenta cuatro columnas (SKU, clase, campeón y veredicto M3, y evidencia familiar desplegable); no incorpora columnas de trials, ventanas ni p-valores. Los filtros y la paginación se delegan al repositorio. Configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
 
-El encabezado comunica alcance retrospectivo y origen no informado cuando el contrato no entrega procedencia. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección.
+El encabezado comunica alcance retrospectivo y el origen de los datos que declara la corrida M3 (real, sintético o aumentado, o desconocido); sin corrida M3, el origen no informado. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
 
-Los agregados de cartera/clase, procedencia declarada, cinco veredictos, DM/BH/causas y exportables son dependencias de M4. Se mantienen disponibles únicamente los campos del contrato vigente. Ver el registro y la condición de cierre en UI_REVIEW.md.
+Los agregados de cartera/clase y los exportables se construyen en las vistas de M4 sobre las lecturas del contrato v2. Ver el registro y la condición de cierre en UI_REVIEW.md.
 
 
 ## Exploración progresiva en la revisión final D2
@@ -191,7 +189,7 @@ Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta a
 
 Ejecución sin contexto comienza con la corrida actual. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
 
-Resultados mantiene la lista por SKU como entrada actual: filtros plegables, familias por fila y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. Origen no informado y alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
+Resultados mantiene la lista por SKU como entrada actual: filtros plegables, familias por fila y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. El origen de los datos y el alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
 
 ## Composición espacial para la auditoría de UX
 

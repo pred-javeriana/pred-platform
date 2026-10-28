@@ -12,7 +12,13 @@ from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from pred_platform.contract import models
-from pred_platform.contract.resources import example_names, read_example, read_schema
+from pred_platform.contract.resources import (
+    document_kinds,
+    document_model,
+    example_names,
+    read_example,
+    read_schema,
+)
 
 _ROOT = files("pred_platform.contract")
 _LOCK = json.loads((_ROOT / "contract.lock.json").read_text(encoding="utf-8"))
@@ -28,10 +34,14 @@ def _load(example: str) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------- the pinned copies
+def _major(kind: str) -> str:
+    return "v1" if kind in models.DOCUMENTS else "v2"
+
+
 def test_lock_lists_exactly_the_packaged_files() -> None:
-    packaged = {"models.py"}
-    packaged |= {f"schemas/v1/{kind}.schema.json" for kind in models.DOCUMENTS}
-    packaged |= {f"examples/v1/{name}.json" for name in example_names()}
+    packaged = {"models.py", "models_v2.py"}
+    packaged |= {f"schemas/{_major(kind)}/{kind}.schema.json" for kind in document_kinds()}
+    packaged |= {f"examples/{_major(_kind(name))}/{name}.json" for name in example_names()}
     assert set(_LOCK["files"]) == packaged
 
 
@@ -44,15 +54,17 @@ def test_packaged_file_matches_the_lock(relative: str) -> None:
     )
 
 
-def test_every_schema_declares_the_locked_contract_version() -> None:
-    for kind in models.DOCUMENTS:
-        assert read_schema(kind)["x-contract-version"] == _LOCK["contract_version"]
+def test_every_schema_declares_the_locked_version_of_its_major() -> None:
+    assert _LOCK["contract_versions"] == {"v1": "1.2.0", "v2": "2.1.0"}
+    for kind in document_kinds():
+        version = read_schema(kind)["x-contract-version"]
+        assert version == _LOCK["contract_versions"][_major(kind)]
 
 
 # ---------------------------------------------------------------------- valid documents
 @pytest.mark.parametrize("name", example_names())
 def test_example_validates_against_its_model(name: str) -> None:
-    models.DOCUMENTS[_kind(name)].model_validate(_load(name))
+    document_model(_kind(name)).model_validate(_load(name))
 
 
 @pytest.mark.parametrize("name", example_names())
@@ -63,10 +75,10 @@ def test_example_validates_against_its_published_schema(name: str) -> None:
     assert [e.message for e in validator.iter_errors(_load(name))] == []
 
 
-@pytest.mark.parametrize("kind", sorted(models.DOCUMENTS))
+@pytest.mark.parametrize("kind", sorted(document_kinds()))
 def test_exported_schema_equals_the_published_one(kind: str) -> None:
     published = {k: v for k, v in read_schema(kind).items() if k not in _SCHEMA_WRAPPER_KEYS}
-    assert published == models.DOCUMENTS[kind].model_json_schema(), (
+    assert published == document_model(kind).model_json_schema(), (
         f"the schema pydantic exports for {kind} differs from the published one; "
         "run `make sync-contract` against an up-to-date pred-docs"
     )

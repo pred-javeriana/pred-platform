@@ -5,10 +5,12 @@
 | Package | Purpose |
 |---------|---------|
 | `fastapi` | HTTP framework and routing |
+| `python-multipart` | Parses the form posts and the CSV upload FastAPI receives |
 | `jinja2` | Server-side template rendering |
 | `uvicorn` | ASGI server |
 | `bcrypt` | Password hashing for session auth |
 | `itsdangerous` | Signed session cookies |
+| `psutil` | Waits for the engine's process pool to close before a resume on Windows |
 | `pydantic` | Models of the data contract (declared directly; `>=2.13`, the version the contract's JSON Schemas were exported with) |
 
 ## Development dependencies
@@ -38,13 +40,9 @@ licenses and SHA-256 are pinned in `static/vendor.lock.json`, and the tests veri
 
 The font files come from the design reference in `pred-docs/diseno/fonts/`.
 
-## pred-engine (private repo)
+## pred-engine (public repo)
 
-`pred-platform` depends on `pred-engine`, the pure-Python forecasting library
-in the same GitHub org. This dependency is **not yet wired** in `pyproject.toml`.
-Wiring it is deferred to the worker task (the first code that imports the engine);
-it is documented here so CI can be configured before it is activated. When wiring,
-pin it to a commit (or tag) so installs stay reproducible.
+The platform runs the `pred-engine` CLI as a subprocess (`PRED_ENGINE_CMD`) and does not import it; the git dependency stays commented until a module needs the library.
 
 The engine pulls in heavy scientific dependencies (LightGBM, statsmodels, Optuna), so a
 fresh install gets noticeably larger once it is activated. On macOS, LightGBM needs the OpenMP
@@ -57,30 +55,6 @@ runtime: `brew install libomp`.
 "pred-engine @ git+https://github.com/pred-javeriana/pred-engine.git"
 ```
 
-### CI auth approach
+### CI
 
-The built-in `GITHUB_TOKEN` cannot install `pred-engine`: GitHub scopes it to the repository that
-runs the workflow, even inside the same org. CI needs its own read-only credential for the engine
-repo. The narrowest one is a deploy key:
-
-1. Create an SSH key pair. Add the public key to `pred-engine` as a read-only deploy key.
-2. Store the private key in `pred-platform` as the repository secret `PRED_ENGINE_DEPLOY_KEY`.
-3. In every job of `.github/workflows/ci.yml` that runs `uv sync` or `uv lock`, add this step
-   first. It loads the key and routes the HTTPS dependency URL through SSH (uv fetches git
-   dependencies with `git`):
-
-```yaml
-- name: Configure pred-engine access
-  env:
-    PRED_ENGINE_DEPLOY_KEY: ${{ secrets.PRED_ENGINE_DEPLOY_KEY }}
-  run: |
-    eval "$(ssh-agent -s)"
-    echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-    ssh-add - <<< "$PRED_ENGINE_DEPLOY_KEY"
-    git config --global url."git@github.com:pred-javeriana/pred-engine".insteadOf \
-      "https://github.com/pred-javeriana/pred-engine"
-```
-
-Pull requests from forks do not receive repository secrets, so this step fails there. A GitHub
-App installation token or a fine-grained token from an org-owned account also works, but GitHub
-ranks deploy keys first for read access to a single repository.
+`pred-engine` is public, so installing it over HTTPS needs no credential; CI does not install it because the engine runs locally.

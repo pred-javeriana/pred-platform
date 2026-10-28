@@ -77,6 +77,22 @@ def test_the_active_run_shows_its_state_progress_settings_and_tasks() -> None:
     assert "FIL-0001" in text and "classical:sarima" in text
 
 
+def test_pending_evaluation_settings_show_the_engine_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo = _fixture_client()
+    doc = repo.get_run_status("latest")
+    data = doc.model_dump()
+    data["settings"]["aggregation"] = None
+    data["settings"]["trim"] = None
+    pending = models.RunStatus.model_validate(data)
+    monkeypatch.setattr(repo, "get_run_status", lambda *args, **kwargs: pending)
+    response = client.get("/ejecucion")
+    assert response.status_code == 200
+    assert "Lo informa el motor al terminar la corrida" in response.text
+    assert "recorte None" not in response.text
+
+
 def test_every_task_state_has_icon_text_and_colour_and_errors_have_a_next_step() -> None:
     client, _ = _fixture_client("errores")
     html = client.get("/ejecucion").text

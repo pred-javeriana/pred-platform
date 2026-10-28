@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pred-contrato/v1/topology_report.schema.json",
+  "x-contract-version": "1.2.0",
   "$defs": {
     "Availability": {
       "additionalProperties": false,
@@ -231,7 +232,14 @@
       "title": "T Star"
     },
     "thresholds": {
-      "$ref": "#/$defs/Thresholds"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Thresholds"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "summary": {
       "$ref": "#/$defs/TopologySummary"
@@ -259,6 +267,5 @@
     "page"
   ],
   "title": "TopologyReport",
-  "type": "object",
-  "x-contract-version": "1.1.0"
+  "type": "object"
 }

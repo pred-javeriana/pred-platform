@@ -102,9 +102,9 @@ def test_the_packaged_migrations_build_the_real_schema(tmp_path: Path) -> None:
     assert {"ingestas", "tareas", "reportes_validacion"} <= tables
 
 
-def test_la_migracion_0010_conserva_las_tareas_y_admite_finalizo_m2(tmp_path: Path) -> None:
+def test_la_migracion_0011_conserva_las_tareas_y_admite_finalizo_m2(tmp_path: Path) -> None:
     db = tmp_path / "pred.db"
-    migrate(db, load_migrations()[:9])  # una base de antes del estado finalizo_m2
+    migrate(db, load_migrations()[:10])  # una base de antes del estado finalizo_m2
     with closing(sqlite3.connect(db)) as conn:
         conn.execute(
             "INSERT INTO ingestas (id, sha256, nombre_archivo, filas, skus) "
@@ -122,7 +122,7 @@ def test_la_migracion_0010_conserva_las_tareas_y_admite_finalizo_m2(tmp_path: Pa
         conn.commit()
         antes = conn.execute("SELECT * FROM tareas").fetchall()
 
-    assert migrate(db).applied == (10,)
+    assert migrate(db).applied == (11,)
 
     with closing(sqlite3.connect(db)) as conn:
         assert conn.execute("SELECT * FROM tareas").fetchall() == antes

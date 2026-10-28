@@ -46,7 +46,9 @@ $env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-eng
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
 (`pred_platform.data`) that returns documents of the frontend <-> engine data contract
-(`pred_platform.contract`, v1.0.0, authored in `pred-docs/diseno/contratos/`).
+(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.1.0 for M3's published
+evidence (the `*_m3_*` operations) and v1.1.0 for ingestion, M2 selection, run status and
+capabilities.
 
 ```python
 from fastapi import Depends
@@ -62,10 +64,11 @@ def ingests(repository: DataRepository = Depends(get_repository)):
 
 - **Two sources, one switch.** `PRED_DATA_SOURCE=fixture` serves the contract's examples (scenarios
   `normal`, `vacio`, `errores`); `dal` reads the platform's database. Views do not change.
-- **`dal` is honest.** The engine's results do not reach the DAL yet (gaps G1 to G4, G8), so only
-  the list of ingests is real. The rest answers `availability.status == "unavailable"` with the gap
-  in `blocked_by`, or raises `ArtifactMissing` naming it. When a gap closes, its entry in
-  `data/capabilities.py` changes and its read is implemented in `data/dal.py`.
+- **`dal` is honest.** Ingestion, run status, the M2 selection and M3's published evidence are read
+  from the DAL. What does not reach it yet (the synthetic log, G8) answers
+  `availability.status == "unavailable"` with the gap in `blocked_by`, or raises `ArtifactMissing`
+  naming it. When a gap closes, its entry in `data/capabilities.py` changes and its read is
+  implemented in `data/dal.py`.
 - **Invalid data is rejected.** Every document is validated by the contract's Pydantic models.
   Failures raise explicit errors with the contract's codes (`pred_platform.contract.errors`):
   `ContractInvalid`, `SchemaVersionUnsupported`, `ArtifactMissing`, `EngineUnavailable`; call
@@ -76,17 +79,19 @@ def ingests(repository: DataRepository = Depends(get_repository)):
 
 ### The contract copy
 
-`src/pred_platform/contract/` holds a byte-for-byte copy of the contract's reference models, JSON
-Schemas and examples (the examples are the fixtures). Do not edit it: change the contract in
-`pred-docs` first, then
+`src/pred_platform/contract/` holds a byte-for-byte copy of the contract's reference models
+(`models.py` for v1, `models_v2.py` for v2), JSON Schemas and examples of every major version (the
+examples are the fixtures). Do not edit it: change the contract in `pred-docs` first, then
 
 ```bash
 make sync-contract                 # copies from ../pred-docs and rewrites contract.lock.json
 make sync-contract ARGS=--check    # only report differences
 ```
 
-`contract.lock.json` pins the SHA-256 of every copied file and the tests verify it, so an edited
-copy fails the build. The sync also checks that the source is consistent before it writes.
+`contract.lock.json` pins the version of each major and the SHA-256 of every copied file, and the
+tests verify it, so an edited copy fails the build. The sync also checks that the source is
+consistent before it writes. Each document is validated against its own major: a v1 document with
+`schema_version: "2.x"` (or the reverse) is `SchemaVersionUnsupported`.
 
 ## Database migrations
 
@@ -96,8 +101,9 @@ Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs an
 selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, frozen protocols and
 precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
 8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
-Version 10 adds the task state `finalizo_m2` (M2 done, waiting for M3); the engine knows this
-version and must be updated before the platform migrates to it. The current schema is version 10.
+Version 10 adds the published cut, late launches, observed demand and the champions view.
+Version 11 adds the task state `finalizo_m2` (M2 done, waiting for M3); the engine knows this
+version and must be updated before the platform migrates to it. The current schema is version 11.
 The platform declares every run as real data: launching offers no origin choice. A run queued
 before that may still carry an unknown origin, which cannot produce statistical inference.
 
@@ -139,14 +145,19 @@ The engine writes M3 results into this same SQLite database through an injected 
 Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
 standalone result database. It applies pending M3 migrations itself on an existing platform
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
-5 through 9, so both processes agree on `user_version`.
+5 through 10, so both processes agree on `user_version`.
 
-`pred_platform.dal.evidencia.read_m3_evidence` reads only PUBLICADA runs by M2/M3 run id, optionally filtered by SKU.
-One call materializes all matching rows within one read snapshot. An M2 alias can match several
-M3 runs; use an exact M3 id and SKU for bounded reads, or group results by their retained `run_id`.
-`m3_run_status` exposes durable progress and rejections without partial metrics. The platform
-reads precalculated descriptive metrics, verdicts, HLN-DM/BH and portfolio distributions; it does
-not evaluate models. See [the M3 data interface](docs/features/evaluacion/README.md).
+The views read it through `DataRepository` as contract v2 documents (M4, Notion 4.1):
+`list_m3_runs` resolves an M2 reference or an identity to its exact M3 runs and names the newest
+PUBLICADA one; `get_m3_run_status` gives state and durable progress without partial metrics; and
+`get_m3_evidence`, `get_m3_metrics`, `get_m3_categories`, `get_m3_portfolio`, `get_m3_forecasts`,
+`get_m3_failures`, `get_m3_units`, `get_m3_observations` and `get_m3_champions` return one exact
+PUBLICADA run's rows, filtered and paged in SQLite within one read snapshot. Late launches and
+the cut come from `m3_cortes` and `m3_lanzamientos_tardios`, not from a Parquet file. A published
+run without a cut answers `metadata_missing` for evidence and observations. The platform reads
+precalculated verdicts, metrics, HLN-DM/BH, observed reserve demand and champion counts by family
+(`m3_campeones`, including whole-portfolio rows); it does not evaluate models. See
+[the M3 data interface](docs/features/evaluacion/README.md).
 
 ## Importing ingest reports
 
@@ -226,8 +237,8 @@ trials in `ensayos` (completed, pruned and failed, each with its reason); the wi
   never repeats that policy. A SKU the engine could not run keeps its cause as the exclusion.
 - A bad line only loses its SKU and a file of another major version is refused; neither changes how
   the run ended. Importing again replaces each SKU's rows, so a resume leaves no duplicates.
-- The champion is not here: it is read from `resultados_comparativos` and is `null` until M3 writes
-  it.
+- The champion comes from M3's published evidence (`m3_veredictos`, `get_m3_evidence`); the v1
+  `champion` field of the selection is always empty and `resultados_comparativos` is not read.
 - The views read it through `/resultados` and `/resultados/sku/{sku_id}` (task C2, see
   `docs/features/resultados/README.md`). Wherever the repository takes a run id it also accepts
   `latest`, the run with the highest id.
@@ -240,12 +251,17 @@ make lock        # uv.lock matches pyproject.toml (uv lock --check)
 make lint        # ruff check + ruff format --check
 make typecheck   # pyright
 make test        # pytest (coverage must stay at or above 80%)
+make integration # the reduced-panel case against the real engine (PRED_ENGINE_CMD)
+make motor-local # that case with ../pred-engine, plus the receipt the motor-local check reads
 make format      # apply ruff fixes and formatting
 ```
 
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
 runtime dependencies only and requests `/health` and `/` (which redirects to `/datos`).
+CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches
+the engine boundary carries a receipt from `make motor-local`, and the `motor-local` check reads it;
+see [the local engine check](docs/features/motor-local/README.md).
 
 ## Pre-commit hooks
 
@@ -265,7 +281,7 @@ entry together. License texts are in `static/licenses/`.
 
 ## Dependencies
 
-See [DEPENDENCIES.md](DEPENDENCIES.md) for the pred-engine git dependency and CI auth approach.
+See [DEPENDENCIES.md](DEPENDENCIES.md) for the pred-engine git dependency and why CI does not install it.
 
 ## UI/frontend work
 

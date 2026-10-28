@@ -166,6 +166,7 @@ def test_topology_of_an_ingest_loaded_before_the_report_existed_is_unavailable(
     assert _gap(doc) == ("prerequisite_missing", [])
     assert "antes de que la plataforma guardara" in (doc.availability.detail or "")
     assert doc.ingest_id == SHA_A
+    assert doc.thresholds is not None
     assert (doc.thresholds.adi, doc.thresholds.cv2) == (1.32, 0.49)
     assert doc.items == [] and doc.summary.n_skus == 0
     assert set(doc.summary.by_class) == {"smooth", "intermittent", "erratic", "lumpy"}
@@ -196,9 +197,20 @@ def test_selection_list_without_any_run_is_an_empty_state(repo: DalRepository) -
     assert doc.items == [] and doc.run_id == RUN
 
 
-def test_verdicts_are_unavailable_because_the_stage_does_not_exist(repo: DalRepository) -> None:
-    doc = repo.get_validation_verdicts(RUN)
-    assert _gap(doc) == ("stage_not_implemented", [])
+def test_m3_reads_are_available_and_answer_no_data_without_m3_runs(repo: DalRepository) -> None:
+    # M3's champion and verdicts are read (contract v2): an absent run is no data, not a gap.
+    assert capabilities.REGISTRY["champion_selection"].available
+    assert capabilities.REGISTRY["retrospective_validation"].available
+    runs = repo.list_m3_runs(run_id_m2=RUN)
+    evidence = repo.get_m3_evidence("m3-ninguna")
+    for doc in (runs, evidence, repo.get_m3_run_status("m3-ninguna")):
+        assert (doc.availability.status, doc.availability.reason_code) == (
+            "unavailable",
+            "no_data",
+        )
+        assert doc.availability.detail
+    assert runs.items == [] and runs.selected_run_id is None
+    assert evidence.run is None and evidence.funnel is None
 
 
 def test_synthetic_list_is_unavailable_and_blocked_by_g8(repo: DalRepository) -> None:
@@ -209,7 +221,6 @@ def test_synthetic_list_is_unavailable_and_blocked_by_g8(repo: DalRepository) ->
 
 def test_every_unavailable_document_matches_the_registry(repo: DalRepository) -> None:
     pairs = [
-        (repo.get_validation_verdicts(RUN), "retrospective_validation"),
         (repo.list_synthetic_runs(), "synthetic_log_read"),
     ]
     for doc, capability in pairs:
@@ -224,7 +235,6 @@ def test_unavailable_documents_are_valid_contract_documents(repo: DalRepository)
         repo.get_topology_report(SHA_A),
         repo.get_run_status(RUN),
         repo.list_sku_selections(RUN),
-        repo.get_validation_verdicts(RUN),
         repo.list_synthetic_runs(),
         repo.get_capabilities(),
     ):

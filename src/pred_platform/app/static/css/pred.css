@@ -143,6 +143,11 @@ samp,
   color: var(--data-text);
 }
 
+/* Un identificador con guiones no se corta entre líneas. */
+.pred-nowrap {
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------- Shell */
 .pred-shell {
   min-height: 100vh;
@@ -949,6 +954,15 @@ samp,
   font-size: 0.875rem;
 }
 
+/* Un estado seguido de su contexto en una línea; el mismo interlineado que .pred-status. */
+.pred-note--status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  line-height: 1.6;
+  gap: var(--space-2);
+}
+
 .pred-note--muted {
   color: var(--muted-text);
 }
@@ -1057,7 +1071,7 @@ samp,
 .pred-table-wrap { max-width: 100%; margin-block: var(--space-2); }
 .pred-table { min-width: 36rem; }
 .pred-table :is(th, td) { max-width: 24rem; }
-.pred-table tbody th { font-weight: 400; white-space: normal; }
+.pred-table tbody th { padding: 8px 10px; border-bottom-color: var(--border); font-weight: 400; white-space: normal; }
 .pred-table tbody tr:hover :is(th, td) { background: var(--canvas); }
 .pred-table .num { color: var(--data-text); }
 .pred-table .pred-sku { min-width: 8rem; max-width: 16rem; }

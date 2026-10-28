@@ -3,6 +3,9 @@
 from xml.etree import ElementTree
 
 from pred_platform.app.charts import topology_scatter_svg
+from pred_platform.contract import models
+from pred_platform.contract.loader import parse_as
+from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures import FixtureRepository
 
 ACCEPTED = "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e"
@@ -26,6 +29,13 @@ def test_scatter_includes_accessible_title_desc_and_thresholds() -> None:
         assert label in svg
     assert "circle" in svg
     assert "polygon" in svg or "rect" in svg
+
+
+def test_unavailable_topology_draws_no_thresholds_without_engine_values() -> None:
+    report = parse_as(models.TopologyReport, read_example("topology_report.no_aceptada"))
+    svg = topology_scatter_svg(report)
+    assert "pred-chart__threshold" not in svg
+    assert "1,32" not in svg and "0,49" not in svg
 
 
 def test_scatter_does_not_invent_sku_outside_the_report_page() -> None:

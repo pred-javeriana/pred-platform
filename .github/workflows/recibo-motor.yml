@@ -1,0 +1,40 @@
+name: Recibo del motor local
+
+# Fija el estado `motor-local` del commit cabeza a partir del recibo que
+# `make motor-local ARGS=--publicar` deja como comentario del PR. No corre el
+# motor ni codigo del PR: usa el mapa de niveles de la rama base y el script de
+# pred-engine en un commit fijo, y lee el PR por el API, por eso puede usar
+# `pull_request_target`. pred-engine es publico, asi que no necesita secretos.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  recibo:
+    name: motor-local (recibo de la corrida local)
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Dueno del formato del recibo y del control; actualice el commit cuando cambien.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: pred-javeriana/pred-engine
+          ref: e84579eaa4d78e28aef15e34bf74970a3bf5cdea
+          path: pred-engine
+          persist-credentials: false
+      - name: Fijar el estado motor-local
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 pred-engine/.github/scripts/recibo_motor.py --publicar
