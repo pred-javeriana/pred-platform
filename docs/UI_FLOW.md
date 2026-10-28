@@ -90,8 +90,9 @@ El formulario permite seleccionar Fundacional (Chronos-2); sus dependencias y pe
 deben estar disponibles en el entorno del motor. También permite declarar el origen
 de los datos: Reales, Sintéticos o no declarar/conservar el registro existente.
 La opción por defecto no afirma que sean reales. El formulario entrega la declaración
-a `LaunchSettings.datos_sinteticos` y `RunControl`; el servicio existente conserva la
-procedencia y rechaza contradicciones. El worker ya transmite `--datos-reales` o
+a `LaunchSettings.datos_sinteticos` y `RunControl`; el motor resuelve el origen
+(`pred-engine origen`) antes del encolado. La plataforma muestra el detalle de
+un conflicto sin crear la ejecución. El worker transmite `--datos-reales` o
 `--datos-sinteticos`. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
 determina si el contraste es aplicable. Estos ajustes corrigen #36 y #39, fuera del
 alcance visual de D2, sin implementar funcionalidad analítica de M4.

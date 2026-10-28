@@ -36,7 +36,9 @@ def topology_scatter_svg(report: TopologyReport) -> str:
     title = "Distribución ADI–CV² de la demanda"
     desc = (
         "Cada marca es un SKU del reporte. El eje horizontal es ADI y el vertical es CV². "
-        "Las clases se distinguen por forma: círculo Smooth (Suave), cuadrado Erratic (Errática), "
+        + ("Las líneas de puntos marcan los umbrales del motor. " if thresholds else "")
+        + "Las clases se distinguen por forma: círculo Smooth (Suave), "
+        "cuadrado Erratic (Errática), "
         "triángulo Intermittent (Intermitente) y rombo Lumpy (Grumosa)."
     )
     parts = [

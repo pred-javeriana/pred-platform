@@ -325,6 +325,8 @@ def _classify(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command")
+    parser.add_argument("--ingest-id")
+    parser.add_argument("--db-path")
     parser.add_argument("--csv")
     parser.add_argument("--confirm-overwrite", action="store_true")
     parser.add_argument("--parquet")
@@ -353,6 +355,27 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "classify":
         return _classify(args)
+    if args.command == "origen":
+        code = int(os.environ.get("FAKE_ENGINE_ORIGIN_EXIT", "0"))
+        if "FAKE_ENGINE_ORIGIN_OUTPUT" in os.environ:
+            print(os.environ["FAKE_ENGINE_ORIGIN_OUTPUT"])
+        elif code == 3:
+            print(
+                json.dumps(
+                    {
+                        "code": "provenance.origin_conflict",
+                        "detail": "origen incompatible del motor",
+                    }
+                )
+            )
+        else:
+            origin = (
+                json.loads(os.environ["FAKE_ENGINE_ORIGIN"])
+                if "FAKE_ENGINE_ORIGIN" in os.environ
+                else args.datos_sinteticos
+            )
+            print(json.dumps({"ingest_id": args.ingest_id, "datos_sinteticos": origin}))
+        return code
 
     scenario = os.environ.get("FAKE_ENGINE_SCENARIO", "ok")
     skus = os.environ.get("FAKE_ENGINE_SKUS", "FIL-0001,FIL-0002,FIL-0003").split(",")
@@ -512,10 +535,10 @@ def main() -> int:
             if r["state"] == "fallida"
         ],
     }
-    (folder / "corrida.json").write_text(
-        json.dumps({"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}),
-        encoding="utf-8",
-    )
+    corrida = {"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}
+    if "FAKE_ENGINE_EVALUATION" in os.environ:
+        corrida["evaluation"] = json.loads(os.environ["FAKE_ENGINE_EVALUATION"])
+    (folder / "corrida.json").write_text(json.dumps(corrida), encoding="utf-8")
     failed = scenario in ("stage_fails", "l4_fails")
     failed_stage = "L3" if scenario == "stage_fails" else "L4" if scenario == "l4_fails" else None
     stream.emit(

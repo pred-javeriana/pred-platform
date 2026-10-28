@@ -25,8 +25,9 @@ la ejecución se detiene con un mensaje claro antes de M0/M2.
 El proceso del motor recibe la ruta efectiva de `Settings.db_path` mediante
 `PRED_DB_PATH`. Una configuración heredada diferente no desvía los resultados
 a otra base. `--db-path` tiene prioridad si se usa explícitamente en el CLI.
-M1 declara `source_file.datos_sinteticos` y `published.sha256`; el importador
-los conserva en `m3_ingestas`. La cola congela ese origen en `LaunchSettings`
+M1 declara `source_file.datos_sinteticos` y `published.sha256`; el motor
+conserva su origen. La plataforma no escribe en las tablas M3. La cola congela
+el veredicto del motor en `LaunchSettings`
 y transmite `--datos-sinteticos` o `--datos-reales` solo si hay declaración.
 La ausencia es origen desconocido y no equivale a datos reales. La carga web
 sigue recibiendo solo el archivo y conserva ese origen desconocido: sus
@@ -35,16 +36,25 @@ señala que el bit `datos_sinteticos` no contiene una declaración. La vista
 `evidencia_publicada` y `m3_run_status` exponen `origen_declarado` junto a ese
 bit, de modo que una lectura parcial no confunde origen desconocido con real.
 
-La cola, el importador y el trabajador comparten un único resolvedor de
-procedencia. Este contrasta todas las configuraciones de una ingesta dentro
-de la transacción de escritura, y también las de toda otra ingesta que haya
-publicado los mismos bytes Parquet: esos bytes no reciben orígenes opuestos. Al volver a encolar una configuración antigua,
-sin el campo de procedencia, se puede añadir ese campo sin crear una nueva
-versión de configuración. Un origen desconocido explícito (`null`) solo se
-resuelve mientras la ejecución sigue pendiente. Una ejecución ya iniciada o
-completada conserva su configuración: un cambio de origen se rechaza dentro de
-la misma transacción, sin promover la declaración de la ingesta. Una tarea antigua sin ese campo ni origen conocido se detiene
-con un error que indica volver a encolarla, no queda ejecutándose sin proceso.
+El motor resuelve el origen (`pred-engine origen`) antes de que la plataforma
+abra la transacción de encolado. El motor contrasta las declaraciones de la
+ingesta, sus configuraciones y los bytes Parquet compartidos. Si responde con
+un conflicto, la plataforma muestra su detalle y no crea una ejecución.
+Si la consulta falla o tarda más de 60 segundos, tampoco encola la corrida.
+
+Una configuración guardada antes de  no se reutiliza: al
+volver a encolarla, la cola crea una corrida nueva con otro identificador. Un origen desconocido explícito (`null`)
+solo se resuelve mientras la ejecución sigue pendiente. Una ejecución iniciada
+o completada conserva su configuración. El trabajador lanza el origen guardado
+sin resolverlo de nuevo. Una tarea antigua sin ese campo se detiene con un error
+que indica volver a encolarla; la corrida encolada de nuevo es otra corrida.
+
+Los parámetros de lanzamiento usan `schema_version=2` y ya no contienen copias
+de agregación ni recorte. Por eso cambia la identidad de las corridas nuevas.
+Al terminar, la plataforma guarda `corrida.json.evaluation` en la misma
+transacción que el estado final. Si el motor anterior no publica ese campo,
+los ajustes no cambian. Mientras no haya valores publicados, la interfaz indica
+«Lo informa el motor al terminar la corrida».
 
 ## Lectura para M4 (contrato v2)
 

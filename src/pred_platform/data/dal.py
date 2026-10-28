@@ -41,10 +41,6 @@ from pred_platform.data.query import (
 from pred_platform.data.repository import ArtifactDownload
 from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
-# Same constants the engine's classifier uses (ADR-006 of the engine); shown while no metrics exist.
-_ADI_THRESHOLD = 1.32
-_CV2_THRESHOLD = 0.49
-
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 _SKU_CLASSES = get_args(models.SkuClass)
@@ -225,12 +221,14 @@ class DalRepository(M3DalSource):
         request = PageRequest(page, size)
         detail = self._require_ingest(ingest_id)
 
-        if detail.estado != "accepted":
-            reason = (
-                "La ingesta no fue aceptada: no hay topología que mostrar."
-                if detail.estado is not None
-                else "Esta ingesta se cargó antes de que la plataforma guardara su topología."
-            )
+        thresholds = self._thresholds(detail)
+        if detail.estado != "accepted" or thresholds is None:
+            if detail.estado is None:
+                reason = "Esta ingesta se cargó antes de que la plataforma guardara su topología."
+            elif detail.estado != "accepted":
+                reason = "La ingesta no fue aceptada: no hay topología que mostrar."
+            else:
+                reason = "Esta ingesta no tiene los umbrales que publica el motor."
             return models.TopologyReport(
                 **_envelope(  # type: ignore[arg-type]
                     models.Availability(
@@ -259,7 +257,7 @@ class DalRepository(M3DalSource):
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ingest_id=ingest_id,
             t_star=detail.t_star,
-            thresholds=self._thresholds(detail),
+            thresholds=thresholds,
             summary=models.TopologySummary(
                 n_skus=sum(counts.values()),
                 by_class={c: counts.get(c, 0) for c in _SKU_CLASSES},  # type: ignore[misc]
@@ -268,12 +266,13 @@ class DalRepository(M3DalSource):
                 models.TopologyMetrics(
                     sku_id=row.sku,
                     n_periods=row.n_obs,
-                    n_positive=row.n_positive or 0,
-                    adi=row.adi or _ADI_THRESHOLD,
-                    cv2=row.cv2 or 0.0,
+                    n_positive=row.n_positive,
+                    adi=row.adi,
+                    cv2=row.cv2,
                     sku_class=row.clase,  # type: ignore[arg-type]  # CHECK-constrained
                 )
                 for row in rows
+                if row.adi is not None and row.cv2 is not None and row.n_positive is not None
             ],
             page=models.Page(number=request.number, size=request.size, total=total),
         )
@@ -343,8 +342,8 @@ class DalRepository(M3DalSource):
                 step=parametros["step"],
                 metric=parametros["metric"],
                 seasonality=parametros["seasonality"],
-                aggregation=parametros.get("aggregation", "media_recortada"),
-                trim=parametros.get("trim", 0.1),
+                aggregation=parametros.get("aggregation"),
+                trim=parametros.get("trim"),
             ),
             reserve=models.Reserve(**json.loads(run.reserva_json)) if run.reserva_json else None,
             progress=models.Progress(
@@ -483,12 +482,16 @@ class DalRepository(M3DalSource):
                 models.TopologyMetrics(
                     sku_id=topology.sku,
                     n_periods=topology.n_obs,
-                    n_positive=topology.n_positive or 0,
-                    adi=topology.adi or _ADI_THRESHOLD,
-                    cv2=topology.cv2 or 0.0,
+                    n_positive=topology.n_positive,
+                    adi=topology.adi,
+                    cv2=topology.cv2,
                     sku_class=topology.clase,  # type: ignore[arg-type]
                 )
-                if topology is not None and topology.clase is not None
+                if topology is not None
+                and topology.clase is not None
+                and topology.adi is not None
+                and topology.cv2 is not None
+                and topology.n_positive is not None
                 else None
             ),
             families=[models.FamilyEntry.model_validate(entry) for entry in detail.familias],
@@ -530,8 +533,7 @@ class DalRepository(M3DalSource):
         return (self.data_root / relative).as_posix()
 
     @staticmethod
-    def _thresholds(detail: lectura.IngestDetail) -> models.Thresholds:
-        return models.Thresholds(
-            adi=detail.umbral_adi if detail.umbral_adi is not None else _ADI_THRESHOLD,
-            cv2=detail.umbral_cv2 if detail.umbral_cv2 is not None else _CV2_THRESHOLD,
-        )
+    def _thresholds(detail: lectura.IngestDetail) -> models.Thresholds | None:
+        if detail.umbral_adi is None or detail.umbral_cv2 is None:
+            return None
+        return models.Thresholds(adi=detail.umbral_adi, cv2=detail.umbral_cv2)

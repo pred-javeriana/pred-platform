@@ -35,7 +35,7 @@ def _conforms(document: Any, kind: str) -> None:
     validator = Draft202012Validator(
         read_schema(kind), format_checker=Draft202012Validator.FORMAT_CHECKER
     )
-    data = json.loads(document.model_dump_json(exclude_none=True))
+    data = json.loads(document.model_dump_json())
     assert [e.message for e in validator.iter_errors(data)] == []
 
 
@@ -43,7 +43,7 @@ def _run(env: Env, monkeypatch: pytest.MonkeyPatch, scenario: str = "ok", **more
     _scenario(monkeypatch, scenario)
     for name, value in more.items():
         monkeypatch.setenv(name, value)
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
 
 
@@ -221,6 +221,16 @@ def test_a_selection_replaces_what_the_sku_had_and_failing_keeps_it(env: Env) ->
         assert conn.execute("SELECT valor FROM metricas").fetchall() == [(2.0,)]
 
 
+@pytest.mark.parametrize("column", ["adi", "cv2", "n_positive"])
+def test_un_sku_con_metricas_incompletas_no_tiene_topologia(env: Env, monkeypatch, column):
+    _run(env, monkeypatch)
+    with closing(connect(env.db)) as conn, conn:
+        conn.execute(f"UPDATE series SET {column}=NULL WHERE sku='FIL-0001'")
+    detail = env.repo().get_sku_selection("1", "FIL-0001")
+    assert detail.topology is None
+    _conforms(detail, "sku_selection")
+
+
 # ------------------------------------------------------------------------- reading
 def test_the_detail_of_a_sku_validates_against_the_contract_schema(
     env: Env, monkeypatch: pytest.MonkeyPatch
@@ -389,7 +399,7 @@ def test_the_legacy_champion_table_is_never_read(env: Env, monkeypatch: pytest.M
 
 
 def test_a_run_that_has_not_finished_has_no_selection_yet(env: Env) -> None:
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     doc = env.repo().list_sku_selections(RUN)
 
@@ -415,7 +425,7 @@ def test_unknown_runs_and_skus_are_missing_and_no_run_is_an_empty_state(env: Env
     )
     with pytest.raises(ArtifactMissing, match="No existe la ejecución '9'"):
         repo.get_sku_selection("9", "FIL-0001")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     with pytest.raises(ArtifactMissing, match="No existe la ejecución '9'"):
         repo.list_sku_selections("9")
 

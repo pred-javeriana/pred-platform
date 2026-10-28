@@ -94,7 +94,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 seed=args.seed,
                 workers=args.workers,
             )
-            queued = enqueue_run(settings.db_path, args.ingest, launch)
+            queued = enqueue_run(settings, args.ingest, launch)
         except (ValueError, RunRequestError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1

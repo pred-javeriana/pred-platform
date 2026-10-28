@@ -245,10 +245,6 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
 def test_form_origin_reaches_the_existing_worker_command(
     env: Env, origin: str, stored: bool | None, flag: str | None
 ) -> None:
-    # La ingesta de esta prueba no tiene una declaración previa.
-    with closing(dal.connect(env.db)) as conn:
-        conn.execute("DELETE FROM m3_ingestas")
-        conn.commit()
     response = _launch(_dal_client(env), env, data_origin=origin)
     assert response.status_code == 303
     with closing(dal.connect(env.db)) as conn:
@@ -275,9 +271,10 @@ def test_form_rejects_an_invalid_origin_and_keeps_valid_origin_after_other_error
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
-def test_form_cannot_contradict_an_existing_origin(env: Env) -> None:
+def test_form_cannot_contradict_an_existing_origin(env: Env, monkeypatch) -> None:
+    monkeypatch.setenv("FAKE_ENGINE_ORIGIN_EXIT", "3")
     response = _launch(_dal_client(env), env, data_origin="synthetic")
-    assert response.status_code == 200 and "no puede cambiar" in response.text
+    assert response.status_code == 200 and "origen incompatible del motor" in response.text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
@@ -297,6 +294,14 @@ def test_foundation_is_selectable_and_reaches_the_worker_and_results(
     assert env.rows("SELECT DISTINCT modelo FROM tareas") == [("foundation:chronos2",)]
     detail = client.get("/resultados/sku/FIL-0001?ejecucion=1").text
     assert "foundation:chronos2" in detail and "Fundacional" in detail
+
+
+def test_la_configuracion_encolada_espera_los_ajustes_del_motor(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    text = _text(client.get("/ejecucion?ejecucion=1").text)
+    assert "Lo informa el motor al terminar la corrida" in text
+    assert "None (recorte" not in text
 
 
 def test_launching_the_same_run_again_says_it_already_exists(env: Env) -> None:
@@ -401,7 +406,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     assert env.rows("SELECT COUNT(*) FROM tareas") == [(6,)]  # the same rows, no duplicates
 
 
-def test_resuming_a_legacy_run_with_unsupported_settings_changes_nothing(
+def test_resuming_a_legacy_run_lets_the_engine_report_its_evaluation(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
@@ -416,13 +421,17 @@ def test_resuming_a_legacy_run_with_unsupported_settings_changes_nothing(
             (legacy,),
         )
         conn.commit()
-    before = (env.rows("SELECT * FROM ejecuciones"), env.rows("SELECT * FROM tareas"))
+    before = env.rows("SELECT parametros FROM configuraciones")
     assert env.rows("SELECT estado FROM ejecuciones") == [("completada_con_fallos",)]
 
     resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
 
-    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=no_aplica"
-    assert (env.rows("SELECT * FROM ejecuciones"), env.rows("SELECT * FROM tareas")) == before
+    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=reanudada"
+    assert env.rows("SELECT parametros FROM configuraciones") == before
+    monkeypatch.setenv("FAKE_ENGINE_EVALUATION", '{"aggregation":"mediana","trim":0.0}')
+    env.worker().run_next()
+    parameters = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
+    assert (parameters["aggregation"], parameters["trim"]) == ("mediana", 0.0)
 
 
 def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(

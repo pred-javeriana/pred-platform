@@ -8,6 +8,7 @@ reports. A crash or a hang of the engine therefore cannot take the web app down.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import subprocess
@@ -19,7 +20,7 @@ from typing import Any
 import psutil
 
 from pred_platform.config import Settings
-from pred_platform.dal.ejecuciones import Ejecucion
+from pred_platform.dal.ejecuciones import Ejecucion, RunRequestError
 
 # The concrete algorithm of each engine family (contract 7.4, decision D5).
 MODELO_POR_FAMILIA: dict[str, str] = {
@@ -28,6 +29,45 @@ MODELO_POR_FAMILIA: dict[str, str] = {
     "dl": "mlp",
     "foundation": "chronos2",
 }
+
+
+def engine_origin(settings: Settings, ingest_id: str, declarada: bool | None) -> bool | None:
+    """Consulta el veredicto de origen del motor sin abrir una transacción de escritura."""
+    command = [
+        *settings.engine_command,
+        "origen",
+        "--ingest-id",
+        ingest_id,
+        "--data-root",
+        str(settings.data_root.resolve()),
+        "--db-path",
+        str(settings.db_path.resolve()),
+    ]
+    if declarada is not None:
+        command.append("--datos-sinteticos" if declarada else "--datos-reales")
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=60, check=False)
+        if result.returncode not in (0, 3):
+            cause = result.stderr.decode("utf-8", errors="replace").strip()
+            raise ValueError(f"código {result.returncode}: {cause}")
+        payload = json.loads(result.stdout)
+        if not isinstance(payload, dict):
+            raise ValueError("la respuesta no es un objeto JSON")
+        if result.returncode == 3:
+            detail = payload.get("detail")
+            if payload.get("code") != "provenance.origin_conflict" or not isinstance(detail, str):
+                raise ValueError("el conflicto no contiene code y detail válidos")
+            raise RunRequestError(detail)
+        if payload.get("ingest_id") != ingest_id:
+            raise ValueError("la respuesta no corresponde a la ingesta consultada")
+        if "datos_sinteticos" not in payload:
+            raise ValueError("falta datos_sinteticos en la respuesta")
+        origin = payload["datos_sinteticos"]
+        if origin is not None and type(origin) is not bool:
+            raise ValueError("datos_sinteticos no es booleano o nulo")
+        return origin
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        raise RunRequestError(f"No se pudo consultar el origen al motor: {exc}") from exc
 
 
 def model_id(family: str, model: str) -> str:
