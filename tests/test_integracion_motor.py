@@ -105,7 +105,7 @@ def caso(tmp_path_factory: pytest.TempPathFactory) -> Caso:
             horizon=HORIZONTE,
             step=7,
             families=("classical", "ml"),
-            trials=1,
+            trials=2,
             seed=17,
             workers=1,
             datos_sinteticos=True,
