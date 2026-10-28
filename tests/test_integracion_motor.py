@@ -12,6 +12,7 @@ Se omite cuando el motor no está instalado; ``make integration`` lo corre.
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import sqlite3
 import subprocess
@@ -19,7 +20,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -28,12 +29,14 @@ import pytest
 from pred_platform.config import ENGINE_COMMAND_VAR, Settings
 from pred_platform.contract import models_v2
 from pred_platform.dal import ejecuciones as dal
+from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.dal.importacion import import_reports
 from pred_platform.dal.migrate import migrate
 from pred_platform.data.dal import DalRepository
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import DalRunControl
+from pred_platform.worker.engine import engine_origin
 from pred_platform.worker.service import LaunchSettings, enqueue_run
 
 pytestmark = pytest.mark.integration
@@ -64,6 +67,8 @@ def _panel() -> bytes:
 
 @dataclass(frozen=True)
 class Caso:
+    settings: Settings
+    launch: LaunchSettings
     repo: DalRepository
     db: Path
     parquet: Path
@@ -115,19 +120,16 @@ def caso(tmp_path_factory: pytest.TempPathFactory) -> Caso:
     )
     assert import_reports(settings.db_path, root).ok
     sha = hashlib.sha256(panel).hexdigest()
-    queued = enqueue_run(
-        settings,
-        sha,
-        LaunchSettings(
-            min_train=40,
-            horizon=HORIZONTE,
-            step=7,
-            families=("classical", "ml"),
-            trials=2,
-            seed=17,
-            workers=1,
-        ),
+    launch = LaunchSettings(
+        min_train=40,
+        horizon=HORIZONTE,
+        step=7,
+        families=("classical", "ml"),
+        trials=2,
+        seed=17,
+        workers=1,
     )
+    queued = enqueue_run(settings, sha, launch)
     control = DalRunControl(settings)
     repo = DalRepository(settings.db_path, settings.data_root)
 
@@ -157,6 +159,8 @@ def caso(tmp_path_factory: pytest.TempPathFactory) -> Caso:
         }
         [(parquet,)] = conn.execute("SELECT ruta_parquet FROM ingestas WHERE sha256 = ?", (sha,))
     caso = Caso(
+        settings=settings,
+        launch=launch,
         repo=repo,
         db=settings.db_path,
         parquet=root / parquet,
@@ -200,6 +204,49 @@ def test_unpublished_run_shows_progress_only_then_publishes(caso: Caso) -> None:
     with closing(dal.connect(caso.db)) as conn:
         run = dal.get_run(conn, caso.ejecucion_id)
     assert run is not None and (run.estado, run.pid) == ("completada", None)
+
+
+def test_enqueue_without_declaration_stores_the_engine_origin(caso: Caso) -> None:
+    with closing(dal.connect(caso.db)) as conn:
+        run = dal.get_run(conn, caso.ejecucion_id)
+        [(m3_sinteticos,)] = conn.execute(
+            "SELECT datos_sinteticos FROM m3_corridas WHERE run_id = ?", (caso.run_id,)
+        )
+    assert caso.launch.datos_sinteticos is None
+    assert run is not None and run.parametros["datos_sinteticos"] is True
+    assert m3_sinteticos == 1
+
+
+def test_the_engine_answers_the_origin_of_the_ingest(caso: Caso) -> None:
+    assert engine_origin(caso.settings, caso.ingesta_sha256, None) is True
+    assert engine_origin(caso.settings, caso.ingesta_sha256, True) is True
+
+
+def test_a_contrary_declaration_keeps_the_engine_detail_and_creates_no_run(caso: Caso) -> None:
+    with pytest.raises(RunRequestError) as error:
+        enqueue_run(
+            caso.settings,
+            caso.ingesta_sha256,
+            replace(caso.launch, datos_sinteticos=False),
+        )
+    assert "No se pudo consultar" not in str(error.value)
+    assert str(error.value)
+    with closing(dal.connect(caso.db)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone() == (1,)
+
+
+def test_the_run_stores_the_evaluation_the_engine_published(caso: Caso) -> None:
+    corrida = json.loads(
+        (caso.settings.data_root / "runs" / caso.run_id_m2 / "corrida.json").read_text()
+    )
+    evaluation = corrida["evaluation"]
+    with closing(dal.connect(caso.db)) as conn:
+        run = dal.get_run(conn, caso.ejecucion_id)
+    assert run is not None
+    assert (run.parametros["aggregation"], run.parametros["trim"]) == (
+        evaluation["aggregation"],
+        evaluation["trim"],
+    )
 
 
 def test_the_verdicts_and_the_funnel_follow_the_published_cutoff_metadata(caso: Caso) -> None:
