@@ -1,7 +1,7 @@
 """M3's published evidence read by the ``dal`` source as contract v2 documents (M4, section 4.1).
 
-Every read goes through ``DalRepository``: publication-gated, one snapshot, typed rows that keep the
-run, the SKU and the ingest SHA, and a funnel built from the published counts and the late-launch
+Reads through ``DalRepository`` and the SQL reader: publication-gated, one snapshot, typed rows
+that keep the run, the SKU and the ingest SHA, and a funnel built from counts and the late-launch
 rows M3 publishes in SQLite, never from the visible page.
 """
 
