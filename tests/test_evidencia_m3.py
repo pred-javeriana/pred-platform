@@ -24,6 +24,7 @@ from pred_platform.contract.resources import read_schema
 from pred_platform.dal import evidencia
 from pred_platform.dal.lectura import _open_readonly
 from pred_platform.dal.migrate import apply_migrations, load_migrations, migrate
+from pred_platform.data import m3_query
 from pred_platform.data.dal import DalRepository
 from pred_platform.worker.engine import launch
 from tests.m3_publicada import LATE, identity, publish
@@ -328,6 +329,20 @@ def test_unknown_and_synthetic_origins_are_never_read_as_real_data(root: Path) -
 
 
 # ------------------------------------------------------------------ publication gate
+def test_the_sql_reader_hides_rows_until_the_run_is_published(root: Path) -> None:
+    _publish(root, estado="SELECCIONADA")
+    query = m3_query.metrics_query(size=500)
+
+    read = evidencia.read_published(_db(root), RUN, "metrics", query)
+
+    assert read.run is not None and read.run["estado"] == "SELECCIONADA"
+    assert read.rows == [] and read.total == 0
+
+    _sql(root, "UPDATE m3_corridas SET estado = 'PUBLICADA'")
+    published = evidencia.read_published(_db(root), RUN, "metrics", query)
+    assert published.rows and published.total == len(published.rows)
+
+
 def test_an_unpublished_run_shows_its_progress_and_metadata_but_no_evidence(root: Path) -> None:
     _publish(root, estado="EN_CURSO")
     repo = _repo(root)
