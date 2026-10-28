@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "summary": "La plataforma presenta la publicación M4 de SQLite sin leer metadatos del Parquet.",
+  "files": [
+    {
+      "path": "src/pred_platform/dal/migrations/0010_m4_publicacion.sql",
+      "summary": "Aplica el esquema congelado que pertenece al motor.",
+      "annotations": [
+        {
+          "newRange": [1, 4],
+          "summary": "La migración conserva exactamente los bytes del motor f3a655c.",
+          "rationale": "El motor y la plataforma comparten user_version, por eso esta migración debe llegar primero. El SHA-256 coincide con c5488c6fddf87b04ec3dc94b35cfabd2e4a2679db331597bc67b759df576d8a1. La prueba de actualización 9 a 10 conserva una corrida publicada y sus conteos de campeones.",
+          "author": "fm/pred-platform-p3-pr48-rework"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/dal_m3.py",
+      "summary": "Construye documentos de lectura con los datos publicados por M3.",
+      "annotations": [
+        {
+          "newRange": [131, 147],
+          "summary": "La evidencia responde metadata_missing si la corrida no tiene corte publicado.",
+          "rationale": "La ausencia de corte no significa cero exclusiones. Las pruebas y la aplicación local conservan ese diagnóstico para publicaciones antiguas. La misma aplicación presenta las exclusiones SQLite cuando no existe ningún Parquet. La integración con el motor nuevo requiere su rama de publicación M4.",
+          "author": "fm/pred-platform-p3-pr48-rework"
+        }
+      ]
+    }
+  ]
+}
