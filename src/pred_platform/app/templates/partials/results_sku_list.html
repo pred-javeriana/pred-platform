@@ -27,6 +27,7 @@
     <form method="get" action="/resultados" class="pred-filters" id="filtros-seleccion">
       <input type="hidden" name="vista" value="sku">
       {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
+      {% if query.m3 %}<input type="hidden" name="m3" value="{{ query.m3 }}">{% endif %}
       {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=[
         ("", "Todas"), ("smooth", "Smooth (Suave)"), ("erratic", "Erratic (Errática)"), ("intermittent", "Intermittent (Intermitente)"), ("lumpy", "Lumpy (Grumosa)")
       ]) }}
@@ -49,7 +50,7 @@
     </details>
 
     <p class="pred-query-count"><strong class="mono">{{ format_count(listing.page.total) }}</strong> SKU coinciden con la consulta.</p>
-    <p class="pred-meta">Los estados corresponden a cada familia; no representan un veredicto global del SKU.</p>
+    <p class="pred-meta">El campeón y el veredicto son los que publicó M3{% if m3.run %} en la corrida <span class="mono">{{ m3.run.run_id }}</span>{% endif %}. Los estados de la evidencia corresponden a cada familia en M2; no son un veredicto del SKU.</p>
     {{ table_start(["SKU", "Clase", "Campeón", "Evidencia por familia"], "Selección por SKU de la ejecución") }}
     {% if rows %}
       {% for item in rows %}
@@ -57,12 +58,16 @@
         <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ item.row.sku_id | urlencode }}?{{ query.detail_query() }}" aria-label="Ver evidencia del SKU {{ item.row.sku_id }}">{{ item.row.sku_id }}</a></th>
         <td class="pred-demand-class">{{ sku_class_label(item.row.sku_class) }}</td>
         <td>
-          {% if item.row.champion %}
+          {% set verdict = m3.verdicts.get(item.row.sku_id) %}
+          {% if verdict %}
           <div class="pred-cell">
-            <span>{{ family_label(item.row.champion.family) if item.row.champion.family else "" }}</span>
-            <span class="pred-cell__value">{{ item.row.champion.modelo }} · {{ item.row.champion.metrica_seleccion }} {{ format_decimal(item.row.champion.valor_seleccion, 3) }}</span>
+            <span>{{ family_label(verdict.familia_campeona) }}</span>
+            {% if verdict.candidato_campeon %}<span class="pred-cell__value mono">{{ verdict.candidato_campeon }}</span>{% endif %}
+            {{ status_indicator(describe_status("verdict", verdict.veredicto)) }}
           </div>
-          {% else %}<span class="pred-cell--none">No informado</span>{% endif %}
+          {% elif m3.excluded.get(item.row.sku_id) %}
+          <span class="pred-cell--none">Excluido antes de M3: {{ m3.excluded[item.row.sku_id] }}</span>
+          {% else %}<span class="pred-cell--none">Sin veredicto M3</span>{% endif %}
         </td>
         <td>
           <details class="pred-details">

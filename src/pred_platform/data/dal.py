@@ -4,12 +4,13 @@ The ingestion side is real (G1): the engine's ingest reports are imported into t
 (``dal/importacion.py``) and the list of ingests, each ingest report and the demand topology are
 read from there. So are the run status (G3) and the selection per SKU (G4): the worker imports the
 run's ``seleccion.jsonl`` when it closes and the selection list and detail read the families, trials
-and Walk-Forward windows from the DAL. What still does not reach the DAL (the synthetic log, G8, and
-the champion and verdicts of M3) answers honestly that it is not available and names the gap that
-blocks it (``data/capabilities.py`` is the single source for that). Nothing is ever invented: a view
-that shows this data shows only what is stored.
+and Walk-Forward windows from the DAL. M3's published champion, verdicts and evidence are read as
+contract v2 documents (``data/dal_m3.py``); the v1 selection carries no champion. What still does
+not reach the DAL (the synthetic log, G8) answers honestly that it is not available and names the
+gap that blocks it (``data/capabilities.py`` is the single source for that). Nothing is ever
+invented: a view that shows this data shows only what is stored.
 
-Documents that always exist in some form (lists, topology, run status, verdicts) come back with
+Documents that always exist in some form (lists, topology, run status) come back with
 ``availability.status == "unavailable"``. Documents that have no empty form (an ingest report, one
 SKU's selection, a synthetic run, a download) raise ``ArtifactMissing`` naming the open gaps.
 """
@@ -29,6 +30,7 @@ from pred_platform.contract.models import CapabilityId
 from pred_platform.dal import lectura
 from pred_platform.dal.importacion import PANEL_COLUMNS
 from pred_platform.data import capabilities
+from pred_platform.data.dal_m3 import M3DalSource
 from pred_platform.data.query import (
     DEFAULT_SIZE,
     PageRequest,
@@ -68,19 +70,7 @@ def _missing(capability: CapabilityId, what: str) -> Never:
     )
 
 
-def _champion(row: lectura.ChampionRow | None) -> models.Champion | None:
-    if row is None:
-        return None
-    family = row.modelo.split(":", 1)[0]
-    return models.Champion(
-        modelo=row.modelo,
-        family=family if family in _FAMILIES else None,  # type: ignore[arg-type]
-        metrica_seleccion=row.metrica_seleccion,
-        valor_seleccion=row.valor_seleccion,
-    )
-
-
-class DalRepository:
+class DalRepository(M3DalSource):
     """``DataRepository`` over the platform's SQLite database (read-only)."""
 
     source: DataSource = "dal"
@@ -451,7 +441,6 @@ class DalRepository:
                 items=[],
                 page=empty_page,
             )
-        champions = lectura.get_champions(self.db_path, run.id, [row.sku for row in rows])
         return models.SkuSelectionList(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ingest_id=run.ingest_sha256,
@@ -462,7 +451,6 @@ class DalRepository:
                     sku_class=row.clase,  # type: ignore[arg-type]  # CHECK-constrained
                     profile=row.perfil,  # type: ignore[arg-type]
                     families=[models.FamilyBrief(**brief) for brief in row.familias],
-                    champion=_champion(champions.get(row.sku)),
                 )
                 for row in rows
             ],
@@ -506,19 +494,6 @@ class DalRepository:
                 else None
             ),
             families=[models.FamilyEntry.model_validate(entry) for entry in detail.familias],
-            champion=_champion(lectura.get_champions(self.db_path, run.id, [sku_id]).get(sku_id)),
-        )
-
-    # -------------------------------------------------------------------- verdicts
-    def get_validation_verdicts(self, run_id: str) -> models.ValidationVerdicts:
-        availability = capabilities.unavailable(
-            "retrospective_validation",
-            "La lectura de los veredictos publicados por M3 (contrato M4 4.1) no está integrada.",
-        )
-        return models.ValidationVerdicts(
-            **_envelope(availability),  # type: ignore[arg-type]
-            run_id=run_id,
-            items=[],
         )
 
     # -------------------------------------------------------------- synthetic runs

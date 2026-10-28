@@ -1,0 +1,71 @@
+{
+  "schema_version": "2.1.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"ingesta-real\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": false,
+    "origen_declarado": true,
+    "estado": "PUBLICADA",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [
+      "m3-real-02"
+    ],
+    "aviso": null
+  },
+  "items": [
+    {
+      "run_id": "m3-real-02",
+      "sku": null,
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sku_class": "smooth",
+      "familia": "classical",
+      "metrica": "razon_sn",
+      "n_skus": 2,
+      "n_instancias": 2,
+      "n_calculables": 2,
+      "n_no_calculables": 0,
+      "media": 0.95,
+      "mediana": 0.95,
+      "p25": 0.875,
+      "p75": 1.025
+    },
+    {
+      "run_id": "m3-real-02",
+      "sku": null,
+      "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sku_class": "smooth",
+      "familia": "classical",
+      "metrica": "mase",
+      "n_skus": 2,
+      "n_instancias": 2,
+      "n_calculables": 0,
+      "n_no_calculables": 2,
+      "media": null,
+      "mediana": null,
+      "p25": null,
+      "p75": null
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 2
+  }
+}

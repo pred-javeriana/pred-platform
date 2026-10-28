@@ -103,14 +103,10 @@ HPO trials use pendiente, corriendo, completado, podado and fallido; podado is d
 failure. Ingestion has accepted, rejected, failed and needs_confirmation, presented through the
 ingest vocabulary. These contexts remain separate in the presentation helpers.
 
-**Current v1 / legacy contract verdicts.** mantiene → se sostiene (ok, check-circle),
-parcial → se sostiene parcialmente (warn, dash-circle), falla → no se sostiene (err, x-circle).
-These labels describe the copied v1 contract and fixtures; they are not the final M4 vocabulary.
-
-**Published M3 evidence; pending M4 integration in these views.** The five verdicts are
-FALLO_TECNICO, NO_EVALUABLE, EVIDENCIA_INSUFICIENTE, VALIDADO and EXPLORATORIO.
-D2 documents this dependency without adding their contract adapter, mapping them to legacy
-verdicts, deriving new decisions or implementing M4 presentation functionality.
+**M3 verdicts (contract v2).** The five verdicts M3 publishes are shown verbatim, never
+translated: VALIDADO (ok, check-circle), EXPLORATORIO (info, info), EVIDENCIA_INSUFICIENTE
+(warn, minus-circle), NO_EVALUABLE (neutral, banned-sign) and FALLO_TECNICO (err, x-circle).
+The significance (HLN-DM/BH) is a separate block, never a verdict tone.
 
 ## Icons
 

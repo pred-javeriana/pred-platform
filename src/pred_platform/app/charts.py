@@ -53,23 +53,15 @@ def topology_scatter_svg(report: TopologyReport) -> str:
         cv2_line = _map_y(thresholds.cv2, y_max)
         parts.extend(
             [
-                (
-                    f'<line x1="{adi_line:.1f}" y1="{_TOP}" x2="{adi_line:.1f}" '
-                    f'y2="{_HEIGHT - _BOTTOM}" class="pred-chart__threshold" />'
-                ),
-                (
-                    f'<line x1="{_LEFT}" y1="{cv2_line:.1f}" x2="{_WIDTH - _RIGHT}" '
-                    f'y2="{cv2_line:.1f}" class="pred-chart__threshold" />'
-                ),
-                (
-                    f'<text x="{adi_line:.1f}" y="{_TOP + 12}" class="pred-chart__threshold-label" '
-                    f'text-anchor="middle">ADI {escape(format_decimal(thresholds.adi))}</text>'
-                ),
-                (
-                    f'<text x="{_WIDTH - _RIGHT}" y="{cv2_line - 6:.1f}" '
-                    f'class="pred-chart__threshold-label" '
-                    f'text-anchor="end">CV² {escape(format_decimal(thresholds.cv2))}</text>'
-                ),
+                f'<line x1="{adi_line:.1f}" y1="{_TOP}" x2="{adi_line:.1f}" '
+                f'y2="{_HEIGHT - _BOTTOM}" class="pred-chart__threshold" />',
+                f'<line x1="{_LEFT}" y1="{cv2_line:.1f}" x2="{_WIDTH - _RIGHT}" '
+                f'y2="{cv2_line:.1f}" class="pred-chart__threshold" />',
+                f'<text x="{adi_line:.1f}" y="{_TOP + 12}" class="pred-chart__threshold-label" '
+                f'text-anchor="middle">ADI {escape(format_decimal(thresholds.adi))}</text>',
+                f'<text x="{_WIDTH - _RIGHT}" y="{cv2_line - 6:.1f}" '
+                f'class="pred-chart__threshold-label" '
+                f'text-anchor="end">CV² {escape(format_decimal(thresholds.cv2))}</text>',
             ]
         )
     parts.extend(_point(row, x_max, y_max) for row in report.items)

@@ -56,38 +56,61 @@ transacción que el estado final. Si el motor anterior no publica ese campo,
 los ajustes no cambian. Mientras no haya valores publicados, la interfaz indica
 «Lo informa el motor al terminar la corrida».
 
-## Lectura pública del DAL
+## Lectura para M4 (contrato v2)
+
+Las vistas leen la evidencia M3 mediante `DataRepository`, en los dos modos (`dal` y
+`fixture`), como documentos del contrato v2 de `pred-docs`
+(`diseno/contratos/contrato-lectura-m3-v2.md`):
 
 ```python
-from pathlib import Path
-from pred_platform.dal.evidencia import read_m3_evidence, m3_run_status
-
-estado = m3_run_status(Path("data/pred.db"), "identidad-m2")
-evidencia = read_m3_evidence(Path("data/pred.db"), "identidad-m2")
-sku = read_m3_evidence(Path("data/pred.db"), "identidad-m2", sku="SKU-1")
+corridas = repo.list_m3_runs(run_id_m2="7")          # referencia M2: id de plataforma o del motor
+corrida = corridas.selected_run_id                    # la PUBLICADA más nueva de todas las coincidencias
+evidencia = repo.get_m3_evidence(corrida, grupo="evaluados", size=100)
+metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 ```
 
-Las consultas aceptan una identidad M2 o M3. `read_m3_evidence` devuelve listas
-de registros por tabla, solo para corridas PUBLICADA. Con `sku`, devuelve
-la fila de `m3_corridas` junto con las tablas que contienen esa columna. No
-incorpora métricas de una corrida parcial ni transforma los cinco veredictos
-al vocabulario histórico v1 de presentación.
+| Operación | Documento | Fuente |
+|---|---|---|
+| `list_m3_runs` | `M3Runs` | `m3_corridas` y la política de `m3_protocolos` |
+| `get_m3_run_status` | `M3RunStatus` | corrida y avance durable de `m3_unidades` |
+| `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos`, `m3_cortes` y `m3_lanzamientos_tardios` |
+| `get_m3_metrics` | `M3Metrics` | `m3_metricas` |
+| `get_m3_categories` | `M3Categories` | `m3_categorias` |
+| `get_m3_portfolio` | `M3Portfolio` | `m3_cartera` |
+| `get_m3_observations` | `M3Observations` | `m3_observaciones` (filtros SKU y fecha) |
+| `get_m3_champions` | `M3Champions` | vista `m3_campeones` (filtros clase y familia, clase nula al final) |
+| `get_m3_forecasts` | `M3Forecasts` | `m3_pronosticos` |
+| `get_m3_failures` | `M3Failures` | `m3_fallos` |
+| `get_m3_units` | `M3Units` | `m3_unidades` |
 
-La función materializa el conjunto completo de filas que coinciden, no pagina.
-Todas las tablas pertenecen a una sola instantánea SQLite. Una identidad M2
-puede corresponder a varias corridas M3; cada fila conserva `run_id`. Para un
-único resultado se debe elegir la identidad M3 exacta. El filtro SKU reduce las
-filas materializadas dentro de ese ámbito; no permite consultar sin identidad.
+- **Corrida exacta.** Todas las operaciones salvo `list_m3_runs` exigen el `run_id` M3. La lista
+  ordena por `creado_en DESC, run_id DESC` y resuelve `selected_run_id` sobre todas las
+  coincidencias antes de paginar; una RECHAZADA más nueva no desplaza a una PUBLICADA. Cada
+  corrida trae la lista completa `publicadas_misma_identidad` y `aviso` cuando hay más de una.
+- **Publicación.** Solo una corrida PUBLICADA expone filas. Otra corrida responde
+  `not_published` con sus metadatos y causa; un identificador desconocido, `no_data`. El estado y
+  las filas se leen en una sola instantánea de solo lectura (`dal/evidencia.py`).
+- **Trazas.** Cada fila conserva `run_id`, `sku` (nulo en agregados) e `ingesta_sha256`; los bits
+  SQLite se presentan como booleanos y los campos JSON con su tipo. Los cinco veredictos se
+  conservan literales, el campeón sale de `m3_veredictos` y la significancia (`dm_*`, con su
+  causa si no hay prueba) es una columna aparte. Las métricas son MAE, RMSE, MASE, ME y r
+  (`razon_sn`), sin sMAPE; el segmento es la clase Syntetos-Boylan (`sku_class`).
+- **Embudo.** `funnel` y `late_launches` describen toda la corrida, no la página. El corte t* y los
+  productos lanzados después del corte se leen de `m3_cortes` y `m3_lanzamientos_tardios`,
+  publicados por M3 en SQLite. Si la corrida no tiene fila en `m3_cortes`, la evidencia responde
+  `metadata_missing`, sin embudo ni filas: la falta de metadatos no significa cero exclusiones.
+  `get_m3_observations` también responde `metadata_missing` para esa publicación antigua y pide
+  volver a ejecutar la corrida. Las demás operaciones siguen disponibles.
+- **Demanda y campeones.** `get_m3_observations` conserva las fechas y los valores nulos de la
+  reserva. `get_m3_champions` lee los conteos por familia que publica la vista del motor, sin
+  calcularlos; las filas con `sku_class` nula corresponden a toda la cartera.
+- **Consultas.** Los filtros, los dos grupos (`evaluados`, `no_evaluados`), el orden y la página
+  tienen un único dueño, `data/m3_query.py`; el modo `dal` los traduce a SQL y el modo `fixture`
+  los aplica a los ejemplos v2. Un filtro imposible es `InvalidQuery`.
 
-`m3_run_status` expone estado, rechazo, origen (`datos_sinteticos` con
-`origen_declarado`) y avance durable. `n_resueltas` cuenta
-unidades confirmadas o fallidas. `n_confirmadas` cuenta solo las exitosas y
-`n_fallidas` las fallidas. `n_unidades_previstas` es el total del protocolo.
-La consulta de progreso no expone métricas parciales.
-
-Las lecturas abren la base en modo `ro`. Una base ausente o anterior a M3
-produce un resultado vacío sin crear archivos. Un error de corrupción no se
-oculta como ausencia de datos.
+Una base ausente o anterior a M3 responde `no_data` sin crear archivos. Un error de corrupción no
+se oculta como ausencia de datos. Los documentos que no cumplen el contrato producen
+`ContractInvalid`.
 
 ## Contenido
 
@@ -102,14 +125,21 @@ oculta como ausencia de datos.
 
 M3 también publica CSV y Parquet derivados de SQLite. La vista
 `evidencia_publicada` impide consumir resultados antes de terminar la
-publicación. La interfaz visual de M4 no cambia en esta entrega.
+publicación. Las vistas Resultados («Por SKU» y el detalle) muestran el campeón,
+el veredicto, la justificación, los números decisivos, el origen y la
+significancia de la corrida M3 resuelta; las vistas nuevas de M4 (4.2 a 4.5)
+se construyen sobre estas operaciones.
 
 ## Verificación
 
-`tests/test_evidencia_m3.py` comprueba publicación, progreso, filtrado por SKU,
-lecturas sin escritura y transmisión de la ruta central al proceso del motor.
-También comprueba bases ausentes, corruptas o anteriores a M3 y la lectura
-durante una actualización del esquema.
+`tests/test_evidencia_m3.py` comprueba, mediante `DalRepository`, publicación,
+progreso, embudo y exclusiones tardías, metadatos ausentes o inválidos, filtros,
+grupos, orden y páginas, origen sintético y desconocido, selección de la
+PUBLICADA más nueva con aviso de duplicados, lecturas sin escritura y
+transmisión de la ruta central al proceso del motor. También comprueba bases
+ausentes, corruptas o anteriores a M3, una publicación durante la lectura y la
+lectura durante una actualización del esquema. `tests/test_m3_fixtures.py` hace
+lo mismo con los ejemplos v2 del modo `fixture`.
 Las pruebas de migraciones conservan los hashes de todas las versiones
 publicadas y la compatibilidad con datos previos.
 
@@ -118,13 +148,16 @@ reducido (TASK-EVAL-3.5-A2). Genera un panel sintético de seis SKU, lo ingiere
 con `pred-engine classify`, encola la corrida y deja que el worker lance
 `pred-engine run`. El operador la detiene cuando M3 ya confirmó unidades, se
 borra el traspaso local del motor (`candidatos.json`) y la corrida se reanuda.
-La prueba comprueba, mediante `read_m3_evidence` y `m3_run_status`:
+La prueba comprueba, mediante `DalRepository`:
 
 - Antes de publicar solo se ve el avance; después, la corrida PUBLICADA completa.
-- Cada fila conserva `run_id` y SKU, y la corrida su ingesta y su origen.
+- Los veredictos y el embudo siguen el corte y las exclusiones que publica M3 en SQLite:
+  un veredicto por SKU del panel, ninguno VALIDADO con datos sintéticos y el embudo completo.
+- La demanda observada y los campeones por familia tienen filas publicadas, incluida la cartera.
+- Cada fila conserva `run_id`, SKU e ingesta, y la corrida su origen.
 - La reanudación conserva las unidades ya confirmadas y no duplica corridas,
   unidades ni pronósticos.
-- La lectura por SKU incluye la fila de la corrida con su ingesta y su origen.
+- La lectura por SKU conserva la corrida con su ingesta y su origen.
 
 El caso cubre la pérdida del traspaso local de pred-engine#41, pero no el
 fallo transitorio de ajuste de la familia DL que ese issue también necesita.

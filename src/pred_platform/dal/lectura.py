@@ -402,15 +402,6 @@ class SelectionDetail:
     familias: list[dict[str, Any]]
 
 
-@dataclass(frozen=True, slots=True)
-class ChampionRow:
-    """The champion M3 wrote in ``resultados_comparativos`` (nobody does yet)."""
-
-    modelo: str
-    metrica_seleccion: str
-    valor_seleccion: float
-
-
 def _has_selection_tables(conn: sqlite3.Connection) -> bool:
     return int(conn.execute("PRAGMA user_version").fetchone()[0]) >= _SELECTION_SCHEMA_VERSION
 
@@ -646,22 +637,6 @@ def _windows(
             )
         )
     ]
-
-
-def get_champions(db_path: Path, ejecucion_id: int, skus: list[str]) -> dict[str, ChampionRow]:
-    """The champions M3 wrote for ``skus`` in ``resultados_comparativos`` (none until M3 exists)."""
-    if not skus:
-        return {}
-    marks = ", ".join("?" for _ in skus)
-    with _open_readonly(db_path) as conn:
-        if conn is None:
-            return {}
-        rows = conn.execute(
-            "SELECT sku, modelo_campeon, metrica_seleccion, valor_seleccion "
-            f"FROM resultados_comparativos WHERE ejecucion_id = ? AND sku IN ({marks})",
-            [ejecucion_id, *skus],
-        ).fetchall()
-    return {sku: ChampionRow(*rest) for sku, *rest in rows}
 
 
 def get_topology_row(db_path: Path, ingest_sha256: str, sku: str) -> SeriesRow | None:
