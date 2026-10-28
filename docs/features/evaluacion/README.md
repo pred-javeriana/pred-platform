@@ -42,12 +42,12 @@ ingesta, sus configuraciones y los bytes Parquet compartidos. Si responde con
 un conflicto, la plataforma muestra su detalle y no crea una ejecución.
 Si la consulta falla o tarda más de 60 segundos, tampoco encola la corrida.
 
-Al volver a encolar una configuración antigua sin el campo de origen, la cola
-puede añadirlo sin crear otra versión. Un origen desconocido explícito (`null`)
+Una configuración guardada antes de  no se reutiliza: al
+volver a encolarla, la cola crea una corrida nueva con otro identificador. Un origen desconocido explícito (`null`)
 solo se resuelve mientras la ejecución sigue pendiente. Una ejecución iniciada
 o completada conserva su configuración. El trabajador lanza el origen guardado
 sin resolverlo de nuevo. Una tarea antigua sin ese campo se detiene con un error
-que indica volver a encolarla.
+que indica volver a encolarla; la corrida encolada de nuevo es otra corrida.
 
 Los parámetros de lanzamiento usan `schema_version=2` y ya no contienen copias
 de agregación ni recorte. Por eso cambia la identidad de las corridas nuevas.

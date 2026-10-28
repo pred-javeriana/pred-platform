@@ -223,11 +223,12 @@ class DalRepository(M3DalSource):
 
         thresholds = self._thresholds(detail)
         if detail.estado != "accepted" or thresholds is None:
-            reason = (
-                "La ingesta no fue aceptada: no hay topología que mostrar."
-                if detail.estado not in (None, "accepted")
-                else "Esta ingesta no tiene los umbrales que publica el motor."
-            )
+            if detail.estado is None:
+                reason = "Esta ingesta se cargó antes de que la plataforma guardara su topología."
+            elif detail.estado != "accepted":
+                reason = "La ingesta no fue aceptada: no hay topología que mostrar."
+            else:
+                reason = "Esta ingesta no tiene los umbrales que publica el motor."
             return models.TopologyReport(
                 **_envelope(  # type: ignore[arg-type]
                     models.Availability(

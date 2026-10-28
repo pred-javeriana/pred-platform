@@ -264,6 +264,19 @@ def test_la_pagina_de_una_ingesta_rechazada_oculta_los_umbrales(repo: DalReposit
     assert "Topología de demanda" not in response.text
 
 
+def test_la_pagina_de_una_ingesta_sin_umbral_no_lo_inventa(repo: DalRepository):
+    with closing(sqlite3.connect(repo.db_path)) as conn, conn:
+        conn.execute("UPDATE ingestas SET umbral_adi=NULL WHERE sha256=?", (ACCEPTED,))
+    app = create_app(
+        Settings(data_root=repo.db_path.parent / "data", db_path=repo.db_path, worker="off")
+    )
+    app.state.repository = repo
+    response = TestClient(app).get(f"/datos?ingest_id={ACCEPTED}")
+    assert response.status_code == 200
+    assert "Umbral ADI" not in response.text and "Umbral CV²" not in response.text
+    assert 'class="pred-chart__threshold"' not in response.text
+
+
 # ----------------------------------------------------------------- compatibility
 def test_the_capabilities_now_declare_the_ingestion_side_available(repo: DalRepository) -> None:
     by_id = {c.id: c for c in repo.get_capabilities().items}

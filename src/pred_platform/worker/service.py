@@ -118,17 +118,17 @@ def enqueue_run(
         ).fetchone()
         if previa is not None:
             parametros = json.loads(previa[1])
-            # A missing key is a legacy queue entry; an explicit null is a declared unknown
-            # origin, which only a run that has not started yet may still resolve.
-            antigua = "datos_sinteticos" not in parametros
+            # The run id hashes schema_version 2, whose rows always carry the origin key. An
+            # explicit null is a declared unknown origin, which only a run that has not started
+            # yet may still resolve.
             origen_previo = parametros.get("datos_sinteticos")
-            cambia = not antigua and origen_previo != chosen.datos_sinteticos
+            cambia = origen_previo != chosen.datos_sinteticos
             if previa[2] != ingest_id or (
                 cambia and (origen_previo is not None or previa[3] != "pendiente")
             ):
                 # Raising leaves the stored configuration and execution unchanged.
                 raise RunRequestError("la identidad o procedencia de la ejecucion no puede cambiar")
-            if antigua or cambia:
+            if cambia:
                 parametros["datos_sinteticos"] = chosen.datos_sinteticos
                 conn.execute(
                     "UPDATE configuraciones SET parametros=? WHERE id=?",
