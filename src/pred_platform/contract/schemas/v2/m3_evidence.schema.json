@@ -1,0 +1,817 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pred-contrato/v2/m3_evidence.schema.json",
+  "x-contract-version": "2.1.0",
+  "$defs": {
+    "Availability": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_data",
+                "not_published",
+                "metadata_missing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason Code"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Detail"
+        }
+      },
+      "required": [
+        "status",
+        "reason_code",
+        "detail"
+      ],
+      "title": "Availability",
+      "type": "object"
+    },
+    "ConteosVeredicto": {
+      "additionalProperties": false,
+      "properties": {
+        "FALLO_TECNICO": {
+          "minimum": 0,
+          "title": "Fallo Tecnico",
+          "type": "integer"
+        },
+        "NO_EVALUABLE": {
+          "minimum": 0,
+          "title": "No Evaluable",
+          "type": "integer"
+        },
+        "EVIDENCIA_INSUFICIENTE": {
+          "minimum": 0,
+          "title": "Evidencia Insuficiente",
+          "type": "integer"
+        },
+        "VALIDADO": {
+          "minimum": 0,
+          "title": "Validado",
+          "type": "integer"
+        },
+        "EXPLORATORIO": {
+          "minimum": 0,
+          "title": "Exploratorio",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "FALLO_TECNICO",
+        "NO_EVALUABLE",
+        "EVIDENCIA_INSUFICIENTE",
+        "VALIDADO",
+        "EXPLORATORIO"
+      ],
+      "title": "ConteosVeredicto",
+      "type": "object"
+    },
+    "EvaluatedModel": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "minLength": 1,
+          "title": "Sku",
+          "type": "string"
+        },
+        "candidato_id": {
+          "minLength": 1,
+          "title": "Candidato Id",
+          "type": "string"
+        },
+        "familia": {
+          "enum": [
+            "classical",
+            "ml",
+            "dl",
+            "foundation",
+            "seasonal_naive"
+          ],
+          "title": "Familia",
+          "type": "string"
+        },
+        "modelo": {
+          "minLength": 1,
+          "title": "Modelo",
+          "type": "string"
+        },
+        "razon_sn": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Razon Sn"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "candidato_id",
+        "familia",
+        "modelo",
+        "razon_sn"
+      ],
+      "title": "EvaluatedModel",
+      "type": "object"
+    },
+    "LateLaunchExclusion": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "minLength": 1,
+          "title": "Sku",
+          "type": "string"
+        },
+        "causa": {
+          "const": "lanzado despues del corte",
+          "title": "Causa",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "causa"
+      ],
+      "title": "LateLaunchExclusion",
+      "type": "object"
+    },
+    "LateLaunches": {
+      "additionalProperties": false,
+      "description": "Corte y lista completa de exclusiones que M3 publica con la corrida (m3_cortes, m3_lanzamientos_tardios).",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "title": "Sku",
+          "type": "null"
+        },
+        "t_star": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "T Star",
+          "type": "string"
+        },
+        "excluded_count": {
+          "minimum": 0,
+          "title": "Excluded Count",
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/LateLaunchExclusion"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "t_star",
+        "excluded_count",
+        "items"
+      ],
+      "title": "LateLaunches",
+      "type": "object"
+    },
+    "M3Funnel": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "title": "Sku",
+          "type": "null"
+        },
+        "total_productos": {
+          "minimum": 0,
+          "title": "Total Productos",
+          "type": "integer"
+        },
+        "excluded_count": {
+          "minimum": 0,
+          "title": "Excluded Count",
+          "type": "integer"
+        },
+        "tras_exclusiones": {
+          "minimum": 0,
+          "title": "Tras Exclusiones",
+          "type": "integer"
+        },
+        "no_evaluados": {
+          "minimum": 0,
+          "title": "No Evaluados",
+          "type": "integer"
+        },
+        "evaluados": {
+          "minimum": 0,
+          "title": "Evaluados",
+          "type": "integer"
+        },
+        "conteos": {
+          "$ref": "#/$defs/ConteosVeredicto"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "total_productos",
+        "excluded_count",
+        "tras_exclusiones",
+        "no_evaluados",
+        "evaluados",
+        "conteos"
+      ],
+      "title": "M3Funnel",
+      "type": "object"
+    },
+    "M3Run": {
+      "additionalProperties": false,
+      "properties": {
+        "datos_sinteticos": {
+          "title": "Datos Sinteticos",
+          "type": "boolean"
+        },
+        "origen_declarado": {
+          "title": "Origen Declarado",
+          "type": "boolean"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "title": "Sku",
+          "type": "null"
+        },
+        "run_id_m2": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id M2"
+        },
+        "identidad": {
+          "minLength": 1,
+          "title": "Identidad",
+          "type": "string"
+        },
+        "estado": {
+          "enum": [
+            "EN_CURSO",
+            "EVALUADA",
+            "SELECCIONADA",
+            "PUBLICADA",
+            "RECHAZADA"
+          ],
+          "title": "Estado",
+          "type": "string"
+        },
+        "causa_rechazo": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Causa Rechazo"
+        },
+        "creado_en": {
+          "format": "date-time",
+          "title": "Creado En",
+          "type": "string"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectionPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publicadas_misma_identidad": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Publicadas Misma Identidad",
+          "type": "array"
+        },
+        "aviso": {
+          "anyOf": [
+            {
+              "const": "varias_publicadas_misma_identidad",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Aviso"
+        }
+      },
+      "required": [
+        "datos_sinteticos",
+        "origen_declarado",
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "run_id_m2",
+        "identidad",
+        "estado",
+        "causa_rechazo",
+        "creado_en",
+        "policy",
+        "publicadas_misma_identidad",
+        "aviso"
+      ],
+      "title": "M3Run",
+      "type": "object"
+    },
+    "M3Verdict": {
+      "additionalProperties": false,
+      "description": "evidencia_publicada + ingesta y n_min; dm_* ocupa una columna independiente.",
+      "properties": {
+        "datos_sinteticos": {
+          "title": "Datos Sinteticos",
+          "type": "boolean"
+        },
+        "origen_declarado": {
+          "title": "Origen Declarado",
+          "type": "boolean"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "minLength": 1,
+          "title": "Sku",
+          "type": "string"
+        },
+        "identidad": {
+          "minLength": 1,
+          "title": "Identidad",
+          "type": "string"
+        },
+        "sku_class": {
+          "enum": [
+            "smooth",
+            "intermittent",
+            "erratic",
+            "lumpy"
+          ],
+          "title": "Sku Class",
+          "type": "string"
+        },
+        "veredicto": {
+          "enum": [
+            "FALLO_TECNICO",
+            "NO_EVALUABLE",
+            "EVIDENCIA_INSUFICIENTE",
+            "VALIDADO",
+            "EXPLORATORIO"
+          ],
+          "title": "Veredicto",
+          "type": "string"
+        },
+        "familia_campeona": {
+          "enum": [
+            "classical",
+            "ml",
+            "dl",
+            "foundation",
+            "seasonal_naive"
+          ],
+          "title": "Familia Campeona",
+          "type": "string"
+        },
+        "candidato_campeon": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Candidato Campeon"
+        },
+        "n_ventanas": {
+          "minimum": 0,
+          "title": "N Ventanas",
+          "type": "integer"
+        },
+        "n_min": {
+          "minimum": 1,
+          "title": "N Min",
+          "type": "integer"
+        },
+        "cobertura": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Cobertura",
+          "type": "number"
+        },
+        "razon_sn": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Razon Sn"
+        },
+        "pierde_frente_a_linea_base": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pierde Frente A Linea Base"
+        },
+        "comparacion_incompleta": {
+          "title": "Comparacion Incompleta",
+          "type": "boolean"
+        },
+        "iqr_diferencia_mae": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Iqr Diferencia Mae"
+        },
+        "dm_n_ventanas": {
+          "minimum": 0,
+          "title": "Dm N Ventanas",
+          "type": "integer"
+        },
+        "dm_horizonte": {
+          "minimum": 0,
+          "title": "Dm Horizonte",
+          "type": "integer"
+        },
+        "dm_estadistico": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dm Estadistico"
+        },
+        "dm_p_valor": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dm P Valor"
+        },
+        "dm_p_ajustado": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dm P Ajustado"
+        },
+        "dm_alfa": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dm Alfa"
+        },
+        "dm_significativa": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dm Significativa"
+        },
+        "dm_causa": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dm Causa"
+        },
+        "justificacion": {
+          "minLength": 1,
+          "title": "Justificacion",
+          "type": "string"
+        },
+        "modelos_evaluados": {
+          "items": {
+            "$ref": "#/$defs/EvaluatedModel"
+          },
+          "title": "Modelos Evaluados",
+          "type": "array"
+        }
+      },
+      "required": [
+        "datos_sinteticos",
+        "origen_declarado",
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "identidad",
+        "sku_class",
+        "veredicto",
+        "familia_campeona",
+        "candidato_campeon",
+        "n_ventanas",
+        "n_min",
+        "cobertura",
+        "razon_sn",
+        "pierde_frente_a_linea_base",
+        "comparacion_incompleta",
+        "iqr_diferencia_mae",
+        "dm_n_ventanas",
+        "dm_horizonte",
+        "dm_estadistico",
+        "dm_p_valor",
+        "dm_p_ajustado",
+        "dm_alfa",
+        "dm_significativa",
+        "dm_causa",
+        "justificacion",
+        "modelos_evaluados"
+      ],
+      "title": "M3Verdict",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "size": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Size",
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number",
+        "size",
+        "total"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "SelectionPolicy": {
+      "additionalProperties": false,
+      "description": "Proyeccion de m3_protocolos.protocolo.politica; no son ajustes de la vista.",
+      "properties": {
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "n_min": {
+          "minimum": 1,
+          "title": "N Min",
+          "type": "integer"
+        },
+        "n_min_dm": {
+          "minimum": 2,
+          "title": "N Min Dm",
+          "type": "integer"
+        },
+        "alfa_dm": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Alfa Dm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "version",
+        "n_min",
+        "n_min_dm",
+        "alfa_dm"
+      ],
+      "title": "SelectionPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "pattern": "^2\\.[0-9]+\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "dal",
+        "fixture"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "availability": {
+      "$ref": "#/$defs/Availability"
+    },
+    "run": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/M3Run"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/M3Verdict"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "page": {
+      "$ref": "#/$defs/Page"
+    },
+    "funnel": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/M3Funnel"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "late_launches": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LateLaunches"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "source",
+    "availability",
+    "run",
+    "items",
+    "page",
+    "funnel",
+    "late_launches"
+  ],
+  "title": "M3Evidence",
+  "type": "object"
+}

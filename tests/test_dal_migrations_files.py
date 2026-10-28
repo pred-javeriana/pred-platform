@@ -21,6 +21,7 @@ RELEASED: dict[int, str] = {
     7: "992f5be0b7f670a393519ff7a0f6ed3d8074a20dcb3cce7614057061d23f6e37",
     8: "cba43152604647196739f77496222dd3bda5a8d88bac999b065961de7e17a62f",
     9: "ee0d58ffcd57ce34d65478334c571d5196f227dab2cbf2cae0f24175ec99dd01",
+    10: "c5488c6fddf87b04ec3dc94b35cfabd2e4a2679db331597bc67b759df576d8a1",
 }
 
 
@@ -284,6 +285,46 @@ def test_version_4_keeps_one_row_per_run_sku_family_trial_and_window(
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
         conn.execute(again)
     conn.close()
+
+
+def test_version_10_preserves_published_runs_and_exposes_champions(tmp_path: Path) -> None:
+    from pred_platform.dal.migrate import migrate
+    from tests.m3_publicada import publish
+
+    db = tmp_path / "version9.db"
+    migrate(db, load_migrations()[:9])
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus) VALUES (?, 'a.csv', 3, 3)",
+            ("a" * 64,),
+        )
+    publish(
+        db,
+        ingesta_sha256="a" * 64,
+        run_id_m2="legacy",
+        verdicts={
+            "A": ("smooth", "VALIDADO"),
+            "B": ("smooth", "EXPLORATORIO"),
+            "C": ("lumpy", "NO_EVALUABLE"),
+        },
+        publish_m4=False,
+    )
+
+    migrate(db)
+
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone() == (10,)
+        assert conn.execute("SELECT estado FROM m3_corridas").fetchall() == [("PUBLICADA",)]
+        assert conn.execute(
+            "SELECT sku_class, familia, n_skus, n_evaluados, n_no_evaluados "
+            "FROM m3_campeones ORDER BY sku_class IS NULL, sku_class, familia"
+        ).fetchall() == [
+            ("lumpy", "classical", 1, 0, 1),
+            ("smooth", "classical", 2, 2, 0),
+            (None, "classical", 3, 2, 1),
+        ]
+        assert conn.execute("SELECT * FROM m3_cortes").fetchall() == []
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_readme_names_the_current_schema_version() -> None:

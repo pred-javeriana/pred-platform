@@ -6,7 +6,10 @@ Documents carry ``source: "fixture"`` so a view can say that it is showing sampl
 The fixtures are stateless: ``submit_ingest`` returns the scenario's example whatever file it is
 given, and nothing is stored. Every document is parsed from the contract's JSON on each call, so
 callers can never mutate the shared examples, and every document that is rebuilt after filtering
-or paging is validated again.
+or paging is validated again. The M3 operations (contract v2) live in ``fixtures_m3.py``.
+
+The champion of a SKU is M3's (``get_m3_evidence``); the legacy ``champion`` of the v1 selection
+examples is never served, as in the ``dal`` source.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from pred_platform.contract import models
 from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
+from pred_platform.data.fixtures_m3 import M3FixtureSource
 from pred_platform.data.query import (
     DEFAULT_SIZE,
     LATEST,
@@ -74,7 +78,7 @@ def sample_csv() -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-class FixtureRepository:
+class FixtureRepository(M3FixtureSource):
     """``DataRepository`` over the examples of the contract, driven by a scenario."""
 
     source: DataSource = "fixture"
@@ -223,6 +227,7 @@ class FixtureRepository:
         )
         rows = sort_items([row for row in doc.items if keep(row)], key, descending=descending)
         items, paging = paginate(rows, request)
+        items = [row.model_copy(update={"champion": None}) for row in items]
         return _with(doc, items=items, page=paging)
 
     def get_sku_selection(
@@ -236,18 +241,9 @@ class FixtureRepository:
                 for entry in data["families"]:
                     if entry.get("walk_forward"):
                         entry["walk_forward"]["windows"] = None
+            data["champion"] = None
             return parse_as(models.SkuSelection, data)
         raise ArtifactMissing(f"No hay detalle del SKU {sku_id!r} en la ejecución {run_id!r}")
-
-    # -------------------------------------------------------------------- verdicts
-    def get_validation_verdicts(self, run_id: str) -> models.ValidationVerdicts:
-        return self._find(
-            models.ValidationVerdicts,
-            (self.scenario.validation_verdicts,),
-            run_id,
-            lambda d: d.run_id,
-            f"No hay veredictos para la ejecución {run_id!r}",
-        )
 
     # -------------------------------------------------------------- synthetic runs
     def list_synthetic_runs(

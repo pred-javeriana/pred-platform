@@ -1,0 +1,112 @@
+{
+  "schema_version": "2.1.0",
+  "generated_at": "2026-10-27T11:00:00Z",
+  "source": "fixture",
+  "availability": {
+    "status": "available",
+    "reason_code": null,
+    "detail": null
+  },
+  "run": {
+    "run_id": "m3-sintetica",
+    "sku": null,
+    "ingesta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "run_id_m2": "m2-ejemplo",
+    "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"sintetica\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+    "datos_sinteticos": true,
+    "origen_declarado": true,
+    "estado": "PUBLICADA",
+    "causa_rechazo": null,
+    "creado_en": "2026-10-27T10:00:00Z",
+    "policy": {
+      "version": "3.4.3-inicial",
+      "n_min": 30,
+      "n_min_dm": 30,
+      "alfa_dm": 0.05
+    },
+    "publicadas_misma_identidad": [
+      "m3-sintetica"
+    ],
+    "aviso": null
+  },
+  "items": [
+    {
+      "run_id": "m3-sintetica",
+      "sku": "SKU-EXPLORATORIO",
+      "ingesta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "identidad": "{\"codigo_version\":\"f8678bf\",\"configuracion_id\":\"config-ejemplo\",\"ingesta_ref_m1\":\"sintetica\",\"t_corte_reserva\":\"2026-06-30\",\"version_metricas\":\"3.4.1-inicial\",\"version_politica\":\"3.4.3-inicial\"}",
+      "datos_sinteticos": true,
+      "origen_declarado": true,
+      "sku_class": "smooth",
+      "veredicto": "EXPLORATORIO",
+      "familia_campeona": "classical",
+      "candidato_campeon": "SKU-EXPLORATORIO/classical/sarima",
+      "n_ventanas": 40,
+      "n_min": 30,
+      "cobertura": 1.0,
+      "razon_sn": 0.8,
+      "pierde_frente_a_linea_base": false,
+      "comparacion_incompleta": false,
+      "iqr_diferencia_mae": 0.5,
+      "dm_n_ventanas": 0,
+      "dm_horizonte": 0,
+      "dm_estadistico": null,
+      "dm_p_valor": null,
+      "dm_p_ajustado": null,
+      "dm_alfa": null,
+      "dm_significativa": null,
+      "dm_causa": "datos_sinteticos",
+      "justificacion": "EXPLORATORIO: datos sinteticos o aumentados",
+      "modelos_evaluados": [
+        {
+          "run_id": "m3-sintetica",
+          "sku": "SKU-EXPLORATORIO",
+          "ingesta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "candidato_id": "SKU-EXPLORATORIO/seasonal_naive/seasonal_naive",
+          "familia": "seasonal_naive",
+          "modelo": "seasonal_naive",
+          "razon_sn": 1.0
+        },
+        {
+          "run_id": "m3-sintetica",
+          "sku": "SKU-EXPLORATORIO",
+          "ingesta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "candidato_id": "SKU-EXPLORATORIO/classical/sarima",
+          "familia": "classical",
+          "modelo": "sarima",
+          "razon_sn": 0.8
+        }
+      ]
+    }
+  ],
+  "page": {
+    "number": 1,
+    "size": 50,
+    "total": 1
+  },
+  "funnel": {
+    "run_id": "m3-sintetica",
+    "sku": null,
+    "ingesta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "total_productos": 1,
+    "excluded_count": 0,
+    "tras_exclusiones": 1,
+    "no_evaluados": 0,
+    "evaluados": 1,
+    "conteos": {
+      "FALLO_TECNICO": 0,
+      "NO_EVALUABLE": 0,
+      "EVIDENCIA_INSUFICIENTE": 0,
+      "VALIDADO": 0,
+      "EXPLORATORIO": 1
+    }
+  },
+  "late_launches": {
+    "run_id": "m3-sintetica",
+    "sku": null,
+    "ingesta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "t_star": "2026-06-30",
+    "excluded_count": 0,
+    "items": []
+  }
+}

@@ -35,8 +35,10 @@
 {% elif topology and not topology_error %}
 {% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Explore la distribución ADI–CV² y consulte los SKU de la página filtrada.", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
     <dl class="pred-evidence-facts">
+      {% if topology.thresholds %}
       <div><dt>Umbral ADI</dt><dd class="mono">{{ format_decimal(topology.thresholds.adi) }}</dd></div>
       <div><dt>Umbral CV²</dt><dd class="mono">{{ format_decimal(topology.thresholds.cv2) }}</dd></div>
+      {% endif %}
       {% if topology.t_star %}<div><dt>Historia hasta</dt><dd class="mono">{{ topology.t_star }}</dd></div>{% endif %}
     </dl>
 

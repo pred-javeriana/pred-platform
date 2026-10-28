@@ -235,7 +235,7 @@ def test_the_detail_of_a_sku_validates_against_the_contract_schema(
     assert detail.ingest_id == env.ingest_id and detail.run_id == "1"
     assert detail.policy_version == "2.2.0-initial:configured:classical,ml,dl"
     assert detail.topology is not None and detail.topology.sku_id == "FIL-0001"
-    assert detail.champion is None  # M3 writes it
+    assert detail.champion is None  # the champion is M3's (contract v2), never the v1 field
     assert [f.family for f in detail.families] == ["classical", "ml", "dl", "foundation"]
     families = _families(detail)
     classical = families["classical"]
@@ -370,9 +370,9 @@ def test_a_sku_without_any_value_sorts_last_in_both_directions(
     )
 
 
-def test_the_champion_is_read_from_resultados_comparativos(
-    env: Env, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_legacy_champion_table_is_never_read(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    # M3 publishes the champion in m3_veredictos (get_m3_evidence); resultados_comparativos is
+    # not a second source, even when a row is there.
     _run(env, monkeypatch)
     with closing(sqlite3.connect(env.db)) as conn:
         conn.execute(
@@ -383,15 +383,8 @@ def test_the_champion_is_read_from_resultados_comparativos(
         conn.commit()
 
     repo = env.repo()
-    champion = repo.get_sku_selection(RUN, "FIL-0001").champion
-    assert champion is not None
-    assert (champion.modelo, champion.family, champion.valor_seleccion) == (
-        "classical:sarima",
-        "classical",
-        1.0,
-    )
-    rows = {r.sku_id: r.champion for r in repo.list_sku_selections(RUN).items}
-    assert rows["FIL-0001"] == champion and rows["FIL-0002"] is None
+    assert repo.get_sku_selection(RUN, "FIL-0001").champion is None
+    assert [r.champion for r in repo.list_sku_selections(RUN).items] == [None, None, None]
     _conforms(repo.get_sku_selection(RUN, "FIL-0001"), "sku_selection")
 
 
@@ -463,7 +456,7 @@ def test_a_database_before_migration_0004_reads_as_no_selection(tmp_path: Path) 
     # And the migration brings it forward without losing the run.
     with closing(sqlite3.connect(old)) as conn:
         apply_migrations(conn, load_migrations())
-        assert conn.execute("PRAGMA user_version").fetchone() == (9,)
+        assert conn.execute("PRAGMA user_version").fetchone() == (10,)
         assert conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone() == (1,)
         assert conn.execute("SELECT COUNT(*) FROM m3_unidades").fetchone() == (0,)
 
@@ -476,8 +469,6 @@ def test_the_capabilities_of_the_selection_are_available() -> None:
         "family_comparison",
     ):
         assert capabilities.REGISTRY[name].available  # type: ignore[index]
-    assert not capabilities.REGISTRY["champion_selection"].available
-    assert not capabilities.REGISTRY["retrospective_validation"].available
 
 
 # ------------------------------------------------------------------- the "latest" alias

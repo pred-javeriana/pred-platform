@@ -8,8 +8,11 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from pred_platform.contract import CONTRACT_MAJOR
+from pred_platform.contract import models, models_v2
 from pred_platform.contract.errors import ContractInvalid, SchemaVersionUnsupported
+
+# The major version each copied models module describes.
+_MAJORS: dict[str, int] = {models.__name__: 1, models_v2.__name__: 2}
 
 
 def _major(version: object) -> int | None:
@@ -41,15 +44,16 @@ def parse_as[T: BaseModel](model: type[T], raw: str | bytes | Mapping[str, Any])
         raise ContractInvalid(f"{name}: se esperaba un objeto JSON")
 
     if "schema_version" in model.model_fields:
+        expected = _MAJORS[model.__module__]
         major = _major(data.get("schema_version"))
         if major is None:
             raise ContractInvalid(
                 f"{name}: falta schema_version o no es válido", field="schema_version"
             )
-        if major != CONTRACT_MAJOR:
+        if major != expected:
             raise SchemaVersionUnsupported(
-                f"{name}: el documento es de la versión mayor {major} y la plataforma entiende "
-                f"la {CONTRACT_MAJOR}",
+                f"{name}: el documento es de la versión mayor {major} y la plataforma lo entiende "
+                f"en la {expected}",
                 field="schema_version",
             )
 

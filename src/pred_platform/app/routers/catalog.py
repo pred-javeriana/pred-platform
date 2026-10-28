@@ -26,7 +26,14 @@ def catalogo(request: Request) -> HTMLResponse:
                 for code in ("pendiente", "corriendo", "completado", "podado", "fallido")
             ],
             "verdict_statuses": [
-                describe_status("verdict", code) for code in ("mantiene", "parcial", "falla")
+                describe_status("verdict", code)
+                for code in (
+                    "VALIDADO",
+                    "EXPLORATORIO",
+                    "EVIDENCIA_INSUFICIENTE",
+                    "NO_EVALUABLE",
+                    "FALLO_TECNICO",
+                )
             ],
             "progress_completed": format_count(821),
             "progress_total": format_count(1284),

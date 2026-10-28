@@ -254,19 +254,6 @@ def test_the_errors_scenario_serves_the_failed_family_for_fil_0001() -> None:
     assert failed and failed[0].error is not None
 
 
-# ------------------------------------------------------------------------- verdicts
-def test_verdicts_have_items_in_normal(repo: FixtureRepository) -> None:
-    doc = repo.get_validation_verdicts(RUN)
-    assert doc.availability.status == "available"
-    assert doc.items
-
-
-def test_verdicts_are_unavailable_in_the_empty_scenario() -> None:
-    doc = FixtureRepository("vacio").get_validation_verdicts(RUN)
-    assert doc.availability.status == "unavailable"
-    assert doc.availability.reason_code == "stage_not_implemented"
-
-
 # ---------------------------------------------------------------- the empty scenario
 def test_the_empty_scenario_answers_with_unavailable_documents() -> None:
     repo = FixtureRepository("vacio")

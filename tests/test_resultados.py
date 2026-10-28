@@ -67,6 +67,13 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
+def _notice(html: str) -> str:
+    """The text of the warning alert, as the reader sees it (inline markup adds no space)."""
+    found = re.search(r'pred-alert--warning".*?<div>(.*?)</div>', html, re.S)
+    assert found is not None
+    return re.sub(r"<[^>]+>", "", found.group(1)).strip()
+
+
 # --------------------------------------------------------------------------- la tabla
 def test_the_table_shows_compact_decisions_and_family_evidence_on_demand() -> None:
     client, _ = _client()
@@ -80,8 +87,9 @@ def test_the_table_shows_compact_decisions_and_family_evidence_on_demand() -> No
         assert f"Ver familias de {sku}" in html
     for header in ("SKU", "Clase", "Campeón", "Evidencia por familia"):
         assert f'<th scope="col">{header}</th>' in html
-    assert "mae 1,546" in _text(html)
-    assert "No informado" in html
+    # The fixture's v1 run "1" has no M3 evaluation: no champion is invented from the legacy field.
+    assert _text(html).count("Sin veredicto M3") == 4
+    assert "Esta ejecución todavía no tiene evaluación M3." in _text(html)
     assert 'aria-label="Sin dato"' in html
 
 
@@ -419,3 +427,123 @@ def test_texts_keep_the_engine_detail_and_fall_back_to_the_code() -> None:
         compact_config({"lr": 0.012512806369135352, "n": 3, "ok": True}) == "lr=0,01251, n=3, ok=sí"
     )
     assert compact_config(None) == "—" and compact_config({}) == "—"
+
+
+# ------------------------------------------------------------ la decisión publicada por M3
+def _publish_for_the_run(env: Env, **options: Any) -> str:
+    """Publish an M3 evaluation of the platform's run 1, with FIL-0003 launched after the cut."""
+    from tests.m3_publicada import publish
+
+    [(run_id_m2,)] = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")
+    options.setdefault("late", ("FIL-0003",))
+    options.setdefault(
+        "verdicts",
+        {"FIL-0001": ("smooth", "VALIDADO"), "FIL-0002": ("intermittent", "EXPLORATORIO")},
+    )
+    publish(env.db, ingesta_sha256=env.ingest_id, run_id_m2=run_id_m2, **options)
+    return run_id_m2
+
+
+def test_the_table_shows_the_champion_and_the_five_verdict_labels_m3_published(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    client = _dal_client(env)
+
+    html = client.get("/resultados").text
+    text = _text(html)
+    assert "Corrida M3 m3-real-1 PUBLICADA" in text
+    assert "FIL-0001/classical/sarima" in text and "VALIDADO" in text
+    assert "FIL-0002/classical/sarima" in text and "EXPLORATORIO" in text
+    assert "Excluido antes de M3: lanzado despues del corte" in text
+    assert "Origen de los datos: reales (declarado)" in text
+    assert "se sostiene" not in text and "Sin veredicto M3" not in text
+    # Detail links, filters and pages keep the resolved M3 run, not «the newest».
+    assert "/resultados/sku/FIL-0001?ejecucion=&amp;m3=m3-real-1" not in html
+    assert 'href="/resultados/sku/FIL-0001?m3=m3-real-1&amp;volver=' in html
+    assert '<input type="hidden" name="m3" value="m3-real-1">' in html
+
+
+def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    client = _dal_client(env)
+
+    page = client.get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    text = _text(page.text)
+    assert page.status_code == 200
+    assert "Decisión publicada por M3 Clásica" in text
+    assert "VALIDADO Evaluado · FIL-0001/classical/sarima" in text
+    assert "VALIDADO: datos reales, ventanas suficientes y r &lt; 1 (descriptivo)" in text
+    assert "Ventanas válidas 40 (mínimo n_min 30)" in text
+    assert "r frente a Seasonal Naive 0,800" in text
+    assert "p ajustado (BH) 0,080" in text and "Significativa no" in text
+    assert "VALIDADO no equivale a significativo" in text
+    assert "Corrida M3 m3-real-1" in text and env.ingest_id in text
+    assert "ventanas=1" in page.text and "m3=m3-real-1&amp;ventanas=1" in page.text
+
+    late = _text(client.get("/resultados/sku/FIL-0003").text)
+    assert "Excluido antes de M3" in late and "lanzado despues del corte" in late
+    assert "corte t* 2026-03-13" in late
+
+
+def test_a_test_that_did_not_run_shows_its_cause_not_a_p_value(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, origin="sintetico", verdicts={"FIL-0001": ("smooth", "EXPLORATORIO")})
+    text = _text(_dal_client(env).get("/resultados/sku/FIL-0001").text)
+    assert "Prueba HLN-DM sin prueba: datos_sinteticos" in text
+    assert "p ajustado" not in text
+    assert "Origen de los datos: sintéticos o aumentados (declarado)" in text
+
+
+def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, run_id="m3-real-0", creado_en="2026-10-26 10:00:00")
+    _publish_for_the_run(env, verdicts={"FIL-0001": ("smooth", "EXPLORATORIO")})
+    client = _dal_client(env)
+
+    html = client.get("/resultados").text
+    # The contract's literal, with the run id kept on one line.
+    assert _notice(html) == (
+        "Hay varias corridas PUBLICADA con esta identidad. Se muestra m3-real-1."
+    )
+    assert '<span class="mono pred-nowrap">m3-real-1</span>' in html
+    assert 'href="/resultados?vista=sku&amp;m3=m3-real-0"' in html
+    older = client.get("/resultados?m3=m3-real-0").text
+    assert _notice(older).endswith("Se muestra m3-real-0.") and "VALIDADO" in _text(older)
+
+
+def test_an_m3_run_of_another_execution_is_refused_and_an_unpublished_one_explained(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, estado="EVALUADA")
+    client = _dal_client(env)
+
+    text = _text(client.get("/resultados").text)
+    assert "Esta ejecución todavía no tiene una corrida M3 PUBLICADA." in text
+    assert "La corrida M3 más reciente, m3-real-1, está EVALUADA." in text
+    assert "Sin veredicto M3" in text
+
+    other = client.get("/resultados?m3=m3-ajena").text
+    assert "La corrida M3 pedida no corresponde a esta ejecución." in _text(other)
+    assert 'pred-status__label">VALIDADO' not in other
+
+
+def test_a_publication_without_its_exclusion_metadata_shows_why_there_are_no_verdicts(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, publish_m4=False)
+    html = _dal_client(env).get("/resultados").text
+    text = _text(html)
+    assert "La publicación M3 no tiene sus metadatos de exclusión." in text
+    assert "no significa cero exclusiones" in text
+    assert 'pred-status__label">VALIDADO' not in html

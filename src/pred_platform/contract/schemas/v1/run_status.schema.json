@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pred-contrato/v1/run_status.schema.json",
+  "x-contract-version": "1.1.0",
   "$defs": {
     "Availability": {
       "additionalProperties": false,
@@ -437,19 +438,33 @@
           "type": "integer"
         },
         "aggregation": {
-          "enum": [
-            "media",
-            "mediana",
-            "media_recortada"
+          "anyOf": [
+            {
+              "enum": [
+                "media",
+                "mediana",
+                "media_recortada"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Aggregation",
-          "type": "string"
+          "title": "Aggregation"
         },
         "trim": {
-          "exclusiveMaximum": 0.5,
-          "minimum": 0,
-          "title": "Trim",
-          "type": "number"
+          "anyOf": [
+            {
+              "exclusiveMaximum": 0.5,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trim"
         }
       },
       "required": [
@@ -686,6 +701,5 @@
     "tasks"
   ],
   "title": "RunStatus",
-  "type": "object",
-  "x-contract-version": "1.0.0"
+  "type": "object"
 }

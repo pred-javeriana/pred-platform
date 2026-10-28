@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pred-contrato/v1/validation_verdicts.schema.json",
+  "x-contract-version": "1.1.0",
   "$defs": {
     "Availability": {
       "additionalProperties": false,
@@ -165,6 +166,5 @@
     "items"
   ],
   "title": "ValidationVerdicts",
-  "type": "object",
-  "x-contract-version": "1.0.0"
+  "type": "object"
 }

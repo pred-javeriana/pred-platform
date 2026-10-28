@@ -27,7 +27,14 @@ def _catalog_html() -> str:
             for code in ("pendiente", "corriendo", "completado", "podado", "fallido")
         ],
         "verdict_statuses": [
-            describe_status("verdict", code) for code in ("mantiene", "parcial", "falla")
+            describe_status("verdict", code)
+            for code in (
+                "VALIDADO",
+                "EXPLORATORIO",
+                "EVIDENCIA_INSUFICIENTE",
+                "NO_EVALUABLE",
+                "FALLO_TECNICO",
+            )
         ],
         "progress_completed": format_count(821),
         "progress_total": format_count(1284),
@@ -54,7 +61,15 @@ def test_catalog_renders_every_task_and_trial_label() -> None:
     assert "Podada" in html
     assert html.count("Podada") >= 1
     assert "i-prune" in html
-    assert "se sostiene parcialmente" in html
+    for verdict in (
+        "VALIDADO",
+        "EXPLORATORIO",
+        "EVIDENCIA_INSUFICIENTE",
+        "NO_EVALUABLE",
+        "FALLO_TECNICO",
+    ):
+        assert verdict in html
+    assert "se sostiene" not in html
 
 
 def test_catalog_does_not_paint_pruned_as_failure_class() -> None:

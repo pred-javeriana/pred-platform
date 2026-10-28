@@ -46,7 +46,20 @@ def test_trial_contract_codes_map_to_interface_labels() -> None:
 
 
 def test_verdicts_keep_their_own_vocabulary() -> None:
-    assert describe_status("verdict", "mantiene").label == "se sostiene"
+    # The five M3 verdicts are shown verbatim, each with its own icon and color.
+    verdicts = (
+        "VALIDADO",
+        "EXPLORATORIO",
+        "EVIDENCIA_INSUFICIENTE",
+        "NO_EVALUABLE",
+        "FALLO_TECNICO",
+    )
+    shown = [describe_status("verdict", code) for code in verdicts]
+    assert [status.label for status in shown] == list(verdicts)
+    assert len({(status.icon, status.modifier) for status in shown}) == len(verdicts)
+    for legacy in ("mantiene", "parcial", "falla"):
+        with pytest.raises(UnknownStatus, match="verdict"):
+            describe_status("verdict", legacy)
     with pytest.raises(UnknownStatus, match="task"):
         describe_status("task", "podado")
     with pytest.raises(UnknownStatus, match="trial"):

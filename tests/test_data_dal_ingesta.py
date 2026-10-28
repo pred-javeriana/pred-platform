@@ -146,6 +146,7 @@ def test_the_topology_summarises_the_whole_ingestion(repo: DalRepository) -> Non
 
     assert doc.availability.status == "available"
     assert doc.t_star == "2026-03-13"
+    assert doc.thresholds is not None
     assert (doc.thresholds.adi, doc.thresholds.cv2) == (1.32, 0.49)
     assert doc.summary.n_skus == 3
     assert doc.summary.by_class == {"smooth": 1, "intermittent": 1, "erratic": 0, "lumpy": 1}

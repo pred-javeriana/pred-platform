@@ -33,6 +33,8 @@ _FAMILY_LABELS: dict[str, str] = {
     "ml": "ML",
     "dl": "DL",
     "foundation": "Fundacional",
+    # La línea base de M3, que también puede ser la familia campeona de un SKU.
+    "seasonal_naive": "Seasonal Naive",
 }
 
 _PROFILE_LABELS: dict[str, str] = {
@@ -107,6 +109,8 @@ class SelectionQuery:
     """Parámetros que se delegan en ``list_sku_selections``, sin filtrar en el cliente."""
 
     ejecucion: str = LATEST
+    # La corrida M3 exacta cuyo campeón y veredicto se muestran; vacía, la PUBLICADA más nueva.
+    m3: str | None = None
     sku_class: str | None = None
     family: str | None = None
     estado: str | None = None
@@ -133,6 +137,7 @@ class SelectionQuery:
         values: dict[str, object] = {
             "vista": "sku",
             "ejecucion": "" if self.ejecucion == LATEST else self.ejecucion,
+            "m3": self.m3 or "",
             "sku_class": self.sku_class or "",
             "family": self.family or "",
             "estado": self.estado or "",
@@ -155,6 +160,7 @@ class SelectionQuery:
         """Lo que el detalle de un SKU necesita para volver a esta lista sin perder nada."""
         values: dict[str, object] = {
             "ejecucion": "" if self.ejecucion == LATEST else self.ejecucion,
+            "m3": self.m3 or "",
             "volver": self.query_string(),
         }
         values.update(overrides)
@@ -165,6 +171,7 @@ def parse_selection_query(params: Mapping[str, str]) -> SelectionQuery:
     """Lee la query HTTP; los valores desconocidos los rechaza el repositorio (``InvalidQuery``)."""
     return SelectionQuery(
         ejecucion=(params.get("ejecucion") or "").strip() or LATEST,
+        m3=(params.get("m3") or "").strip() or None,
         sku_class=params.get("sku_class") or None,
         family=params.get("family") or None,
         estado=params.get("estado") or None,
