@@ -216,6 +216,37 @@ def portfolio_query(
     )
 
 
+def observations_query(
+    *,
+    sku: str | None = None,
+    fecha: str | None = None,
+    page: int = 1,
+    size: int = DEFAULT_SIZE,
+) -> M3Query:
+    return M3Query(
+        page=PageRequest(page, size),
+        exact=_exact(sku=_text(sku), fecha=_iso_date("fecha", fecha)),
+        order=(("sku", False), ("fecha", False)),
+    )
+
+
+def champions_query(
+    *,
+    sku_class: str | None = None,
+    familia: str | None = None,
+    page: int = 1,
+    size: int = DEFAULT_SIZE,
+) -> M3Query:
+    return M3Query(
+        page=PageRequest(page, size),
+        exact=_exact(
+            sku_class=check_choice("sku_class", sku_class, SKU_CLASSES),
+            familia=check_choice("familia", familia, FAMILIES),
+        ),
+        order=(("sku_class", False), ("familia", False)),
+    )
+
+
 def forecasts_query(
     *,
     sku: str | None = None,

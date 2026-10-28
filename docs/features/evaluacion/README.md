@@ -63,10 +63,12 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 |---|---|---|
 | `list_m3_runs` | `M3Runs` | `m3_corridas` y la política de `m3_protocolos` |
 | `get_m3_run_status` | `M3RunStatus` | corrida y avance durable de `m3_unidades` |
-| `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos` y metadatos del Parquet |
+| `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos`, `m3_cortes` y `m3_lanzamientos_tardios` |
 | `get_m3_metrics` | `M3Metrics` | `m3_metricas` |
 | `get_m3_categories` | `M3Categories` | `m3_categorias` |
 | `get_m3_portfolio` | `M3Portfolio` | `m3_cartera` |
+| `get_m3_observations` | `M3Observations` | `m3_observaciones` (filtros SKU y fecha) |
+| `get_m3_champions` | `M3Champions` | vista `m3_campeones` (filtros clase y familia, clase nula al final) |
 | `get_m3_forecasts` | `M3Forecasts` | `m3_pronosticos` |
 | `get_m3_failures` | `M3Failures` | `m3_fallos` |
 | `get_m3_units` | `M3Units` | `m3_unidades` |
@@ -84,10 +86,14 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   causa si no hay prueba) es una columna aparte. Las métricas son MAE, RMSE, MASE, ME y r
   (`razon_sn`), sin sMAPE; el segmento es la clase Syntetos-Boylan (`sku_class`).
 - **Embudo.** `funnel` y `late_launches` describen toda la corrida, no la página. El corte t* y los
-  productos lanzados después del corte se leen de la clave `pred_engine` de los metadatos del
-  Parquet publicado de la ingesta (`dal/metadatos_parquet.py`). Si el Parquet no los tiene, la
-  evidencia responde `metadata_missing`, sin embudo ni filas: la falta de metadatos no significa
-  cero exclusiones. Las demás operaciones siguen disponibles.
+  productos lanzados después del corte se leen de `m3_cortes` y `m3_lanzamientos_tardios`,
+  publicados por M3 en SQLite. Si la corrida no tiene fila en `m3_cortes`, la evidencia responde
+  `metadata_missing`, sin embudo ni filas: la falta de metadatos no significa cero exclusiones.
+  `get_m3_observations` también responde `metadata_missing` para esa publicación antigua y pide
+  volver a ejecutar la corrida. Las demás operaciones siguen disponibles.
+- **Demanda y campeones.** `get_m3_observations` conserva las fechas y los valores nulos de la
+  reserva. `get_m3_champions` lee los conteos por familia que publica la vista del motor, sin
+  calcularlos; las filas con `sku_class` nula corresponden a toda la cartera.
 - **Consultas.** Los filtros, los dos grupos (`evaluados`, `no_evaluados`), el orden y la página
   tienen un único dueño, `data/m3_query.py`; el modo `dal` los traduce a SQL y el modo `fixture`
   los aplica a los ejemplos v2. Un filtro imposible es `InvalidQuery`.
@@ -135,9 +141,9 @@ borra el traspaso local del motor (`candidatos.json`) y la corrida se reanuda.
 La prueba comprueba, mediante `DalRepository`:
 
 - Antes de publicar solo se ve el avance; después, la corrida PUBLICADA completa.
-- Los veredictos y el embudo siguen los metadatos de corte del Parquet: con
-  ellos, un veredicto por SKU del panel, ninguno VALIDADO con datos sintéticos, y
-  el embudo completo; sin ellos, `metadata_missing`.
+- Los veredictos y el embudo siguen el corte y las exclusiones que publica M3 en SQLite:
+  un veredicto por SKU del panel, ninguno VALIDADO con datos sintéticos y el embudo completo.
+- La demanda observada y los campeones por familia tienen filas publicadas, incluida la cartera.
 - Cada fila conserva `run_id`, SKU e ingesta, y la corrida su origen.
 - La reanudación conserva las unidades ya confirmadas y no duplica corridas,
   unidades ni pronósticos.

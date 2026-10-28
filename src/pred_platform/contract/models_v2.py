@@ -1,4 +1,4 @@
-"""Contrato 2.0.0: lectura de evidencia publicada por M3, sin recalcularla.
+"""Contrato 2.1.0: lectura de evidencia publicada por M3, sin recalcularla.
 
 Fuente de schemas/v2. Las filas conservan los nombres publicados por M3.
 Las reglas entre campos validan integridad, no seleccionan modelos ni emiten veredictos.
@@ -246,7 +246,7 @@ class LateLaunchExclusion(SkuRow):
 
 
 class LateLaunches(RunRow):
-    """Corte y lista completa de exclusiones, leidos de los metadatos publicados."""
+    """Corte y lista completa de exclusiones que M3 publica con la corrida (m3_cortes, m3_lanzamientos_tardios)."""
 
     t_star: Fecha
     excluded_count: Count
@@ -551,6 +551,41 @@ class M3Units(PublishedPage[M3Unit]):
         return self
 
 
+class M3Observation(SkuRow):
+    """Demanda observada de un dia de la reserva (m3_observaciones)."""
+    fecha: Fecha
+    valor: Number | None
+
+
+class M3Observations(PublishedPage[M3Observation]):
+    @model_validator(mode="after")
+    def _keys(self) -> Self:
+        _unique([(r.sku, r.fecha) for r in self.items], "observaciones")
+        return self
+
+
+class M3ChampionCount(RunRow):
+    """SKU por familia campeona publicada (vista m3_campeones); sku_class null es la cartera."""
+    sku_class: SkuClass | None
+    familia: Family
+    n_skus: Count
+    n_evaluados: Count
+    n_no_evaluados: Count
+
+    @model_validator(mode="after")
+    def _total(self) -> Self:
+        if self.n_skus != self.n_evaluados + self.n_no_evaluados:
+            raise ValueError("n_skus debe sumar evaluados y no evaluados")
+        return self
+
+
+class M3Champions(PublishedPage[M3ChampionCount]):
+    @model_validator(mode="after")
+    def _keys(self) -> Self:
+        _unique([(r.sku_class, r.familia) for r in self.items], "campeones")
+        return self
+
+
 DOCUMENTS: dict[str, type[BaseModel]] = {
     "m3_runs": M3Runs,
     "m3_run_status": M3RunStatus,
@@ -561,4 +596,6 @@ DOCUMENTS: dict[str, type[BaseModel]] = {
     "m3_forecasts": M3Forecasts,
     "m3_failures": M3Failures,
     "m3_units": M3Units,
+    "m3_observations": M3Observations,
+    "m3_champions": M3Champions,
 }

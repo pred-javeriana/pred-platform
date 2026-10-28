@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.contract.loader import parse_as
-from pred_platform.contract.resources import read_example
+from pred_platform.contract.resources import read_example, read_schema
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.data.repository import DataRepository
 
@@ -126,6 +127,9 @@ def test_every_auxiliary_operation_filters_the_published_rows(repo: DataReposito
         ("get_m3_forecasts", {"h": 0}),
         ("get_m3_units", {"estado": "pendiente"}),
         ("get_m3_categories", {"familia": "arima"}),
+        ("get_m3_observations", {"fecha": "2026-02-30"}),
+        ("get_m3_champions", {"familia": "arima"}),
+        ("get_m3_champions", {"sku_class": "dense"}),
     ],
 )
 def test_an_impossible_filter_is_rejected_not_ignored(
@@ -133,6 +137,38 @@ def test_an_impossible_filter_is_rejected_not_ignored(
 ) -> None:
     with pytest.raises(InvalidQuery):
         getattr(repo, operation)(RUN, **query)
+
+
+def test_observations_and_champions_filter_page_and_conform(repo: DataRepository) -> None:
+    observations = repo.get_m3_observations(RUN, sku="SKU-EXPLORATORIO")
+    assert [(r.fecha, r.valor) for r in observations.items] == [
+        ("2026-07-01", 5.0),
+        ("2026-07-02", None),
+        ("2026-07-03", 12.0),
+    ]
+    assert repo.get_m3_observations(RUN, fecha="2026-07-01").page.total == 2
+    first = repo.get_m3_observations(RUN, size=2)
+    assert [r.sku for r in first.items] == ["SKU-EXPLORATORIO"] * 2
+    assert first.page.total == 6
+    champions = repo.get_m3_champions(RUN)
+    assert champions.items[-1].sku_class is None
+    assert [
+        (r.n_skus, r.n_evaluados, r.n_no_evaluados) for r in champions.items if r.sku_class is None
+    ] == [(5, 2, 3)]
+    assert repo.get_m3_champions(RUN, familia="ml").items == []
+    assert all(
+        r.sku_class == "smooth" for r in repo.get_m3_champions(RUN, sku_class="smooth").items
+    )
+    for kind, doc in (("m3_observations", observations), ("m3_champions", champions)):
+        Draft202012Validator(read_schema(kind)).validate(json.loads(doc.model_dump_json()))
+    for operation in ("get_m3_observations", "get_m3_champions"):
+        with pytest.raises(TypeError):
+            getattr(repo, operation)(RUN, unknown="x")
+        assert getattr(repo, operation)("m3-rechazada").availability.reason_code == "not_published"
+        assert getattr(repo, operation)("missing").availability.reason_code == "no_data"
+    assert (
+        FixtureRepository("errores").get_m3_observations(RUN).availability.reason_code
+    ) == "metadata_missing"
 
 
 def test_documents_are_independent_copies(repo: DataRepository) -> None:

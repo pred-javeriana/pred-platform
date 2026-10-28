@@ -62,3 +62,9 @@ With `PRED_DATA_SOURCE=dal` everything comes from the DAL: the worker imports th
 `fixture` the contract's examples show all four families, a failed family and a lumpy SKU with only
 the classical family; the v2 examples are separate illustrative runs (`m3-real-02`, M2 run
 `m2-ejemplo`), so the v1 run `1` shows that it has no M3 evaluation.
+
+The read interface also exposes `get_m3_observations` (reserve demand by SKU and date) and
+`get_m3_champions` (engine-owned counts by class and family, with whole-portfolio rows).
+The cut and late launches come from `m3_cortes` and `m3_lanzamientos_tardios` in SQLite, even
+when the ingestion's Parquet is absent. A published run without `m3_cortes` returns
+`metadata_missing` for evidence and observations and asks for a new execution.

@@ -3,10 +3,14 @@
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
+from pred_platform.contract import models
+from pred_platform.contract.loader import parse_as
+from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures import FixtureRepository
 
 ACCEPTED = "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e"
@@ -213,6 +217,19 @@ def test_vacio_accepted_upload_shows_topology_unavailable(tmp_path: Path) -> Non
     assert "G1" in html
     assert "Continuar a Ejecución" not in html
     assert repo.topology_calls
+
+
+def test_unavailable_topology_without_thresholds_hides_threshold_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo = _client(tmp_path)
+    topology = parse_as(models.TopologyReport, read_example("topology_report.no_aceptada"))
+    monkeypatch.setattr(repo, "get_topology_report", lambda *args, **kwargs: topology)
+    response = client.get(f"/datos?ingest_id={ACCEPTED}")
+    assert response.status_code == 200
+    assert "Umbral ADI" not in response.text and "Umbral CV²" not in response.text
+    assert "pred-chart__threshold" not in response.text
 
 
 def test_invalid_sort_is_not_http_500(tmp_path: Path) -> None:

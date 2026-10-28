@@ -12,7 +12,6 @@
 | `itsdangerous` | Signed session cookies |
 | `psutil` | Waits for the engine's process pool to close before a resume on Windows |
 | `pydantic` | Models of the data contract (declared directly; `>=2.13`, the version the contract's JSON Schemas were exported with) |
-| `pyarrow` | Reads the cut t* and the late-launch exclusions that M1 keeps in the published Parquet's schema metadata (`dal/metadatos_parquet.py`) |
 
 ## Development dependencies
 

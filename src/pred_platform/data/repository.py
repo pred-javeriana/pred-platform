@@ -179,6 +179,26 @@ class DataRepository(Protocol):
         size: int = DEFAULT_SIZE,
     ) -> models_v2.M3Portfolio: ...
 
+    def get_m3_observations(
+        self,
+        run_id: str,
+        *,
+        sku: str | None = None,
+        fecha: str | None = None,
+        page: int = 1,
+        size: int = DEFAULT_SIZE,
+    ) -> models_v2.M3Observations: ...
+
+    def get_m3_champions(
+        self,
+        run_id: str,
+        *,
+        sku_class: str | None = None,
+        familia: str | None = None,
+        page: int = 1,
+        size: int = DEFAULT_SIZE,
+    ) -> models_v2.M3Champions: ...
+
     def get_m3_forecasts(
         self,
         run_id: str,

@@ -46,8 +46,8 @@ $env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-eng
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
 (`pred_platform.data`) that returns documents of the frontend <-> engine data contract
-(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.0.0 for M3's published
-evidence (the `*_m3_*` operations) and v1.0.0 for ingestion, M2 selection, run status and
+(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.1.0 for M3's published
+evidence (the `*_m3_*` operations) and v1.1.0 for ingestion, M2 selection, run status and
 capabilities.
 
 ```python
@@ -101,7 +101,8 @@ Version 1 is the original eleven tables; 2 adds the ingest report, 3 the runs an
 selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, frozen protocols and
 precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
 8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
-The current schema is version 9. An undeclared origin stays unknown and cannot
+Version 10 adds the published cut, late launches, observed demand and the champions view.
+The current schema is version 10. An undeclared origin stays unknown and cannot
 produce statistical inference. The file-only website upload does not declare real data.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
@@ -142,15 +143,18 @@ The engine writes M3 results into this same SQLite database through an injected 
 Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
 standalone result database. It applies pending M3 migrations itself on an existing platform
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
-5 through 9, so both processes agree on `user_version`.
+5 through 10, so both processes agree on `user_version`.
 
 The views read it through `DataRepository` as contract v2 documents (M4, Notion 4.1):
 `list_m3_runs` resolves an M2 reference or an identity to its exact M3 runs and names the newest
 PUBLICADA one; `get_m3_run_status` gives state and durable progress without partial metrics; and
 `get_m3_evidence`, `get_m3_metrics`, `get_m3_categories`, `get_m3_portfolio`, `get_m3_forecasts`,
-`get_m3_failures` and `get_m3_units` return one exact PUBLICADA run's rows, filtered and paged in
-SQLite within one read snapshot. The platform reads precalculated verdicts, metrics, HLN-DM/BH
-and portfolio distributions; it does not evaluate models. See
+`get_m3_failures`, `get_m3_units`, `get_m3_observations` and `get_m3_champions` return one exact
+PUBLICADA run's rows, filtered and paged in SQLite within one read snapshot. Late launches and
+the cut come from `m3_cortes` and `m3_lanzamientos_tardios`, not from a Parquet file. A published
+run without a cut answers `metadata_missing` for evidence and observations. The platform reads
+precalculated verdicts, metrics, HLN-DM/BH, observed reserve demand and champion counts by family
+(`m3_campeones`, including whole-portfolio rows); it does not evaluate models. See
 [the M3 data interface](docs/features/evaluacion/README.md).
 
 ## Importing ingest reports

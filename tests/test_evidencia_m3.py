@@ -2,7 +2,7 @@
 
 Every read goes through ``DalRepository``: publication-gated, one snapshot, typed rows that keep the
 run, the SKU and the ingest SHA, and a funnel built from the published counts and the late-launch
-metadata of the ingestion's Parquet, never from the visible page.
+rows M3 publishes in SQLite, never from the visible page.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from pred_platform.dal.lectura import _open_readonly
 from pred_platform.dal.migrate import apply_migrations, load_migrations, migrate
 from pred_platform.data.dal import DalRepository
 from pred_platform.worker.engine import launch
-from tests.m3_publicada import LATE, identity, publish, write_parquet
+from tests.m3_publicada import LATE, identity, publish
 
 SHA = "c" * 64
 PARQUET = "processed/panel.parquet"
@@ -52,7 +52,8 @@ def root(tmp_path: Path) -> Path:
             (SHA, PARQUET),
         )
         conn.commit()
-    write_parquet(data / PARQUET, late=("SKU-TARDIO-1", "SKU-TARDIO-2"))
+    (data / PARQUET).parent.mkdir(parents=True)
+    (data / PARQUET).write_bytes(b"unused published artifact")
     return tmp_path
 
 
@@ -66,6 +67,7 @@ def _repo(root: Path) -> DalRepository:
 
 def _publish(root: Path, **options: Any) -> None:
     options.setdefault("verdicts", FIVE)
+    options.setdefault("late", ("SKU-TARDIO-1", "SKU-TARDIO-2"))
     publish(_db(root), ingesta_sha256=SHA, run_id_m2=M2, **options)
 
 
@@ -129,10 +131,11 @@ def test_published_evidence_keeps_the_five_verdicts_their_numbers_and_identity(
         }
 
 
-def test_the_funnel_counts_every_product_and_the_late_launches_from_the_parquet(
+def test_the_funnel_reads_late_launches_from_sqlite_after_the_parquet_is_deleted(
     root: Path,
 ) -> None:
     _publish(root)
+    (root / "data" / PARQUET).unlink()
     doc = _repo(root).get_m3_evidence(RUN, skus=["SKU-A"])
 
     assert doc.funnel is not None and doc.late_launches is not None
@@ -154,8 +157,7 @@ def test_the_funnel_counts_every_product_and_the_late_launches_from_the_parquet(
 
 
 def test_missing_cutoff_metadata_is_not_zero_exclusions(root: Path) -> None:
-    _publish(root)
-    (root / "data" / PARQUET).unlink()
+    _publish(root, publish_m4=False)
     repo = _repo(root)
 
     doc = repo.get_m3_evidence(RUN)
@@ -169,39 +171,96 @@ def test_missing_cutoff_metadata_is_not_zero_exclusions(root: Path) -> None:
     # The auxiliary evidence of the same PUBLICADA run is still complete and available.
     assert repo.get_m3_metrics(RUN).availability.status == "available"
 
-    # A Parquet written before M1 kept the metadata reads the same way.
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    pq.write_table(pa.table({"sku_id": ["SKU-A"]}), root / "data" / PARQUET)
-    assert repo.get_m3_evidence(RUN).availability.reason_code == "metadata_missing"
-
-
-def test_malformed_cutoff_metadata_is_a_contract_error(root: Path) -> None:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    _publish(root)
-    table = pa.table({"sku_id": ["SKU-A"]}).replace_schema_metadata(
-        {b"pred_engine": b'{"t_star": "13/03/2026"}'}
+    observations = repo.get_m3_observations(RUN)
+    _conforms(observations, "m3_observations")
+    assert observations.availability.reason_code == "metadata_missing"
+    assert observations.availability.detail == (
+        "La corrida se publicó antes de que M3 publicara la demanda observada; "
+        "vuelva a ejecutarla para ver el gráfico."
     )
-    pq.write_table(table, root / "data" / PARQUET)
+    assert observations.items == [] and observations.page.total == 0
+    assert repo.get_m3_champions(RUN).availability.status == "available"
+
+
+def test_malformed_published_cut_is_a_contract_error(root: Path) -> None:
+    _publish(root)
+    _sql(root, "UPDATE m3_cortes SET t_star = '13/03/2026'")
     with pytest.raises(ContractInvalid, match="t_star"):
         _repo(root).get_m3_evidence(RUN)
 
 
 def test_a_late_launch_cause_that_is_not_the_published_one_is_rejected(root: Path) -> None:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
     _publish(root)
-    metadata = {"t_star": "2026-03-13", "exclusions": [{"sku_id": "X", "cause": "otra causa"}]}
-    table = pa.table({"sku_id": ["SKU-A"]}).replace_schema_metadata(
-        {b"pred_engine": json.dumps(metadata).encode()}
-    )
-    pq.write_table(table, root / "data" / PARQUET)
+    with closing(sqlite3.connect(_db(root))) as conn:
+        conn.execute("PRAGMA ignore_check_constraints = ON")
+        conn.execute("UPDATE m3_lanzamientos_tardios SET causa = 'otra causa'")
+        conn.commit()
     with pytest.raises(ContractInvalid, match="late_launches"):
         _repo(root).get_m3_evidence(RUN)
+
+
+def test_observations_keep_nulls_dates_filters_and_paging(root: Path) -> None:
+    _publish(root)
+    repo = _repo(root)
+    observations = repo.get_m3_observations(RUN, sku="SKU-A")
+    _conforms(observations, "m3_observations")
+    assert observations.availability.status == "available"
+    assert [(row.fecha, row.valor) for row in observations.items] == [
+        ("2026-03-15", 4.0),
+        ("2026-03-22", None),
+        ("2026-03-23", 0.0),
+    ]
+    assert {(row.run_id, row.sku, row.ingesta_sha256) for row in observations.items} == {
+        (RUN, "SKU-A", SHA)
+    }
+    assert repo.get_m3_observations(RUN, fecha="2026-03-22").page.total == 5
+    assert repo.get_m3_observations(RUN, sku="missing").items == []
+    page = repo.get_m3_observations(RUN, size=2, page=2)
+    assert [(row.sku, row.fecha) for row in page.items] == [
+        ("SKU-A", "2026-03-23"),
+        ("SKU-B", "2026-03-15"),
+    ]
+    assert page.page.total == 15
+    assert repo.get_m3_observations(RUN, size=2, page=20).items == []
+    with pytest.raises(InvalidQuery):
+        repo.get_m3_observations(RUN, fecha="2026-02-30")
+    unknown: dict[str, Any] = {"unknown": "x"}
+    with pytest.raises(TypeError):
+        repo.get_m3_observations(RUN, **unknown)
+
+
+def test_champions_read_class_and_portfolio_counts_without_recalculation(root: Path) -> None:
+    _publish(root)
+    repo = _repo(root)
+    champions = repo.get_m3_champions(RUN)
+    _conforms(champions, "m3_champions")
+    assert [
+        (r.sku_class, r.familia, r.n_skus, r.n_evaluados, r.n_no_evaluados) for r in champions.items
+    ] == [
+        ("lumpy", "classical", 2, 0, 2),
+        ("smooth", "classical", 3, 2, 1),
+        (None, "classical", 5, 2, 3),
+    ]
+    assert {r.sku for r in champions.items} == {None}
+    assert repo.get_m3_champions(RUN, sku_class="smooth").items == [champions.items[1]]
+    assert repo.get_m3_champions(RUN, familia="ml").items == []
+    assert repo.get_m3_champions(RUN, page=3, size=1).items == [champions.items[2]]
+    bad_queries: list[dict[str, Any]] = [{"sku_class": "invalid"}, {"familia": "invalid"}]
+    for query in bad_queries:
+        with pytest.raises(InvalidQuery):
+            repo.get_m3_champions(RUN, **query)
+    unknown: dict[str, Any] = {"unknown": "x"}
+    with pytest.raises(TypeError):
+        repo.get_m3_champions(RUN, **unknown)
+
+
+def test_empty_exclusions_need_a_published_cut_not_a_parquet(root: Path) -> None:
+    _publish(root, late=())
+    (root / "data" / PARQUET).unlink()
+    doc = _repo(root).get_m3_evidence(RUN)
+    assert doc.availability.status == "available"
+    assert doc.late_launches is not None and doc.late_launches.items == []
+    assert doc.funnel is not None and doc.funnel.excluded_count == 0
 
 
 def test_filters_groups_order_and_pages_are_applied_by_sqlite(root: Path) -> None:
@@ -286,6 +345,8 @@ def test_an_unpublished_run_shows_its_progress_and_metadata_but_no_evidence(root
         repo.get_m3_metrics(RUN),
         repo.get_m3_categories(RUN),
         repo.get_m3_portfolio(RUN),
+        repo.get_m3_observations(RUN),
+        repo.get_m3_champions(RUN),
         repo.get_m3_forecasts(RUN),
         repo.get_m3_failures(RUN),
         repo.get_m3_units(RUN),
@@ -352,6 +413,48 @@ def test_publication_during_the_read_keeps_one_snapshot(
     assert during.run is not None and during.run.estado == "SELECCIONADA"
     monkeypatch.setattr(evidencia, "_open_readonly", _open_readonly)
     assert len(_repo(root).get_m3_evidence(RUN).items) == 5
+
+
+def test_cut_and_late_launches_share_the_verdict_snapshot(
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _publish(root)
+    changed = False
+
+    @contextmanager
+    def racing_reader(path: Path) -> Any:
+        with _open_readonly(path) as conn:
+            assert conn is not None
+
+            def change_publication(sql: str) -> None:
+                nonlocal changed
+                if not changed and sql.startswith("SELECT t_star FROM m3_cortes"):
+                    changed = True
+                    with closing(sqlite3.connect(_db(root))) as writer:
+                        writer.execute("UPDATE m3_cortes SET t_star = '2026-03-12'")
+                        writer.execute("DELETE FROM m3_lanzamientos_tardios")
+                        writer.execute(
+                            "INSERT INTO m3_lanzamientos_tardios VALUES (?, 'OTHER', ?)",
+                            (RUN, LATE),
+                        )
+                        writer.commit()
+
+            conn.set_trace_callback(change_publication)
+            yield conn
+
+    monkeypatch.setattr(evidencia, "_open_readonly", racing_reader)
+    during = _repo(root).get_m3_evidence(RUN)
+    assert changed and during.late_launches is not None and during.funnel is not None
+    assert during.late_launches.t_star == "2026-03-13"
+    assert [r.sku for r in during.late_launches.items] == ["SKU-TARDIO-1", "SKU-TARDIO-2"]
+    assert during.funnel.total_productos == 7
+    monkeypatch.setattr(evidencia, "_open_readonly", _open_readonly)
+    after = _repo(root).get_m3_evidence(RUN)
+    assert after.late_launches is not None and after.funnel is not None
+    assert after.late_launches.t_star == "2026-03-12"
+    assert [r.sku for r in after.late_launches.items] == ["OTHER"]
+    assert after.funnel.total_productos == 6
 
 
 def test_the_status_reads_schema_and_rows_from_one_snapshot_during_an_upgrade(

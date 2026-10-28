@@ -432,11 +432,10 @@ def test_texts_keep_the_engine_detail_and_fall_back_to_the_code() -> None:
 # ------------------------------------------------------------ la decisión publicada por M3
 def _publish_for_the_run(env: Env, **options: Any) -> str:
     """Publish an M3 evaluation of the platform's run 1, with FIL-0003 launched after the cut."""
-    from tests.m3_publicada import publish, write_parquet
+    from tests.m3_publicada import publish
 
     [(run_id_m2,)] = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")
-    [(parquet,)] = env.rows("SELECT ruta_parquet FROM ingestas WHERE sha256 = ?", env.ingest_id)
-    write_parquet(env.settings.data_root / parquet, late=("FIL-0003",))
+    options.setdefault("late", ("FIL-0003",))
     options.setdefault(
         "verdicts",
         {"FIL-0001": ("smooth", "VALIDADO"), "FIL-0002": ("intermittent", "EXPLORATORIO")},
@@ -542,9 +541,7 @@ def test_a_publication_without_its_exclusion_metadata_shows_why_there_are_no_ver
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _run(env, monkeypatch)
-    _publish_for_the_run(env)
-    [(parquet,)] = env.rows("SELECT ruta_parquet FROM ingestas WHERE sha256 = ?", env.ingest_id)
-    (env.settings.data_root / parquet).write_bytes(b"")
+    _publish_for_the_run(env, publish_m4=False)
     html = _dal_client(env).get("/resultados").text
     text = _text(html)
     assert "La publicación M3 no tiene sus metadatos de exclusión." in text

@@ -1,4 +1,4 @@
-"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.0.0).
+"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.1.0).
 
 Describen lo que leen las vistas de `pred-platform` desde su DAL (SQLite, SRS 3.6).
 Son la fuente de los esquemas de `../schemas/v1/` y de las reglas entre campos que
@@ -12,7 +12,7 @@ Exportar un esquema:
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -265,10 +265,16 @@ class TopologyReport(Documento):
     ingest_id: Sha256
     # El motor clasifica cada SKU solo con la historia hasta t* (ADR-019 del motor).
     t_star: FechaCorte | None = None
-    thresholds: Thresholds
+    thresholds: Thresholds | None
     summary: TopologySummary
     items: list[TopologyMetrics]
     page: Page
+
+    @model_validator(mode="after")
+    def _thresholds(self) -> Self:
+        if self.availability.status == "available" and self.thresholds is None:
+            raise ValueError("available exige thresholds")
+        return self
 
 
 # -------------------------------------------------------------------- run_status
@@ -297,8 +303,15 @@ class RunSettings(_Base):
     step: int = Field(ge=1)
     metric: Literal["mae", "rmse", "smape", "mase"]
     seasonality: int = Field(ge=1)
-    aggregation: Literal["media", "mediana", "media_recortada"]
-    trim: float = Field(ge=0, lt=0.5)
+    # Los informa el motor al terminar (`corrida.json` `evaluation`); null antes.
+    aggregation: Literal["media", "mediana", "media_recortada"] | None
+    trim: float | None = Field(default=..., ge=0, lt=0.5)
+
+    @model_validator(mode="after")
+    def _evaluation(self) -> Self:
+        if (self.aggregation is None) != (self.trim is None):
+            raise ValueError("aggregation y trim deben ser ambos nulos o ambos tener valor")
+        return self
 
 
 class Tarea(_Base):

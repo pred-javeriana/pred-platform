@@ -2,8 +2,8 @@
 
 ``publish`` inserts one M3 run into a migrated platform database: the run with its frozen policy,
 every table M3 fills (SKUs, units, forecasts, metrics, categories, verdicts, portfolio and
-failures) and, optionally, the ingestion's published Parquet with the cut and the late-launch
-exclusions M1 keeps in its metadata. The rows follow the engine's rules (a 64-character ingest
+failures), the cut, the late-launch exclusions and the observed reserve demand. The rows follow
+ the engine's rules (a 64-character ingest
 SHA, the five verdicts with their HLN-DM test or its cause, categories whose counts match their
 verdicts) so a read that validates them as contract v2 has something real to validate.
 """
@@ -16,9 +16,6 @@ from collections import Counter
 from contextlib import closing
 from pathlib import Path
 from typing import Literal
-
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 VERDICTS = ("FALLO_TECNICO", "NO_EVALUABLE", "EVIDENCIA_INSUFICIENTE", "VALIDADO", "EXPLORATORIO")
 LATE = "lanzado despues del corte"
@@ -53,29 +50,6 @@ def identity(configuracion: str = "config-1", ingesta_ref: str = "ingesta-1") ->
         sort_keys=True,
         separators=(",", ":"),
     )
-
-
-def write_parquet(path: Path, *, t_star: str = "2026-03-13", late: tuple[str, ...] = ()) -> None:
-    """A published panel with M1's ``pred_engine`` metadata (the cut and the late launches)."""
-    metadata = {
-        "t_star": t_star,
-        "first_reserved": "2026-03-14",
-        "last_observed": "2026-04-30",
-        "reserved_days": 48,
-        "fraction": 0.2,
-        "exclusions": [{"sku_id": sku, "cause": LATE} for sku in late],
-    }
-    table = pa.table(
-        {
-            "sku_id": ["FIL-0001"],
-            "timestamp": ["2026-01-01"],
-            "demand_qty": [1.0],
-            "lead_time_days": [7],
-            "es_imputado": [False],
-        }
-    ).replace_schema_metadata({b"pred_engine": json.dumps(metadata).encode()})
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(table, path)
 
 
 def _verdict(
@@ -156,6 +130,8 @@ def publish(
     origin: Origin = "real",
     configuracion: str = "config-1",
     creado_en: str = "2026-10-27 10:00:00",
+    publish_m4: bool = True,
+    late: tuple[str, ...] = (),
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict))."""
     synthetic, declared, untested = _ORIGINS[origin]
@@ -187,10 +163,28 @@ def publish(
                 4 * len(verdicts),
             ),
         )
+        if publish_m4:
+            conn.execute("INSERT INTO m3_cortes VALUES (?, '2026-03-13')", (run_id,))
+            conn.executemany(
+                "INSERT INTO m3_lanzamientos_tardios VALUES (?, ?, ?)",
+                [(run_id, sku, LATE) for sku in late],
+            )
         by_class: dict[str, Counter[str]] = {}
         for sku, (sku_class, veredicto) in verdicts.items():
             conn.execute("INSERT INTO m3_skus VALUES (?, ?)", (run_id, sku))
             by_class.setdefault(sku_class, Counter())[veredicto] += 1
+            if publish_m4:
+                conn.executemany(
+                    "INSERT INTO m3_observaciones VALUES (?, ?, ?, ?)",
+                    [
+                        (run_id, sku, day, value)
+                        for day, value in (
+                            ("2026-03-15", 4.0),
+                            ("2026-03-22", None),
+                            ("2026-03-23", 0.0),
+                        )
+                    ],
+                )
         for sku_class, counts in sorted(by_class.items()):
             total = sum(counts.values())
             conteos = {v: counts.get(v, 0) for v in VERDICTS}

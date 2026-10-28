@@ -21,7 +21,12 @@ NO_RUNS = "No hay corridas M3 que coincidan con la consulta."
 METADATA_MISSING = (
     "La publicación no conserva los metadatos de exclusión de la ingesta (corte t* y productos "
     "lanzados después del corte): sin ellos no hay embudo ni veredictos. La falta de metadatos no "
-    "significa cero exclusiones; vuelva a ingerir el archivo con un motor que los publique."
+    "significa cero exclusiones; vuelva a ejecutar la corrida con un motor que los publique."
+)
+
+OBSERVATIONS_MISSING = (
+    "La corrida se publicó antes de que M3 publicara la demanda observada; "
+    "vuelva a ejecutarla para ver el gráfico."
 )
 
 

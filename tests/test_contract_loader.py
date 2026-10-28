@@ -18,7 +18,7 @@ from pred_platform.contract.resources import document_model, example_names, read
 
 
 def test_the_contract_versions_are_the_locked_ones() -> None:
-    assert (CONTRACT_VERSION, M3_CONTRACT_VERSION) == ("1.0.0", "2.0.0")
+    assert (CONTRACT_VERSION, M3_CONTRACT_VERSION) == ("1.1.0", "2.1.0")
 
 
 @pytest.mark.parametrize("name", example_names())

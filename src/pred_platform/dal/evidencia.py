@@ -27,7 +27,17 @@ from typing import Any, Literal
 from pred_platform.dal.lectura import _open_readonly
 from pred_platform.data.m3_query import M3Query
 
-Kind = Literal["evidence", "metrics", "categories", "portfolio", "forecasts", "failures", "units"]
+Kind = Literal[
+    "evidence",
+    "metrics",
+    "categories",
+    "portfolio",
+    "forecasts",
+    "failures",
+    "units",
+    "observations",
+    "champions",
+]
 
 _POLICY_KEYS = ("version", "n_min", "n_min_dm", "alfa_dm")
 _VERDICT_BITS = ("pierde_frente_a_linea_base", "comparacion_incompleta", "dm_significativa")
@@ -62,15 +72,16 @@ class StatusRead:
 class PublishedRead:
     """The run and, when it is PUBLICADA, one page of rows and the total of the query.
 
-    ``ruta_parquet`` is the ingestion's published Parquet (relative to the data root), where M1
-    keeps the cut and the late launches. ``verdict_counts`` counts the run's verdicts, for the
-    funnel; both are only read for the evidence.
+    ``t_star`` and ``late_launches`` come from M3's SQLite publication in the same snapshot.
+    ``verdict_counts`` counts the run's verdicts for the funnel. Observations also read the cut
+    to distinguish old publications from an empty reserve.
     """
 
     run: dict[str, Any] | None
     rows: list[dict[str, Any]]
     total: int
-    ruta_parquet: str | None = None
+    t_star: str | None = None
+    late_launches: list[dict[str, Any]] | None = None
     verdict_counts: dict[str, int] | None = None
 
 
@@ -122,6 +133,8 @@ _TABLES: dict[Kind, _Table] = {
     "forecasts": _Table("m3_pronosticos", True),
     "failures": _Table("m3_fallos", True),
     "units": _Table("m3_unidades", True, _unit),
+    "observations": _Table("m3_observaciones", True),
+    "champions": _Table("m3_campeones", False),
 }
 
 
@@ -219,9 +232,8 @@ def _run_select(conn: sqlite3.Connection) -> str:
     return (
         "SELECT c.run_id, c.ingesta_sha256, c.run_id_m2, c.identidad, c.datos_sinteticos, "
         f"{declarado}, c.estado, c.causa_rechazo, c.creado_en, p.protocolo, "
-        "p.n_unidades_previstas, i.ruta_parquet "
-        "FROM m3_corridas c LEFT JOIN m3_protocolos p ON p.run_id = c.run_id "
-        "LEFT JOIN ingestas i ON i.sha256 = c.ingesta_sha256"
+        "p.n_unidades_previstas "
+        "FROM m3_corridas c LEFT JOIN m3_protocolos p ON p.run_id = c.run_id"
     )
 
 
@@ -356,8 +368,27 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
         if row is None:
             return PublishedRead(None, [], 0)
         run = _run(conn, row)
-        if run["estado"] != "PUBLICADA" or not _has(conn, table.name):
+        if run["estado"] != "PUBLICADA":
             return PublishedRead(run, [], 0)
+        t_star = None
+        late_launches = None
+        if kind in ("evidence", "observations") and _has(conn, "m3_cortes"):
+            cut = conn.execute(
+                "SELECT t_star FROM m3_cortes WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if cut is not None:
+                t_star = cut[0]
+                if kind == "evidence":
+                    late_launches = [
+                        dict(item)
+                        for item in conn.execute(
+                            "SELECT sku, causa FROM m3_lanzamientos_tardios "
+                            "WHERE run_id = ? ORDER BY sku",
+                            (run_id,),
+                        )
+                    ]
+        if not _has(conn, table.name):
+            return PublishedRead(run, [], 0, t_star, late_launches)
         rows, total = _select_page(conn, table.name, query, [("run_id", run_id)])
         for item in rows:
             item["ingesta_sha256"] = run["ingesta_sha256"]
@@ -374,4 +405,4 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
                     (run_id,),
                 ).fetchall()
             )
-        return PublishedRead(run, rows, total, row["ruta_parquet"], counts)
+        return PublishedRead(run, rows, total, t_star, late_launches, counts)

@@ -5,9 +5,8 @@ documents (``models_v2``), which is where data from the shared database enters t
 filters, the order and the page come from ``data/m3_query.py``, the same rules the fixtures apply.
 
 The funnel and the late launches cover the whole run. The cut and the excluded products come from
-the metadata M1 stores in the ingestion's published Parquet (``dal/metadatos_parquet.py``); when
-that metadata is absent the evidence answers ``metadata_missing`` instead of claiming zero
-exclusions. Rows that do not satisfy the contract raise ``ContractInvalid``.
+M3's SQLite publication; when the cut is absent the evidence answers ``metadata_missing`` instead
+of claiming zero exclusions. Rows that do not satisfy the contract raise ``ContractInvalid``.
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from pred_platform.config import DataSource
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ContractInvalid
 from pred_platform.dal import evidencia
-from pred_platform.dal.metadatos_parquet import CutoffMetadata, read_cutoff_metadata
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
 from pred_platform.data.m3_query import VERDICTS, M3Query
@@ -43,7 +41,7 @@ def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
 
 
 class M3DalSource:
-    """The nine M3 operations of ``DataRepository`` over the platform's database."""
+    """The eleven M3 operations of ``DataRepository`` over the platform's database."""
 
     source: DataSource = "dal"
     db_path: Path
@@ -133,8 +131,7 @@ class M3DalSource:
         if unavailable is not None:
             return unavailable
         assert read.run is not None and read.verdict_counts is not None
-        metadata = self._cutoff(read.ruta_parquet)
-        if metadata is None:
+        if read.t_star is None:
             return _validated(
                 models_v2.M3Evidence,
                 {
@@ -151,7 +148,7 @@ class M3DalSource:
         counts = {verdict: read.verdict_counts.get(verdict, 0) for verdict in VERDICTS}
         evaluated = sum(counts[v] for v in m3_query.GROUPS["evaluados"])
         not_evaluated = sum(counts[v] for v in m3_query.GROUPS["no_evaluados"])
-        excluded = [{**trace, "sku": sku, "causa": cause} for sku, cause in metadata.exclusions]
+        excluded = [{**trace, **item} for item in read.late_launches or []]
         return _validated(
             models_v2.M3Evidence,
             {
@@ -170,7 +167,7 @@ class M3DalSource:
                 },
                 "late_launches": {
                     **trace,
-                    "t_star": metadata.t_star,
+                    "t_star": read.t_star,
                     "excluded_count": len(excluded),
                     "items": excluded,
                 },
@@ -227,6 +224,30 @@ class M3DalSource:
         )
         return self._published(models_v2.M3Portfolio, "portfolio", run_id, query)
 
+    def get_m3_observations(
+        self,
+        run_id: str,
+        *,
+        sku: str | None = None,
+        fecha: str | None = None,
+        page: int = 1,
+        size: int = DEFAULT_SIZE,
+    ) -> models_v2.M3Observations:
+        query = m3_query.observations_query(sku=sku, fecha=fecha, page=page, size=size)
+        return self._published(models_v2.M3Observations, "observations", run_id, query)
+
+    def get_m3_champions(
+        self,
+        run_id: str,
+        *,
+        sku_class: str | None = None,
+        familia: str | None = None,
+        page: int = 1,
+        size: int = DEFAULT_SIZE,
+    ) -> models_v2.M3Champions:
+        query = m3_query.champions_query(sku_class=sku_class, familia=familia, page=page, size=size)
+        return self._published(models_v2.M3Champions, "champions", run_id, query)
+
     def get_m3_forecasts(
         self,
         run_id: str,
@@ -276,7 +297,15 @@ class M3DalSource:
         self, model: type[T], kind: evidencia.Kind, run_id: str, query: M3Query
     ) -> T:
         read = evidencia.read_published(self.db_path, run_id, kind, query)
-        unavailable = self._unavailable(model, read, query, {})
+        unavailable = self._unavailable(
+            model,
+            read,
+            query,
+            {},
+            missing_detail=docs.OBSERVATIONS_MISSING
+            if kind == "observations" and read.t_star is None
+            else None,
+        )
         if unavailable is not None:
             return unavailable
         return _validated(
@@ -295,6 +324,7 @@ class M3DalSource:
         read: evidencia.PublishedRead,
         query: M3Query,
         empty: dict[str, None],
+        missing_detail: str | None = None,
     ) -> T | None:
         """The ``no_data`` or ``not_published`` document, or ``None`` for a PUBLICADA run."""
         if read.run is None:
@@ -302,6 +332,8 @@ class M3DalSource:
         elif read.run["estado"] != "PUBLICADA":
             run = _validated(models_v2.M3Run, read.run)
             availability = docs.unavailable("not_published", docs.not_published(run))
+        elif missing_detail is not None:
+            availability = docs.unavailable("metadata_missing", missing_detail)
         else:
             return None
         return _validated(
@@ -314,14 +346,3 @@ class M3DalSource:
                 **empty,
             },
         )
-
-    def _cutoff(self, ruta_parquet: str | None) -> CutoffMetadata | None:
-        if ruta_parquet is None:
-            return None
-        path = Path(ruta_parquet)
-        if not path.is_absolute() and self.data_root is not None:
-            path = self.data_root / path
-        try:
-            return read_cutoff_metadata(path)
-        except ValueError as exc:
-            raise ContractInvalid(f"Parquet publicado de la ingesta: {exc}") from exc

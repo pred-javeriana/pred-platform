@@ -27,7 +27,6 @@ import pytest
 from pred_platform.config import ENGINE_COMMAND_VAR, Settings
 from pred_platform.contract import models_v2
 from pred_platform.dal import ejecuciones as dal
-from pred_platform.dal.metadatos_parquet import read_cutoff_metadata
 from pred_platform.dal.migrate import migrate
 from pred_platform.data.dal import DalRepository
 from pred_platform.data.query import MAX_SIZE
@@ -188,15 +187,10 @@ def test_unpublished_run_shows_progress_only_then_publishes(caso: Caso) -> None:
 
 def test_the_verdicts_and_the_funnel_follow_the_published_cutoff_metadata(caso: Caso) -> None:
     evidencia = caso.repo.get_m3_evidence(caso.run_id)
-    metadata = read_cutoff_metadata(caso.parquet)
-    if metadata is None:
-        # An engine that does not keep the cut in the Parquet: no funnel instead of zero exclusions.
-        assert evidencia.availability.reason_code == "metadata_missing"
-        assert evidencia.items == [] and evidencia.funnel is None
-        return
     assert evidencia.availability.status == "available" and evidencia.funnel is not None
+    assert evidencia.late_launches is not None
     assert sorted(v.sku for v in evidencia.items) == sorted(SERIES)
-    assert evidencia.funnel.total_productos == len(SERIES) + len(metadata.exclusions)
+    assert evidencia.funnel.total_productos == len(SERIES) + evidencia.late_launches.excluded_count
     assert evidencia.funnel.tras_exclusiones == len(SERIES)
     # Datos sintéticos: sin prueba HLN-DM ni p-valores, con la causa visible.
     assert {(v.dm_causa, v.dm_p_valor) for v in evidencia.items} == {("datos_sinteticos", None)}
@@ -211,6 +205,8 @@ def test_every_row_keeps_run_sku_origin_and_ingest_identity(caso: Caso) -> None:
         "metricas": repo.get_m3_metrics(caso.run_id, size=500),
         "categorias": repo.get_m3_categories(caso.run_id),
         "cartera": repo.get_m3_portfolio(caso.run_id, size=500),
+        "observaciones": repo.get_m3_observations(caso.run_id, size=500),
+        "campeones": repo.get_m3_champions(caso.run_id),
         "pronosticos": repo.get_m3_forecasts(caso.run_id, size=500),
         "fallos": repo.get_m3_failures(caso.run_id),
         "unidades": repo.get_m3_units(caso.run_id, size=500),
@@ -225,6 +221,24 @@ def test_every_row_keeps_run_sku_origin_and_ingest_identity(caso: Caso) -> None:
     assert [name for name, doc in documents.items() if not doc.items] == ["fallos"]
     assert {c.sku for c in documents["categorias"].items} == {None}
     assert {m.metrica for m in documents["metricas"].items} >= {"mae", "rmse", "mase", "me"}
+
+
+def test_the_engine_publishes_observations_and_champion_portfolio(caso: Caso) -> None:
+    observations = caso.repo.get_m3_observations(caso.run_id, sku="SINT-001", size=500)
+    assert observations.availability.status == "available" and observations.items
+    assert {row.sku for row in observations.items} == {"SINT-001"}
+    assert any(row.valor is not None for row in observations.items)
+    champions = caso.repo.get_m3_champions(caso.run_id)
+    assert champions.availability.status == "available" and champions.items
+    portfolio = [row for row in champions.items if row.sku_class is None]
+    assert sum(row.n_skus for row in portfolio) == len(SERIES)
+    with closing(sqlite3.connect(caso.db)) as conn:
+        expected = conn.execute(
+            "SELECT familia_campeona, COUNT(*) FROM m3_veredictos "
+            "WHERE run_id = ? GROUP BY familia_campeona ORDER BY familia_campeona",
+            (caso.run_id,),
+        ).fetchall()
+    assert [(row.familia, row.n_skus) for row in portfolio] == expected
 
 
 def test_resume_reuses_committed_units_and_leaves_no_duplicates(caso: Caso) -> None:

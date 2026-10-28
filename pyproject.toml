@@ -16,9 +16,7 @@ dependencies = [
     "psutil>=5.9",
     # The data contract's models. 2.13 is the version its JSON Schemas were exported with.
     "pydantic>=2.13",
-    # Reads the cut and the late-launch exclusions M1 stores in the published Parquet's metadata.
-    "pyarrow>=17",
-    # pred-engine (public repo) — run as a CLI, not imported; see DEPENDENCIES.md
+    # pred-engine (private repo) — not wired yet; see DEPENDENCIES.md
     # "pred-engine @ git+https://github.com/pred-javeriana/pred-engine.git",
 ]
 

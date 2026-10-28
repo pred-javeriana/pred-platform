@@ -47,7 +47,7 @@ def _page(rows: Sequence[Any], query: M3Query) -> tuple[list[Any], models_v2.Pag
 
 
 class M3FixtureSource:
-    """The nine M3 operations of ``DataRepository`` over a scenario's v2 examples."""
+    """The eleven M3 operations of ``DataRepository`` over a scenario's v2 examples."""
 
     source: DataSource = "fixture"
     scenario: Scenario
@@ -184,6 +184,47 @@ class M3FixtureSource:
         )
         return self._published(models_v2.M3Portfolio, self.scenario.m3_portfolio, run_id, query)
 
+    def get_m3_observations(
+        self,
+        run_id: str,
+        *,
+        sku: str | None = None,
+        fecha: str | None = None,
+        page: int = 1,
+        size: int = DEFAULT_SIZE,
+    ) -> models_v2.M3Observations:
+        query = m3_query.observations_query(sku=sku, fecha=fecha, page=page, size=size)
+        for example in self.scenario.m3_evidence:
+            evidence = _load(models_v2.M3Evidence, example)
+            if (
+                evidence.run is not None
+                and evidence.run.run_id == run_id
+                and evidence.availability.reason_code == "metadata_missing"
+            ):
+                return models_v2.M3Observations(
+                    **docs.envelope(
+                        self.source, docs.unavailable("metadata_missing", docs.OBSERVATIONS_MISSING)
+                    ),
+                    run=evidence.run,
+                    items=[],
+                    page=docs.empty_page(query),
+                )
+        return self._published(
+            models_v2.M3Observations, self.scenario.m3_observations, run_id, query
+        )
+
+    def get_m3_champions(
+        self,
+        run_id: str,
+        *,
+        sku_class: str | None = None,
+        familia: str | None = None,
+        page: int = 1,
+        size: int = DEFAULT_SIZE,
+    ) -> models_v2.M3Champions:
+        query = m3_query.champions_query(sku_class=sku_class, familia=familia, page=page, size=size)
+        return self._published(models_v2.M3Champions, self.scenario.m3_champions, run_id, query)
+
     def get_m3_forecasts(
         self,
         run_id: str,
@@ -254,6 +295,8 @@ class M3FixtureSource:
             (models_v2.M3Metrics, s.m3_metrics),
             (models_v2.M3Categories, s.m3_categories),
             (models_v2.M3Portfolio, s.m3_portfolio),
+            (models_v2.M3Observations, s.m3_observations),
+            (models_v2.M3Champions, s.m3_champions),
             (models_v2.M3Forecasts, s.m3_forecasts),
             (models_v2.M3Failures, s.m3_failures),
             (models_v2.M3Units, s.m3_units),
