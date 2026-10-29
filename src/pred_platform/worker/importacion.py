@@ -14,6 +14,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from pred_platform.contract.models import RunSettings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker.engine import MODELO_POR_FAMILIA, log_tail, model_id
@@ -75,8 +76,37 @@ def finalize(
         )
         return "detenida"
 
-    corrida = json.loads(corrida_path.read_text(encoding="utf-8"))
-    summary: dict[str, Any] = corrida.get("summary", {})
+    try:
+        corrida = json.loads(corrida_path.read_text(encoding="utf-8"))
+        if not isinstance(corrida, dict):
+            raise ValueError("corrida.json no es un objeto")
+        summary = corrida.get("summary", {})
+        if not isinstance(summary, dict):
+            raise ValueError("summary no es un objeto")
+        evaluation = corrida.get("evaluation")
+        if "evaluation" in corrida:
+            if not isinstance(evaluation, dict):
+                raise ValueError("evaluation no es un objeto")
+            if (
+                not isinstance(evaluation.get("aggregation"), str)
+                or type(evaluation.get("trim")) is not float
+            ):
+                raise ValueError("evaluation exige aggregation y trim (float)")
+            RunSettings.model_validate(
+                {
+                    **{
+                        key: value
+                        for key, value in run.parametros.items()
+                        if key in RunSettings.model_fields
+                    },
+                    "aggregation": evaluation["aggregation"],
+                    "trim": evaluation["trim"],
+                }
+            )
+    except (ValueError, OSError) as exc:
+        error = platform_error("platform.contract_invalid", f"corrida.json inválido: {exc}")
+        dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
+        return _stop(conn, run, None, error)
 
     # The unit trace is final: reapplying it is idempotent and corrects any missed event.
     m2_completas: list[tuple[str, str, str]] = []
@@ -145,6 +175,14 @@ def finalize(
     # only loses its SKU: it never changes how the run ended.
     import_selection(conn, run, run_dir=run_dir, corte=corte)
     counts = dal.task_counts(conn, run.id)
+    if evaluation is not None:
+        # finish_run confirma esta actualización junto con el estado final de la corrida.
+        conn.execute(
+            "UPDATE configuraciones SET parametros="
+            "json_set(parametros, '$.aggregation', ?, '$.trim', ?) "
+            "WHERE id=(SELECT configuracion_id FROM ejecuciones WHERE id=?)",
+            (evaluation["aggregation"], evaluation["trim"], run.id),
+        )
     reserve = summary.get("reserve")
     failed = [s for s in summary.get("stages", []) if s.get("state") == "failed"]
 

@@ -23,7 +23,7 @@ from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
 def _control(env: Env) -> DalRunControl:
-    return DalRunControl(env.db)
+    return DalRunControl(env.settings)
 
 
 def _state(env: Env) -> tuple[str, dict[str, object] | None]:

@@ -204,7 +204,13 @@ def topology_rows(
     """
     column = _TOPOLOGY_SORT_COLUMNS[sort]
     direction = "DESC" if descending else "ASC"
-    where = ["ingesta_id = ?", "clase IS NOT NULL"]
+    where = [
+        "ingesta_id = ?",
+        "clase IS NOT NULL",
+        "adi IS NOT NULL",
+        "cv2 IS NOT NULL",
+        "n_positive IS NOT NULL",
+    ]
     params: list[object] = [ingesta_id]
     if sku_class:
         where.append("clase = ?")

@@ -19,7 +19,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -125,47 +125,110 @@ def test_la_configuracion_de_lanzamiento_no_admite_origen() -> None:
     assert LaunchSettings().to_parametros()["datos_sinteticos"] is False
 
 
-def test_id_publico_no_cambia_al_resolver_procedencia_de_m1(env):
-    settings = LaunchSettings(families=("ml",), trials=1)
-    expected = run_id_for(env.ingest_id, settings)
-    queued = enqueue_run(env.db, env.ingest_id, settings)
-    assert queued.run_id == expected
-    with closing(dal.connect(env.db)) as conn:
-        run = dal.get_run(conn, queued.ejecucion_id)
-    assert run is not None and run.parametros["datos_sinteticos"] is False
+def test_el_conflicto_del_motor_no_crea_una_ejecucion(env: Env, monkeypatch):
+    monkeypatch.setenv("FAKE_ENGINE_ORIGIN_EXIT", "3")
+    with pytest.raises(RunRequestError, match="^origen incompatible del motor$"):
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+    assert env.rows("SELECT COUNT(*) FROM configuraciones") == [(0,)]
 
 
-@pytest.mark.parametrize("known", [True, False])
-def test_trabajador_resuelve_configuracion_antigua_antes_de_lanzar(env, known):
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
-    with closing(dal.connect(env.db)) as conn:
-        cfg, raw = conn.execute(
-            "SELECT c.id,c.parametros FROM configuraciones c "
-            "JOIN ejecuciones e ON e.configuracion_id=c.id WHERE e.id=?",
-            (queued.ejecucion_id,),
-        ).fetchone()
-        params = json.loads(raw)
-        params.pop("datos_sinteticos")
+@pytest.mark.parametrize(
+    "output",
+    [
+        "[]",
+        "null",
+        "true",
+        "texto",
+        "{}",
+        '{"ingest_id": "otro", "datos_sinteticos": true}',
+    ],
+)
+def test_una_respuesta_invalida_del_motor_no_encola(env: Env, monkeypatch, output):
+    monkeypatch.setenv("FAKE_ENGINE_ORIGIN_OUTPUT", output)
+    with pytest.raises(RunRequestError, match="No se pudo consultar el origen al motor"):
+        enqueue_run(env.settings, env.ingest_id)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+@pytest.mark.parametrize("value", [0, 1, "true", [], {}])
+def test_el_origen_del_motor_exige_booleano_o_nulo(env: Env, monkeypatch, value):
+    monkeypatch.setenv(
+        "FAKE_ENGINE_ORIGIN_OUTPUT",
+        json.dumps(
+            {
+                "ingest_id": env.ingest_id,
+                "datos_sinteticos": value,
+            }
+        ),
+    )
+    with pytest.raises(RunRequestError, match="No se pudo consultar el origen al motor"):
+        enqueue_run(env.settings, env.ingest_id)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+@pytest.mark.parametrize("code", [1, 2])
+def test_un_motor_sin_comando_o_con_error_no_encola(env: Env, monkeypatch, code):
+    monkeypatch.setenv("FAKE_ENGINE_ORIGIN_EXIT", str(code))
+    with pytest.raises(
+        RunRequestError, match=f"No se pudo consultar el origen al motor: código {code}"
+    ):
+        enqueue_run(env.settings, env.ingest_id)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_un_motor_ausente_no_encola(env: Env):
+    settings = replace(env.settings, engine_command=("/no/existe/pred-engine",))
+    with pytest.raises(RunRequestError, match="No se pudo consultar el origen al motor"):
+        enqueue_run(settings, env.ingest_id)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_una_consulta_agotada_no_encola(env: Env, monkeypatch):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], 60)
+
+    monkeypatch.setattr(engine.subprocess, "run", timeout)
+    with pytest.raises(RunRequestError, match="No se pudo consultar el origen al motor.*60"):
+        enqueue_run(env.settings, env.ingest_id)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_consulta_el_origen_sin_bloquear_la_base(env: Env, monkeypatch):
+    original = engine.subprocess.run
+
+    def consult(command, **kwargs):
+        assert command[2:] == [
+            "origen",
+            "--ingest-id",
+            env.ingest_id,
+            "--data-root",
+            str(env.settings.data_root.resolve()),
+            "--db-path",
+            str(env.db.resolve()),
+            "--datos-reales",
+        ]
+        with closing(sqlite3.connect(env.db, timeout=0)) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.rollback()
+        assert kwargs["timeout"] == 60 and kwargs["capture_output"] is True
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(engine.subprocess, "run", consult)
+    assert enqueue_run(env.settings, env.ingest_id, SMALL).queued
+
+
+def test_configuracion_antigua_sin_origen_exige_volver_a_encolar(env: Env):
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn, conn:
         conn.execute(
-            "UPDATE configuraciones SET parametros=? WHERE id=?", (json.dumps(params), cfg)
+            "UPDATE configuraciones SET parametros=json_remove(parametros, '$.datos_sinteticos')"
         )
-        if not known:
-            conn.execute("DELETE FROM m3_ingestas")
-        conn.commit()
     assert env.worker().run_next() is True
     state, error, pid = env.rows("SELECT estado,error_json,pid FROM ejecuciones")[0]
-    if known:
-        assert state == "completada" and error is None
-        assert (
-            json.loads(env.rows("SELECT parametros FROM configuraciones WHERE id=?", cfg)[0][0])[
-                "datos_sinteticos"
-            ]
-            is False
-        )
-    else:
-        assert state == "detenida" and pid is None
-        assert "encolar" in json.loads(error)["detail"]
-        assert not (env.settings.data_root / "runs" / queued.run_id / "motor.log").exists()
+    assert state == "detenida" and pid is None
+    assert "encolar" in json.loads(error)["detail"]
+    assert not (env.settings.data_root / "runs" / queued.run_id / "motor.log").exists()
 
 
 def _scenario(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
@@ -188,20 +251,20 @@ def _run_state(env: Env) -> tuple[str, str | None]:
 
 # ------------------------------------------------------------------------- enqueue
 def test_a_run_is_queued_with_its_parameters(env: Env) -> None:
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
 
     assert queued.queued is True and queued.run_id == run_id_for(env.ingest_id, SMALL)
     ((estado, run_id, seed),) = env.rows("SELECT estado, run_id, seed FROM ejecuciones")
     assert (estado, run_id, seed) == ("pendiente", queued.run_id, 17)
     parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
-    assert parametros["schema_version"] == 1
+    assert parametros["schema_version"] == 2
     assert (parametros["min_train"], parametros["metric"], parametros["trials"]) == (40, "mae", 1)
     assert parametros["families"] == ["classical", "ml", "dl"]
 
 
 def test_asking_again_for_the_same_run_returns_the_existing_one(env: Env) -> None:
-    first = enqueue_run(env.db, env.ingest_id, SMALL)
-    second = enqueue_run(env.db, env.ingest_id, SMALL)
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
+    second = enqueue_run(env.settings, env.ingest_id, SMALL)
 
     assert second.ejecucion_id == first.ejecucion_id and second.queued is False
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
@@ -217,7 +280,7 @@ def test_the_number_of_processes_does_not_change_the_run_identity() -> None:
 @pytest.mark.parametrize("ingest_id", ["c" * 64, _fixture_id("failed")])
 def test_only_an_accepted_ingestion_can_be_run(env: Env, ingest_id: str) -> None:
     with pytest.raises(RunRequestError):
-        enqueue_run(env.db, ingest_id, SMALL)
+        enqueue_run(env.settings, ingest_id, SMALL)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
@@ -229,8 +292,6 @@ def test_only_an_accepted_ingestion_can_be_run(env: Env, ingest_id: str) -> None
         {"families": ()},
         {"trials": 0},
         {"workers": 0},
-        {"aggregation": "media"},
-        {"trim": 0.2},
     ],
 )
 def test_launch_settings_are_validated(kwargs: dict[str, Any]) -> None:
@@ -238,81 +299,119 @@ def test_launch_settings_are_validated(kwargs: dict[str, Any]) -> None:
         LaunchSettings(**kwargs)
 
 
-def test_a_queued_run_records_the_settings_the_engine_uses(env: Env) -> None:
-    enqueue_run(env.db, env.ingest_id, SMALL)
-
+def test_la_cola_no_inventa_ajustes_de_evaluacion(env: Env):
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
-    assert (parametros["aggregation"], parametros["trim"]) == ("media_recortada", 0.1)
-    with pytest.raises(ValueError, match="media_recortada"):
-        LaunchSettings(aggregation="media", trim=0.2)
-    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]  # nothing else was queued
+    assert "aggregation" not in parametros and "trim" not in parametros
 
 
-def _make_legacy(env: Env) -> None:
-    """Leave the stored settings as a platform that queued ``media`` / 0.2 left them."""
-    with closing(sqlite3.connect(env.db)) as conn:
-        conn.execute(
-            "UPDATE configuraciones SET parametros = json_set(parametros, '$.aggregation', "
-            "'media', '$.trim', 0.2)"
-        )
-        conn.commit()
-
-
-def test_a_legacy_run_with_unsupported_settings_is_stopped_before_the_engine(env: Env) -> None:
-    enqueue_run(env.db, env.ingest_id, SMALL)
-    _make_legacy(env)
-    launched: list[list[str]] = []
-
-    def launcher(command: list[str], **kwargs: Any) -> Any:
-        launched.append(command)
-        return engine.launch(command, **kwargs)
-
-    Worker(env.settings, launcher=launcher).run_next()
-
-    estado, error_json = _run_state(env)
-    error = json.loads(error_json or "{}")
-    assert (estado, error["code"], error["retryable"]) == (
-        "detenida",
-        "platform.contract_invalid",
-        False,
+@pytest.mark.parametrize("scenario", ["ok", "stage_fails"])
+@pytest.mark.parametrize(
+    "aggregation,trim",
+    [
+        ("media", 0.2),
+        ("mediana", 0.0),
+        ("media_recortada", 0.1),
+    ],
+)
+def test_importa_los_ajustes_publicados_por_el_motor(
+    env: Env, monkeypatch, aggregation, trim, scenario
+):
+    _scenario(monkeypatch, scenario)
+    monkeypatch.setenv(
+        "FAKE_ENGINE_EVALUATION",
+        json.dumps(
+            {
+                "aggregation": aggregation,
+                "trim": trim,
+            }
+        ),
     )
-    assert "media_recortada" in error["detail"]
-    assert launched == []
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert env.worker().run_next()
+    if scenario == "ok":
+        assert _run_state(env) == ("completada", None)
+    else:
+        state, error = _run_state(env)
+        assert state == "detenida" and json.loads(error or "{}")["code"] == "pipeline.stage_failed"
+    parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
+    assert (parametros["aggregation"], parametros["trim"]) == (aggregation, trim)
+    status = env.repo().get_run_status("1")
+    assert status.settings is not None
+    assert (status.settings.aggregation, status.settings.trim) == (aggregation, trim)
 
 
-def test_a_legacy_run_with_task_history_ends_with_all_its_tasks_settled(
-    env: Env, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _scenario(monkeypatch, "unit_fails")
-    enqueue_run(env.db, env.ingest_id, SMALL)
-    env.worker().run_next()
-    assert _run_state(env)[0] == "completada_con_fallos"
-    _make_legacy(env)
+@pytest.mark.parametrize(
+    "evaluation",
+    [
+        None,
+        [],
+        {},
+        {"aggregation": "otra", "trim": 0.1},
+        {"aggregation": "media", "trim": -0.1},
+        {"aggregation": "media", "trim": 0.5},
+        {"aggregation": "media", "trim": True},
+        {"aggregation": "media", "trim": 0},
+        {"aggregation": "media", "trim": "0.1"},
+        {"aggregation": None, "trim": None},
+        {"aggregation": "media", "trim": float("nan")},
+    ],
+)
+def test_un_ajuste_malformado_detiene_la_corrida_sin_guardarlo(env: Env, monkeypatch, evaluation):
+    monkeypatch.setenv("FAKE_ENGINE_EVALUATION", json.dumps(evaluation))
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert env.worker().run_next()
+    estado, error = _run_state(env)
+    assert estado == "detenida"
+    assert json.loads(error or "{}")["code"] == "platform.contract_invalid"
+    parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
+    assert "aggregation" not in parametros and "trim" not in parametros
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente','ejecutando')") == [
+        (0,)
+    ]
+
+
+@pytest.mark.parametrize("raw", ["[", "[]", '{"summary":[]}'])
+def test_un_resumen_ilegible_o_no_objeto_se_registra_como_contrato_invalido(env: Env, raw):
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     with closing(dal.connect(env.db)) as conn:
-        assert dal.resume_run(conn, 1)  # a pre-upgrade queue entry, as the old resume left it
-    launched: list[list[str]] = []
+        run = dal.claim_pending(conn)
+        assert run is not None
+        folder = env.settings.data_root / "runs" / queued.run_id
+        folder.mkdir(parents=True)
+        (folder / "corrida.json").write_text(raw)
+        state = finalize(
+            conn,
+            run,
+            run_dir=folder,
+            returncode=0,
+            corte="2026-03-13",
+            families=["ml"],
+            log_path=folder / "motor.log",
+        )
+    assert state == "detenida"
+    assert json.loads(_run_state(env)[1] or "{}")["code"] == "platform.contract_invalid"
+    parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
+    assert "aggregation" not in parametros and "trim" not in parametros
 
-    def launcher(command: list[str], **kwargs: Any) -> Any:
-        launched.append(command)
-        return engine.launch(command, **kwargs)
 
-    assert Worker(env.settings, launcher=launcher).run_next() is True
-
-    tasks = env.rows("SELECT estado, detalle_error FROM tareas")
-    assert tasks and {estado for estado, _ in tasks} <= {"exitosa", "no_ejecutable"}
-    settled = [json.loads(detail) for estado, detail in tasks if estado == "no_ejecutable"]
-    assert settled and {e["code"] for e in settled} == {"platform.contract_invalid"}
-    assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
-    assert launched == []
-    before = (env.rows("SELECT * FROM tareas"), env.rows("SELECT * FROM ejecuciones"))
-    assert Worker(env.settings, launcher=launcher).run_next() is False  # nothing left to claim
-    assert (env.rows("SELECT * FROM tareas"), env.rows("SELECT * FROM ejecuciones")) == before
+def test_un_motor_anterior_no_cambia_los_ajustes_guardados(env: Env):
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE configuraciones SET parametros="
+            "json_set(parametros, '$.aggregation', 'media', '$.trim', 0.2)"
+        )
+    assert env.worker().run_next()
+    parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
+    assert (parametros["aggregation"], parametros["trim"]) == ("media", 0.2)
+    assert _run_state(env) == ("completada", None)
 
 
 # ------------------------------------------------------------------------ a full run
 def test_a_run_ends_with_all_its_tasks_done(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _scenario(monkeypatch, "ok")
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
 
     assert env.worker().run_next() is True
 
@@ -332,7 +431,7 @@ def test_a_run_ends_with_all_its_tasks_done(env: Env, monkeypatch: pytest.Monkey
 
 def test_a_failed_unit_does_not_stop_the_others(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _scenario(monkeypatch, "unit_fails")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -351,7 +450,7 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "excluded")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -373,7 +472,7 @@ def test_subsecond_summary_rewrite_is_not_confused_with_an_old_attempt(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "ok")
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     folder = env.settings.data_root / "runs" / queued.run_id
     current = (folder / "corrida.json").stat()
@@ -403,7 +502,7 @@ def test_retry_that_crashes_cannot_import_the_previous_attempt_as_its_final_resu
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     folder = env.settings.data_root / "runs" / queued.run_id
     previous = (folder / "corrida.json").read_bytes()
@@ -425,7 +524,7 @@ def test_an_engine_that_dies_leaves_a_stopped_run_and_no_task_in_flight(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "crash")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -442,7 +541,7 @@ def test_an_engine_that_dies_leaves_a_stopped_run_and_no_task_in_flight(
 
 def test_a_stage_without_results_stops_the_run(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _scenario(monkeypatch, "stage_fails")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -456,7 +555,7 @@ def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "l4_fails")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -476,7 +575,7 @@ def test_al_cerrar_una_corrida_con_m3_publicado_las_tareas_quedan_exitosas(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "m3_ok")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -492,7 +591,7 @@ def test_a_missing_engine_command_is_a_clear_stopped_run(env: Env) -> None:
         engine_command=("/no/such/pred-engine",),
         worker="off",
     )
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     Worker(broken).run_next()
 
@@ -507,7 +606,7 @@ def test_an_unsupported_progress_version_stops_the_run(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "future_schema")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -519,7 +618,7 @@ def test_an_unsupported_progress_version_stops_the_run(
 # ------------------------------------------------------------------ live and resume
 def test_the_run_can_be_followed_while_it_runs(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _scenario(monkeypatch, "slow_ok")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     thread = threading.Thread(target=env.worker().run_next)
     thread.start()
     seen: set[str] = set()
@@ -543,7 +642,7 @@ def test_closing_the_platform_reaps_the_engine_and_keeps_the_run_queued(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "slow")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     stop = threading.Event()
     thread = threading.Thread(target=env.worker().run_next, args=(stop,))
     thread.start()
@@ -571,7 +670,7 @@ def test_engine_publication_before_cli_exit_is_not_an_operator_stop(
 ) -> None:
     _scenario(monkeypatch, "publishes_before_exit")
     monkeypatch.setenv("FAKE_ENGINE_TERMINAL_STATE", state)
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     assert _run_state(env) == ("completada", None)
     assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
@@ -583,7 +682,7 @@ def test_resumed_follower_ignores_history_but_applies_events_written_after_its_c
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     path = env.settings.data_root / "runs" / queued.run_id / "progreso.jsonl"
     with closing(dal.connect(env.db)) as conn:
@@ -619,7 +718,7 @@ def test_final_trace_import_never_marks_completed_work_running_again(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "ok")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     original = dal.task_started
     regressions = []
 
@@ -642,12 +741,12 @@ def test_final_trace_import_never_marks_completed_work_running_again(
 
 def test_resuming_a_stopped_run_reuses_its_rows(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _scenario(monkeypatch, "crash")
-    first = enqueue_run(env.db, env.ingest_id, SMALL)
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     assert _run_state(env)[0] == "detenida"
 
     _scenario(monkeypatch, "ok")
-    again = enqueue_run(env.db, env.ingest_id, SMALL)
+    again = enqueue_run(env.settings, env.ingest_id, SMALL)
     assert (again.ejecucion_id, again.queued) == (first.ejecucion_id, True)
     env.worker().run_next()
 
@@ -662,7 +761,7 @@ def test_a_run_left_running_by_a_crash_is_queued_again_and_finishes(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "ok")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     with closing(dal.connect(env.db)) as conn:
         assert dal.claim_pending(conn) is not None  # "running", but nothing is running it
     assert _run_state(env)[0] == "ejecutando"
@@ -680,7 +779,7 @@ def test_recovery_after_m3_publication_only_requeues_unreaped_claims(
     env: Env, monkeypatch: pytest.MonkeyPatch, state: str
 ) -> None:
     _scenario(monkeypatch, "ok")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     env.worker().recover()
     assert _run_state(env)[0] == "completada"
@@ -696,7 +795,7 @@ def test_recovery_after_m3_publication_only_requeues_unreaped_claims(
 
 
 def test_two_workers_never_claim_the_same_run(env: Env) -> None:
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     barrier = threading.Barrier(2)
     claimed: list[object] = []
 
@@ -718,7 +817,7 @@ def test_applying_the_progress_twice_leaves_the_same_tasks(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     before = env.rows(
         "SELECT sku, modelo, estado, tiempo_pared_s, detalle_error FROM tareas ORDER BY id"
@@ -738,7 +837,7 @@ def test_applying_the_progress_twice_leaves_the_same_tasks(
 
 
 def test_una_tarea_pasa_por_finalizo_m2_y_queda_exitosa_al_terminar_m3(env: Env) -> None:
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     unidad = {"sku_id": "FIL-0001", "family": "classical", "model": "sarima"}
 
     def fin(etapa: str) -> dict[str, Any]:
@@ -798,7 +897,7 @@ def _conforms(document: Any) -> None:
     validator = Draft202012Validator(
         read_schema("run_status"), format_checker=Draft202012Validator.FORMAT_CHECKER
     )
-    data = json.loads(document.model_dump_json(exclude_none=True))
+    data = json.loads(document.model_dump_json())
     assert [e.message for e in validator.iter_errors(data)] == []
 
 
@@ -806,7 +905,7 @@ def test_the_repository_returns_a_valid_run_status(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
 
     status = env.repo().get_run_status("1")
@@ -836,7 +935,7 @@ def test_run_status_filters_and_pages_in_sql_but_keeps_the_whole_progress(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     env.worker().run_next()
     repo = env.repo()
 
@@ -861,7 +960,7 @@ def test_no_run_yet_is_an_empty_state_and_an_unknown_run_is_missing(env: Env) ->
     assert empty.tasks == []
     _conforms(empty)
 
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     with pytest.raises(ArtifactMissing):
         env.repo().get_run_status("999")
 
@@ -874,7 +973,7 @@ def _escribir_progreso(env: Env, run_id: str, *eventos: dict[str, Any]) -> None:
 
 
 def test_el_estado_de_la_ejecucion_informa_la_etapa_en_curso(env: Env) -> None:
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
@@ -913,7 +1012,7 @@ def test_el_estado_de_la_ejecucion_informa_la_etapa_en_curso(env: Env) -> None:
 
 
 def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> None:
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
@@ -956,7 +1055,7 @@ def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> 
 
 
 def test_el_contador_de_m3_cuenta_sku_distintos(env: Env) -> None:
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
@@ -983,7 +1082,7 @@ def test_el_contador_de_m3_cuenta_sku_distintos(env: Env) -> None:
 def test_el_contador_cuenta_un_sku_de_m2_solo_cuando_terminan_todas_sus_familias(
     env: Env,
 ) -> None:
-    queued = enqueue_run(env.db, env.ingest_id, SMALL)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
@@ -1151,7 +1250,7 @@ def test_the_app_runs_the_worker_as_a_thread_and_stops_it(
         engine_command=(sys.executable, str(_FAKE)),
         worker="embedded",
     )
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     with TestClient(create_app(settings)) as client:
         _wait(lambda: _run_state(env)[0] == "completada", what="the embedded worker to finish")
@@ -1187,7 +1286,7 @@ def test_a_locked_database_after_launch_stops_the_run_and_reaps_the_engine(
             holder.rollback()
 
     monkeypatch.setattr(dal, "set_launch", set_launch)
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     Worker(env.settings, launcher=launcher).run_next()
 
@@ -1226,7 +1325,7 @@ def test_a_locked_database_before_launch_stops_the_claimed_run_without_an_engine
         return engine.launch(command, **kwargs)
 
     monkeypatch.setattr(dal, "stop_claimed", stop_claimed)
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
 
     Worker(env.settings, launcher=launcher).run_next()
 
@@ -1283,7 +1382,7 @@ def lock(env: Env, monkeypatch: pytest.MonkeyPatch) -> Iterator[_LockUntilGivenU
 
 def _settled_by_the_running_loop(env: Env, launcher: Launcher) -> dict[str, Any]:
     """Run the worker loop, as the platform does, until the run is stopped; return its error."""
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     stop = threading.Event()
     worker = Worker(env.settings, poll_interval=0.05, launcher=launcher)
     thread = threading.Thread(target=worker.run_forever, args=(stop,))
@@ -1347,7 +1446,7 @@ def _strand_a_launched_run(
         return process
 
     monkeypatch.setattr(dal, "set_launch", set_launch)
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     worker = Worker(env.settings, launcher=launcher)
     worker.run_next()
     monkeypatch.setattr(dal, "set_launch", real_set_launch)
@@ -1507,8 +1606,8 @@ class _OnceDuringAnOutage:
 
 
 def test_worker_once_waits_for_a_late_settlement_and_drains_the_queue(env: Env) -> None:
-    first = enqueue_run(env.db, env.ingest_id, SMALL)
-    second = enqueue_run(env.db, env.ingest_id, dataclasses.replace(SMALL, seed=18))
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
+    second = enqueue_run(env.settings, env.ingest_id, dataclasses.replace(SMALL, seed=18))
 
     # The lock clears after the second failed diagnostic, where the command used to give up.
     code = _OnceDuringAnOutage(env).run(
@@ -1525,7 +1624,7 @@ def test_worker_once_waits_for_a_late_settlement_and_drains_the_queue(env: Env) 
 def test_a_diagnostic_that_never_arrives_fails_the_outage_drive_in_time_and_cleans_up(
     env: Env,
 ) -> None:
-    enqueue_run(env.db, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
     once = _OnceDuringAnOutage(env)
     started = time.monotonic()
 

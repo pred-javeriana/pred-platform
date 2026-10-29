@@ -277,18 +277,6 @@ def _upsert(conn: sqlite3.Connection, report: EngineIngestFile) -> None:
         "SELECT id FROM ingestas WHERE sha256 = ?", (report.ingest_id,)
     ).fetchone()[0]
 
-    from pred_platform.dal.procedencia import resolver_procedencia
-
-    try:
-        resolver_procedencia(
-            conn,
-            report.ingest_id,
-            report.source_file.datos_sinteticos,
-            ingesta_ref_m1=published.sha256 if published is not None else None,
-        )
-    except ValueError as exc:
-        raise ReportImportError(None, str(exc)) from exc
-
     # Everything below belongs to this ingestion alone: replace it as a unit.
     conn.execute("DELETE FROM bitacora_calidad WHERE ingesta_id = ?", (ingesta_id,))
     conn.executemany(

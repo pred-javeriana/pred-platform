@@ -9,7 +9,6 @@ again, before the next claim, so a running worker never leaves an unowned run ``
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import subprocess
@@ -17,18 +16,15 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import closing
-from dataclasses import replace
 from typing import Any
 
 from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
-from pred_platform.dal.procedencia import resolver_procedencia
 from pred_platform.worker import engine
 from pred_platform.worker.errores import platform_error, run_stopped_error
 from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
-from pred_platform.worker.service import ENGINE_AGGREGATION, ENGINE_TRIM, unsupported_evaluation
 
 _logger = logging.getLogger("pred_platform.worker")
 
@@ -148,39 +144,10 @@ class Worker:
             )
             return
 
-        # Queued rows from before this check may carry settings the engine does not apply.
-        parametros = run.parametros
-        reason = unsupported_evaluation(
-            parametros.get("aggregation", ENGINE_AGGREGATION), parametros.get("trim", ENGINE_TRIM)
-        )
-        if reason is not None:
-            dal.stop_claimed(
-                conn,
-                run.id,
-                intento=run.intento,
-                error=platform_error("platform.contract_invalid", reason),
-            )
-            return
-
         try:
+            # Comprobar que se puede registrar el proceso antes de arrancarlo.
             with conn:
                 conn.execute("BEGIN IMMEDIATE")
-                origen = resolver_procedencia(
-                    conn, run.ingest_sha256, run.parametros.get("datos_sinteticos")
-                )
-                if origen is None and "datos_sinteticos" not in run.parametros:
-                    raise ValueError(
-                        "La configuracion antigua no tiene procedencia. Vuelva a encolar "
-                        "la corrida para registrar su origen desconocido "
-                        "o una declaracion explicita."
-                    )
-                parametros = {**run.parametros, "datos_sinteticos": origen}
-                conn.execute(
-                    "UPDATE configuraciones SET parametros=? WHERE id="
-                    "(SELECT configuracion_id FROM ejecuciones WHERE id=?)",
-                    (json.dumps(parametros, sort_keys=True), run.id),
-                )
-            run = replace(run, parametros=parametros)
             command = engine.build_command(self.settings, run, parquet)
             # Fijar el desplazamiento antes de lanzar: el motor puede terminar muy rapido.
             follower = ProgressFollower(

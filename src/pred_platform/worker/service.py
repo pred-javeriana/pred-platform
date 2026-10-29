@@ -11,30 +11,16 @@ import hashlib
 import json
 from contextlib import closing
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal
 
+from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
-from pred_platform.dal.procedencia import resolver_procedencia
+from pred_platform.worker.engine import engine_origin
 
-PARAMETERS_SCHEMA_VERSION = 1
+PARAMETERS_SCHEMA_VERSION = 2
 _FAMILIES = ("classical", "ml", "dl", "foundation")
 _METRICS = ("mae", "rmse", "smape", "mase")
-# ``pred-engine run`` has no option for these two: it always evaluates with them, so they are the
-# only values a run can record without claiming settings that did not produce its results.
-ENGINE_AGGREGATION = "media_recortada"
-ENGINE_TRIM = 0.1
-
-
-def unsupported_evaluation(aggregation: object, trim: object) -> str | None:
-    """Why the engine cannot evaluate with this aggregation and trim, or ``None`` if it can."""
-    if aggregation == ENGINE_AGGREGATION and type(trim) is float and trim == ENGINE_TRIM:
-        return None
-    return (
-        f"El motor solo evalúa con aggregation={ENGINE_AGGREGATION!r} y trim={ENGINE_TRIM}; "
-        f"se recibió aggregation={aggregation!r} y trim={trim!r}."
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,17 +36,12 @@ class LaunchSettings:
     trials: int | None = None
     seed: int = 0
     workers: int = 2
-    # The engine's evaluation defaults; recorded so the run's settings are complete (RunSettings).
-    aggregation: str = ENGINE_AGGREGATION
-    trim: float = ENGINE_TRIM
 
     def __post_init__(self) -> None:
         for name in ("min_train", "horizon", "step", "seasonality", "workers"):
             value = getattr(self, name)
             if type(value) is not int or value < 1:
                 raise ValueError(f"{name} debe ser un entero >= 1, se recibió {value!r}")
-        if (reason := unsupported_evaluation(self.aggregation, self.trim)) is not None:
-            raise ValueError(reason)
         if self.trials is not None and (type(self.trials) is not int or self.trials < 1):
             raise ValueError(f"trials debe ser un entero >= 1 o nulo, se recibió {self.trials!r}")
         if type(self.seed) is not int or self.seed < 0:
@@ -83,8 +64,6 @@ class LaunchSettings:
             "seed": self.seed,
             "datos_sinteticos": False,  # la plataforma solo trabaja con datos reales
             "workers": self.workers,
-            "aggregation": self.aggregation,
-            "trim": self.trim,
         }
 
 
@@ -112,21 +91,21 @@ class EnqueueResult:
 
 
 def enqueue_run(
-    db_path: Path, ingest_id: str, settings: LaunchSettings | None = None
+    settings: Settings, ingest_id: str, launch: LaunchSettings | None = None
 ) -> EnqueueResult:
     """Queue a run for an accepted ingestion.
 
     Raises:
         RunRequestError: the ingestion is unknown or was not accepted.
     """
-    chosen = settings or LaunchSettings()
-    with closing(dal.connect(db_path)) as conn, conn:
+    chosen = launch or LaunchSettings()
+    with closing(dal.connect(settings.db_path)) as conn:
+        dal.accepted_ingestion_id(conn, ingest_id)
+    # La plataforma solo trabaja con datos reales: el motor rechaza una ingesta sintetica.
+    origen = engine_origin(settings, ingest_id, False)
+    with closing(dal.connect(settings.db_path)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
         dal.accepted_ingestion_id(conn, ingest_id)
-        try:
-            origen = resolver_procedencia(conn, ingest_id, False)
-        except ValueError as exc:
-            raise RunRequestError(str(exc)) from exc
         run_id = run_id_for(ingest_id, chosen)
         previa = conn.execute(
             "SELECT c.id, c.parametros, i.sha256, e.estado FROM ejecuciones e "
@@ -136,17 +115,17 @@ def enqueue_run(
         ).fetchone()
         if previa is not None:
             parametros = json.loads(previa[1])
-            # A missing key is a legacy queue entry; an explicit null is a declared unknown
-            # origin, which only a run that has not started yet may still resolve.
-            antigua = "datos_sinteticos" not in parametros
+            # The run id hashes schema_version 2, whose rows always carry the origin key. An
+            # explicit null is a declared unknown origin, which only a run that has not started
+            # yet may still resolve.
             origen_previo = parametros.get("datos_sinteticos")
-            cambia = not antigua and origen_previo != origen
+            cambia = origen_previo != origen
             if previa[2] != ingest_id or (
                 cambia and (origen_previo is not None or previa[3] != "pendiente")
             ):
-                # Raising rolls back the whole transaction, including the provenance resolved above.
+                # Raising leaves the stored configuration and execution unchanged.
                 raise RunRequestError("la identidad o procedencia de la ejecucion no puede cambiar")
-            if antigua or cambia:
+            if cambia:
                 parametros["datos_sinteticos"] = origen
                 conn.execute(
                     "UPDATE configuraciones SET parametros=? WHERE id=?",
@@ -168,5 +147,4 @@ __all__ = [
     "RunRequestError",
     "enqueue_run",
     "run_id_for",
-    "unsupported_evaluation",
 ]

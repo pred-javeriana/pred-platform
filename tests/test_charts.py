@@ -31,6 +31,18 @@ def test_scatter_includes_accessible_title_desc_and_thresholds() -> None:
     assert "polygon" in svg or "rect" in svg
 
 
+def test_scatter_sin_umbrales_no_dibuja_lineas_ni_las_anuncia() -> None:
+    report = FixtureRepository("normal").get_topology_report(ACCEPTED)
+    report.thresholds = None
+    svg = topology_scatter_svg(report)
+    root = ElementTree.fromstring(svg)
+    ns = {"svg": "http://www.w3.org/2000/svg"}
+    assert root.findall('.//svg:line[@class="pred-chart__threshold"]', ns) == []
+    assert root.findall('.//svg:text[@class="pred-chart__threshold-label"]', ns) == []
+    assert "Las líneas de puntos" not in svg
+    assert "FIL-0001" in svg
+
+
 def test_unavailable_topology_draws_no_thresholds_without_engine_values() -> None:
     report = parse_as(models.TopologyReport, read_example("topology_report.no_aceptada"))
     svg = topology_scatter_svg(report)
