@@ -55,6 +55,21 @@
         <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
         {% endfor %}
       </dl>
+      <h3>Modelos evaluados en la reserva</h3>
+      <p class="pred-meta">Ordenados por r frente a Seasonal Naive, tal como los publicó M3.</p>
+      {{ table_start(["Familia", "Modelo", "r frente a Seasonal Naive", "Rol"], "Modelos evaluados de " ~ sku_id) }}
+      {% for model in ranking(verdict) %}
+      {% set roles = [] %}
+      {% if model.candidato_id == verdict.candidato_campeon %}{% set _ = roles.append("Campeón") %}{% endif %}
+      {% if model.familia == "seasonal_naive" %}{% set _ = roles.append("Línea base") %}{% endif %}
+      <tr>
+        <td>{{ family_label(model.familia) }}</td>
+        <td><span class="mono">{{ model.modelo }}</span></td>
+        <td class="num">{% if model.razon_sn is not none %}{{ format_decimal(model.razon_sn, 3) }}{% else %}no calculable{% endif %}</td>
+        <td>{{ roles | join(" · ") or "—" }}</td>
+      </tr>
+      {% endfor %}
+      {{ table_end() }}
       {% elif m3.excluded.get(sku_id) %}
       <h2 class="pred-panel-title">Excluido antes de M3</h2>
       <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>

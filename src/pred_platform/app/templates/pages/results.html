@@ -28,6 +28,8 @@
 
   {% if vista == "sku" %}
     {% include "partials/results_sku_list.html" %}
+  {% elif vista == "resumen" and champion_capability.available %}
+    {% include "partials/results_summary.html" %}
   {% elif champion_capability.available %}
     {{ empty_state(
       "Esta vista todavía no está construida.",

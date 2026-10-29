@@ -53,13 +53,22 @@ def identity(configuracion: str = "config-1", ingesta_ref: str = "ingesta-1") ->
 
 
 def _verdict(
-    run_id: str, sku: str, sku_class: str, veredicto: str, *, untested: str | None
+    run_id: str,
+    sku: str,
+    sku_class: str,
+    veredicto: str,
+    *,
+    untested: str | None,
+    extra: list[tuple[str, str, float | None]],
+    significant: bool = False,
 ) -> tuple[tuple[object, ...], str | None]:
     """The ``m3_veredictos`` row of one SKU and its champion candidate."""
     baseline = f"{sku}/seasonal_naive/seasonal_naive"
     champion: str | None = f"{sku}/classical/sarima"
     windows, coverage, ratio, loses, iqr = 40, 1.0, 0.8, 0, 0.5
     test: tuple[object, ...] = (40, 7, -2.1, 0.04, 0.08, 0.05, 0, None)
+    if significant:
+        test = (40, 7, -2.9, 0.004, 0.02, 0.05, 1, None)
     if veredicto == "EXPLORATORIO":
         ratio, loses = 1.1, 1
         test = (40, 7, 0.4, 0.6, 0.6, 0.05, 0, None)
@@ -92,6 +101,15 @@ def _verdict(
                 "razon_sn": ratio,
             }
         )
+    models += [
+        {
+            "candidato_id": f"{sku}/{familia}/{modelo}",
+            "familia": familia,
+            "modelo": modelo,
+            "razon_sn": r,
+        }
+        for familia, modelo, r in extra
+    ]
     justification = {
         "VALIDADO": "VALIDADO: datos reales, ventanas suficientes y r < 1 (descriptivo)",
         "EXPLORATORIO": f"EXPLORATORIO: r={ratio} >= 1 (resultado adverso)",
@@ -132,8 +150,15 @@ def publish(
     creado_en: str = "2026-10-27 10:00:00",
     publish_m4: bool = True,
     late: tuple[str, ...] = (),
+    extra_models: dict[str, list[tuple[str, str, float | None]]] | None = None,
+    significant: tuple[str, ...] = (),
 ) -> None:
-    """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict))."""
+    """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
+
+    ``extra_models`` adds (familia, modelo, r) to a SKU's evaluated models, beside the baseline and
+    the champion; only the verdict lists them. The HLN-DM test of the ``significant`` SKUs rejects
+    after BH; every other test does not.
+    """
     synthetic, declared, untested = _ORIGINS[origin]
     with closing(sqlite3.connect(db)) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -205,7 +230,15 @@ def publish(
                 ),
             )
         for sku, (sku_class, veredicto) in verdicts.items():
-            row, champion = _verdict(run_id, sku, sku_class, veredicto, untested=untested)
+            row, champion = _verdict(
+                run_id,
+                sku,
+                sku_class,
+                veredicto,
+                untested=untested,
+                extra=(extra_models or {}).get(sku, []),
+                significant=sku in significant,
+            )
             ratio = row[8]
             conn.execute(f"INSERT INTO m3_veredictos VALUES ({', '.join('?' * len(row))})", row)
             baseline = f"{sku}/seasonal_naive/seasonal_naive"

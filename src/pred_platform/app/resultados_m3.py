@@ -9,12 +9,14 @@ traducen los cinco veredictos.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.data.m3_query import GROUPS
+from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository
 
 # Texto literal del contrato v2 (sección 2) para varias corridas PUBLICADA de una identidad.
@@ -62,6 +64,16 @@ def _problem(title: str, availability: models_v2.Availability) -> M3Problem:
     return M3Problem(
         title, availability.detail or "No hay evidencia M3.", availability.reason_code or ""
     )
+
+
+def _unavailable_evidence(availability: models_v2.Availability) -> M3Problem:
+    """Por qué una corrida M3 resuelta no entrega evidencia (sin metadatos o no publicada)."""
+    title = (
+        "La publicación M3 no tiene sus metadatos de exclusión."
+        if availability.reason_code == "metadata_missing"
+        else "La corrida M3 no está publicada."
+    )
+    return _problem(title, availability)
 
 
 def _resolve(
@@ -134,6 +146,54 @@ def decision(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class DmCounts:
+    """Cuántos veredictos publicados traen la prueba HLN-DM; M4 los cuenta, no la recalcula."""
+
+    con_prueba: int
+    significativas: int
+    sin_prueba: dict[str, int]  # dm_causa publicada -> SKU
+
+    @property
+    def no_significativas(self) -> int:
+        return self.con_prueba - self.significativas
+
+
+def _dm_counts(rows: Sequence[models_v2.M3Verdict]) -> DmCounts:
+    tested = [row for row in rows if row.dm_causa is None]
+    causes = Counter(row.dm_causa for row in rows if row.dm_causa is not None)
+    return DmCounts(
+        con_prueba=len(tested),
+        significativas=sum(1 for row in tested if row.dm_significativa),
+        sin_prueba=dict(sorted(causes.items())),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class M3Summary:
+    """El resumen de la corrida M3 resuelta para una ejecución M2: embudo publicado y prueba DM."""
+
+    run: models_v2.M3Run | None = None
+    problem: M3Problem | None = None
+    funnel: models_v2.M3Funnel | None = None
+    dm: DmCounts | None = None
+
+
+def summary(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Summary:
+    """Resuelve la corrida M3 de ``m2_run_id`` y lee el embudo que M3 publicó para toda ella."""
+    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+    if isinstance(resolved, M3Problem):
+        return M3Summary(problem=resolved)
+    evidence = repository.get_m3_evidence(resolved.run_id, size=MAX_SIZE)
+    if evidence.availability.status != "available":
+        return M3Summary(run=resolved, problem=_unavailable_evidence(evidence.availability))
+    rows = list(evidence.items)
+    # El conteo DM es de toda la corrida: se leen todas las páginas de veredictos.
+    for page in range(2, -(-evidence.page.total // MAX_SIZE) + 1):
+        rows += repository.get_m3_evidence(resolved.run_id, page=page, size=MAX_SIZE).items
+    return M3Summary(run=resolved, funnel=evidence.funnel, dm=_dm_counts(rows))
+
+
 # ----------------------------------------------------------------------------- textos
 def origin_label(run: models_v2.M3Run | None) -> str:
     """Los dos bits publicados: real declarado, sintético o aumentado, u origen desconocido."""
@@ -167,6 +227,24 @@ def significance_items(row: models_v2.M3Verdict) -> list[tuple[str, str]]:
         ("Ventanas de la prueba", str(row.dm_n_ventanas)),
         ("Horizonte", str(row.dm_horizonte)),
     ]
+
+
+def funnel_rows(funnel: models_v2.M3Funnel) -> list[tuple[str, str, int]]:
+    """(grupo, veredicto, SKU) de los cinco veredictos publicados, en los grupos del contrato."""
+    labels = {"evaluados": "Evaluados", "no_evaluados": "No evaluados"}
+    return [
+        (labels[group], veredicto, getattr(funnel.conteos, veredicto))
+        for group, veredictos in GROUPS.items()
+        for veredicto in veredictos
+    ]
+
+
+def ranking(row: models_v2.M3Verdict) -> list[models_v2.EvaluatedModel]:
+    """Los modelos evaluados por M3, ordenados por su r frente a Seasonal Naive; sin r, al final."""
+    return sorted(
+        row.modelos_evaluados,
+        key=lambda model: (model.razon_sn is None, model.razon_sn or 0.0),
+    )
 
 
 def _decimal(value: float | None, digits: int = 3) -> str:

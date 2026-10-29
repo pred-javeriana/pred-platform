@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from pred_platform.app.datos import error_view, page_meta
-from pred_platform.app.resultados_m3 import M3Decision, decision
+from pred_platform.app.resultados_m3 import M3Decision, M3Summary, decision, summary
 from pred_platform.app.seleccion import (
     FAMILY_ORDER,
     SelectionQuery,
@@ -80,11 +80,16 @@ def resultados(
         pages=None,
         run=None,
         m3=M3Decision(),
+        m3_summary=M3Summary(),
         m3_hrefs={},
         tab_query=urlencode({"ejecucion": query.ejecucion}) if query.ejecucion != LATEST else "",
     )
     if vista == "sku" or vista is None:
         _fill_list(repository, query, context)
+    elif vista == "resumen" and context["champion_capability"].available:
+        context["run"] = run = _run_header(repository, query.ejecucion)
+        if run is not None and run.ejecucion is not None:
+            context["m3_summary"] = summary(repository, run.ejecucion.id, query.m3)
     return request.app.state.templates.TemplateResponse(request, "pages/results.html", context)
 
 

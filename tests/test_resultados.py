@@ -205,7 +205,7 @@ def test_summary_tabs_are_honestly_unavailable_until_the_champion_exists(vista: 
 
 def test_summary_tabs_say_when_the_champion_exists_but_the_view_does_not() -> None:
     client, _ = _client("normal")  # capabilities.todo_disponible
-    html = client.get("/resultados?vista=resumen").text
+    html = client.get("/resultados?vista=clase").text
 
     assert "Esta vista todavía no está construida." in html
     assert "Todavía no hay campeón por SKU." not in html
@@ -501,6 +501,51 @@ def test_a_test_that_did_not_run_shows_its_cause_not_a_p_value(
     assert "Origen de los datos: sintéticos o aumentados (declarado)" in text
 
 
+def _ranking(text: str) -> str:
+    """The evaluated-models table of a SKU detail, as the reader sees it."""
+    assert "Modelos evaluados en la reserva" in text
+    return text.split("Modelos evaluados en la reserva", 1)[1].split("Comparación por familia")[0]
+
+
+def test_the_detail_ranks_the_evaluated_models_by_r_with_the_baseline(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, extra_models={"FIL-0001": [("ml", "lightgbm", 0.9)]})
+    text = _text(_dal_client(env).get("/resultados/sku/FIL-0001").text)
+
+    assert re.search(
+        r"Clásica sarima 0,800 .*ML lightgbm 0,900 .*Seasonal Naive seasonal_naive 1,000",
+        _ranking(text),
+    )
+
+
+def test_the_ranking_marks_the_published_champion_even_if_another_model_has_lower_r(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, extra_models={"FIL-0001": [("ml", "lightgbm", 0.7)]})
+    ranking = _ranking(_text(_dal_client(env).get("/resultados/sku/FIL-0001").text))
+
+    assert re.search(
+        r"ML lightgbm 0,700 .*Clásica sarima 0,800 Campeón "
+        r".*Seasonal Naive seasonal_naive 1,000 Línea base",
+        ranking,
+    )
+    assert ranking.count("Campeón") == 1
+
+
+def test_a_model_without_r_goes_last_as_not_computable(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, extra_models={"FIL-0001": [("dl", "mlp", None)]})
+    ranking = _ranking(_text(_dal_client(env).get("/resultados/sku/FIL-0001").text))
+
+    assert "Seasonal Naive seasonal_naive 1,000 Línea base DL mlp no calculable" in ranking
+    assert "mlp 0,000" not in ranking
+
+
 def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -547,3 +592,94 @@ def test_a_publication_without_its_exclusion_metadata_shows_why_there_are_no_ver
     assert "La publicación M3 no tiene sus metadatos de exclusión." in text
     assert "no significa cero exclusiones" in text
     assert 'pred-status__label">VALIDADO' not in html
+
+
+# ------------------------------------------------------------------ el resumen de la corrida
+_SUMMARY_VERDICTS = {
+    "FIL-0001": ("smooth", "VALIDADO"),
+    "FIL-0002": ("intermittent", "EXPLORATORIO"),
+    "FIL-0004": ("lumpy", "EVIDENCIA_INSUFICIENTE"),
+}
+
+
+def _summary(env: Env) -> str:
+    """The run summary as the reader sees it, from its first heading on."""
+    text = _text(_dal_client(env).get("/resultados?vista=resumen").text)
+    assert "Embudo de la corrida" in text
+    return text.split("Embudo de la corrida", 1)[1]
+
+
+def test_the_summary_shows_the_funnel_m3_published(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS)  # FIL-0003 is launched after the cut
+    summary = _summary(env)
+
+    for expected in (
+        "Productos de la corrida 4",
+        "Excluidos antes de M3 1",
+        "Con veredicto M3 3",
+        "Evaluados 2",
+        "No evaluados 1",
+        "Evaluados VALIDADO 1",
+        "Evaluados EXPLORATORIO 1",
+        "No evaluados FALLO_TECNICO 0",
+        "No evaluados NO_EVALUABLE 0",
+        "No evaluados EVIDENCIA_INSUFICIENTE 1",
+    ):
+        assert expected in summary
+
+
+def test_the_summary_counts_the_dm_test_over_the_run_and_its_causes(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS, significant=("FIL-0001",))
+    summary = _summary(env)
+
+    assert "Prueba Diebold-Mariano" in summary
+    dm = summary.split("Prueba Diebold-Mariano", 1)[1]
+    for expected in (
+        "Con prueba HLN-DM 2",
+        "Significativas después de BH 1",
+        "No significativas 1",
+        "Sin prueba 1",
+        "veredicto:EVIDENCIA_INSUFICIENTE 1",
+    ):
+        assert expected in dm
+
+
+def test_the_dm_counts_cover_every_page_of_verdicts(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    many = {f"SKU-{i:04d}": ("smooth", "VALIDADO") for i in range(501)}
+    _publish_for_the_run(env, verdicts=many)
+    dm = _summary(env).split("Prueba Diebold-Mariano", 1)[1]
+
+    assert "Con prueba HLN-DM 501" in dm
+    assert "No significativas 501" in dm
+
+
+def test_the_summary_without_a_published_m3_run_says_why_not_zero(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)  # M2 finished; M3 published nothing
+    text = _text(_dal_client(env).get("/resultados?vista=resumen").text)
+
+    assert "Esta ejecución todavía no tiene evaluación M3." in text
+    assert "Embudo de la corrida" not in text
+    assert "Prueba Diebold-Mariano" not in text
+
+
+def test_the_summary_of_an_unavailable_publication_shows_its_cause_not_zeros(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, publish_m4=False)
+    text = _text(_dal_client(env).get("/resultados?vista=resumen").text)
+
+    assert "La publicación M3 no tiene sus metadatos de exclusión." in text
+    assert "no significa cero exclusiones" in text
+    assert "Prueba Diebold-Mariano" not in text
