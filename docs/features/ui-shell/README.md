@@ -10,15 +10,15 @@ no administration screen. M0 is out of the flow.
 
 ## How
 
-- `docs/UI_FLOW.md` maps former eight screens onto the three surfaces and lists the
-  `DataRepository` operations plus G-gaps that still block live data.
+- `docs/UI_FLOW.md` maps the three surfaces and lists their `DataRepository` operations
+  and capabilities.
 - `static/css/pred.css` and `templates/components/` are the reusable design system on
   Pico.css. Status vocabularies are mapped in `app/presentation.py` (contract codes →
   icon + label + CSS modifier). `podado` renders as `podada`, never as failure.
 - Routers live under `app/routers/`. `create_app()` stays a factory: settings, DAL
   migrate, repository, static files, Jinja, `/health`.
-- Ejecución exposes `/ejecucion/estado` as an HTMX fragment. Polling is not enabled
-  (blocked by G3).
+- Ejecución exposes `/ejecucion/estado` as an HTMX fragment that polls while the run is
+  active.
 
 ## Where
 

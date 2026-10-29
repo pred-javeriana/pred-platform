@@ -1,140 +1,116 @@
-# Revisión UI/UX D2
+# Referencia de comportamiento UI/UX
 
-Auditoría: 2026-10-24. Alcance: Datos → Ejecución → Resultados y detalle por SKU.
+Garantías de accesibilidad, composición, navegación y actualización de Datos, Ejecución,
+Resultados y el detalle por SKU, y los límites que conserva la interfaz. El flujo y las
+rutas están en `docs/UI_FLOW.md`. Capturas de la interfaz en `docs/ui-review/`:
+[Datos](ui-review/datos.png), [detalle de Datos](ui-review/detalle-datos.png),
+[topología](ui-review/topologia.png), [lanzamiento](ui-review/lanzamiento.png),
+[Ejecución](ui-review/ejecucion.png), [Resultados](ui-review/resultados.png) y
+[SKU](ui-review/sku.png).
 
-Estado: **versión anterior fusionada en #34; refinamiento espacial y navegación aprobados visualmente por el auditor; correcciones finales y checks completos locales aprobados; PR para revisión**. El CI histórico se distingue de los checks de esta revisión. No se cierra D2 por aplicar código. No se identificaron hallazgos críticos. Los hallazgos altos tienen evidencia explícita abajo.
+## Accesibilidad
 
-| ID | Superficie | Tipo | Severidad | Hallazgo | Resolución |
-| --- | --- | --- | --- | --- | --- |
-| UI-01 | Ejecución | A11Y | Alta | El polling reemplaza la región que contiene acciones, filtros y disclosures, con riesgo de perder foco y lectura. | Verificado en navegador con DAL aislada y HTMX real (E-02): respuesta 200 retenida durante foco; pausa/reanudación; 286 recibido con #sku enfocado; valor y foco conservados; al salir de la región, segunda petición 286 actualiza detenida, deshabilita el sondeo y anuncia el estado. No se simularon eventos HTMX en el cliente. |
-| UI-02 | Todas | A11Y | Alta | Tablas anchas sin región nombrada desplazable con teclado ni scope en encabezados. | Verificado en navegador (Datos, Ejecución, Resultados y SKU): cada `.pred-table-wrap` conserva `role=region`, nombre y `tabindex=0`; los wrappers visuales no crean regiones anidadas. El scroll horizontal de evidencia avanzó con ArrowRight a ancho estrecho. |
-| UI-03 | Ejecución | A11Y | Alta | Errores de ingesta/familias del lanzamiento sin aria-invalid y asociación con el mensaje. | Verificado en navegador (E-03) y regresiones de Ejecución: envío sin familias y min_train=-1 muestra mensajes asociados por aria-describedby, aria-invalid y grupo; el foco llega a fam-classical, primer control inválido. El backend mantiene su validación. |
-| UI-04 | Todas | A11Y | Alta | Texto pequeño de aviso, datos y metadatos no mantiene contraste suficiente sobre el lienzo aprobado. | Verificado en navegador sobre canvas/surface: `--muted-text` 5,40/6,22; `--warn-text` 5,92/6,82; `--data-text` 5,62/6,48. No se alteró la paleta base. |
-| UI-05 | Resultados / SKU | IA | Alta | Métricas y cuatro familias dominan la tabla principal; configuraciones y trials se despliegan al mismo nivel que la decisión. | Verificado (E-01, E-04; resultados.png y sku.png): cuatro columnas; filtros, familias, configuración y ensayos cerrados inicialmente; selección por familia visible al explorar; ventanas se solicitan explícitamente y abren las familias con esa evidencia. |
-| UI-06 | Datos | SCALABILITY | Alta | El historial consulta solo la primera página, sin navegación para las ingestas restantes. | Verificado en navegador (E-05) y test_ui_review: historial de 45 ingestas, página 2 con 20 registros (020–039); enlaces conservan ingest_id y navegan history_page sin alterar la página de SKU. |
-| UI-07 | Todas | VISUAL | Media | Título principal de 18px/600 y etiquetas KPI monoespaciadas contradicen la jerarquía y el uso tipográfico aprobados. | Verificado en navegador y capturas E-01: títulos adaptables de peso 800; etiquetas Archivo; cifras/identificadores Mono; texto operativo 14px con controles de 40px. |
-| UI-08 | Todas | SCALABILITY | Alta | SKU largos, claves y errores pueden desbordar columnas y grillas en pantallas estrechas. | Verificado (E-05): escenario de 3.000 SKU con identificadores de 169 caracteres, 20 filas por página y sin desbordamiento de página a 1401px. El auditor confirmó usabilidad a zoom real 200% en las cuatro superficies (E-06); tablas conservan desplazamiento local. |
-| UI-09 | Datos | CONSISTENCY | Media | Cargar y continuar o confirmar compiten como acciones primarias simultáneas. | Verificado por plantilla, pruebas de Datos y E-01: continuar es la acción primaria tras aceptación; cargar otro archivo es secundario y desplegable; confirmación destructiva mantiene semántica explícita. |
-| UI-10 | Ejecución | IA | Media | Fallos, tareas no ejecutables y activas requieren buscar dentro de una tabla con todos los estados. | Verificado por teclado en fixture errores: activar fallida 1 abre /ejecucion?estado=fallida&page=1#tareas con el explorador abierto y una tarea; conteos de toda la corrida conservados. Captura ejecucion.png. |
-| UI-11 | Datos | IA | Media | El gráfico ADI–CV² puede interpretarse como cartera completa aunque solo utiliza la página filtrada. | Verificado en Datos: el resumen global precede al explorador; gráfico y tabla se abren juntos y explican que pertenecen a la página filtrada. SVG mantiene alternativa tabular. |
-| UI-12 | Datos / Resultados | CONSISTENCY | Media | Los textos «M3 todavía no existe» afirman ausencia del motor aunque el límite está en el contrato de lectura de la vista. | Verificado documentalmente y en navegador: ausencia de campeón/contraste se expresa por la disponibilidad de esta vista; G1 resuelto se distingue de integración M4 pendiente; no se afirma que M3 no exista. |
-| UI-13 | Resultados / SKU | IA | Alta | Falta una declaración visible de alcance retrospectivo y del origen no informado. | Verificado en Resultados y SKU (E-01): alcance retrospectivo y origen no informado visibles; interpretación detallada desplegable; datos de prueba no se confunden con procedencia real/sintética. |
-| UI-14 | Todas | A11Y | Media | El shell no ofrece salto al contenido principal. | Verificado por teclado en navegador: el enlace «Saltar al contenido» mueve el foco a `main#contenido`. |
-| UI-15 | Datos / SKU | SCALABILITY | Media | Bitácora, trials y ventanas son listas anidadas sin paginación contractual. | Verificado por teclado y árbol accesible (E-04): familia → ensayos → única región de tabla nombrada/enfocable; contenedor exterior solo visual. No se ocultan filas ni se añade paginación no contractual. |
-| UI-16 | Resultados / SKU | CONSISTENCY | Media | Explicar toda poda como falta de competitividad puede falsear una causa semántica. | Verificado con fixtures de fallos/poda y regresiones: texto conserva la regla/motivo registrado; podada mantiene icono y representación propios, diferenciada de fallida. |
-| UI-17 | Todas | A11Y | Media | Un campo con hint y error pierde la asociación con la ayuda; checkbox no asocia error. | Verificado por regresiones de los cuatro tipos de control y navegador (E-03/E-04): ayuda y error conservan sus IDs; error de familia y entrada inválida accesibles, con foco inicial sobre el primer error. |
-| UI-18 | Todas | CONSISTENCY | Media | Aplicar filtros pierde un tamaño de página indicado en URL. | Verificado por test_ui_review y URLs de navegación: size permanece al enviar filtros y se reinicia la página; no se calcula ni filtra en frontend. |
-| UI-19 | Ejecución | IA | Media | RunStatus no expone etapa actual ni error de corrida sin tareas. | Dependencia fuera de D2: mostrar limitación explícita; no deducir una etapa de errores o de tareas paginadas. |
-| UI-20 | Ejecución | SCALABILITY | Baja | El selector de lanzamiento solo ofrece hasta 200 ingestas y filtra accepted dentro de esa página. | Deuda fuera de esta revisión de volumen de SKU: API/selector de ingestas aceptadas paginado; no afirmar que el catálogo sea exhaustivo. La selección directa desde Datos sigue conservando ingest_id. |
-| UI-21 | Datos | CONSISTENCY | Media | El selector nativo mostraba Choose File / No file chosen según idioma del navegador; clases y estado de encabezado estaban en inglés. | Verificado: selector visible en español, nombre seleccionado anunciado mediante status; etiquetas canónicas Smooth (Suave), Erratic (Errática), Intermittent (Intermitente), Lumpy (Grumosa) y Aceptado. Los códigos contractuales se conservan. |
-| UI-22 | Todas | VISUAL | Alta | Inputs/selects y campos con ayuda tenían alturas/alineación distintas por reglas de Pico; checkboxes aparecían como barras. | Verificado en navegador: inputs/selects de 40px, etiquetas y filas alineadas; cinco controles avanzados comparten y=473 en el recorrido; checkboxes cuadrados. Capturas E-01. |
-| UI-23 | Ejecución | VISUAL | Media | Chevron duplicado y botón Lanzar extendido a todo el ancho. | Verificado: un solo chevron; botón de ancho intrínseco (158,59px frente a 1088px de sección), con foco visible. |
-| UI-24 | Ejecución | CONSISTENCY | Media | Accesos de estado mezclaban fuentes/tamaños y se distribuían como navegación global. | Verificado: accesos homogéneos y agrupados a la izquierda, con estado activo, icono, texto y conteo; conducen al explorador filtrado. |
-| UI-25 | Todas | IA | Alta | La página obligaba a leer un informe largo antes de operar; configuración/evidencia competían con la situación actual. | Verificado funcionalmente por teclado y capturas E-01: archivo listo y continuar; corrida actual primero; configuración contextual desde Datos; ajustes avanzados, filtros y familias explorables. Aprobación visual del auditor pendiente. |
-| UI-26 | Datos / Resultados | CONSISTENCY | Media | Las etiquetas de topología traducidas solo al español se apartaban de la terminología canónica PRED/Syntetos-Boylan. | Resuelto: la capa de presentación y los selectores usan etiquetas bilingües canónicas —Smooth (Suave), Erratic (Errática), Intermittent (Intermitente), Lumpy (Grumosa)— sin modificar los literales contractuales. Pruebas de presentación, gráfico y Datos actualizadas. |
-| UI-27 | Resultados | CONSISTENCY | Media | «Ejecutar selección» sugería que Resultados ejecutaba una selección, aunque el enlace solo lleva a la configuración de Ejecución. | Resuelto: la acción ahora se presenta como «Configurar nueva ejecución»; conserva `/ejecucion`, las comprobaciones de capacidad y su comportamiento de navegación. |
-| UI-28 | Todas | IA | Alta | La sucesión de secciones del mismo ancho y peso se percibe como documento y obliga a buscar la situación y la próxima acción. | Verificado funcionalmente en E-08: área principal dominante, contexto lateral y exploradores inferiores. Datos destaca validez/archivo/conteos; Ejecución destaca estado/progreso; Resultados prioriza la consulta paginada; SKU conserva decisión y familias. La aprobación visual de esta iteración queda para el auditor. |
-| UI-29 | Ejecución | VISUAL | Media | La barra lineal aislada no ofrece una lectura gráfica de conjunto junto con el estado de las tareas. | Verificado en E-08/E-09 y regresiones: progreso circular con el porcentaje existente y conteos textuales; cinco estados interactivos en el lateral. Sin nuevas métricas, etapas, tendencias ni estimaciones. La semántica de corrida detenida se conserva. |
-| UI-30 | Datos / Ejecución | IA | Alta | Abrir un acordeón inferior desplaza los otros controles y dificulta cambiar de sección mientras se consulta evidencia extensa. | Verificado en E-11/E-12: navegador persistente con un panel activo. Las cuatro opciones de Datos siguen visibles al desplazar el gráfico/tabla; tareas/configuración mantienen su selección durante polling. Hash, consultas, teclado y reflow comprobados. |
-| UI-31 | Detalle secundario | VISUAL | Media | Títulos, etiquetas y explicaciones tienen poco contraste jerárquico; metadatos aparecen en párrafos y las cifras se parten en pantallas estrechas. | Verificado en E-11: escala 22/20/16/14px, ayudas separadas, pares etiqueta/valor y hechos de topología agrupados. Fechas y cifras no se cortan; la tabla desplaza localmente. La trazabilidad única del SKU se presenta directamente. |
-| UI-32 | Estados | CONSISTENCY | Baja | Las etiquetas de estado comenzaban en minúscula incluso en el encabezado principal. | Verificado en presentación, componentes y navegador: Pendiente, Ejecutando, Exitosa, Fallida y No Ejecutable; misma inicial para corrida, familia y ensayos. Claves contractuales, filtros, colores e iconos sin cambios. |
-| UI-33 | Datos | VISUAL | Alta | La leyenda ADI–CV² superpone las cuatro etiquetas bilingües (#35). | Verificado en E-13: dos columnas y dos filas, margen separado del eje; ninguna intersección entre las cajas de texto a 1280, 535 y 320px. Prueba geométrica del SVG y captura topologia.png. Sin reclasificar ni alterar umbrales. |
+- **Salto al contenido.** El enlace «Saltar al contenido» mueve el foco a `main#contenido`.
+- **Tablas.** Cada `.pred-table-wrap` es una región con nombre, `role=region` y `tabindex=0`,
+  desplazable con teclado, y los encabezados tienen `scope`. Los contenedores visuales
+  `pred-evidence-scroll` no crean regiones anidadas; la tabla de ensayos es la única región
+  enfocable de su familia.
+- **Formularios.** Los errores de campo, de familias y de entrada inválida usan `aria-invalid` y
+  `aria-describedby`. Ayuda y error conservan sus IDs, también en text, select, file y checkbox.
+  Tras un envío inválido el foco llega al primer control con error. El selector de archivo
+  está en español y anuncia el nombre elegido mediante `status`.
+- **Contraste.** El texto pequeño cumple al menos 4,5:1 sobre canvas y superficie:
+  `--muted-text` 5,40/6,22, `--warn-text` 5,92/6,82 y `--data-text` 5,62/6,48. Los estados
+  combinan icono, etiqueta y color.
+- **Gráficos.** Los SVG ADI–CV² tienen `role=img`, título, descripción y equivalente tabular.
+- **Teclado.** Todos los controles, disclosures y paneles se operan con Tab, Shift+Tab, Enter,
+  Espacio y flechas, con foco visible, orden DOM coherente y sin trampas de foco.
 
-Los problemas funcionales #36 y #39 se registran aparte de los hallazgos visuales D2 en la sección final: el usuario solicitó explícitamente corregir los controles que faltaban, utilizando los servicios existentes.
+## Composición y navegación
 
-## Arquitectura de información acordada
+- **Jerarquía.** El área principal contiene la situación y la acción; el lateral, el contexto;
+  y los exploradores, la evidencia bajo demanda. A anchos de 535 px y 320 px la grilla pasa a
+  una columna sin desborde de página; las tablas se desplazan localmente y las cifras no se
+  parten.
+- **Datos.** Archivo, estado y conteos en el área principal; topología global y continuar en el
+  lateral. Continuar es la acción primaria tras aceptar la ingesta; cargar otro archivo es
+  secundario. El resumen global precede al explorador, y el gráfico ADI–CV² y la tabla se
+  abren juntos e indican que corresponden a la página filtrada.
+- **Navegador de evidencia.** Datos ofrece Diagnóstico, Clases y SKU, Cambiar archivo e Historial.
+  Ejecución ofrece Tareas y Configuración. Se presenta un panel a la vez en un
+  `tablist/tab/tabpanel` nombrado; Flechas, Home, End, Enter y Espacio activan las secciones y
+  los tabs inactivos tienen `tabindex=-1`. Sin JS, los enlaces llevan a secciones visibles. El
+  hash conserva la sección al recargar, y una consulta activa su panel.
+- **Historial.** Se pagina; los enlaces conservan `ingest_id` y no alteran la página de SKU.
+- **Ejecución.** Muestra la corrida actual primero, con progreso circular que usa el porcentaje
+  existente y conteos textuales. Los cinco conteos por estado son enlaces al panel de tareas
+  filtrado. Desde Datos con `ingest_id`, o tras un envío inválido, la configuración de
+  lanzamiento se presenta primero y abierta, con el botón Lanzar de ancho intrínseco y un solo
+  chevron en los disclosures.
+- **Resultados.** La consulta por SKU, paginada, ocupa el área principal con cuatro columnas
+  (SKU, clase, campeón y veredicto M3, y evidencia familiar desplegable). Filtros, familias,
+  configuración y ensayos comienzan cerrados; las ventanas se piden con `ventanas=1` y abren
+  las familias que las contienen. El total mostrado es el de la consulta, nunca un agregado de
+  cartera inferido de una página.
+- **Alcance.** Resultados y SKU muestran el alcance retrospectivo y el origen de datos que
+  declara la corrida M3; su explicación ampliada es desplegable.
+- **Filtros.** Aplicar filtros conserva `size` y reinicia la página. Los filtros y la
+  paginación los resuelve el repositorio, no el cliente.
+- **Escala.** Con 3.000 SKU de identificadores de 169 caracteres, Resultados muestra 20 filas por
+  página y su total, sin desborde de página.
+- **Tipografía.** Los títulos adaptables pesan 800, las etiquetas usan Archivo, las cifras e
+  identificadores Mono, el texto operativo 14 px y los controles 40 px. La escala secundaria
+  es 22/20/16/14 px.
+- **Etiquetas.** Los estados se muestran como Pendiente, Ejecutando, Exitosa, Fallida y No
+  Ejecutable, con la misma inicial para corrida, familia y ensayos; las claves contractuales,
+  filtros, colores e iconos no cambian. Las clases de demanda usan etiquetas bilingües
+  canónicas: Smooth (Suave), Erratic (Errática), Intermittent (Intermitente) y Lumpy
+  (Grumosa), sin modificar los literales del contrato.
+- **Leyenda ADI–CV².** Dos columnas y dos filas, separadas del eje: las cajas de texto no se
+  intersectan a 1280, 535 y 320 px.
+- **Poda.** El texto de un ensayo podado conserva la regla o motivo registrado. `podada` tiene
+  icono y representación propios, distintos de `fallida`.
+- **Resultados desde Ejecución.** La acción «Configurar nueva ejecución» lleva a `/ejecucion` y
+  respeta las comprobaciones de capacidad.
 
-| Nivel | Pregunta | Presentación D2 | Dependencia M4 |
-| --- | --- | --- | --- |
-| Cartera | ¿Qué ocurrió globalmente? | Tab Resumen disponible para navegar, con estado esperado de vista aún no disponible. | Conteos completos, cobertura, procedencia, veredictos, distribución de campeones y perfiles de error precalculados. |
-| Clase | ¿Qué cambia con la topología? | Tab Por clase conserva su estado no disponible. | Campeón de categoría publicado, razón Seasonal Naive, perfiles y veredictos por clase. No derivarlos de la página de SKU. |
-| SKU | ¿Qué resultado tiene el producto? | Tabla paginada: SKU, clase, campeón informado, evidencia familiar bajo demanda. | Ratio, veredicto y ranking descriptivo con su causa cuando falta el dato. |
-| Detalle | ¿Cómo se defiende? | Decisión → familias/estado/alcance WF → configuración/trials/ventanas bajo demanda → trazabilidad. | Contrastes DM/BH y sus causas, evidencia de reserva, cinco veredictos y procedencia declarada. |
+## Actualización de Ejecución
 
-**Estado actual separado de dependencias futuras.** G1 está resuelto: `get_ingest_report()` y `get_topology_report()` están disponibles en DAL; su ausencia para un identificador concreto puede producir un estado no disponible, pero no bloquea la capacidad. En Resultados, las vistas actuales siguen consumiendo el contrato v1/legacy de selección. La integración en estas vistas de los cinco veredictos publicados —`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`—, campeones y agregados sigue pendiente de M4.
+El cuerpo de Ejecución se refresca por HTMX mientras la corrida está en curso. El fragmento
+reemplazado contiene conteos, tareas y configuración. El control de pausa y el anuncio accesible
+están fuera de él, igual que la configuración contextual de lanzamiento.
 
-M4 debe consumir solo PUBLICADA y conservar null con causa. No se eligen campeones ni se calculan métricas, distribuciones, ratios, pruebas o p-valores aquí. Los cinco veredictos M3 no equivalen al vocabulario retrospectivo v1 de las fixtures. Cambiar contratos copiados exige trabajo coordinado fuera de D2. El filtro actual de familia es de familia evaluada, no campeona; segmento y exportación CSV/reimportación de configuración permanecen en M4.
+- Una respuesta 200 que llega con el foco en un control del fragmento (por ejemplo el filtro
+  `#sku`) conserva foco, valor y disclosures.
+- Pausar detiene las peticiones nuevas; reanudar las habilita de nuevo.
+- Una respuesta terminal 286 que llega con el foco dentro del fragmento no lo reemplaza. Al
+  salir del fragmento, una nueva petición 286 muestra la corrida detenida, conserva el valor del
+  filtro y la pestaña elegida, deshabilita el sondeo y escribe «Ejecución N: detenida» en el
+  único `live region`.
+- El gráfico de una corrida detenida usa la semántica «Tareas exitosas antes de detenerse».
 
-## Verificación y evidencias
+## Lanzamiento
 
-### CI y checks
+- El formulario marca por defecto las cuatro familias, incluida Fundacional (Chronos-2), y permite
+  desmarcar cualquiera. Fundacional necesita el extra `foundation` y los pesos del motor en el
+  entorno del motor; la plataforma no los instala.
+- El origen de los datos ofrece Reales, Sintéticos y «No declarar / conservar origen registrado»
+  (por defecto). Entrega `False`, `True` o `None` a `LaunchSettings.datos_sinteticos`. El motor
+  resuelve el origen (`pred-engine origen`) antes de encolar, y la plataforma muestra el detalle de
+  un conflicto sin crear la ejecución. El worker transmite `--datos-reales` o
+  `--datos-sinteticos`, o ninguno si no se declaró.
+- La declaración de datos reales es un requisito de procedencia, no una garantía de que el
+  contraste sea calculable. La plataforma no fuerza Diebold–Mariano ni cambia la política
+  inferencial del motor.
 
-En la revisión `dfa2ed288a64896bc3e438d4773f275f9600c2b6`, [CI completo](https://github.com/pred-javeriana/pred-platform/actions/runs/40146083695) pasó sus seis jobs. El log del job Tests confirma **735 tests passed y 96.10% de cobertura total** (103,47s), por encima de 80%. Después del refinamiento, el [CI de aa83b9d](https://github.com/pred-javeriana/pred-platform/actions/runs/40149108091) también pasó los seis jobs: **735 tests passed y 96.10% de cobertura total**. La corrida intermedia 3eac9b9 tuvo 734 aprobadas y una aserción de gráfico que todavía esperaba Smooth; se actualizó a las cuatro etiquetas españolas y se volvió a ejecutar la suite completa sin omitir casos.
+## Límites
 
-El baseline local Windows de esta ronda volvió a mostrar 40 hashes del contrato con CRLF y una interrupción a los 208 casos aprobados. No se tocaron contratos, activos vendorizados ni locks. Una exportación aislada para comprobación tampoco permitió acreditar el gate completo local; no se usa para sustituir CI. Ruff, formato, Pyright y lock se ejecutan sobre el checkout real. Después del refinamiento, 101 regresiones de UI, Datos, Ejecución, Resultados, presentación, componentes y gráficos pasaron en 13,63s; un warning de deprecación de TestClient. Ruff check, ruff format --check (81 archivos), Pyright (0 errores/avisos), uv lock --check y git diff --check pasaron.
-
-### Evidencia manual y de navegador (2026-10-24, America/Bogota)
-
-- **E-01, capturas reales:** aplicación FastAPI/Jinja con sus CSS/JS reales, navegador integrado, viewport observado 1401×790, zoom nominal 100%, imágenes completas sin retoque. Se convirtieron los bytes JPEG del navegador a PNG; no son mockups. [Datos](ui-review/datos.png), [Ejecución](ui-review/ejecucion.png), [Resultados](ui-review/resultados.png), [SKU](ui-review/sku.png). Datos: fixture normal, ingesta b1831d… aceptada y topología resumida. Ejecución: fixture errores, filtro fallida, causa visible y detalle cerrado. Resultados: fixture normal, filtros abiertos y cuatro columnas. SKU: FIL-0001 normal, familias y ensayos cerrados.
-- **E-02, red y foco:** instancia temporal aislada con DataRepository DAL y RunControl reales, worker apagado, corrida en cola. Un adaptador ASGI temporal retuvo la entrega HTTP sin modificar rutas, scripts, contratos ni respuestas de la aplicación. La respuesta 200 llegó mientras #sku conservaba `FIL-FOCO`: foco, valor y disclosure permanecieron. Pausar detuvo nuevas peticiones; reanudar volvió a habilitarlas. Se retuvo otra petición, se enfocó #sku con `FIL-TERMINAL` y se detuvo la corrida mediante RunControl. La respuesta real fue 286: foco/valor y estado anterior se conservaron. Al enfocar fuera de la región, otra petición devolvió 286 y mostró detenida, mantuvo el valor del filtro, deshabilitó el sondeo y escribió «Ejecución 1: detenida» en el único live region. El log registró las respuestas 286 a las 19:41:34 y 19:41:43 locales. No se ejecutaron modelos ni se fabricó evidencia analítica.
-- **E-03, validación:** en el navegador se desmarcaron las familias y se envió min_train=-1 con Enter. El formulario se abrió, cada checkbox apuntó a families-error, el campo a min_train-error y el foco llegó a fam-classical. Los mensajes españoles aparecen en el árbol accesible y conservan aria-invalid y aria-describedby. Ayuda + error simultáneos también están cubiertos por regresiones para text/select/file/checkbox.
-- **E-04, recorrido por teclado:** Tab/Shift+Tab, Enter, Space y flechas sobre salto al contenido, navegación principal, selector de archivo, filtros de topología, orden/checkbox, Aplicar/Limpiar, historial/paginación, controles de lanzamiento, estados/tareas, detalle de error, navegación de Resultados, enlaces por SKU, familias, configuración, ensayos, ventanas y trazabilidad. Foco visible en controles; orden DOM coherente; sin trampa. La tabla de ensayos se enfoca como región «Ensayos de Clásica». Los wrappers pred-evidence-scroll no tienen role, aria-label ni tabindex. El nombre de archivo seleccionado se refleja en un status en español. Los SVG ADI–CV² conservan role=img/title/desc y equivalencia tabular; no dependen solo del color.
-- **E-05, escala:** repositorio de prueba con 3.000 SKU/identificadores largos: página 2, size=20, cuatro columnas, 20 filas, índice inicial 0020, 150 páginas. Ancho de documento 1386px frente a innerWidth=1401px. Historial de 45 ingestas: página 2 muestra 020–039; enlaces anterior/siguiente conservan ingest_id. Son pruebas de presentación del contrato paginado, no métricas nuevas.
-- **E-06, verificación humana:** el auditor confirmó «narrator does narrate» y después «I tried it and yes it does work» a la solicitud explícita de revisar las cuatro superficies a zoom real 200% y los nombres/estados de disclosures, tablas y validaciones con Narrator. Esta evidencia es confirmación manual del usuario; no se atribuye a una escucha automatizada. Los atajos de zoom y el override del navegador integrado no alteraron su viewport observado.
-- **E-07, contraste:** se mantienen los colores verificados sobre canvas/surface: muted-text 5,40/6,22; warn-text 5,92/6,82; data-text 5,62/6,48. Texto pequeño >=4,5:1. Los estados conservan icono y etiqueta además de color.
-
-Las instancias/harness y datos de auditoría viven en project/ (ignorado); no se incorporan al producto ni al contrato. Las cuatro capturas documentan la implementación aplicada. Los cambios de esta ronda afectan presentación, accesibilidad y documentación, sin implementar M4 ni D3.
-
-## Registro de cierre de la versión anterior
-
-- [x] Formatter y los seis checks completos pasan para el código refinado aa83b9d (CI 40149108091).
-- [x] Cobertura >=80% para ese código refinado: 735 aprobadas, 96.10%.
-- [x] Recorrido de teclado registrado (E-04).
-- [x] Zoom 200% y lector de pantalla confirmados manualmente por el auditor (E-06).
-- [x] Carreras HTMX, pausa/reanudación y terminal 286 con foco probadas en navegador real (E-02).
-- [x] Cuatro capturas reales guardadas y revisadas (E-01).
-- [x] Hallazgos críticos/altos documentados con resolución verificada y fuente de evidencia.
-- [x] Revisión final de scope/diff: solo presentación, pruebas de etiquetas, documentación y cuatro capturas; sin cambios en contratos, DAL, worker, motor ni otros repositorios.
-- [x] Aprobación visual de la versión anterior por el auditor, seguida de la fusión de PR #34.
-
-La versión anterior fue posteriormente aprobada y fusionada en la PR #34. La revisión espacial siguiente requiere su propia verificación y aprobación. No se inicia D3 ni se implementa M4.
-
-## Revisión espacial posterior a la auditoría (2026-10-25)
-
-Esta iteración responde a una nueva solicitud de composición del auditor; las evidencias y checks anteriores documentan la versión anterior y no certifican automáticamente esta revisión. La aprobación previa no se extiende al nuevo diseño sin su revisión.
-
-Se consultaron la [arquitectura de selección](https://app.notion.com/p/6b11b29e41ca82ae8b0301948c33923a) y las especificaciones de [M4](https://app.notion.com/p/a791b29e41ca82b2a8d30190abf67b30), [errores](https://app.notion.com/p/f701b29e41ca8347b3ec81e4e3e02b40), [contrastes](https://app.notion.com/p/7e31b29e41ca835a971781701a5a99de), [reporte comparativo](https://app.notion.com/p/d541b29e41ca83c29c3281fc929d117c), [consulta/exportación](https://app.notion.com/p/b4b1b29e41ca8282bc28016d264b3ce4) y [cierre E2E](https://app.notion.com/p/68b1b29e41ca8345a16a017574252a8a). Se usan sus requisitos textuales y límites de responsabilidad como orientación de IA; las páginas están marcadas Draft y sus botones auxiliares no son requisitos. La prioridad futura es cartera → clase → SKU → evidencia. M3 decide y publica; las vistas presentan lo disponible. Ningún conteo de una página se transforma en resultado global, y la ausencia de campeón/veredicto sigue siendo explícita.
-
-Referencias visuales consultadas: [Carbon, donut](https://charts.carbondesignsystem.com/donut), para lectura parte/total con cifras visibles, y [GitHub Actions, visualización de ejecuciones](https://docs.github.com/en/actions/how-tos/monitor-workflows/use-the-visualization-graph), para estado global y acceso al detalle. Se adapta esa jerarquía a los campos existentes; un grafo de etapas o una serie temporal requeriría datos adicionales del contrato y permanece como dependencia.
-
-Baseline local: 40 fallos conocidos de hashes de contratos en Windows y 208 aprobadas antes de una interrupción. No se editaron contratos ni locks. La primera regresión del ajuste espacial pasó 101 pruebas de UI antes de incorporar el gráfico circular. La verificación final de esta iteración se registra después de aplicar todos sus cambios.
-
-- **E-08, composición y escala:** navegador real a 1071px: columnas de Datos de 645,33px y 322,66px, misma posición vertical y altura (523,78px); documento de 1056px, sin desborde. Las cuatro superficies se comprobaron a 535px y 320px: grilla de una columna y ancho de documento menor al viewport. Este ensayo es de reflow, no una nueva certificación de zoom o escucha de Narrator. Con 3.000 SKU de identificadores largos, Resultados conserva cuatro columnas, 20 filas en página 2 y total de la consulta de 3.000, sin desborde global. El repositorio sigue realizando filtros y paginación. Diagnóstico, topología, historial, familias y configuración se abren con teclado; una familia abierta mantiene ensayos/configuración cerrados. Topología conserva una única región de tabla accesible. Las etiquetas bilingües permanecen completas en la leyenda de dos filas.
-- **E-09, polling después de la nueva composición:** DAL y RunControl reales en base aislada, con worker apagado. Pausa mantuvo el log en 28 eventos; reanudar produjo otra petición. Una respuesta 200 retenida llegó con `#sku` enfocado y `AUDIT-FOCO`: foco/valor/disclosure conservados. La respuesta terminal 286 llegó con `AUDIT-TERMINAL`: foco y valor conservados, sin reemplazo inmediato. Al salir de la región, una nueva respuesta 286 mostró `detenida`, preservó el filtro/disclosure, deshabilitó polling y escribió `Ejecución 1: detenida` en el anuncio accesible. El gráfico cambió a la semántica «Tareas exitosas antes de detenerse». No se modificó el código de polling.
-- **E-10, capturas actuales:** [Datos](ui-review/datos.png), [Ejecución](ui-review/ejecucion.png), [Resultados](ui-review/resultados.png) y [SKU](ui-review/sku.png), capturadas de la implementación real con fixture normal, viewport 1280×720 y zoom nominal 100%. Dimensiones completas: 1265×1296, 1265×1595, 1265×920 y 1265×1634. Sustituyen las imágenes de E-01; la descripción y los resultados manuales de E-01/E-06 corresponden a la versión anterior, recuperable en Git.
-- **Checks actuales:** 110 regresiones de Datos, Ejecución, Resultados, UI, componentes, gráficos, presentación y shell aprobadas; un warning de deprecación de TestClient. Ruff, formatter, Pyright (0 errores/avisos), lock y diff check aprobados. La ampliación con pruebas estáticas produjo 155 aprobadas y un fallo en el hash del Pico vendorizado sin modificar. La suite completa local y la exportación aislada reprodujeron los 40 fallos de contrato y la interrupción a 208 aprobadas; no se acredita cobertura global nueva ni CI completo para esta revisión. El CI/cobertura históricos de 96.10% no se trasladan a este código.
-
-El auditor aprobó la composición principal y solicitó refinar la navegación secundaria, descrita a continuación. Permanecen pendientes el CI completo/cobertura de esta rama, la aprobación del refinamiento y la confirmación manual de zoom/lector de pantalla sobre esta composición. Las capturas, la semántica accesible, el reflow y la carrera HTMX se verificaron sobre el código aplicado. No se amplía el alcance analítico de M4.
-
-## Revisión del navegador de evidencia (2026-10-25)
-
-La investigación previa contrastó [Carbon, tabs](https://www.carbondesignsystem.com/building-blocks/core/components/tabs/guidelines), el [patrón APG de W3C](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) y [NN/g, acordeones para contenido extenso](https://www.nngroup.com/articles/accordions-complex-content/). La decisión es separar selección y lectura: menú persistente, un panel a la vez y contenido técnico opcional dentro del panel. No se ocultan comparaciones principales que necesiten verse juntas.
-
-El componente `components/evidence.html` genera navegación por enlaces y secciones accesibles sin JS; `pred.js` añade la interacción de pestañas y conserva su selección durante HTMX. Datos ofrece Diagnóstico / Clases y SKU / Cambiar archivo / Historial. Ejecución ofrece Tareas / Configuración y un enlace al flujo contextual existente de nueva ejecución. En SKU, la trazabilidad tiene un único bloque de referencia visible. No se añaden endpoints, métricas ni dependencias.
-
-- **E-11, interacción y lectura:** navegador real, vista de escritorio de 1280px. Al desplazar el panel de topología, el menú permaneció en y=24 y sus cuatro opciones siguieron visibles. Solo un tabpanel se presenta; los otros están hidden. Flechas verticales, Home, End, Enter y Espacio activan las secciones; Tab pasa del elemento activo al panel y los otros tabs tienen tabindex=-1. Recargar `#historial` conserva Historial. Ordenar activa Clases y SKU; el historial aislado con 45 ingestas abre página 2, muestra 20 filas desde ingesta-020 y conserva la selección al paginar. A 535px y 320px, el menú pasa a orientación horizontal con cuatro títulos visibles en dos filas. A 320px, el documento mide 305px; la tabla usa scroll local y sus cifras mantienen white-space=nowrap. El árbol accesible presenta tablist/tab/tabpanel nombrados y solo el contenido activo. La escucha de Narrator y el zoom real se mantienen como revisión humana pendiente de esta iteración.
-- **E-12, actualización y foco:** con DAL/RunControl reales y worker apagado, Configuración permaneció seleccionada tras respuestas 200. Pausa mantuvo el registro en 62 eventos; reanudar inició otra petición. La respuesta terminal 286 retenida llegó con el filtro `#sku` enfocado y valor `NAVEGACION-286`: foco, valor y Tareas seleccionada se conservaron. Al salir del fragmento, una segunda respuesta 286 mostró detenida, preservó valor/pestaña, deshabilitó polling y anunció `Ejecución 1: detenida`. El enlace Nueva ejecución abrió la configuración de la ingesta fuera del fragmento; un envío sin familias y min_train=-1 conservó aria-invalid/aria-describedby y llevó el foco a fam-classical.
-- **Pruebas:** 110 regresiones de UI aprobadas tras el cambio de navegación; se actualizó la prueba de lanzamiento para recorrer su enlace contextual y las regresiones de paneles para comprobar los destinos, el fallback sin JS y la selección tras consultas. Ruff, formatter, Pyright, uv lock --check, node --check y diff check aprobados. Las limitaciones ya registradas de la suite global en Windows no se corrigen ni se omiten en este cambio. No se acredita un nuevo CI completo/cobertura global.
-
-Las capturas actuales muestran el navegador aplicado; [detalle de Datos](ui-review/detalle-datos.png), de 1265×712, documenta específicamente la consulta de topología con el menú persistente. No se observaron errores de consola. Una regresión final de Datos, Ejecución y UI aprobó 66 pruebas, además de las 110 regresiones de UI registradas. Esta revisión queda disponible localmente para la siguiente auditoría del usuario.
-
-
-## Correcciones finales de la auditoría y issues (2026-10-25)
-
-El auditor confirmó que le gusta la composición y navegación aplicadas y pidió iniciales mayúsculas en los estados. La revisión final añade únicamente ese ajuste y las correcciones de #35, #36 y #39. No incluye los problemas de reanudación/reintento #37/#38 ni cambios del worker, que necesitan una investigación independiente.
-
-- **E-13, leyenda y estados:** el navegador real muestra Ejecutando en el encabezado y Pendiente / Ejecutando / Exitosa / Fallida / No Ejecutable en el resumen y filtro. En la leyenda ADI–CV², las cajas de texto no se intersectan a 1280px; tampoco a 535px (documento 520px) ni 320px (documento 305px). Las etiquetas canónicas permanecen completas y la tabla equivalente está disponible. La prueba SVG comprueba dos filas separadas 20 unidades, columnas separadas 290 y margen respecto al eje. Evidencia: [topología](ui-review/topologia.png) y las cuatro capturas principales actualizadas.
-- **#36, selección fundacional:** se elimina el disabled incondicional de la opción que LaunchSettings ya admite. Se mantiene la advertencia de dependencias en el entorno del motor. En navegador se puede marcar Fundacional. La regresión recorre POST → RunControl → cola → worker con motor de pruebas → selección por SKU y comprueba foundation:chronos2. No se certifica una inferencia Chronos real ni se instalan sus pesos.
-- **#39, origen de los datos:** el formulario ofrece Reales, Sintéticos y No declarar / conservar origen registrado (opción por defecto). Entrega False, True o None a LaunchSettings.datos_sinteticos; el motor resuelve el origen (`pred-engine origen`) antes de encolar y la plataforma muestra los conflictos sin crear una ejecución. Pruebas con DAL/RunControl reales verifican persistencia, --datos-reales / --datos-sinteticos / ausencia de ambos, rechazo de valores inválidos, conservación de la selección tras otro error y rechazo de una declaración contradictoria. En navegador se verificó selección Reales, ayuda asociada y checkbox fundacional operativo. Evidencia: [lanzamiento](ui-review/lanzamiento.png).
-
-La corrección #39 elimina una omisión del formulario, sin forzar Diebold–Mariano ni modificar la política inferencial del motor. La declaración real es un requisito de procedencia, no una garantía de contraste calculable. No se ejecutó el motor real ni se calculó evidencia M4 durante esta verificación. La suite completa local se registra a continuación; el resultado de GitHub Actions del head publicado se mantiene en la sección Verificación de la PR.
-
-
-### Verificación completa del código publicado
-
-- Baseline afectado antes de estas correcciones: 64 pruebas aprobadas. Después: 104 regresiones de ejecución, resultados, presentación, componentes, shell, gráfico y revisión UI aprobadas.
-- `uv lock --check`, `uv run --frozen ruff check .`, `uv run --frozen ruff format --check .` (81 archivos), `uv run --frozen pyright` (0 errores/avisos) y `uv run --frozen pytest -ra`: aprobados en Linux, con las dependencias de uv.lock. Resultado: **748 pruebas aprobadas y 96,02% de cobertura total**, superior al mínimo de 80%.
-- Smoke real: arranque de uvicorn, GET /health = 200, GET / → /datos = 200, documento en español; aprobado. `node --check src/pred_platform/app/static/js/pred.js` y `git diff --check`: aprobados.
-- Se usó una exportación temporal con `git -c core.autocrlf=false archive` y los cambios de trabajo normalizados a LF; todos los hashes originales del contrato se verificaron antes de ejecutar. Esto evita los fallos locales de CRLF ya descritos, sin editar contratos ni locks y sin omitir pruebas. Los entornos y logs temporales permanecen fuera del contenido de la PR.
-- Revisión final: presentación, formulario de lanzamiento, pruebas, documentación y capturas. Sin cambios en contratos copiados, DAL, worker, pred-engine, otros repositorios, cálculos de topología ni reglas inferenciales. No se implementan M4 o D3. Los logs frontend.out.log/frontend.err.log no se incorporan.
-- La aprobación visual del auditor está registrada. El reflow, árbol accesible, recorrido de teclado y carreras HTMX de esta composición se documentan en E-08–E-13. La escucha y zoom reales de esta iteración siguen distinguiéndose de la confirmación humana histórica E-06; no se declara un nuevo cierre D2 por aplicar los cambios.
+| Superficie | Límite |
+| --- | --- |
+| Resultados | Resumen y Por clase están disponibles para navegar, pero se muestran como no disponibles hasta que Módulo 4 las construya. Las vistas actuales consumen la selección por familia y, por SKU, el campeón, el veredicto y la evidencia de una corrida M3 PUBLICADA. |
+| Resultados | La interfaz no elige campeones ni calcula métricas, distribuciones, ratios, pruebas o p-valores, y conserva `null` con su causa. El filtro de familia es de familia evaluada, no campeona. Segmento, exportación CSV y reimportación de configuración pertenecen a M4. |
+| Resultados | Los cinco veredictos M3 (`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO`, `EXPLORATORIO`) no equivalen al vocabulario retrospectivo v1 de las fixtures. |
+| Ejecución | `RunStatus` no expone la etapa actual ni el error de una corrida sin tareas. La interfaz no los deduce de errores ni de tareas paginadas. |
+| Ejecución | El selector de lanzamiento ofrece hasta 200 ingestas y filtra las aceptadas dentro de esa página, así que no es un catálogo exhaustivo. La selección desde Datos conserva `ingest_id`. |
+| Ejecución | Una etapa gráfica o una serie temporal del progreso requeriría datos adicionales del contrato. |
+| Datos | Un informe ausente para un identificador concreto produce un estado no disponible. |
+| Fundacional | La plataforma no ejecuta ni verifica la inferencia Chronos-2; eso lo hace el motor. |

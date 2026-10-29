@@ -1,6 +1,6 @@
 # Flujo mínimo de interfaz PRED
 
-Mapa de implementación de las superficies de producto. No sustituye a `docs/DESIGN.md`
+Mapa de las superficies de producto. No sustituye a `docs/DESIGN.md`
 ni al contrato frontend ↔ motor. Las vistas leen únicamente `DataRepository`
 (`pred_platform.data`). Nunca SQLite, `pred_platform.dal` ni `pred-engine`.
 
@@ -26,7 +26,7 @@ La navegación de producto es `PRED · Datos | Ejecución | Resultados`.
 | `/resultados` | Resultados (tabs; «Por SKU» es la vista por defecto) |
 | `/resultados/sku/{sku_id}` | Detalle de un SKU: decisión, familias y evidencia bajo demanda |
 | `/health` | Sonda JSON, sin cambios. |
-| `/_dev/componentes` | Catálogo interno de B2. Fuera de la navegación. |
+| `/_dev/componentes` | Catálogo interno de componentes. Fuera de la navegación. |
 
 ## 1. Datos
 
@@ -34,18 +34,16 @@ La navegación de producto es `PRED · Datos | Ejecución | Resultados`.
 corregibles, confirmar ingesta aceptada, mostrar la caracterización/topología de demanda y
 permitir continuar al pipeline cuando los datos estén listos.
 
-Agrupa la antigua “Carga y validación” y “Topología de demanda”.
-
 **Operaciones de `DataRepository`:**
 
 | Operación | Uso en la superficie |
 | --- | --- |
-| `list_ingests(...)` | Historial de ingestas disponible en DAL. |
+| `list_ingests(...)` | Historial de ingestas. |
 | `submit_ingest(...)` | Carga del archivo: con `dal` corre `pred-engine classify` (CSV con cabeceras canónicas). |
-| `get_ingest_report(...)` | Diagnóstico, validación y errores disponibles en DAL; G1 resuelto. |
-| `get_topology_report(...)` | Caracterización de demanda disponible en DAL; G1 resuelto. |
+| `get_ingest_report(...)` | Diagnóstico, validación y errores de la ingesta. |
+| `get_topology_report(...)` | Caracterización de demanda. |
 
-**Estados de página (B2):** `sin_datos`, `cargando`, `validando`,
+**Estados de página:** `sin_datos`, `cargando`, `validando`,
 `requiere_correccion`, `valido`, `error`.
 
 Estos estados de flujo no son el `status` del contrato (`accepted`, `rejected`,
@@ -95,19 +93,16 @@ a `LaunchSettings.datos_sinteticos` y `RunControl`; el motor resuelve el origen
 (`pred-engine origen`) antes del encolado. La plataforma muestra el detalle de
 un conflicto sin crear la ejecución. El worker transmite `--datos-reales` o
 `--datos-sinteticos`. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
-determina si el contraste es aplicable. Estos ajustes corrigen #36 y #39, fuera del
-alcance visual de D2, sin implementar funcionalidad analítica de M4.
+determina si el contraste es aplicable. La plataforma no implementa funcionalidad analítica de M4.
 
 ## 3. Resultados
 
-**Estado actual:** la vista Por SKU consume la selección por familia, la evidencia de un SKU
+**Responsabilidad:** la vista Por SKU consume la selección por familia, la evidencia de un SKU
 y, de una corrida M3 exacta de la ejecución, el campeón, el veredicto y su evidencia (contrato
-v2). Resumen y Por clase todavía no se construyen (Módulo 4, secciones 4.2 a 4.5).
-
-**Responsabilidad prevista al integrar M4:** presentar el resultado de la corrida, resumir
-por clase de demanda, mostrar la distribución de campeones y los veredictos publicados.
-La interfaz no selecciona ganadores ni recalcula métricas. Esta integración permanece
-fuera de D2.
+v2). Resumen y Por clase no están construidas: pertenecen al Módulo 4 (secciones 4.2 a 4.5) y
+presentarán el resultado de la corrida, el resumen por clase de demanda, la distribución de
+campeones y los veredictos publicados. La interfaz no selecciona ganadores ni recalcula
+métricas.
 
 **Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
 `get_m3_run_status(...)`, `get_m3_evidence(...)`. Las demás lecturas M3 del contrato v2
@@ -123,69 +118,45 @@ veredicto. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecuc
 cuando varias corridas PUBLICADA comparten identidad.
 
 Tabs internas (misma ruta, `?vista=resumen|clase|sku`): Resumen | Por clase | Por SKU. No son
-pantallas nuevas. **Por SKU** (C2) está implementada: tabla compacta con evidencia familiar desplegable y detalle
-en `/resultados/sku/{sku_id}`; **Resumen** y **Por clase** se
-muestran como no disponibles hasta que se construyan sobre las lecturas M3. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
+pantallas nuevas. **Por SKU** está implementada: tabla compacta con evidencia familiar desplegable y detalle
+en `/resultados/sku/{sku_id}`. **Resumen** y **Por clase** se muestran como no disponibles. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
 La acción «Configurar nueva ejecución» lleva a Ejecución y se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.
 
-## Propuesta anterior → interfaz final
+## Capacidades
 
-| Pantalla anterior | Decisión |
-| --- | --- |
-| Autenticación | Eliminar |
-| Panel de pronósticos | Integrar en Resultados |
-| Carga y validación | Integrar en Datos |
-| Configuración de ejecución | Integrar en Ejecución |
-| Monitoreo de ejecución | Integrar en Ejecución |
-| Resultados por SKU | Integrar en Resultados |
-| Validación retrospectiva | Integrar en Resultados |
-| Administración | Eliminar |
+El origen de datos (fixture o DAL) lo fija `PRED_DATA_SOURCE`. Con DAL, el historial, el
+informe de ingesta y la topología se leen de la base. La ausencia de un informe concreto
+o de datos puede producir un estado no disponible. `get_capabilities()` declara la
+disponibilidad actual:
 
-## Estado actual de capacidades y dependencias pendientes
+| Superficie | Dato | Capacidad |
+| --- | --- | --- |
+| Datos | Lista de ingestas, informe y topología | `ingest_report_persisted`, `topology_persisted` |
+| Datos | Carga desde el navegador (`submit_ingest` corre `pred-engine classify`) | — |
+| Ejecución | Orquestación, progreso, detener y reanudar | `run_orchestration` |
+| Resultados | Selección por SKU, ensayos HPO y ventanas | `selection_results_persisted`, `trial_detail_persisted`, `walkforward_evidence_persisted`, `family_comparison` |
+| Resultados | Campeón (`m3_veredictos`, contrato v2) | `champion_selection` |
+| Resultados | Cinco veredictos, significancia y embudo (contrato v2) | `retrospective_validation` |
 
-El interruptor fixture/DAL ya lo resuelve B4 (`PRED_DATA_SOURCE`). G1 está resuelto:
-el historial, el informe de ingesta y la topología se leen desde DAL. La ausencia de
-un informe concreto o de datos sigue pudiendo producir un estado no disponible;
-no implica que G1 esté pendiente. `get_capabilities()` declara disponibilidad actual.
-La tabla resume los gaps resueltos:
+El texto en español de cada código de error estable vive en `pred_platform/mensajes.py`.
 
-| Superficie | Dato | Capacidad | Estado |
-| --- | --- | --- | --- |
-| Datos | Lista de ingestas, informe y topología | `ingest_report_persisted`, `topology_persisted` | Resuelto (G1, G5) |
-| Datos | Carga desde el navegador | — | Resuelto: `submit_ingest` corre `pred-engine classify` |
-| Ejecución | Orquestación, progreso, detener y reanudar | `run_orchestration` | Resuelto (G3 y C4) |
-| Resultados | Selección por SKU, ensayos HPO y ventanas | `selection_results_persisted`, `trial_detail_persisted`, `walkforward_evidence_persisted`, `family_comparison` | Resuelto (G2, G4); pantalla C2 |
-| Resultados | Campeón | `champion_selection` | Resuelto: `m3_veredictos` mediante el contrato v2 |
-| Resultados | Veredictos | `retrospective_validation` | Resuelto: cinco veredictos, significancia y embudo mediante el contrato v2 |
-
-Códigos de error estables y exclusiones tipadas: resueltos (G6, G7); el texto en español de
-cada código vive en `pred_platform/mensajes.py`. Bitácora sintética (fuera de estas tres
-superficies): G8.
-
-Una capacidad no implementada se pinta con el estado **no disponible**
+Una capacidad no disponible se pinta con el estado **no disponible**
 (`availability.status`, `reason_code`, `blocked_by`, `detail`), nunca como fallo
 inesperado.
 
-## Relación con B2 y B3
-
-B2 implementa tokens, componentes y vocabularios de estado. B3 crea el shell y las
-tres rutas. Ni B2 ni B3 implementan carga real, orquestación, polling contra worker ni
-selección de campeones.
-
-## Jerarquía de Resultados después de D2
+## Jerarquía de Resultados
 
 Resumen de cartera → Por clase de demanda → Por SKU → Decisión y comparación → Evidencia técnica bajo demanda.
 
-Por SKU conserva la entrada actual hasta que se construya Resumen. La tabla principal presenta cuatro columnas (SKU, clase, campeón y veredicto M3, y evidencia familiar desplegable); no incorpora columnas de trials, ventanas ni p-valores. Los filtros y la paginación se delegan al repositorio. Configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
+Por SKU es la entrada de Resultados. La tabla principal presenta cuatro columnas (SKU, clase, campeón y veredicto M3, y evidencia familiar desplegable); no incorpora columnas de trials, ventanas ni p-valores. Los filtros y la paginación se delegan al repositorio. Configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
 
 El encabezado comunica alcance retrospectivo y el origen de los datos que declara la corrida M3 (real, sintético o aumentado, o desconocido); sin corrida M3, el origen no informado. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
 
-Los agregados de cartera/clase y los exportables se construyen en las vistas de M4 sobre las lecturas del contrato v2. Ver el registro y la condición de cierre en UI_REVIEW.md.
+Los agregados de cartera/clase y los exportables se construyen en las vistas de M4 sobre las lecturas del contrato v2. Ver los límites en `docs/UI_REVIEW.md`.
 
-
-## Exploración progresiva en la revisión final D2
+## Exploración progresiva
 
 Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con archivo/estado/conteos y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cambiar archivo e historial se consultan en la navegación secundaria. Un filtro o página explícitos activan el panel correspondiente.
 
@@ -193,7 +164,7 @@ Ejecución sin contexto comienza con la corrida actual. Los conteos por estado s
 
 Resultados mantiene la lista por SKU como entrada actual: filtros plegables, familias por fila y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. El origen de los datos y el alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
 
-## Composición espacial para la auditoría de UX
+## Composición espacial
 
 Datos: estado del archivo y conteos en el área principal; topología global y continuar en el lateral. Diagnóstico, clases/SKU, carga e historial se consultan debajo mediante un menú persistente y un panel activo. Una consulta de topología o historial selecciona el panel correspondiente.
 
@@ -201,8 +172,8 @@ Ejecución: estado y progreso circular en el área principal; conteos interactiv
 
 Resultados: consulta por SKU paginada en el área principal; corrida, alcance y configurar otra ejecución en el lateral. Detalle SKU: decisión y familias en el área principal; clase, perfil, procedencia y navegación en el lateral; trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
 
-## Navegación secundaria después de la revisión del pie de página
+## Navegación secundaria
 
-La revisión posterior sustituye los acordeones inferiores de Datos por un navegador persistente: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cambiar archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
+Datos ofrece un navegador persistente: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cambiar archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
 
-Ejecución presenta Tareas y Configuración en ese mismo patrón dentro del fragmento que ya se sondea; la sección elegida se conserva al actualizar. El enlace Nueva ejecución lleva a la configuración contextual existente mediante ingest_id. Esa configuración continúa fuera del fragmento de polling; ya no se despliega otro formulario largo al final de la página de monitoreo. Detener/reanudar y sus comprobaciones de capacidad no cambian. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.
+Ejecución presenta Tareas y Configuración en el mismo patrón dentro del fragmento que se sondea; la sección elegida se conserva al actualizar. El enlace Nueva ejecución lleva a la configuración contextual mediante ingest_id. La configuración de lanzamiento está fuera del fragmento de polling. Detener/reanudar dependen de las capacidades declaradas. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.
