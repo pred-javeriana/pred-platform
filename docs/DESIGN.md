@@ -137,7 +137,7 @@ Los títulos primarios usan escala adaptable y peso 800. Las etiquetas KPI usan 
 
 La revisión final D2 usa texto operativo de 14px y controles de 40px. Inputs/selects comparten altura y alineación; una ayuda debajo no desplaza el campo. Checkboxes tienen dimensiones explícitas y los selects conservan un chevron. La navegación de estados se agrupa con tamaños homogéneos. La carga visible usa etiquetas españolas independientemente del idioma del navegador (el diálogo del sistema conserva su propio idioma). Las clases se presentan como Smooth (Suave), Erratic (Errática), Intermittent (Intermitente) y Lumpy (Grumosa); sus códigos contractuales no cambian.
 
-La primera vista presenta situación, resumen y siguiente acción. Diagnóstico y tareas se consultan mediante navegación local persistente; filtros, familias y evidencia técnica conservan disclosures nativos con semántica expanded/collapsed. Una consulta explícita o error activa el área relevante. Un envío inválido lleva el foco al primer control con error. Ver UI_FLOW.md y UI_REVIEW.md para comportamiento y evidencia.
+La primera vista presenta situación, resumen y siguiente acción. Diagnóstico y tareas se consultan mediante navegación local persistente; filtros, familias y evidencia técnica conservan disclosures nativos con semántica expanded/collapsed. Una consulta explícita o error activa el área relevante. Un envío inválido lleva el foco al primer control con error. Ver UI_FLOW.md y UI_REVIEW.md para comportamiento y límites.
 
 ## Composición operativa en dos columnas
 

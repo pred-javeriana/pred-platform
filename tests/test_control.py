@@ -139,7 +139,7 @@ def test_a_stopped_run_resumes_with_the_same_parameters_and_the_same_task_rows(
 
     assert _state(env)[0] == "completada"
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
-    assert env.rows("SELECT COUNT(*) FROM tareas") == [(9,)]
+    assert env.rows("SELECT COUNT(*) FROM tareas") == [(12,)]
 
 
 def test_resuming_puts_the_tasks_the_stop_closed_back_to_pending(
@@ -174,7 +174,7 @@ def test_detener_y_reanudar_conservan_las_tareas_en_finalizo_m2(
     thread = threading.Thread(target=env.worker().run_next)
     thread.start()
     _wait(
-        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'")[0][0] == 3,
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'")[0][0] == 4,
         what="M3 to store the first SKU",
     )
 
@@ -183,11 +183,12 @@ def test_detener_y_reanudar_conservan_las_tareas_en_finalizo_m2(
             "SELECT sku, estado, COUNT(*) FROM tareas GROUP BY sku, estado ORDER BY sku"
         )
 
-    # M3 guardó FIL-0001; los otros dos SKU terminaron M2 y esperan su evaluación.
+    # M3 guardó FIL-0001; los otros dos SKU terminaron M2 y esperan su evaluación
+    # (4 familias por SKU).
     m3_a_medias = [
-        ("FIL-0001", "exitosa", 3),
-        ("FIL-0002", "finalizo_m2", 3),
-        ("FIL-0003", "finalizo_m2", 3),
+        ("FIL-0001", "exitosa", 4),
+        ("FIL-0002", "finalizo_m2", 4),
+        ("FIL-0003", "finalizo_m2", 4),
     ]
     assert estados() == m3_a_medias
 
@@ -242,7 +243,7 @@ def test_a_run_with_failures_can_be_retried(env: Env, monkeypatch: pytest.Monkey
     env.worker().run_next()
 
     assert _state(env)[0] == "completada"
-    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(9,)]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(12,)]
 
 
 @pytest.mark.parametrize("scenario", ["completed", "pending"])
