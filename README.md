@@ -102,7 +102,9 @@ selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, fro
 precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
 8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
 Version 10 adds the published cut, late launches, observed demand and the champions view.
-The current schema is version 10. An undeclared origin stays unknown and cannot
+Version 11 adds M3's split-reserve evidence: significance per class, the champion confirmation
+and its comparisons, the pre-cut robustness selection, the r intervals and the products M2
+excluded. The current schema is version 11. An undeclared origin stays unknown and cannot
 produce statistical inference. The file-only website upload does not declare real data.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its

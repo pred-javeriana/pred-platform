@@ -162,7 +162,11 @@ def test_un_pronostico_degenerado_tiene_su_mensaje_y_no_se_reintenta() -> None:
     assert descripcion.titulo == (
         "El pronóstico final del modelo fue degenerado y no se entregó para la comparación."
     )
-    assert descripcion.accion
+    # Con la regla de dos familias del motor, la familia fallida puede sacar al SKU de la
+    # competencia: la acción no promete que las demás familias no se afecten.
+    assert descripcion.accion == (
+        "Pruebe con otra familia y revise cuántas familias evaluables conserva el SKU."
+    )
     assert descripcion.reintentable is False
 
 

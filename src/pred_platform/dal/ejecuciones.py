@@ -433,11 +433,18 @@ def task_excluded(
     seed: int,
     error: dict[str, Any],
 ) -> None:
+    """The task of a SKU the engine excluded is ``no_ejecutable``, unless its unit failed.
+
+    The engine excludes a SKU before L2 (nothing ran) or at the close of L2, when only one
+    family delivered a candidate. A unit that already failed in L2 keeps ``fallida`` and its
+    error.
+    """
     with conn:
         _ensure_task(conn, ejecucion_id, sku, modelo, corte, seed)
         conn.execute(
             "UPDATE tareas SET estado = 'no_ejecutable', detalle_error = ? "
-            "WHERE ejecucion_id = ? AND sku = ? AND modelo = ? AND corte = ?",
+            "WHERE ejecucion_id = ? AND sku = ? AND modelo = ? AND corte = ? "
+            "AND estado <> 'fallida'",
             (json.dumps(error, ensure_ascii=False), ejecucion_id, sku, modelo, corte),
         )
 
