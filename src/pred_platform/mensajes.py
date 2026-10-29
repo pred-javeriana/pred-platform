@@ -197,7 +197,7 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     ),
     "model.degenerate_forecast": Mensaje(
         "El pronóstico final del modelo fue degenerado y no se entregó para la comparación.",
-        "Pruebe con otra familia; las demás familias del SKU no se afectan.",
+        "Pruebe con otra familia y revise cuántas familias evaluables conserva el SKU.",
     ),
     "model.foundation_unavailable": Mensaje(
         "El modelo fundacional no está disponible en este equipo.",
