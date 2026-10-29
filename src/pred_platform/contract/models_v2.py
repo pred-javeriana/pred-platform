@@ -1,4 +1,4 @@
-"""Contrato 2.1.0: lectura de evidencia publicada por M3, sin recalcularla.
+"""Contrato 2.2.0: lectura de evidencia publicada por M3, sin recalcularla.
 
 Fuente de schemas/v2. Las filas conservan los nombres publicados por M3.
 Las reglas entre campos validan integridad, no seleccionan modelos ni emiten veredictos.
@@ -7,6 +7,7 @@ Las reglas entre campos validan integridad, no seleccionan modelos ni emiten ver
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from datetime import date
 from typing import Annotated, Literal, Self
 
@@ -21,6 +22,7 @@ from pydantic import (
 )
 
 Text = Annotated[str, StringConstraints(min_length=1)]
+CodigoElegibilidad = Annotated[str, StringConstraints(pattern=r"^eligibility\.[a-z0-9_]+$")]
 Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Semver = Annotated[str, StringConstraints(pattern=r"^2\.[0-9]+\.[0-9]+$")]
 Count = Annotated[int, Field(ge=0, strict=True)]
@@ -218,17 +220,21 @@ class PorcentajesVeredicto(_Base):
 
 
 class M3Funnel(RunRow):
+    """``eligibility_excluded_count`` nulo: el documento no informa las exclusiones de M2."""
+
     total_productos: Count
     excluded_count: Count
     tras_exclusiones: Count
     no_evaluados: Count
     evaluados: Count
     conteos: ConteosVeredicto
+    eligibility_excluded_count: Count | None = None
 
     @model_validator(mode="after")
     def _funnel(self) -> Self:
         counts = self.conteos
-        if self.total_productos != self.excluded_count + self.tras_exclusiones:
+        excluded = self.excluded_count + (self.eligibility_excluded_count or 0)
+        if self.total_productos != excluded + self.tras_exclusiones:
             raise ValueError("el embudo debe conservar todos los productos")
         if self.evaluados != counts.VALIDADO + counts.EXPLORATORIO:
             raise ValueError("evaluados solo suma VALIDADO y EXPLORATORIO")
@@ -239,6 +245,15 @@ class M3Funnel(RunRow):
         if self.tras_exclusiones != self.evaluados + self.no_evaluados:
             raise ValueError("cada producto no excluido necesita uno de los cinco veredictos")
         return self
+
+
+def _exclusion_list(container: RunRow, excluded_count: int, items: Sequence[SkuRow]) -> None:
+    if excluded_count != len(items):
+        raise ValueError("excluded_count debe coincidir con la lista completa")
+    _unique([r.sku for r in items], "exclusiones")
+    for row in items:
+        if (row.run_id, row.ingesta_sha256) != (container.run_id, container.ingesta_sha256):
+            raise ValueError("exclusion de otra corrida o ingesta")
 
 
 class LateLaunchExclusion(SkuRow):
@@ -254,12 +269,27 @@ class LateLaunches(RunRow):
 
     @model_validator(mode="after")
     def _exclusions(self) -> Self:
-        if self.excluded_count != len(self.items):
-            raise ValueError("excluded_count debe coincidir con la lista completa")
-        _unique([r.sku for r in self.items], "exclusiones")
-        for row in self.items:
-            if (row.run_id, row.ingesta_sha256) != (self.run_id, self.ingesta_sha256):
-                raise ValueError("exclusion de otra corrida o ingesta")
+        _exclusion_list(self, self.excluded_count, self.items)
+        return self
+
+
+class EligibilityExclusion(SkuRow):
+    """Producto que M2 excluyo de la competencia, con su clase, codigo y causa publicados."""
+
+    sku_class: SkuClass
+    codigo: CodigoElegibilidad
+    causa: Text
+
+
+class EligibilityExclusions(RunRow):
+    """Lista completa de exclusiones de M2 que M3 publica con la corrida (m3_exclusiones)."""
+
+    excluded_count: Count
+    items: list[EligibilityExclusion]
+
+    @model_validator(mode="after")
+    def _exclusions(self) -> Self:
+        _exclusion_list(self, self.excluded_count, self.items)
         return self
 
 
@@ -366,11 +396,13 @@ class PublishedPage[Row: Trace](PublishedDocument):
 class M3Evidence(PublishedPage[M3Verdict]):
     funnel: M3Funnel | None
     late_launches: LateLaunches | None
+    eligibility_exclusions: EligibilityExclusions | None = None
 
     @model_validator(mode="after")
     def _evidence(self) -> Self:
+        eligibility = self.eligibility_exclusions
         if self.availability.status == "unavailable":
-            if self.funnel is not None or self.late_launches is not None:
+            if any(v is not None for v in (self.funnel, self.late_launches, eligibility)):
                 raise ValueError("la evidencia no disponible no expone embudo ni exclusiones")
             return self
         if self.funnel is None or self.late_launches is None:
@@ -382,9 +414,18 @@ class M3Evidence(PublishedPage[M3Verdict]):
         _same_run(self.late_launches, run)
         if self.funnel.excluded_count != self.late_launches.excluded_count:
             raise ValueError("el embudo no coincide con las exclusiones publicadas")
+        excluded = {r.sku for r in self.late_launches.items}
+        if (self.funnel.eligibility_excluded_count is None) != (eligibility is None):
+            raise ValueError("el embudo y las exclusiones de elegibilidad se informan juntos")
+        if eligibility is not None:
+            _same_run(eligibility, run)
+            if self.funnel.eligibility_excluded_count != eligibility.excluded_count:
+                raise ValueError("el embudo no coincide con las exclusiones de elegibilidad")
+            if excluded & {r.sku for r in eligibility.items}:
+                raise ValueError("un producto no puede tener dos exclusiones")
+            excluded |= {r.sku for r in eligibility.items}
         if self.page.total > self.funnel.tras_exclusiones:
             raise ValueError("la consulta supera los productos con veredicto")
-        excluded = {r.sku for r in self.late_launches.items}
         _unique([r.sku for r in self.items], "veredictos")
         counts = Counter(r.veredicto for r in self.items)
         for verdict, count in counts.items():

@@ -257,6 +257,10 @@ def test_the_verdicts_and_the_funnel_follow_the_published_cutoff_metadata(caso: 
     assert sorted(v.sku for v in evidencia.items) == sorted(SERIES)
     assert evidencia.funnel.total_productos == len(SERIES) + evidencia.late_launches.excluded_count
     assert evidencia.funnel.tras_exclusiones == len(SERIES)
+    # Las seis series ajustan sus dos familias: M3 publica la lista de exclusiones de M2, vacía.
+    assert evidencia.eligibility_exclusions is not None
+    assert evidencia.eligibility_exclusions.items == []
+    assert evidencia.funnel.eligibility_excluded_count == 0
     # Datos sintéticos: sin prueba HLN-DM ni p-valores, con la causa visible.
     assert {(v.dm_causa, v.dm_p_valor) for v in evidencia.items} == {("datos_sinteticos", None)}
     for veredicto in evidencia.items:

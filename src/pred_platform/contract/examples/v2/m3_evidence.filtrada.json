@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.1.0",
+  "schema_version": "2.2.0",
   "generated_at": "2026-10-27T11:00:00Z",
   "source": "fixture",
   "availability": {
@@ -88,7 +88,7 @@
     "run_id": "m3-real-02",
     "sku": null,
     "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "total_productos": 7,
+    "total_productos": 8,
     "excluded_count": 2,
     "tras_exclusiones": 5,
     "no_evaluados": 3,
@@ -99,7 +99,8 @@
       "EVIDENCIA_INSUFICIENTE": 1,
       "VALIDADO": 1,
       "EXPLORATORIO": 1
-    }
+    },
+    "eligibility_excluded_count": 1
   },
   "late_launches": {
     "run_id": "m3-real-02",
@@ -119,6 +120,22 @@
         "sku": "SKU-TARDIO-2",
         "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "causa": "lanzado despues del corte"
+      }
+    ]
+  },
+  "eligibility_exclusions": {
+    "run_id": "m3-real-02",
+    "sku": null,
+    "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "excluded_count": 1,
+    "items": [
+      {
+        "run_id": "m3-real-02",
+        "sku": "SKU-UNA-FAMILIA",
+        "ingesta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sku_class": "smooth",
+        "codigo": "eligibility.fewer_than_two_families",
+        "causa": "menos de dos familias evaluables tras L2: evaluable ml; fallidas classical (selection.no_viable_trial)"
       }
     ]
   }
