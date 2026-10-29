@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.1.0",
+  "schema_version": "2.2.0",
   "generated_at": "2026-10-27T11:00:00Z",
   "source": "fixture",
   "availability": {
@@ -99,13 +99,21 @@
       "EVIDENCIA_INSUFICIENTE": 0,
       "VALIDADO": 0,
       "EXPLORATORIO": 1
-    }
+    },
+    "eligibility_excluded_count": 0
   },
   "late_launches": {
     "run_id": "m3-origen_desconocido",
     "sku": null,
     "ingesta_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "t_star": "2026-06-30",
+    "excluded_count": 0,
+    "items": []
+  },
+  "eligibility_exclusions": {
+    "run_id": "m3-origen_desconocido",
+    "sku": null,
+    "ingesta_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "excluded_count": 0,
     "items": []
   }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pred-contrato/v2/m3_evidence.schema.json",
-  "x-contract-version": "2.1.0",
+  "x-contract-version": "2.2.0",
   "$defs": {
     "Availability": {
       "additionalProperties": false,
@@ -88,6 +88,98 @@
         "EXPLORATORIO"
       ],
       "title": "ConteosVeredicto",
+      "type": "object"
+    },
+    "EligibilityExclusion": {
+      "additionalProperties": false,
+      "description": "Producto que M2 excluyo de la competencia, con su clase, codigo y causa publicados.",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "minLength": 1,
+          "title": "Sku",
+          "type": "string"
+        },
+        "sku_class": {
+          "enum": [
+            "smooth",
+            "intermittent",
+            "erratic",
+            "lumpy"
+          ],
+          "title": "Sku Class",
+          "type": "string"
+        },
+        "codigo": {
+          "pattern": "^eligibility\\.[a-z0-9_]+$",
+          "title": "Codigo",
+          "type": "string"
+        },
+        "causa": {
+          "minLength": 1,
+          "title": "Causa",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "sku_class",
+        "codigo",
+        "causa"
+      ],
+      "title": "EligibilityExclusion",
+      "type": "object"
+    },
+    "EligibilityExclusions": {
+      "additionalProperties": false,
+      "description": "Lista completa de exclusiones de M2 que M3 publica con la corrida (m3_exclusiones).",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "ingesta_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Ingesta Sha256",
+          "type": "string"
+        },
+        "sku": {
+          "title": "Sku",
+          "type": "null"
+        },
+        "excluded_count": {
+          "minimum": 0,
+          "title": "Excluded Count",
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EligibilityExclusion"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "ingesta_sha256",
+        "sku",
+        "excluded_count",
+        "items"
+      ],
+      "title": "EligibilityExclusions",
       "type": "object"
     },
     "EvaluatedModel": {
@@ -237,6 +329,7 @@
     },
     "M3Funnel": {
       "additionalProperties": false,
+      "description": "``eligibility_excluded_count`` nulo: el documento no informa las exclusiones de M2.",
       "properties": {
         "run_id": {
           "minLength": 1,
@@ -279,6 +372,19 @@
         },
         "conteos": {
           "$ref": "#/$defs/ConteosVeredicto"
+        },
+        "eligibility_excluded_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eligibility Excluded Count"
         }
       },
       "required": [
@@ -799,6 +905,17 @@
           "type": "null"
         }
       ]
+    },
+    "eligibility_exclusions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EligibilityExclusions"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

@@ -6,18 +6,18 @@ campeones ni calcular métricas evaluativas.
 
 ## Migraciones
 
-Las migraciones 0005 a 0009 incorporan el esquema M3. Sus textos canónicos
+Las migraciones 0005 a 0011 incorporan el esquema M3. Sus textos canónicos
 pertenecen a `pred-engine`, en `forecasting/persistencia_evidencia/`:
-`esquema_m3.sql`, `esquema_m3_0002.sql`, `esquema_m3_0003.sql`,
-`esquema_m3_0004.sql` y `esquema_m3_0005.sql`. La plataforma conserva copias exactas
-con sus hashes de publicación. Las migraciones 0001 a 0004 no cambian.
+`esquema_m3.sql` y `esquema_m3_0002.sql` a `esquema_m3_0007.sql`. La plataforma
+conserva copias exactas con sus hashes de publicación. Las migraciones 0001 a 0004
+no cambian.
 
 ```bash
 python -m pred_platform.dal.migrate --db data/pred.db
 pred-engine run --csv ventas.csv --data-root data --db-path data/pred.db
 ```
 
-Ambos procesos usan `PRAGMA user_version`, actualmente 9. El motor aplica las
+Ambos procesos usan `PRAGMA user_version`, actualmente 11. El motor aplica las
 migraciones M3 pendientes sobre una base de plataforma existente. No crea una
 base independiente ni modifica una versión desconocida. Si el archivo falta,
 la ejecución se detiene con un mensaje claro antes de M0/M2.
@@ -42,7 +42,7 @@ ingesta, sus configuraciones y los bytes Parquet compartidos. Si responde con
 un conflicto, la plataforma muestra su detalle y no crea una ejecución.
 Si la consulta falla o tarda más de 60 segundos, tampoco encola la corrida.
 
-Una configuración guardada antes de  no se reutiliza: al
+Una configuración guardada con parámetros anteriores a `schema_version=2` no se reutiliza: al
 volver a encolarla, la cola crea una corrida nueva con otro identificador. Un origen desconocido explícito (`null`)
 solo se resuelve mientras la ejecución sigue pendiente. Una ejecución iniciada
 o completada conserva su configuración. El trabajador lanza el origen guardado
@@ -73,7 +73,7 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 |---|---|---|
 | `list_m3_runs` | `M3Runs` | `m3_corridas` y la política de `m3_protocolos` |
 | `get_m3_run_status` | `M3RunStatus` | corrida y avance durable de `m3_unidades` |
-| `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos`, `m3_cortes` y `m3_lanzamientos_tardios` |
+| `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos`, `m3_cortes`, `m3_lanzamientos_tardios` y `m3_exclusiones` |
 | `get_m3_metrics` | `M3Metrics` | `m3_metricas` |
 | `get_m3_categories` | `M3Categories` | `m3_categorias` |
 | `get_m3_portfolio` | `M3Portfolio` | `m3_cartera` |
@@ -95,12 +95,20 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   conservan literales, el campeón sale de `m3_veredictos` y la significancia (`dm_*`, con su
   causa si no hay prueba) es una columna aparte. Las métricas son MAE, RMSE, MASE, ME y r
   (`razon_sn`), sin sMAPE; el segmento es la clase Syntetos-Boylan (`sku_class`).
-- **Embudo.** `funnel` y `late_launches` describen toda la corrida, no la página. El corte t* y los
-  productos lanzados después del corte se leen de `m3_cortes` y `m3_lanzamientos_tardios`,
-  publicados por M3 en SQLite. Si la corrida no tiene fila en `m3_cortes`, la evidencia responde
-  `metadata_missing`, sin embudo ni filas: la falta de metadatos no significa cero exclusiones.
-  `get_m3_observations` también responde `metadata_missing` para esa publicación antigua y pide
-  volver a ejecutar la corrida. Las demás operaciones siguen disponibles.
+- **Embudo.** `funnel`, `late_launches` y `eligibility_exclusions` describen toda la corrida, no
+  la página. El corte t* y los productos lanzados después del corte se leen de `m3_cortes` y
+  `m3_lanzamientos_tardios`, publicados por M3 en SQLite. Si la corrida no tiene fila en
+  `m3_cortes`, la evidencia responde `metadata_missing`, sin embudo ni filas: la falta de
+  metadatos no significa cero exclusiones. Si la corrida no tiene fila en `m3_cortes`,
+  `get_m3_observations` también responde `metadata_missing` y pide volver a ejecutarla. Las demás
+  operaciones siguen disponibles.
+- **Exclusiones de M2.** `eligibility_exclusions` lista, desde `m3_exclusiones`, los productos que
+  M2 excluyó de la competencia (por ejemplo, `eligibility.fewer_than_two_families`, la regla de
+  dos familias), con su clase, código y causa; `funnel.eligibility_excluded_count` los cuenta y
+  `total_productos` los incluye. No tienen veredicto ni son un `FALLO_TECNICO`. Una corrida cuyo
+  protocolo no tiene bloques de reserva (`bloques`) se publicó antes de que M3 listara esas
+  exclusiones: los dos campos son nulos, porque la falta de filas no significa cero. Resultados
+  muestra la causa publicada de cada producto excluido en la lista «Por SKU» y en su detalle.
 - **Demanda y campeones.** `get_m3_observations` conserva las fechas y los valores nulos de la
   reserva. `get_m3_champions` lee los conteos por familia que publica la vista del motor, sin
   calcularlos; las filas con `sku_class` nula corresponden a toda la cartera.
@@ -133,7 +141,8 @@ se construyen sobre estas operaciones.
 ## Verificación
 
 `tests/test_evidencia_m3.py` comprueba, mediante `DalRepository`, publicación,
-progreso, embudo y exclusiones tardías, metadatos ausentes o inválidos, filtros,
+progreso, embudo, exclusiones tardías y de M2 (también nulas en una publicación anterior a
+`m3_exclusiones`), metadatos ausentes o inválidos, filtros,
 grupos, orden y páginas, origen sintético y desconocido, selección de la
 PUBLICADA más nueva con aviso de duplicados, lecturas sin escritura y
 transmisión de la ruta central al proceso del motor. También comprueba bases

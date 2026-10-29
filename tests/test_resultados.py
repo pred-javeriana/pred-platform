@@ -490,6 +490,34 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     assert "corte t* 2026-03-13" in late
 
 
+def test_a_product_m2_excluded_from_the_competition_shows_its_published_cause(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.m3_publicada import ONE_ROUTED_CAUSE
+
+    _run(env, monkeypatch)
+    # Only the classical family is routed to FIL-0003: the two-family rule excludes it.
+    _publish_for_the_run(
+        env,
+        late=("FIL-0002",),
+        eligibility=(("FIL-0003", "lumpy", ONE_ROUTED_CAUSE),),
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+    )
+    client = _dal_client(env)
+
+    text = _text(client.get("/resultados").text)
+    assert f"FIL-0003 Lumpy (Grumosa) Excluido antes de M3: {ONE_ROUTED_CAUSE}" in text
+    assert "Excluido antes de M3: lanzado despues del corte" in text
+    assert "Sin veredicto M3" not in text
+
+    detail = _text(client.get("/resultados/sku/FIL-0003").text)
+    assert "Excluido antes de M3" in detail and ONE_ROUTED_CAUSE in detail
+    assert "No es un veredicto ni un fallo técnico." in detail
+    # The cut t* explains a late launch, not an exclusion decided in M2.
+    assert "corte t*" not in detail
+    assert "corte t* 2026-03-13" in _text(client.get("/resultados/sku/FIL-0002").text)
+
+
 def test_a_test_that_did_not_run_shows_its_cause_not_a_p_value(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

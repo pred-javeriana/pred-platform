@@ -72,9 +72,11 @@ class StatusRead:
 class PublishedRead:
     """The run and, when it is PUBLICADA, one page of rows and the total of the query.
 
-    ``t_star`` and ``late_launches`` come from M3's SQLite publication in the same snapshot.
-    ``verdict_counts`` counts the run's verdicts for the funnel. Observations also read the cut
-    to distinguish old publications from an empty reserve.
+    ``t_star``, ``late_launches`` and ``eligibility_exclusions`` come from M3's SQLite
+    publication in the same snapshot. ``eligibility_exclusions`` is ``None`` when the run was
+    published before M3 listed the products M2 excluded. ``verdict_counts`` counts the run's
+    verdicts for the funnel. Observations also read the cut to distinguish old publications from
+    an empty reserve.
     """
 
     run: dict[str, Any] | None
@@ -83,6 +85,7 @@ class PublishedRead:
     t_star: str | None = None
     late_launches: list[dict[str, Any]] | None = None
     verdict_counts: dict[str, int] | None = None
+    eligibility_exclusions: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +250,17 @@ def _policy(protocolo: str | None) -> dict[str, Any] | None:
     return {key: politica.get(key) for key in _POLICY_KEYS}
 
 
+def _lists_eligibility_exclusions(conn: sqlite3.Connection, protocolo: str | None) -> bool:
+    """Whether M3 published the run's M2 exclusions in ``m3_exclusiones``.
+
+    The engine fixes them with the protocol that carries the reserve blocks (``bloques``, engine
+    ADR-023). An older run has no rows there even if M2 excluded products, so it reports none.
+    """
+    if protocolo is None or not _has(conn, "m3_exclusiones"):
+        return False
+    return "bloques" in json.loads(protocolo)
+
+
 def _run(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
     """``M3Run`` fields of one ``m3_corridas`` row, with every PUBLICADA run of its identity."""
     published = [
@@ -372,6 +386,7 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
             return PublishedRead(run, [], 0)
         t_star = None
         late_launches = None
+        eligibility = None
         if kind in ("evidence", "observations") and _has(conn, "m3_cortes"):
             cut = conn.execute(
                 "SELECT t_star FROM m3_cortes WHERE run_id = ?", (run_id,)
@@ -387,8 +402,19 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
                             (run_id,),
                         )
                     ]
+                    if _lists_eligibility_exclusions(conn, row["protocolo"]):
+                        eligibility = [
+                            dict(item)
+                            for item in conn.execute(
+                                "SELECT sku, sku_class, codigo, causa FROM m3_exclusiones "
+                                "WHERE run_id = ? ORDER BY sku",
+                                (run_id,),
+                            )
+                        ]
         if not _has(conn, table.name):
-            return PublishedRead(run, [], 0, t_star, late_launches)
+            return PublishedRead(
+                run, [], 0, t_star, late_launches, eligibility_exclusions=eligibility
+            )
         rows, total = _select_page(conn, table.name, query, [("run_id", run_id)])
         for item in rows:
             item["ingesta_sha256"] = run["ingesta_sha256"]
@@ -405,4 +431,4 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
                     (run_id,),
                 ).fetchall()
             )
-        return PublishedRead(run, rows, total, t_star, late_launches, counts)
+        return PublishedRead(run, rows, total, t_star, late_launches, counts, eligibility)

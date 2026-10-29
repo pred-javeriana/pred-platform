@@ -46,7 +46,7 @@ $env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-eng
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
 (`pred_platform.data`) that returns documents of the frontend <-> engine data contract
-(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.1.0 for M3's published
+(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.2.0 for M3's published
 evidence (the `*_m3_*` operations) and v1.1.0 for ingestion, M2 selection, run status and
 capabilities.
 
@@ -145,7 +145,7 @@ The engine writes M3 results into this same SQLite database through an injected 
 Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
 standalone result database. It applies pending M3 migrations itself on an existing platform
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
-5 through 10, so both processes agree on `user_version`.
+5 through 11, so both processes agree on `user_version`.
 
 The views read it through `DataRepository` as contract v2 documents (M4, Notion 4.1):
 `list_m3_runs` resolves an M2 reference or an identity to its exact M3 runs and names the newest
