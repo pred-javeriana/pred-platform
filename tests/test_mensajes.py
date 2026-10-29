@@ -32,6 +32,7 @@ CODIGOS_DEL_CONTRATO = {
     "selection.router_config",
     "model.series_too_short",
     "model.fit_failed",
+    "model.degenerate_forecast",
     "model.foundation_unavailable",
     "hpo.invalid_space",
     "hpo.study_failed",
@@ -154,6 +155,15 @@ def test_la_fila_es_la_del_archivo_con_la_cabecera_como_fila_uno() -> None:
 )
 def test_los_errores_transitorios_se_pueden_reintentar(codigo: str) -> None:
     assert mensajes.reintentable(codigo) is True
+
+
+def test_un_pronostico_degenerado_tiene_su_mensaje_y_no_se_reintenta() -> None:
+    descripcion = mensajes.describir({"code": "model.degenerate_forecast", "stage": "L2"})
+    assert descripcion.titulo == (
+        "El pronóstico final del modelo fue degenerado y no se entregó para la comparación."
+    )
+    assert descripcion.accion
+    assert descripcion.reintentable is False
 
 
 def test_los_errores_de_datos_no_se_reintentan_sin_cambiar_algo() -> None:
