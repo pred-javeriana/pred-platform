@@ -495,6 +495,38 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
     assert json.loads(skipped[0][2])["code"] == "eligibility.no_reserved_observations"
 
 
+def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # FIL-0003 delivers only foundation in L2: the two-family rule excludes it after its
+    # other units failed. They keep their error; foundation never ran L3.
+    _scenario(monkeypatch, "excluded_after_l2")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+
+    env.worker().run_next()
+
+    assert _run_state(env)[0] == "completada_con_fallos"
+    tasks = env.rows(
+        "SELECT modelo, estado, detalle_error FROM tareas WHERE sku = 'FIL-0003' ORDER BY modelo"
+    )
+    assert [(m, e, json.loads(d)["code"]) for m, e, d in tasks] == [
+        ("classical:sarima", "fallida", "model.fit_failed"),
+        ("dl:mlp", "fallida", "model.fit_failed"),
+        ("foundation:chronos2", "no_ejecutable", "eligibility.fewer_than_two_families"),
+        ("ml:lightgbm", "fallida", "model.fit_failed"),
+    ]
+    families = env.rows(
+        "SELECT f.familia, f.estado FROM seleccion_familias f "
+        "JOIN selecciones s ON s.id = f.seleccion_id WHERE s.sku = 'FIL-0003' ORDER BY f.familia"
+    )
+    assert families == [
+        ("classical", "fallida"),
+        ("dl", "excluida"),
+        ("foundation", "no_ejecutable"),
+        ("ml", "excluida"),
+    ]
+
+
 # ------------------------------------------------------------------- engine problems
 def test_subsecond_summary_rewrite_is_not_confused_with_an_old_attempt(
     env: Env, monkeypatch: pytest.MonkeyPatch

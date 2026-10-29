@@ -3,7 +3,8 @@
 Applying an event is idempotent: replaying the whole file (after a restart) leaves the same rows.
 The state of a task follows the unit: ``planned`` -> ``pendiente``, ``unit_started`` ->
 ``ejecutando``, a unit finished in L3 -> ``exitosa``, a unit that failed -> ``fallida``, and a
-skipped SKU -> ``no_ejecutable`` (section 7.4 and 18 of the data contract).
+skipped SKU -> ``no_ejecutable`` (section 7.4 and 18 of the data contract), except a unit of
+it that already failed.
 """
 
 from __future__ import annotations
