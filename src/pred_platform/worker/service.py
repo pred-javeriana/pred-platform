@@ -32,7 +32,7 @@ class LaunchSettings:
     step: int = 7
     seasonality: int = 7
     metric: Literal["mae", "rmse", "smape", "mase"] = "rmse"
-    families: tuple[str, ...] = ("classical", "ml", "dl")
+    families: tuple[str, ...] = _FAMILIES
     trials: int | None = None
     seed: int = 0
     datos_sinteticos: bool | None = None

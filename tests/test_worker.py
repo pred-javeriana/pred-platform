@@ -281,7 +281,7 @@ def test_a_run_is_queued_with_its_parameters(env: Env) -> None:
     parametros = json.loads(env.rows("SELECT parametros FROM configuraciones")[0][0])
     assert parametros["schema_version"] == 2
     assert (parametros["min_train"], parametros["metric"], parametros["trials"]) == (40, "mae", 1)
-    assert parametros["families"] == ["classical", "ml", "dl"]
+    assert parametros["families"] == ["classical", "ml", "dl", "foundation"]
 
 
 def test_asking_again_for_the_same_run_returns_the_existing_one(env: Env) -> None:
@@ -444,10 +444,15 @@ def test_a_run_ends_with_all_its_tasks_done(env: Env, monkeypatch: pytest.Monkey
     assert ruta == f"runs/{queued.run_id}"
     assert json.loads(reserva)["t_star"] == "2026-03-13"
     tasks = env.rows("SELECT sku, modelo, corte, estado, tiempo_pared_s FROM tareas ORDER BY id")
-    assert len(tasks) == 9  # 3 SKU x 3 families
+    assert len(tasks) == 12  # 3 SKU x 4 families
     assert {t[3] for t in tasks} == {"exitosa"}
     assert {t[2] for t in tasks} == {"2026-03-13"}  # the reserve cut t*, decision D6
-    assert {t[1] for t in tasks} == {"classical:sarima", "ml:lightgbm", "dl:mlp"}
+    assert {t[1] for t in tasks} == {
+        "classical:sarima",
+        "ml:lightgbm",
+        "dl:mlp",
+        "foundation:chronos2",
+    }
     assert {t[4] for t in tasks} == {2.0}  # 1.5 s in L2 + 0.5 s in L3
 
 
@@ -460,7 +465,7 @@ def test_a_failed_unit_does_not_stop_the_others(env: Env, monkeypatch: pytest.Mo
     estado, _ = _run_state(env)
     assert estado == "completada_con_fallos"
     counts = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
-    assert counts == {"exitosa": 8, "fallida": 1}
+    assert counts == {"exitosa": 11, "fallida": 1}
     ((error_json,),) = env.rows("SELECT detalle_error FROM tareas WHERE estado = 'fallida'")
     error = json.loads(error_json)
     assert (error["code"], error["stage"]) == ("model.fit_failed", "L2")
@@ -484,6 +489,7 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
     assert [(s[0], s[1]) for s in skipped] == [
         ("FIL-0003", "classical:sarima"),
         ("FIL-0003", "dl:mlp"),
+        ("FIL-0003", "foundation:chronos2"),
         ("FIL-0003", "ml:lightgbm"),
     ]
     assert json.loads(skipped[0][2])["code"] == "eligibility.no_reserved_observations"
@@ -588,7 +594,7 @@ def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
     assert "L4" in error["detail"]
     # The successful L2/L3 tasks stay stored.
     counts = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
-    assert counts.get("exitosa", 0) == 9  # 3 SKU × 3 families
+    assert counts.get("exitosa", 0) == 12  # 3 SKU × 4 families
     assert counts.get("fallida", 0) == 0
     # The per-SKU selection (G4) was imported and linked.
     assert env.rows("SELECT COUNT(*) FROM selecciones")[0][0] > 0
@@ -721,7 +727,7 @@ def test_resumed_follower_ignores_history_but_applies_events_written_after_its_c
     assert env.rows("SELECT estado FROM tareas WHERE sku='FIL-0002' AND modelo='ml:lightgbm'") == [
         ("ejecutando",)
     ]
-    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado='exitosa'") == [(8,)]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado='exitosa'") == [(11,)]
 
 
 def test_final_trace_import_never_marks_completed_work_running_again(
@@ -763,7 +769,7 @@ def test_resuming_a_stopped_run_reuses_its_rows(env: Env, monkeypatch: pytest.Mo
     ((estado, intento),) = env.rows("SELECT estado, intento FROM ejecuciones")
     assert (estado, intento) == ("completada", 2)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
-    assert env.rows("SELECT COUNT(*), COUNT(DISTINCT sku || modelo) FROM tareas") == [(9, 9)]
+    assert env.rows("SELECT COUNT(*), COUNT(DISTINCT sku || modelo) FROM tareas") == [(12, 12)]
     assert env.rows("SELECT DISTINCT estado FROM tareas") == [("exitosa",)]
 
 
@@ -798,7 +804,7 @@ def test_recovery_after_m3_publication_only_requeues_unreaped_claims(
     monkeypatch.setattr(engine, "is_alive", lambda pid: False)
     env.worker().recover()
     assert _run_state(env)[0] == "pendiente"
-    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado='exitosa'") == [(9,)]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado='exitosa'") == [(12,)]
     assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
     env.worker().run_next()
     assert _run_state(env)[0] == "completada"
@@ -874,8 +880,8 @@ def test_the_repository_returns_a_valid_run_status(
     assert (status.settings.min_train, status.settings.metric) == (40, "mae")
     assert status.reserve is not None and status.reserve.t_star == "2026-03-13"
     assert status.progress is not None
-    assert status.progress.tareas_total == 9
-    assert status.progress.tareas_por_estado["exitosa"] == 8
+    assert status.progress.tareas_total == 12
+    assert status.progress.tareas_por_estado["exitosa"] == 11
     assert status.progress.tareas_por_estado["fallida"] == 1
     assert status.progress.avance_pct == 100.0
     failed = [t for t in status.tasks if t.estado == "fallida"]
@@ -896,15 +902,15 @@ def test_run_status_filters_and_pages_in_sql_but_keeps_the_whole_progress(
     only_failed = repo.get_run_status("1", estado="fallida")
     assert [(t.sku, t.modelo) for t in only_failed.tasks] == [("FIL-0002", "ml:lightgbm")]
     assert only_failed.page is not None and only_failed.page.total == 1
-    assert only_failed.progress is not None and only_failed.progress.tareas_total == 9
+    assert only_failed.progress is not None and only_failed.progress.tareas_total == 12
 
     by_sku = repo.get_run_status("1", sku="FIL-0001")
-    assert {t.sku for t in by_sku.tasks} == {"FIL-0001"} and len(by_sku.tasks) == 3
+    assert {t.sku for t in by_sku.tasks} == {"FIL-0001"} and len(by_sku.tasks) == 4
     by_family = repo.get_run_status("1", family="dl")
     assert {t.family for t in by_family.tasks} == {"dl"}
 
     second = repo.get_run_status("1", size=4, page=2)
-    assert len(second.tasks) == 4 and second.page is not None and second.page.total == 9
+    assert len(second.tasks) == 4 and second.page is not None and second.page.total == 12
 
 
 def test_no_run_yet_is_an_empty_state_and_an_unknown_run_is_missing(env: Env) -> None:
@@ -993,7 +999,7 @@ def test_the_cli_launches_runs_and_reports_status(
 
     out = capsys.readouterr().out
     assert code == 0 and "en cola" in out
-    assert "completada" in out and "9 exitosa" in out
+    assert "completada" in out and "12 exitosa" in out
     assert worker_main(["--status"]) == 0
     assert "completada" in capsys.readouterr().out
 

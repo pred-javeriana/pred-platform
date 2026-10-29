@@ -92,7 +92,7 @@ def build_command(settings: Settings, run: Ejecucion, parquet: Path) -> list[str
         "--run-id",
         run.run_id,
         "--families",
-        *[str(f) for f in p.get("families", ["classical", "ml", "dl"])],
+        *[str(f) for f in p.get("families", ["classical", "ml", "dl", "foundation"])],
         "--min-train",
         str(p["min_train"]),
         "--horizon",

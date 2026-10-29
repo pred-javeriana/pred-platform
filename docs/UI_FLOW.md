@@ -86,8 +86,9 @@ Exitosa, Fallida y No Ejecutable; no se alteran las claves almacenadas ni los fi
 
 `podada` tiene representación propia. No reutiliza el tratamiento de `fallida`.
 
-El formulario permite seleccionar Fundacional (Chronos-2); sus dependencias y pesos
-deben estar disponibles en el entorno del motor. También permite declarar el origen
+El formulario marca por defecto las cuatro familias, incluida Fundacional (Chronos-2),
+y permite desmarcar cualquiera; Fundacional necesita el extra foundation y los pesos
+disponibles en el entorno del motor. También permite declarar el origen
 de los datos: Reales, Sintéticos o no declarar/conservar el registro existente.
 La opción por defecto no afirma que sean reales. El formulario entrega la declaración
 a `LaunchSettings.datos_sinteticos` y `RunControl`; el motor resuelve el origen

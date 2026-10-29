@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,8 @@ from tests.test_worker import SMALL, Env, _scenario, enqueue_run
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 RUN = "1"
+# The selection fixtures leave Foundation out of the run: it has no configured model there.
+WITHOUT_FOUNDATION = replace(SMALL, families=("classical", "ml", "dl"))
 
 
 def _conforms(document: Any, kind: str) -> None:
@@ -43,7 +46,7 @@ def _run(env: Env, monkeypatch: pytest.MonkeyPatch, scenario: str = "ok", **more
     _scenario(monkeypatch, scenario)
     for name, value in more.items():
         monkeypatch.setenv(name, value)
-    enqueue_run(env.settings, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, WITHOUT_FOUNDATION)
     env.worker().run_next()
 
 
@@ -399,7 +402,7 @@ def test_the_legacy_champion_table_is_never_read(env: Env, monkeypatch: pytest.M
 
 
 def test_a_run_that_has_not_finished_has_no_selection_yet(env: Env) -> None:
-    enqueue_run(env.settings, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, WITHOUT_FOUNDATION)
 
     doc = env.repo().list_sku_selections(RUN)
 
@@ -425,7 +428,7 @@ def test_unknown_runs_and_skus_are_missing_and_no_run_is_an_empty_state(env: Env
     )
     with pytest.raises(ArtifactMissing, match="No existe la ejecución '9'"):
         repo.get_sku_selection("9", "FIL-0001")
-    enqueue_run(env.settings, env.ingest_id, SMALL)
+    enqueue_run(env.settings, env.ingest_id, WITHOUT_FOUNDATION)
     with pytest.raises(ArtifactMissing, match="No existe la ejecución '9'"):
         repo.list_sku_selections("9")
 
