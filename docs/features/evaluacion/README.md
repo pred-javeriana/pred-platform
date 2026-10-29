@@ -99,7 +99,9 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   la página. El corte t* y los productos lanzados después del corte se leen de `m3_cortes` y
   `m3_lanzamientos_tardios`, publicados por M3 en SQLite. Si la corrida no tiene fila en
   `m3_cortes`, la evidencia responde `metadata_missing`, sin embudo ni filas: la falta de
-  metadatos no significa cero exclusiones.
+  metadatos no significa cero exclusiones. Si la corrida no tiene fila en `m3_cortes`,
+  `get_m3_observations` también responde `metadata_missing` y pide volver a ejecutarla. Las demás
+  operaciones siguen disponibles.
 - **Exclusiones de M2.** `eligibility_exclusions` lista, desde `m3_exclusiones`, los productos que
   M2 excluyó de la competencia (por ejemplo, `eligibility.fewer_than_two_families`, la regla de
   dos familias), con su clase, código y causa; `funnel.eligibility_excluded_count` los cuenta y
@@ -107,8 +109,6 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   protocolo no tiene bloques de reserva (`bloques`) se publicó antes de que M3 listara esas
   exclusiones: los dos campos son nulos, porque la falta de filas no significa cero. Resultados
   muestra la causa publicada de cada producto excluido en la lista «Por SKU» y en su detalle.
-  `get_m3_observations` también responde `metadata_missing` para esa publicación antigua y pide
-  volver a ejecutar la corrida. Las demás operaciones siguen disponibles.
 - **Demanda y campeones.** `get_m3_observations` conserva las fechas y los valores nulos de la
   reserva. `get_m3_champions` lee los conteos por familia que publica la vista del motor, sin
   calcularlos; las filas con `sku_class` nula corresponden a toda la cartera.
