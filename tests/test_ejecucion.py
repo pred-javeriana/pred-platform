@@ -496,7 +496,10 @@ def test_the_default_form_is_valid_and_matches_the_engines_defaults() -> None:
     )
 
     assert result.errors == {} and result.settings is not None
-    assert result.settings.families == ("classical", "ml", "dl") and result.settings.trials is None
+    assert (
+        result.settings.families == ("classical", "ml", "dl", "foundation")
+        and result.settings.trials is None
+    )
     assert (result.settings.min_train, result.settings.workers) == (40, 2)
 
 

@@ -35,7 +35,7 @@
       {% for code, label in family_choices %}
       <label class="pred-field__check" for="fam-{{ code }}">
         <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}{% if code in form.families %} checked{% endif %}>
-        <span>{{ label }}{% if code == "foundation" %} · requiere torch y chronos-forecasting en el entorno del motor{% endif %}</span>
+        <span>{{ label }}{% if code == "foundation" %} · requiere el extra foundation (torch, chronos-forecasting) y los pesos en el entorno del motor{% endif %}</span>
       </label>
       {% endfor %}
       {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}

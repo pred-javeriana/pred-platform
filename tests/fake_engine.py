@@ -343,7 +343,7 @@ def main() -> int:
     )
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--run-id")
-    parser.add_argument("--families", nargs="+", default=["classical", "ml", "dl"])
+    parser.add_argument("--families", nargs="+", default=ALL_FAMILIES)
     parser.add_argument("--trials")
     parser.add_argument("--min-train")
     parser.add_argument("--horizon")

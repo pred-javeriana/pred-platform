@@ -138,7 +138,7 @@ def test_a_stopped_run_resumes_with_the_same_parameters_and_the_same_task_rows(
 
     assert _state(env)[0] == "completada"
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
-    assert env.rows("SELECT COUNT(*) FROM tareas") == [(9,)]
+    assert env.rows("SELECT COUNT(*) FROM tareas") == [(12,)]
 
 
 def test_resuming_puts_the_tasks_the_stop_closed_back_to_pending(
@@ -206,7 +206,7 @@ def test_a_run_with_failures_can_be_retried(env: Env, monkeypatch: pytest.Monkey
     env.worker().run_next()
 
     assert _state(env)[0] == "completada"
-    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(9,)]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(12,)]
 
 
 @pytest.mark.parametrize("scenario", ["completed", "pending"])
