@@ -203,14 +203,6 @@ def test_summary_tabs_are_honestly_unavailable_until_the_champion_exists(vista: 
     assert repo.list_calls == []  # nothing is read, nothing is invented
 
 
-def test_summary_tabs_say_when_the_champion_exists_but_the_view_does_not() -> None:
-    client, _ = _client("normal")  # capabilities.todo_disponible
-    html = client.get("/resultados?vista=clase").text
-
-    assert "Esta vista todavía no está construida." in html
-    assert "Todavía no hay campeón por SKU." not in html
-
-
 # ------------------------------------------------------------------------- el detalle
 def test_the_detail_shows_four_families_with_evidence_trials_and_a_pending_champion() -> None:
     client, repo = _client("normal")
@@ -811,3 +803,98 @@ def test_the_reserve_windows_are_only_read_on_demand(
     assert "RMSE campeón" not in text and "2026-03-15" not in text
     [link] = re.findall(r'href="([^"]*reserva=1[^"]*)"', html)
     assert "m3=m3-real-1" in link
+
+
+# ---------------------------------------------------- el panel lateral de las otras pestañas
+@pytest.mark.parametrize("vista", ["resumen", "errores"])
+def test_the_side_panel_names_the_m3_run_and_the_data_origin(
+    env: Env, monkeypatch: pytest.MonkeyPatch, vista: str
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    text = _text(_dal_client(env).get(f"/resultados?vista={vista}").text)
+
+    assert "Corrida M3 m3-real-1 PUBLICADA" in text
+    assert "Origen de los datos: reales (declarado)" in text
+
+
+@pytest.mark.parametrize("vista", ["resumen", "errores"])
+def test_the_side_panel_announces_duplicates_with_links_that_keep_the_tab(
+    env: Env, monkeypatch: pytest.MonkeyPatch, vista: str
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, run_id="m3-real-0", creado_en="2026-10-26 10:00:00")
+    _publish_for_the_run(env, verdicts={"FIL-0001": ("smooth", "EXPLORATORIO")})
+    html = _dal_client(env).get(f"/resultados?vista={vista}").text
+
+    assert _notice(html) == (
+        "Hay varias corridas PUBLICADA con esta identidad. Se muestra m3-real-1."
+    )
+    assert f'href="/resultados?vista={vista}&amp;m3=m3-real-0"' in html
+
+
+@pytest.mark.parametrize("vista", ["resumen", "errores"])
+def test_without_an_m3_run_the_side_panel_invents_no_origin_and_the_cause_shows_once(
+    env: Env, monkeypatch: pytest.MonkeyPatch, vista: str
+) -> None:
+    _run(env, monkeypatch)
+    text = _text(_dal_client(env).get(f"/resultados?vista={vista}").text)
+
+    assert "Origen de los datos: no informado en esta vista" in text
+    assert text.count("Esta ejecución todavía no tiene evaluación M3.") == 1
+
+
+# --------------------------------------------------------------------------- por clase
+def _by_class(env: Env, query: str = "") -> str:
+    text = _text(_dal_client(env).get(f"/resultados?vista=clase{query}").text)
+    assert "Campeón por clase" in text
+    return text.split("Campeón por clase", 1)[1]
+
+
+def test_by_class_shows_the_champion_its_reason_and_each_family_median(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    by_class = _by_class(env)
+
+    assert "Smooth (Suave) Clásica Menor mediana de r 0,800 campeona — — — 1,000" in by_class
+    assert "Intermittent (Intermitente) Clásica" in by_class
+
+
+def test_by_class_details_compared_and_excluded_skus_left_out_families_and_verdicts(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(
+        env,
+        verdicts={
+            "FIL-0001": ("smooth", "VALIDADO"),
+            "FIL-0004": ("smooth", "EVIDENCIA_INSUFICIENTE"),
+        },
+        excluded_from_class={"FIL-0004": "sin_razon_calculable:classical"},
+    )
+    by_class = _by_class(env)
+
+    assert "SKU comparados FIL-0001" in by_class
+    assert "SKU excluidos de la selección FIL-0004: sin_razon_calculable:classical" in by_class
+    assert "Familias fuera DL: no_entregada" in by_class
+    assert (
+        "Veredictos VALIDADO 1 · EXPLORATORIO 0 · FALLO_TECNICO 0 · NO_EVALUABLE 0 · "
+        "EVIDENCIA_INSUFICIENTE 1"
+    ) in by_class
+
+
+def test_by_class_without_a_published_run_or_with_a_rejected_one_shows_the_cause(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    client = _dal_client(env)
+    text = _text(client.get("/resultados?vista=clase").text)
+    assert "Esta ejecución todavía no tiene evaluación M3." in text
+    assert "Campeón por clase" not in text
+
+    _publish_for_the_run(env, estado="RECHAZADA")
+    rejected = _text(client.get("/resultados?vista=clase&m3=m3-real-1").text)
+    assert "La corrida M3 no está publicada." in rejected
+    assert "Campeón por clase" not in rejected

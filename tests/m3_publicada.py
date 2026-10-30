@@ -154,6 +154,7 @@ def publish(
     significant: tuple[str, ...] = (),
     extra_portfolio: list[tuple[object, ...]] | None = None,
     windows: dict[str, list[tuple[str, float, float, float | None, str | None]]] | None = None,
+    excluded_from_class: dict[str, str] | None = None,
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
 
@@ -163,6 +164,7 @@ def publish(
     familia, metrica, n_skus, n_instancias, n_calculables, n_no_calculables, media, mediana, p25,
     p75) beside the RMSE of the classical family and the baseline. ``windows`` publishes, per SKU,
     the reserve windows (fecha, RMSE of the champion, RMSE of the baseline, r, cause of a null r).
+    ``excluded_from_class`` leaves SKUs (SKU -> cause) out of their class's champion selection.
     """
     synthetic, declared, untested = _ORIGINS[origin]
     with closing(sqlite3.connect(db)) as conn:
@@ -222,12 +224,25 @@ def publish(
                 "INSERT INTO m3_categorias (run_id, sku_class, familia_campeona, motivo, adverso, "
                 "medianas_r, skus_comparables, excluidos, familias_excluidas, conteos, "
                 "porcentajes, mediana_r, n_adversos) VALUES (?, ?, 'classical', 'menor_mediana', "
-                "0, ?, ?, '{}', ?, ?, ?, 0.8, ?)",
+                "0, ?, ?, ?, ?, ?, ?, 0.8, ?)",
                 (
                     run_id,
                     sku_class,
                     json.dumps({"classical": 0.8, "seasonal_naive": 1.0}),
-                    json.dumps(sorted(s for s, (c, _) in verdicts.items() if c == sku_class)),
+                    json.dumps(
+                        sorted(
+                            s
+                            for s, (c, _) in verdicts.items()
+                            if c == sku_class and s not in (excluded_from_class or {})
+                        )
+                    ),
+                    json.dumps(
+                        {
+                            s: cause
+                            for s, cause in (excluded_from_class or {}).items()
+                            if verdicts[s][0] == sku_class
+                        }
+                    ),
                     json.dumps({"dl": "no_entregada"}),
                     json.dumps(conteos),
                     json.dumps({v: 100.0 * n / total for v, n in conteos.items()}),

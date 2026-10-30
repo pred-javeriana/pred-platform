@@ -13,6 +13,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from pred_platform.app.presentation import SKU_CLASS_ORDER
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
@@ -232,6 +233,42 @@ def profiles(
     if portfolio.availability.status != "available":
         return M3Profiles(problem=_unavailable_evidence(portfolio.availability), metrica=metrica)
     return M3Profiles(run=resolved, metrica=metrica, rows=portfolio.items)
+
+
+@dataclass(frozen=True, slots=True)
+class M3Classes:
+    """El campeón que M3 publicó para cada clase de demanda (``m3_categorias``)."""
+
+    run: models_v2.M3Run | None = None
+    problem: M3Problem | None = None
+    rows: list[models_v2.M3Category] = field(default_factory=list)
+
+
+# Las familias que compiten por clase, en el orden de la tabla; la línea base va al final.
+CLASS_FAMILIES: tuple[str, ...] = ("classical", "ml", "dl", "foundation", "seasonal_naive")
+MOTIVOS: dict[str, str] = {
+    "menor_mediana": "Menor mediana de r",
+    "empate_por_simplicidad": "Empate resuelto por simplicidad",
+    "compuerta_linea_base": "Ninguna familia supera a la línea base",
+    "sin_skus_comparables": "Sin SKU comparables",
+}
+
+
+def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Classes:
+    """Resuelve la corrida M3 de ``m2_run_id`` y lee el campeón publicado de cada clase."""
+    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+    if isinstance(resolved, M3Problem):
+        return M3Classes(problem=resolved)
+    categories = repository.get_m3_categories(resolved.run_id, size=MAX_SIZE)
+    if categories.availability.status != "available":
+        return M3Classes(problem=_unavailable_evidence(categories.availability))
+    rows = sorted(categories.items, key=lambda row: SKU_CLASS_ORDER.index(row.sku_class))
+    return M3Classes(run=resolved, rows=rows)
+
+
+def verdict_counts(row: models_v2.M3Category) -> list[tuple[str, int]]:
+    """Los cinco conteos de veredictos de una clase, en el orden de los grupos del contrato."""
+    return [(v, getattr(row.conteos, v)) for veredictos in GROUPS.values() for v in veredictos]
 
 
 @dataclass(frozen=True, slots=True)

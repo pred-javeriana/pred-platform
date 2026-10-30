@@ -21,6 +21,9 @@ from pred_platform.worker.engine import MODELO_POR_FAMILIA, log_tail, model_id
 from pred_platform.worker.errores import error_info, exclusion_info, platform_error
 from pred_platform.worker.seleccion import import_selection
 
+# El mensaje con que el motor rechaza un run_id cuya identidad guardada cambió (run_artifacts.py).
+INCOMPATIBLE_RUN = "run_id incompatible con la entrada o configuracion previa"
+
 
 def _read_units(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
@@ -67,12 +70,18 @@ def finalize(
         detail = log_tail(log_path) or (
             f"El motor terminó con código {returncode} sin publicar corrida.json de este intento."
         )
+        # El motor rechaza reanudar una corrida cuya identidad guardada (entrada, ajustes o huella
+        # del código) ya no coincide: no es un artefacto perdido y reintentarla no sirve.
+        incompatible = INCOMPATIBLE_RUN in detail
         dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
         dal.finish_run(
             conn,
             run.id,
             estado="detenida",
-            error=platform_error("platform.artifact_missing", detail),
+            error=platform_error(
+                "run.incompatible_config" if incompatible else "platform.artifact_missing",
+                f"error: {INCOMPATIBLE_RUN}" if incompatible else detail,
+            ),
         )
         return "detenida"
 

@@ -526,6 +526,40 @@ def test_retry_that_crashes_cannot_import_the_previous_attempt_as_its_final_resu
     ]
 
 
+def test_a_run_the_engine_refuses_as_incompatible_says_so_and_relaunching_starts_a_new_one(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
+    env.worker().run_next()
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, first.ejecucion_id) is False  # completed: nothing to resume
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'detenida' WHERE id = ?", (first.ejecucion_id,)
+        )
+        conn.commit()
+        assert dal.resume_run(conn, first.ejecucion_id)
+    _scenario(monkeypatch, "incompatible")
+    env.worker().run_next()
+
+    state, error = _run_state(env)
+    assert state == "detenida"
+    assert json.loads(error or "{}")["code"] == "run.incompatible_config"
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, first.ejecucion_id) is False  # resuming would fail again
+
+    _scenario(monkeypatch, "ok")
+    again = enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert again.queued and again.ejecucion_id != first.ejecucion_id
+    assert again.run_id == f"{first.run_id}-2"
+    env.worker().run_next()
+    assert env.rows("SELECT estado FROM ejecuciones WHERE id = ?", again.ejecucion_id) == [
+        ("completada",)
+    ]
+    # Asking once more resolves to the new run, not to the refused one.
+    assert enqueue_run(env.settings, env.ingest_id, SMALL).ejecucion_id == again.ejecucion_id
+
+
 def test_an_engine_that_dies_leaves_a_stopped_run_and_no_task_in_flight(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

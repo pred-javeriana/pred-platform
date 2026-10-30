@@ -16,6 +16,7 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     slow_m3       L2 and L3 complete, M3 stores the first SKU, then waits until it is killed
     m3_ok         like ok, but M3 is published (exit 0) without L4 events, as a resume reusing it
     future_schema writes a progress stream of an unsupported major version
+    incompatible  refuses the run_id (its stored identity differs) without writing anything
 
 ``classify --csv <file> --data-root <root> [--confirm-overwrite]`` plays the ingestion the browser
 upload launches: it leaves ``ingestas/<sha256>.json`` (copied from ``tests/fixtures/motor``) chosen
@@ -383,6 +384,11 @@ def main() -> int:
     skus = os.environ.get("FAKE_ENGINE_SKUS", "FIL-0001,FIL-0002,FIL-0003").split(",")
     folder = Path(args.data_root) / "runs" / args.run_id
     folder.mkdir(parents=True, exist_ok=True)
+    if scenario == "incompatible":
+        # The real engine refuses to resume a run whose stored identity (input, settings or code
+        # fingerprint) differs, before writing anything.
+        print("error: run_id incompatible con la entrada o configuracion previa", file=sys.stderr)
+        return 1
     stream = Stream(folder / "progreso.jsonl")
     attempt = (
         1 + sum(1 for line in stream.path.read_text().splitlines() if '"run_started"' in line)

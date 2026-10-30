@@ -18,10 +18,14 @@ from fastapi.responses import HTMLResponse
 
 from pred_platform.app.datos import error_view, page_meta
 from pred_platform.app.resultados_m3 import (
+    CLASS_FAMILIES,
+    MOTIVOS,
     PROFILE_METRICS,
+    M3Classes,
     M3Decision,
     M3Profiles,
     M3Summary,
+    classes,
     decision,
     profiles,
     reserve_windows,
@@ -30,9 +34,11 @@ from pred_platform.app.resultados_m3 import (
 from pred_platform.app.seleccion import (
     FAMILY_ORDER,
     SelectionQuery,
+    family_label,
     parse_selection_query,
     run_action,
 )
+from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing, DataLayerError, InvalidQuery
 from pred_platform.contract.models import RunStatus, SkuSelection, SkuSelectionList
 from pred_platform.data.deps import get_repository
@@ -91,34 +97,55 @@ def resultados(
         m3=M3Decision(),
         m3_summary=M3Summary(),
         m3_profiles=M3Profiles(),
+        m3_classes=M3Classes(),
         metric_hrefs={},
         profile_metrics=PROFILE_METRICS,
+        class_families=CLASS_FAMILIES,
+        class_headers=[family_label(family) for family in CLASS_FAMILIES],
+        motivos=MOTIVOS,
         m3_hrefs={},
         tab_query=urlencode({"ejecucion": query.ejecucion}) if query.ejecucion != LATEST else "",
     )
     if vista == "sku" or vista is None:
         _fill_list(repository, query, context)
-    elif vista == "resumen" and context["champion_capability"].available:
+    elif vista in ("resumen", "errores", "clase") and context["champion_capability"].available:
         context["run"] = run = _run_header(repository, query.ejecucion)
         if run is not None and run.ejecucion is not None:
-            context["m3_summary"] = summary(repository, run.ejecucion.id, query.m3)
-    elif vista == "errores" and context["champion_capability"].available:
-        context["run"] = run = _run_header(repository, query.ejecucion)
-        if run is not None and run.ejecucion is not None:
-            found = profiles(
-                repository, run.ejecucion.id, query.m3, params.get("metrica") or "razon_sn"
-            )
-            context["m3_profiles"] = found
-            # Cada métrica conserva la ejecución y la corrida M3 resuelta, no «la más nueva».
-            base = {"vista": "errores"}
+            # Los enlaces de la pestaña conservan la ejecución y la corrida M3 resuelta.
+            base = {"vista": vista}
             if query.ejecucion != LATEST:
                 base["ejecucion"] = query.ejecucion
-            if found.run is not None:
-                base["m3"] = found.run.run_id
-            context["metric_hrefs"] = {
-                name: "/resultados?" + urlencode({**base, "metrica": name})
-                for name in PROFILE_METRICS
-            }
+            resolved: models_v2.M3Run | None
+            if vista == "resumen":
+                context["m3_summary"] = found_summary = summary(
+                    repository, run.ejecucion.id, query.m3
+                )
+                resolved = found_summary.run
+            elif vista == "clase":
+                context["m3_classes"] = found_classes = classes(
+                    repository, run.ejecucion.id, query.m3
+                )
+                resolved = found_classes.run
+            else:
+                context["m3_profiles"] = found_profiles = profiles(
+                    repository, run.ejecucion.id, query.m3, params.get("metrica") or "razon_sn"
+                )
+                resolved = found_profiles.run
+                metric_base = {**base, **({"m3": resolved.run_id} if resolved else {})}
+                context["metric_hrefs"] = {
+                    name: "/resultados?" + urlencode({**metric_base, "metrica": name})
+                    for name in PROFILE_METRICS
+                }
+            if resolved is not None:
+                # El panel lateral muestra la misma corrida M3 que la pestaña (sin su causa,
+                # que ya está en el área principal).
+                others = tuple(
+                    r for r in resolved.publicadas_misma_identidad if r != resolved.run_id
+                )
+                context["m3"] = M3Decision(run=resolved, others=others)
+                context["m3_hrefs"] = {
+                    other: "/resultados?" + urlencode({**base, "m3": other}) for other in others
+                }
     return request.app.state.templates.TemplateResponse(request, "pages/results.html", context)
 
 

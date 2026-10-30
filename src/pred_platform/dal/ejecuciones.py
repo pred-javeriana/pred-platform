@@ -141,6 +141,24 @@ def create_run(
         return int(cursor.lastrowid or 0), True
 
 
+def current_run_id(conn: sqlite3.Connection, run_id: str) -> str:
+    """El run_id que corresponde hoy a la identidad ``run_id`` de la plataforma.
+
+    Es el de su última generación (``run_id``, ``run_id-2``…). Si el motor rechazó esa generación
+    por identidad incompatible (por ejemplo, otra huella de su código), toca una nueva: reanudarla
+    fallaría siempre.
+    """
+    rows = conn.execute(
+        "SELECT run_id, json_extract(error_json, '$.code') FROM ejecuciones "
+        "WHERE run_id = ? OR run_id LIKE ? ORDER BY id",
+        (run_id, f"{run_id}-%"),
+    ).fetchall()
+    if not rows:
+        return run_id
+    last, code = rows[-1]
+    return f"{run_id}-{len(rows) + 1}" if code == "run.incompatible_config" else str(last)
+
+
 def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
     """Queue again a run that was stopped or ended with failures (inside a transaction).
 
@@ -149,11 +167,13 @@ def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
     the screen must not show them as finished. Successful tasks keep their result, and the ones
     in ``finalizo_m2`` keep M2: the engine restores it and only M3 is left to run.
     """
+    # Una corrida que el motor rechazó por identidad incompatible fallaría igual otra vez.
     queued = (
         conn.execute(
             "UPDATE ejecuciones SET estado = 'pendiente', error_json = NULL, "
             "finalizada_en = NULL, pid = NULL WHERE id = ? "
-            "AND estado IN ('detenida', 'completada_con_fallos')",
+            "AND estado IN ('detenida', 'completada_con_fallos') "
+            "AND COALESCE(json_extract(error_json, '$.code'), '') != 'run.incompatible_config'",
             (ejecucion_id,),
         ).rowcount
         == 1

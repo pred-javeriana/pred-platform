@@ -106,7 +106,7 @@ def enqueue_run(
     with closing(dal.connect(settings.db_path)) as conn, conn:
         conn.execute("BEGIN IMMEDIATE")
         dal.accepted_ingestion_id(conn, ingest_id)
-        run_id = run_id_for(ingest_id, chosen)
+        run_id = dal.current_run_id(conn, run_id_for(ingest_id, chosen))
         previa = conn.execute(
             "SELECT c.id, c.parametros, i.sha256, e.estado FROM ejecuciones e "
             "JOIN configuraciones c ON c.id=e.configuracion_id "
