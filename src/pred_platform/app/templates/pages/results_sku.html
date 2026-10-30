@@ -70,6 +70,26 @@
       </tr>
       {% endfor %}
       {{ table_end() }}
+      {% if reserve is not none %}
+      <h3 id="reserva">Ventanas de la reserva</h3>
+      <p class="pred-meta">RMSE del campeón y de Seasonal Naive, y r, en cada ventana de la reserva, tal como los publicó M3.</p>
+      {% for causa, count in reserve.sin_r.items() %}
+      <p class="pred-note">{{ count }} {{ "ventana" if count == 1 else "ventanas" }} sin r: <span class="mono">{{ causa }}</span></p>
+      {% endfor %}
+      {{ table_start(["Ventana", "RMSE campeón", "RMSE Seasonal Naive", "r frente a Seasonal Naive"], "Ventanas de la reserva de " ~ sku_id) }}
+      {% for window in reserve.windows %}
+      <tr>
+        <td><span class="mono">{{ window.fecha }}</span></td>
+        {% for value in (window.rmse_campeon, window.rmse_linea_base) %}
+        <td class="num">{% if value is not none %}{{ format_decimal(value, 3) }}{% else %}—{% endif %}</td>
+        {% endfor %}
+        <td class="num">{% if window.razon_sn is not none %}{{ format_decimal(window.razon_sn, 3) }}{% elif window.causa %}no calculable: <span class="mono">{{ window.causa }}</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {{ table_end() }}
+      {% else %}
+      <p class="pred-note" id="reserva"><a href="{{ reserve_href }}#reserva">Ver las {{ verdict.n_ventanas }} ventanas de la reserva</a></p>
+      {% endif %}
       {% elif m3.excluded.get(sku_id) %}
       <h2 class="pred-panel-title">Excluido antes de M3</h2>
       <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>

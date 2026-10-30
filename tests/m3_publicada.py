@@ -152,12 +152,17 @@ def publish(
     late: tuple[str, ...] = (),
     extra_models: dict[str, list[tuple[str, str, float | None]]] | None = None,
     significant: tuple[str, ...] = (),
+    extra_portfolio: list[tuple[object, ...]] | None = None,
+    windows: dict[str, list[tuple[str, float, float, float | None, str | None]]] | None = None,
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
 
     ``extra_models`` adds (familia, modelo, r) to a SKU's evaluated models, beside the baseline and
     the champion; only the verdict lists them. The HLN-DM test of the ``significant`` SKUs rejects
-    after BH; every other test does not.
+    after BH; every other test does not. ``extra_portfolio`` adds ``m3_cartera`` rows (sku_class,
+    familia, metrica, n_skus, n_instancias, n_calculables, n_no_calculables, media, mediana, p25,
+    p75) beside the RMSE of the classical family and the baseline. ``windows`` publishes, per SKU,
+    the reserve windows (fecha, RMSE of the champion, RMSE of the baseline, r, cause of a null r).
     """
     synthetic, declared, untested = _ORIGINS[origin]
     with closing(sqlite3.connect(db)) as conn:
@@ -305,5 +310,20 @@ def publish(
                     "INSERT INTO m3_cartera VALUES "
                     "(?, ?, ?, 'rmse', 2, 2, 2, 0, 1.5, 1.5, 1.2, 1.8)",
                     (run_id, sku_class, familia),
+                )
+        conn.executemany(
+            "INSERT INTO m3_cartera VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(run_id, *row) for row in extra_portfolio or []],
+        )
+        for sku, rows in (windows or {}).items():
+            champion, baseline = f"{sku}/classical/sarima", f"{sku}/seasonal_naive/seasonal_naive"
+            for fecha, rmse_champion, rmse_baseline, ratio, cause in rows:
+                conn.executemany(
+                    "INSERT INTO m3_metricas VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (run_id, sku, champion, fecha, "rmse", rmse_champion, None),
+                        (run_id, sku, baseline, fecha, "rmse", rmse_baseline, None),
+                        (run_id, sku, champion, fecha, "razon_sn", ratio, cause),
+                    ],
                 )
         conn.commit()

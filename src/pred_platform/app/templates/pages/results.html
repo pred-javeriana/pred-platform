@@ -21,6 +21,7 @@
     [
       {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "clase", "label": "Por clase", "href": "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "errores", "label": "Perfiles de error", "href": "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "sku", "label": "Por SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")}
     ],
     vista
@@ -30,6 +31,8 @@
     {% include "partials/results_sku_list.html" %}
   {% elif vista == "resumen" and champion_capability.available %}
     {% include "partials/results_summary.html" %}
+  {% elif vista == "errores" and champion_capability.available %}
+    {% include "partials/results_profiles.html" %}
   {% elif champion_capability.available %}
     {{ empty_state(
       "Esta vista todavía no está construida.",

@@ -683,3 +683,131 @@ def test_the_summary_of_an_unavailable_publication_shows_its_cause_not_zeros(
     assert "La publicación M3 no tiene sus metadatos de exclusión." in text
     assert "no significa cero exclusiones" in text
     assert "Prueba Diebold-Mariano" not in text
+
+
+# ------------------------------------------------------------------- los perfiles de error
+_R_PROFILES = [
+    ("smooth", "classical", "razon_sn", 3, 4, 3, 1, 0.82, 0.8, 0.7, 0.9),
+    ("smooth", "seasonal_naive", "razon_sn", 3, 3, 3, 0, 1.0, 1.0, 1.0, 1.0),
+    ("intermittent", "classical", "razon_sn", 1, 1, 0, 1, None, None, None, None),
+]
+
+
+def _profiles(env: Env, query: str = "") -> str:
+    """The error-profiles tab as the reader sees it, from its heading on."""
+    text = _text(_dal_client(env).get(f"/resultados?vista=errores{query}").text)
+    assert "Perfiles de error por clase y familia" in text
+    return text.split("Perfiles de error por clase y familia", 1)[1]
+
+
+def test_the_error_profiles_show_r_by_class_and_family_as_published(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, extra_portfolio=_R_PROFILES)
+    profiles = _profiles(env)
+
+    assert "Smooth (Suave) Clásica 0,820 0,800 0,700 0,900 3 4 1" in profiles
+    assert "Smooth (Suave) Seasonal Naive 1,000 1,000 1,000 1,000 3 3 0" in profiles
+    assert "Intermittent (Intermitente) Clásica — — — — 1 1 1" in profiles
+    assert "1,500 1,500 1,200 1,800" not in profiles  # the RMSE rows
+
+
+def test_choosing_another_metric_shows_its_profile_and_keeps_the_run(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, extra_portfolio=_R_PROFILES)
+    html = _dal_client(env).get("/resultados?vista=errores&metrica=rmse").text
+    profiles = _text(html).split("Perfiles de error por clase y familia", 1)[1]
+
+    assert "Smooth (Suave) Clásica 1,500 1,500 1,200 1,800 2 2 0" in profiles
+    assert "0,820" not in profiles  # the r rows
+    [mae] = re.findall(r'href="([^"]*metrica=mae[^"]*)"', html)
+    assert "vista=errores" in mae and "m3=m3-real-1" in mae
+
+
+def test_the_error_profiles_without_a_published_m3_run_say_why_not_zero(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)  # M2 finished; M3 published nothing
+    text = _text(_dal_client(env).get("/resultados?vista=errores").text)
+
+    assert "Esta ejecución todavía no tiene evaluación M3." in text
+    assert "Perfiles de error por clase y familia" not in text
+
+
+def test_the_error_profiles_of_a_rejected_m3_run_show_its_cause(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, estado="RECHAZADA")
+    text = _text(_dal_client(env).get("/resultados?vista=errores&m3=m3-real-1").text)
+
+    assert "La corrida M3 no está publicada." in text
+    assert "Perfiles de error por clase y familia" not in text
+
+
+def test_an_unknown_metric_is_explained_not_a_server_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, extra_portfolio=_R_PROFILES)
+    page = _dal_client(env).get("/resultados?vista=errores&metrica=smape")
+    text = _text(page.text)
+
+    assert page.status_code == 200
+    assert "La consulta M3 no es válida." in text
+    assert "Perfiles de error por clase y familia" not in text
+
+
+# ------------------------------------------------------------ las ventanas de la reserva
+_WINDOWS = {
+    "FIL-0001": [
+        ("2026-03-15", 1.2, 1.5, 0.8, None),
+        ("2026-03-22", 0.4, 0.0, None, "rmse_linea_base_cero"),
+    ]
+}
+
+
+def _reserve(env: Env, query: str = "?reserva=1") -> str:
+    """The reserve-windows table of FIL-0001, as the reader sees it."""
+    text = _text(_dal_client(env).get(f"/resultados/sku/FIL-0001{query}").text)
+    assert "Ventanas de la reserva" in text
+    return text.split("Ventanas de la reserva", 1)[1].split("Comparación por familia")[0]
+
+
+def test_the_detail_lists_the_reserve_windows_of_the_champion_and_the_baseline(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, windows=_WINDOWS)
+    reserve = _reserve(env)
+
+    assert "2026-03-15 1,200 1,500 0,800" in reserve
+    assert reserve.index("2026-03-15") < reserve.index("2026-03-22")
+
+
+def test_a_window_without_r_shows_its_cause_and_the_count_by_cause(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, windows=_WINDOWS)
+    reserve = _reserve(env)
+
+    assert "2026-03-22 0,400 0,000 no calculable: rmse_linea_base_cero" in reserve
+    assert "1 ventana sin r: rmse_linea_base_cero" in reserve
+
+
+def test_the_reserve_windows_are_only_read_on_demand(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, windows=_WINDOWS)
+    html = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1").text
+    text = _text(html)
+
+    assert "Ver las 40 ventanas de la reserva" in text
+    assert "RMSE campeón" not in text and "2026-03-15" not in text
+    [link] = re.findall(r'href="([^"]*reserva=1[^"]*)"', html)
+    assert "m3=m3-real-1" in link

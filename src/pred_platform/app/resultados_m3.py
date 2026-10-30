@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.data.m3_query import GROUPS
+from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository
 
@@ -192,6 +192,105 @@ def summary(repository: DataRepository, m2_run_id: str, wanted: str | None = Non
     for page in range(2, -(-evidence.page.total // MAX_SIZE) + 1):
         rows += repository.get_m3_evidence(resolved.run_id, page=page, size=MAX_SIZE).items
     return M3Summary(run=resolved, funnel=evidence.funnel, dm=_dm_counts(rows))
+
+
+@dataclass(frozen=True, slots=True)
+class M3Profiles:
+    """Los perfiles de error que M3 publicó en su cartera para una métrica (``m3_cartera``)."""
+
+    run: models_v2.M3Run | None = None
+    problem: M3Problem | None = None
+    metrica: str = "razon_sn"
+    rows: list[models_v2.M3PortfolioRow] = field(default_factory=list)
+
+
+# Las métricas de la cartera (contrato v2, sin sMAPE); r va primero porque es la escala común.
+PROFILE_METRICS: dict[str, str] = {
+    "razon_sn": "r frente a Seasonal Naive",
+    "mae": "MAE",
+    "rmse": "RMSE",
+    "mase": "MASE",
+    "me": "ME",
+}
+
+
+def profiles(
+    repository: DataRepository,
+    m2_run_id: str,
+    wanted: str | None = None,
+    metrica: str = "razon_sn",
+) -> M3Profiles:
+    """Resuelve la corrida M3 de ``m2_run_id`` y lee su cartera para ``metrica``."""
+    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+    if isinstance(resolved, M3Problem):
+        return M3Profiles(problem=resolved, metrica=metrica)
+    try:
+        portfolio = repository.get_m3_portfolio(resolved.run_id, metrica=metrica, size=MAX_SIZE)
+    except InvalidQuery as exc:
+        problem = M3Problem("La consulta M3 no es válida.", str(exc), "invalid")
+        return M3Profiles(problem=problem, metrica=metrica)
+    if portfolio.availability.status != "available":
+        return M3Profiles(problem=_unavailable_evidence(portfolio.availability), metrica=metrica)
+    return M3Profiles(run=resolved, metrica=metrica, rows=portfolio.items)
+
+
+@dataclass(frozen=True, slots=True)
+class ReserveWindow:
+    """Una ventana de la reserva: RMSE del campeón y de la línea base, y r, como los publicó M3."""
+
+    fecha: str
+    rmse_campeon: float | None
+    rmse_linea_base: float | None
+    razon_sn: float | None
+    causa: str | None  # por qué r no se calculó en esta ventana, tal como la publicó M3
+
+
+@dataclass(frozen=True, slots=True)
+class M3Reserve:
+    """Las ventanas de la reserva de un SKU y cuántas quedaron sin r, por causa publicada."""
+
+    windows: list[ReserveWindow]
+    sin_r: dict[str, int]
+
+
+def _by_window(
+    repository: DataRepository, run_id: str, sku: str, candidato_id: str, metrica: str
+) -> dict[str, models_v2.M3Metric]:
+    """Las métricas por ventana de un candidato, de todas las páginas; sin la fila agregada."""
+    first = repository.get_m3_metrics(
+        run_id, sku=sku, candidato_id=candidato_id, metrica=metrica, size=MAX_SIZE
+    )
+    rows = list(first.items)
+    for page in range(2, -(-first.page.total // MAX_SIZE) + 1):
+        rows += repository.get_m3_metrics(
+            run_id, sku=sku, candidato_id=candidato_id, metrica=metrica, page=page, size=MAX_SIZE
+        ).items
+    return {row.ventana: row for row in rows if row.ventana != AGGREGATED_WINDOW}
+
+
+def reserve_windows(
+    repository: DataRepository, run_id: str, verdict: models_v2.M3Verdict
+) -> M3Reserve:
+    """Las ventanas de la reserva del campeón publicado frente a Seasonal Naive, por fecha."""
+    champion = verdict.candidato_campeon or ""
+    baseline = next(
+        m.candidato_id for m in verdict.modelos_evaluados if m.familia == "seasonal_naive"
+    )
+    rmse = _by_window(repository, run_id, verdict.sku, champion, "rmse")
+    rmse_base = _by_window(repository, run_id, verdict.sku, baseline, "rmse")
+    ratio = _by_window(repository, run_id, verdict.sku, champion, "razon_sn")
+    windows = [
+        ReserveWindow(
+            fecha,
+            rmse[fecha].valor if fecha in rmse else None,
+            rmse_base[fecha].valor if fecha in rmse_base else None,
+            ratio[fecha].valor if fecha in ratio else None,
+            ratio[fecha].causa if fecha in ratio else None,
+        )
+        for fecha in sorted(rmse.keys() | rmse_base.keys() | ratio.keys())
+    ]
+    causes = Counter(w.causa for w in windows if w.causa is not None)
+    return M3Reserve(windows, dict(sorted(causes.items())))
 
 
 # ----------------------------------------------------------------------------- textos
