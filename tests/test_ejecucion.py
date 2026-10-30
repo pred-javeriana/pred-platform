@@ -392,6 +392,30 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
+def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
+    env: Env,
+) -> None:
+    # The ingest has one smooth, one intermittent and one lumpy SKU; lumpy admits only
+    # the classical and foundation families.
+    response = _launch(_dal_client(env), env, families=["ml", "dl"])
+    text = _text(response.text)
+
+    assert response.status_code == 200
+    assert "1 SKU Lumpy (Grumosa) queda sin modelo" in text
+    assert "Clásica o Fundacional" in text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_families_that_cover_every_class_launch_as_today(env: Env) -> None:
+    response = _launch(_dal_client(env), env, families=["ml", "dl", "foundation"])
+
+    assert response.status_code == 303
+    ((parametros,),) = env.rows(
+        "SELECT c.parametros FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id"
+    )
+    assert json.loads(parametros)["families"] == ["ml", "dl", "foundation"]
+
+
 def test_an_ingestion_that_is_not_accepted_cannot_be_launched(env: Env) -> None:
     from tests.test_worker import _fixture_id
 

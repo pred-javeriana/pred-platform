@@ -28,6 +28,7 @@ from pred_platform.app.ejecucion import (
     parse_launch_form,
     run_actions,
     settings_items,
+    uncovered_classes,
 )
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
@@ -220,6 +221,14 @@ def lanzar(
     form.values["ingest_id"] = ingest_id or ""
     if not ingest_id:
         form.errors["ingest_id"] = "Elija la ingesta que se va a ejecutar."
+    elif not form.errors:
+        try:
+            by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
+        except DataLayerError:
+            by_class = {}  # sin topología publicada, decide el motor
+        uncovered = uncovered_classes(by_class, form.values["families"])
+        if uncovered:
+            form.errors["families"] = uncovered
     if form.errors or form.settings is None or ingest_id is None:
         return _render(request, "pages/execution.html", _context(request, repository, form=form))
     try:
