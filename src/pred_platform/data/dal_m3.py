@@ -4,9 +4,11 @@
 documents (``models_v2``), which is where data from the shared database enters the platform. The
 filters, the order and the page come from ``data/m3_query.py``, the same rules the fixtures apply.
 
-The funnel and the late launches cover the whole run. The cut and the excluded products come from
-M3's SQLite publication; when the cut is absent the evidence answers ``metadata_missing`` instead
-of claiming zero exclusions. Rows that do not satisfy the contract raise ``ContractInvalid``.
+The funnel, the late launches and the products M2 excluded from the competition cover the whole
+run. The cut and the excluded products come from M3's SQLite publication; when the cut is absent
+the evidence answers ``metadata_missing`` instead of claiming zero exclusions. A run published
+before M3 listed M2's exclusions reports them as ``None``, not as zero. Rows that do not satisfy
+the contract raise ``ContractInvalid``.
 """
 
 from __future__ import annotations
@@ -126,7 +128,7 @@ class M3DalSource:
             size=size,
         )
         read = evidencia.read_published(self.db_path, run_id, "evidence", query)
-        empty = {"funnel": None, "late_launches": None}
+        empty = {"funnel": None, "late_launches": None, "eligibility_exclusions": None}
         unavailable = self._unavailable(models_v2.M3Evidence, read, query, empty)
         if unavailable is not None:
             return unavailable
@@ -149,6 +151,11 @@ class M3DalSource:
         evaluated = sum(counts[v] for v in m3_query.GROUPS["evaluados"])
         not_evaluated = sum(counts[v] for v in m3_query.GROUPS["no_evaluados"])
         excluded = [{**trace, **item} for item in read.late_launches or []]
+        eligibility = (
+            None
+            if read.eligibility_exclusions is None
+            else [{**trace, **item} for item in read.eligibility_exclusions]
+        )
         return _validated(
             models_v2.M3Evidence,
             {
@@ -158,8 +165,12 @@ class M3DalSource:
                 "page": docs.page_of(query, read.total),
                 "funnel": {
                     **trace,
-                    "total_productos": len(excluded) + evaluated + not_evaluated,
+                    "total_productos": len(excluded)
+                    + len(eligibility or [])
+                    + evaluated
+                    + not_evaluated,
                     "excluded_count": len(excluded),
+                    "eligibility_excluded_count": None if eligibility is None else len(eligibility),
                     "tras_exclusiones": evaluated + not_evaluated,
                     "no_evaluados": not_evaluated,
                     "evaluados": evaluated,
@@ -171,6 +182,9 @@ class M3DalSource:
                     "excluded_count": len(excluded),
                     "items": excluded,
                 },
+                "eligibility_exclusions": None
+                if eligibility is None
+                else {**trace, "excluded_count": len(eligibility), "items": eligibility},
             },
         )
 

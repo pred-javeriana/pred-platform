@@ -27,7 +27,7 @@ from pred_platform.dal.migrate import apply_migrations, load_migrations, migrate
 from pred_platform.data import m3_query
 from pred_platform.data.dal import DalRepository
 from pred_platform.worker.engine import launch
-from tests.m3_publicada import LATE, identity, publish
+from tests.m3_publicada import LATE, TWO_FAMILIES, TWO_FAMILIES_CAUSE, identity, publish
 
 SHA = "c" * 64
 PARQUET = "processed/panel.parquet"
@@ -157,6 +157,48 @@ def test_the_funnel_reads_late_launches_from_sqlite_after_the_parquet_is_deleted
     assert [row.sku for row in doc.items] == ["SKU-A"] and doc.page.total == 1
 
 
+def test_the_funnel_counts_and_lists_the_products_m2_excluded_from_the_competition(
+    root: Path,
+) -> None:
+    _publish(root, eligibility=(("SKU-UNA-FAMILIA", "lumpy", TWO_FAMILIES_CAUSE),))
+    doc = _repo(root).get_m3_evidence(RUN, skus=["SKU-A"])
+
+    _conforms(doc, "m3_evidence")
+    assert doc.funnel is not None and doc.eligibility_exclusions is not None
+    funnel = doc.funnel
+    assert (funnel.total_productos, funnel.tras_exclusiones) == (8, 5)
+    assert (funnel.excluded_count, funnel.eligibility_excluded_count) == (2, 1)
+    excluded = doc.eligibility_exclusions
+    assert (excluded.run_id, excluded.sku, excluded.ingesta_sha256) == (RUN, None, SHA)
+    assert excluded.excluded_count == 1
+    assert [
+        (row.sku, row.sku_class, row.codigo, row.causa, row.run_id, row.ingesta_sha256)
+        for row in excluded.items
+    ] == [("SKU-UNA-FAMILIA", "lumpy", TWO_FAMILIES, TWO_FAMILIES_CAUSE, RUN, SHA)]
+    # Neither a verdict nor a late launch: the page and the late launches do not change.
+    assert [row.sku for row in doc.items] == ["SKU-A"] and doc.page.total == 1
+    assert doc.late_launches is not None and doc.late_launches.excluded_count == 2
+
+
+def test_a_run_without_eligibility_exclusions_reports_zero_not_unknown(root: Path) -> None:
+    _publish(root)
+    doc = _repo(root).get_m3_evidence(RUN)
+    assert doc.funnel is not None and doc.funnel.eligibility_excluded_count == 0
+    assert doc.eligibility_exclusions is not None and doc.eligibility_exclusions.items == []
+
+
+def test_a_run_published_before_m3_listed_m2_exclusions_does_not_report_them_as_zero(
+    root: Path,
+) -> None:
+    _publish(root, eligibility=None)
+    doc = _repo(root).get_m3_evidence(RUN)
+
+    _conforms(doc, "m3_evidence")
+    assert doc.availability.status == "available" and doc.funnel is not None
+    assert doc.funnel.eligibility_excluded_count is None and doc.eligibility_exclusions is None
+    assert (doc.funnel.total_productos, doc.funnel.excluded_count) == (7, 2)
+
+
 def test_missing_cutoff_metadata_is_not_zero_exclusions(root: Path) -> None:
     _publish(root, publish_m4=False)
     repo = _repo(root)
@@ -168,6 +210,7 @@ def test_missing_cutoff_metadata_is_not_zero_exclusions(root: Path) -> None:
     )
     assert doc.availability.detail and "no significa cero exclusiones" in doc.availability.detail
     assert doc.items == [] and doc.funnel is None and doc.late_launches is None
+    assert doc.eligibility_exclusions is None
     assert doc.run is not None and doc.run.estado == "PUBLICADA"
     # The auxiliary evidence of the same PUBLICADA run is still complete and available.
     assert repo.get_m3_metrics(RUN).availability.status == "available"

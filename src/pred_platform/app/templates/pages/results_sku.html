@@ -92,7 +92,7 @@
       {% endif %}
       {% elif m3.excluded.get(sku_id) %}
       <h2 class="pred-panel-title">Excluido antes de M3</h2>
-      <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>
+      <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star and sku_id in m3.late_launched %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>
       {% else %}
       <h2 class="pred-panel-title">Sin veredicto M3</h2>
       <p class="pred-note pred-note--muted">{% if m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}M3 no publicó un veredicto para este SKU en esta corrida.{% endif %} Abajo está la evidencia de cada familia en M2.</p>

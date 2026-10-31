@@ -40,8 +40,11 @@ class M3Decision:
     run: models_v2.M3Run | None = None
     problem: M3Problem | None = None
     verdicts: dict[str, models_v2.M3Verdict] = field(default_factory=dict)
-    # SKU excluido antes de M3 -> causa publicada (lanzado después del corte).
+    # SKU excluido antes de M3 -> causa publicada: lanzado después del corte, o excluido de la
+    # competencia en M2 (por ejemplo, la regla de dos familias).
     excluded: dict[str, str] = field(default_factory=dict)
+    # Los SKU lanzados después del corte t*, la única exclusión que el corte explica.
+    late_launched: frozenset[str] = frozenset()
     t_star: str | None = None
     others: tuple[str, ...] = ()
 
@@ -138,10 +141,13 @@ def decision(
             run=resolved, problem=_problem(title, evidence.availability), others=others
         )
     late = evidence.late_launches
+    eligibility = evidence.eligibility_exclusions
+    excluded = [*(late.items if late else []), *(eligibility.items if eligibility else [])]
     return M3Decision(
         run=resolved,
         verdicts={row.sku: row for row in evidence.items},
-        excluded={row.sku: row.causa for row in late.items} if late else {},
+        excluded={row.sku: row.causa for row in excluded},
+        late_launched=frozenset(row.sku for row in late.items) if late else frozenset(),
         t_star=late.t_star if late else None,
         others=others,
     )

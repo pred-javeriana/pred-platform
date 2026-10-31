@@ -8,6 +8,8 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     ok            every unit completes in L2 and L3 (exit 7, like the real engine without L4)
     unit_fails    FIL-0002 / ml fails in L2
     excluded      FIL-0003 is excluded before L2
+    excluded_after_l2
+                  FIL-0003 delivers only foundation in L2, so the two-family rule excludes it
     crash         dies after the first unit started, without corrida.json
     stage_fails   L3 fails as a whole: no L3 unit, corrida.json says so (exit 1)
     l4_fails      L2 and L3 complete, L4 fails as a whole (exit 1)
@@ -65,6 +67,8 @@ MATRIX = {
     "lumpy": ["classical", "foundation"],
 }
 ALL_FAMILIES = ["classical", "ml", "dl", "foundation"]
+NO_RESERVE = "eligibility.no_reserved_observations"
+FEWER_THAN_TWO = "eligibility.fewer_than_two_families"
 POLICY = "2.2.0-initial"
 
 
@@ -86,7 +90,7 @@ def _selection_family(
     family: str,
     *,
     configured: list[str],
-    excluded: list[str],
+    excluded: dict[str, tuple[str, str]],
     l2_failed: bool,
     l3_failed: bool,
     index: int,
@@ -111,13 +115,11 @@ def _selection_family(
                 "detail": "La corrida se configuro con otro subconjunto de familias.",
             },
         }
-    if sku in excluded:
-        return {
-            "family": family,
-            "estado": "no_ejecutable",
-            "cause": "la serie termina antes de t*: sin reserva",
-            "code": "eligibility.no_reserved_observations",
-        }
+    # A unit that failed in L2 keeps its error even when the two-family rule then
+    # excludes its SKU; the other families of an excluded SKU never ran (L3).
+    if sku in excluded and not l2_failed:
+        cause, code = excluded[sku]
+        return {"family": family, "estado": "no_ejecutable", "cause": cause, "code": code}
     model = f"{family}:{MODELS[family]}"
     study = f"{family}-{sku}-fake"
     trials = None
@@ -230,7 +232,7 @@ def _selection_family(
 def _selection_lines(
     skus: list[str],
     configured: list[str],
-    excluded: list[str],
+    excluded: dict[str, tuple[str, str]],
     unit_rows: list[dict[str, Any]],
     *,
     l3_fails: bool,
@@ -400,8 +402,14 @@ def main() -> int:
         "run_started", schema=schema, run_id=args.run_id, attempt=attempt, workers=args.workers
     )
 
-    excluded = ["FIL-0003"] if scenario == "excluded" else []
-    runnable = [s for s in skus if s not in excluded]
+    # Before L2 the engine excludes a SKU that cannot run at all; at the close of L2 the
+    # two-family rule excludes one with a single evaluable family.
+    before_l2 = (
+        {"FIL-0003": ("la serie termina antes de t*: sin reserva", NO_RESERVE)}
+        if scenario == "excluded"
+        else {}
+    )
+    runnable = [s for s in skus if s not in before_l2]
     delay = 0.3 if scenario == "slow_ok" else 0.0
     units = [(s, f) for s in runnable for f in args.families]
     unit_rows: list[dict[str, Any]] = []
@@ -409,13 +417,8 @@ def main() -> int:
     stream.emit("stage_started", stage="L1")
     stream.emit("stage_finished", stage="L1", state="completed")
     stream.emit("stage_started", stage="L2")
-    for sku in excluded:
-        stream.emit(
-            "excluded",
-            sku_id=sku,
-            cause="la serie termina antes de t*: sin reserva",
-            code="eligibility.no_reserved_observations",
-        )
+    for sku, (cause, code) in before_l2.items():
+        stream.emit("excluded", sku_id=sku, cause=cause, code=code)
     stream.emit(
         "planned",
         stage="L2",
@@ -458,14 +461,33 @@ def main() -> int:
         time.sleep(60)
         return 0
 
+    single = scenario == "excluded_after_l2"
     for index, (sku, family) in enumerate(units):
         if scenario == "crash" and index == 1:
             os._exit(3)
         run_unit(
-            "L2", sku, family, fail=scenario == "unit_fails" and (sku, family) == ("FIL-0002", "ml")
+            "L2",
+            sku,
+            family,
+            fail=(scenario == "unit_fails" and (sku, family) == ("FIL-0002", "ml"))
+            or (single and sku == "FIL-0003" and family != "foundation"),
         )
+    after_l2 = {}
+    if single:
+        failed = ", ".join(f"{f} (model.fit_failed)" for f in args.families if f != "foundation")
+        after_l2["FIL-0003"] = (
+            f"menos de dos familias evaluables tras L2: evaluable foundation; fallidas {failed}",
+            FEWER_THAN_TWO,
+        )
+    for sku, (cause, code) in after_l2.items():
+        stream.emit("excluded", sku_id=sku, cause=cause, code=code)
+    excluded = before_l2 | after_l2
 
-    ok_units = [(u["sku_id"], u["family"]) for u in unit_rows if u["state"] == "completada"]
+    ok_units = [
+        (u["sku_id"], u["family"])
+        for u in unit_rows
+        if u["state"] == "completada" and u["sku_id"] not in excluded
+    ]
     stages = [{"id": "L1", "state": "completed"}, {"id": "L2", "state": "completed"}]
     if scenario == "stage_fails":
         stream.emit("stage_started", stage="L3")
@@ -535,12 +557,7 @@ def main() -> int:
         "stages": stages,
         "reserve": RESERVE,
         "exclusions": [
-            {
-                "sku_id": s,
-                "cause": "la serie termina antes de t*: sin reserva",
-                "code": "eligibility.no_reserved_observations",
-            }
-            for s in excluded
+            {"sku_id": s, "cause": cause, "code": code} for s, (cause, code) in excluded.items()
         ],
         "failures": [
             {

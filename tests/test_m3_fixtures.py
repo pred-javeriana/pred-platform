@@ -59,6 +59,12 @@ def test_filtering_the_published_evidence_keeps_the_whole_run_funnel(
     expected = parse_as(models_v2.M3Evidence, read_example("m3_evidence.filtrada"))
     assert one.model_dump(exclude={"generated_at"}) == expected.model_dump(exclude={"generated_at"})
     assert one.funnel == full.funnel and one.late_launches == full.late_launches
+    assert one.eligibility_exclusions == full.eligibility_exclusions
+    assert full.funnel is not None and full.eligibility_exclusions is not None
+    assert (full.funnel.total_productos, full.funnel.eligibility_excluded_count) == (8, 1)
+    assert [r.codigo for r in full.eligibility_exclusions.items] == [
+        "eligibility.fewer_than_two_families"
+    ]
     evaluated = repo.get_m3_evidence(RUN, grupo="evaluados")
     assert [r.veredicto for r in evaluated.items] == ["EXPLORATORIO", "VALIDADO"]
     assert evaluated.page.total == 2

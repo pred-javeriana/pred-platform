@@ -195,6 +195,10 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         "Pruebe con más ensayos o con otra familia; las demás familias del SKU no se afectan.",
         reintentable=True,
     ),
+    "model.degenerate_forecast": Mensaje(
+        "El pronóstico final del modelo fue degenerado y no se entregó para la comparación.",
+        "Pruebe con otra familia y revise cuántas familias evaluables conserva el SKU.",
+    ),
     "model.foundation_unavailable": Mensaje(
         "El modelo fundacional no está disponible en este equipo.",
         "Instale las dependencias de la familia fundacional o quítela de la configuración.",

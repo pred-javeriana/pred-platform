@@ -46,7 +46,7 @@ $env:PRED_ENGINE_CMD = '"C:\ruta con espacios\pred-engine\.venv\Scripts\pred-eng
 
 Views never touch SQLite or the engine's files. They read through a `DataRepository`
 (`pred_platform.data`) that returns documents of the frontend <-> engine data contract
-(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.1.0 for M3's published
+(`pred_platform.contract`, authored in `pred-docs/diseno/contratos/`): v2.2.0 for M3's published
 evidence (the `*_m3_*` operations) and v1.1.0 for ingestion, M2 selection, run status and
 capabilities.
 
@@ -102,8 +102,10 @@ selection per SKU. Versions 5 and 6 add M3 evidence, durable forecast units, fro
 precalculated portfolio summaries. Version 7 retains M1's declared real/synthetic provenance,
 8 records whether that origin was declared and 9 exposes that marker in the published evidence view.
 Version 10 adds the published cut, late launches, observed demand and the champions view.
-Version 11 adds the task state `finalizo_m2` (M2 done, waiting for M3); the engine knows this
-version and must be updated before the platform migrates to it. The current schema is version 11.
+Version 11 adds M3's split-reserve evidence: significance per class, the champion confirmation
+and its comparisons, the pre-cut robustness selection, the r intervals and the products M2
+excluded. Version 12 adds the task state `finalizo_m2` (M2 done, waiting for M3); the engine knows
+this version and must be updated before the platform migrates to it. The current schema is version 12.
 The platform declares every run as real data: launching offers no origin choice. A run queued
 before that may still carry an unknown origin, which cannot produce statistical inference.
 
@@ -145,7 +147,7 @@ The engine writes M3 results into this same SQLite database through an injected 
 Its CLI receives the effective `Settings.db_path` through `PRED_DB_PATH`; it never creates a
 standalone result database. It applies pending M3 migrations itself on an existing platform
 schema. The migration texts are owned by pred-engine and copied exactly into platform versions
-5 through 10, so both processes agree on `user_version`.
+5 through 11, so both processes agree on `user_version`.
 
 The views read it through `DataRepository` as contract v2 documents (M4, Notion 4.1):
 `list_m3_runs` resolves an M2 reference or an identity to its exact M3 runs and names the newest

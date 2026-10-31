@@ -2,8 +2,8 @@
 
 ``publish`` inserts one M3 run into a migrated platform database: the run with its frozen policy,
 every table M3 fills (SKUs, units, forecasts, metrics, categories, verdicts, portfolio and
-failures), the cut, the late-launch exclusions and the observed reserve demand. The rows follow
- the engine's rules (a 64-character ingest
+failures), the cut, the late-launch exclusions, the products M2 excluded from the competition and
+the observed reserve demand. The rows follow the engine's rules (a 64-character ingest
 SHA, the five verdicts with their HLN-DM test or its cause, categories whose counts match their
 verdicts) so a read that validates them as contract v2 has something real to validate.
 """
@@ -19,6 +19,14 @@ from typing import Literal
 
 VERDICTS = ("FALLO_TECNICO", "NO_EVALUABLE", "EVIDENCIA_INSUFICIENTE", "VALIDADO", "EXPLORATORIO")
 LATE = "lanzado despues del corte"
+TWO_FAMILIES = "eligibility.fewer_than_two_families"
+TWO_FAMILIES_CAUSE = (
+    "menos de dos familias evaluables tras L2: evaluable ml; "
+    "fallidas classical (selection.no_viable_trial)"
+)
+ONE_ROUTED_CAUSE = (
+    "menos de dos familias evaluables tras L2: evaluable classical; sin otra familia enrutada"
+)
 Origin = Literal["real", "sintetico", "desconocido"]
 # The two published bits of each origin, and the cause M3 gives for not testing it.
 _ORIGINS: dict[str, tuple[int, int, str | None]] = {
@@ -34,6 +42,9 @@ POLICY = {
     "tolerancia_empate": 0.01,
     "orden_simplicidad": ["seasonal_naive", "classical", "ml", "dl", "foundation"],
 }
+
+# The reserve blocks the engine fixes with the protocol since it publishes M2's exclusions.
+BLOCKS = {"fraccion_seleccion": 0.4, "dias_reserva": 80, "horizonte": 7, "dias_seleccion": 32}
 
 
 def identity(configuracion: str = "config-1", ingesta_ref: str = "ingesta-1") -> str:
@@ -155,6 +166,7 @@ def publish(
     extra_portfolio: list[tuple[object, ...]] | None = None,
     windows: dict[str, list[tuple[str, float, float, float | None, str | None]]] | None = None,
     excluded_from_class: dict[str, str] | None = None,
+    eligibility: tuple[tuple[str, str, str], ...] | None = (),
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
 
@@ -165,6 +177,11 @@ def publish(
     p75) beside the RMSE of the classical family and the baseline. ``windows`` publishes, per SKU,
     the reserve windows (fecha, RMSE of the champion, RMSE of the baseline, r, cause of a null r).
     ``excluded_from_class`` leaves SKUs (SKU -> cause) out of their class's champion selection.
+
+    ``eligibility`` lists each product M2 excluded with the two-family rule, its class and the
+    published cause. ``None``
+    writes the run the way the engine did before it published those exclusions: a protocol
+    without reserve blocks and no ``m3_exclusiones`` rows.
     """
     synthetic, declared, untested = _ORIGINS[origin]
     with closing(sqlite3.connect(db)) as conn:
@@ -190,7 +207,14 @@ def publish(
             "reserva_abierta_en, n_unidades_previstas) VALUES (?, ?, '{}', '{}', ?, ?)",
             (
                 run_id,
-                json.dumps({"horizonte": 7, "politica": POLICY}, sort_keys=True),
+                json.dumps(
+                    {
+                        "horizonte": 7,
+                        "politica": POLICY,
+                        **({} if eligibility is None else {"bloques": BLOCKS}),
+                    },
+                    sort_keys=True,
+                ),
                 "2026-10-27T09:00:00+00:00",
                 4 * len(verdicts),
             ),
@@ -200,6 +224,13 @@ def publish(
             conn.executemany(
                 "INSERT INTO m3_lanzamientos_tardios VALUES (?, ?, ?)",
                 [(run_id, sku, LATE) for sku in late],
+            )
+            conn.executemany(
+                "INSERT INTO m3_exclusiones VALUES (?, ?, ?, ?, ?)",
+                [
+                    (run_id, sku, sku_class, TWO_FAMILIES, cause)
+                    for sku, sku_class, cause in eligibility or ()
+                ],
             )
         by_class: dict[str, Counter[str]] = {}
         for sku, (sku_class, veredicto) in verdicts.items():

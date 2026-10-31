@@ -235,6 +235,10 @@ def test_the_verdicts_and_the_funnel_follow_the_published_cutoff_metadata(caso: 
     assert sorted(v.sku for v in evidencia.items) == sorted(SERIES)
     assert evidencia.funnel.total_productos == len(SERIES) + evidencia.late_launches.excluded_count
     assert evidencia.funnel.tras_exclusiones == len(SERIES)
+    # Las seis series ajustan sus dos familias: M3 publica la lista de exclusiones de M2, vacía.
+    assert evidencia.eligibility_exclusions is not None
+    assert evidencia.eligibility_exclusions.items == []
+    assert evidencia.funnel.eligibility_excluded_count == 0
     for veredicto in evidencia.items:
         assert (veredicto.run_id, veredicto.ingesta_sha256) == (caso.run_id, caso.ingesta_sha256)
 
