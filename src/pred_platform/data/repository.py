@@ -57,18 +57,23 @@ class ArtifactDownload:
 
 
 @dataclass(frozen=True, slots=True)
+class M3DateRange:
+    """Rango y conteo ya publicados; los extremos nulos representan un rango vacío."""
+
+    start: str | None
+    end: str | None
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
 class M3ReserveBlocks:
-    """Fechas inclusivas ya resueltas por el productor; nunca parámetros de cálculo.
+    """Metadatos provisionales de corrida: orígenes y fechas objetivo son conceptos distintos."""
 
-    Representación local provisional, ajena a los modelos oficiales del contrato M3.
-    """
-
-    selection_start: str
-    selection_end: str
-    embargo_start: str | None
-    embargo_end: str | None
-    test_start: str
-    test_end: str
+    selection_origins: M3DateRange
+    embargo_origins: M3DateRange
+    test_origins: M3DateRange
+    selection_dates: M3DateRange
+    test_dates: M3DateRange
 
 
 class DataRepository(Protocol):
@@ -204,8 +209,8 @@ class DataRepository(Protocol):
         size: int = DEFAULT_SIZE,
     ) -> models_v2.M3Observations: ...
 
-    def get_m3_reserve_blocks(self, run_id: str, *, sku: str) -> M3ReserveBlocks | None:
-        """Límites resueltos de un SKU y corrida exactos, o ausencia de metadatos."""
+    def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
+        """Límites resueltos del protocolo de una corrida exacta, o ausencia de metadatos."""
         ...
 
     def get_m3_champions(

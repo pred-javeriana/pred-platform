@@ -1,3 +1,0 @@
-# Conserva los bytes publicados y sus huellas SHA-256 también en Windows.
-/src/pred_platform/contract/** text eol=lf
-/src/pred_platform/app/static/css/pico.min.css text eol=lf

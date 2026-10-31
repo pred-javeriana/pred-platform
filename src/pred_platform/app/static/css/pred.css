@@ -851,25 +851,6 @@ samp,
   font-size: 11px;
 }
 
-/* Series publicadas del campeón: forma, trazo y texto además del color. */
-.pred-forecast__svg { min-width: 38rem; }
-.pred-forecast__figure { margin: var(--space-3) 0; }
-.pred-forecast__selection { fill: var(--canvas); }
-.pred-forecast__embargo { fill: url(#pred-embargo); }
-.pred-forecast__hatch { stroke: var(--border-strong); stroke-width: 1; }
-.pred-forecast__test { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 2; }
-.pred-forecast__label-test { font-weight: 700; fill: var(--primary-dark); }
-.pred-forecast__observed { stroke: var(--ink); fill: var(--ink); stroke-width: 2; }
-.pred-forecast__forecast { stroke: var(--data-text); fill: var(--surface); stroke-width: 2; }
-.pred-forecast__forecast path { stroke-dasharray: 7 4; }
-.pred-forecast__legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: 0; list-style: none; font-size: 0.875rem; }
-.pred-forecast__legend li { list-style: none; }
-.pred-forecast .pred-chart:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.pred-forecast__key { font-family: var(--font-mono); white-space: nowrap; }
-.pred-forecast__key--observed { color: var(--ink); }
-.pred-forecast__key--forecast { color: var(--data-text); }
-.pred-forecast__blocks { font-size: 0.875rem; color: var(--muted-text); }
-
 /* ------------------------------------------------- Superficie Resultados (C2) */
 .pred-run-line {
   display: flex;
@@ -1932,28 +1913,18 @@ samp,
     margin: 0;
   }
 }
-/* Detalle de resultados: decisión breve, visualización y explorador de evidencia. */
-.pred-workspace--results .pred-panel--main > .pred-section { margin-bottom: 0; }
-.pred-decision-measures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; padding: var(--space-3) 0; border-block: 1px solid var(--border); }
-.pred-decision-measures > div { display: flex; flex-direction: column; gap: var(--space-1); }
-.pred-decision-measures span, .pred-decision-measures small { color: var(--muted-text); font-size: 0.8125rem; }
-.pred-decision-measures strong { color: var(--data-text); font-size: 1.6rem; font-weight: 600; }
-.pred-significance-summary { font-size: 0.875rem; color: var(--muted-text); }
-.pred-forecast { margin-top: var(--space-4); }
-.pred-forecast h3 { font-size: 1.125rem; }
-.pred-demo-notice { border-left: 2px solid var(--warn); padding-left: var(--space-2); }
-.pred-family__head { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(7rem, 1fr) minmax(8rem, 1.4fr) auto; gap: var(--space-2); align-items: center; }
-.pred-family__head > * { min-width: 0; overflow-wrap: anywhere; }
-@media (max-width: 56rem) {
-  .pred-family__head { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 28rem) {
-  .pred-decision-measures { grid-template-columns: 1fr; }
-  .pred-decision-measures > div { flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; }
-}
 
-.pred-evidence-content { display: contents; }
-.pred-workspace--results #campeon > .pred-panel-title { margin-bottom: 8px; font-size: 1.75rem; }
-.pred-workspace--results #campeon > .pred-meta { margin-bottom: 12px; }
-.pred-workspace--results #campeon > .pred-note--status { margin-bottom: 12px; }
-.pred-decision-measures { margin: 16px 0; padding: 12px 0; }
+/* Evidencia temporal del campeón: trazo, forma y texto además del color. */
+.pred-forecast__svg { min-width: 38rem; }
+.pred-forecast__figure { margin: var(--space-3) 0; }
+.pred-forecast__selection { fill: var(--canvas); }
+.pred-forecast__test { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 2; }
+.pred-forecast__label-test { font-weight: 700; fill: var(--primary-dark); }
+.pred-forecast__observed { stroke: var(--ink); fill: var(--ink); stroke-width: 2; }
+.pred-forecast__forecast { stroke: var(--data-text); fill: var(--surface); stroke-width: 2; }
+.pred-forecast__forecast path { stroke-dasharray: 7 4; }
+.pred-forecast__legend { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: 0; font-size: 0.875rem; }
+.pred-forecast__legend li { list-style: none; }
+.pred-forecast__key--observed { color: var(--ink); }
+.pred-forecast__key--forecast { color: var(--data-text); }
+.pred-forecast .pred-chart:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

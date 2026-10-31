@@ -18,7 +18,7 @@ from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import MAX_SIZE
-from pred_platform.data.repository import DataRepository
+from pred_platform.data.repository import DataRepository, M3ReserveBlocks
 
 # Texto literal del contrato v2 (sección 2) para varias corridas PUBLICADA de una identidad.
 _DUPLICATES = "Hay varias corridas PUBLICADA con esta identidad. Se muestra {run_id}."
@@ -47,6 +47,7 @@ class M3Decision:
     late_launched: frozenset[str] = frozenset()
     t_star: str | None = None
     others: tuple[str, ...] = ()
+    blocks: M3ReserveBlocks | None = None
 
     @property
     def notice(self) -> str | None:
@@ -140,11 +141,17 @@ def decision(
         return M3Decision(
             run=resolved, problem=_problem(title, evidence.availability), others=others
         )
+    # Se resuelve una vez para la corrida, compartido por todos los SKU de esta decisión.
+    try:
+        blocks = repository.get_m3_reserve_blocks(resolved.run_id)
+    except (DataLayerError, InvalidQuery):
+        blocks = None
     late = evidence.late_launches
     eligibility = evidence.eligibility_exclusions
     excluded = [*(late.items if late else []), *(eligibility.items if eligibility else [])]
     return M3Decision(
         run=resolved,
+        blocks=blocks,
         verdicts={row.sku: row for row in evidence.items},
         excluded={row.sku: row.causa for row in excluded},
         late_launched=frozenset(row.sku for row in late.items) if late else frozenset(),

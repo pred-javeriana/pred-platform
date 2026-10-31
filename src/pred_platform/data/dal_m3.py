@@ -50,7 +50,7 @@ class M3DalSource:
     db_path: Path
     data_root: Path | None
 
-    def get_m3_reserve_blocks(self, run_id: str, *, sku: str) -> M3ReserveBlocks | None:
+    def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
         """El contrato de lectura actual aún no expone estos límites resueltos."""
         # TODO: leer el valor oficial que exponga M3; no deducirlo de cortes ni ventanas.
         return None

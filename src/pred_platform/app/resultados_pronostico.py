@@ -18,6 +18,7 @@ class ForecastPoint:
 
     fecha: str
     valor: float | None
+    origen: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +91,7 @@ def champion_forecast(
     if any(doc.availability.status != "available" for doc in forecasts):
         return replace(series, problem="El pronóstico publicado del campeón no está disponible.")
     forecast = tuple(
-        ForecastPoint(row.fecha, row.valor)
+        ForecastPoint(row.fecha, row.valor, row.origen)
         for row in sorted(
             (row for doc in forecasts for row in doc.items), key=lambda r: (r.fecha, r.origen)
         )
@@ -99,8 +100,4 @@ def champion_forecast(
         return replace(
             series, problem="No hay pronósticos utilizables del campeón con horizonte h=1."
         )
-    try:
-        blocks = repository.get_m3_reserve_blocks(run_id, sku=sku)
-    except (DataLayerError, InvalidQuery):
-        blocks = None
-    return replace(series, observed=observed, forecast=forecast, blocks=blocks)
+    return replace(series, observed=observed, forecast=forecast, blocks=decision.blocks)

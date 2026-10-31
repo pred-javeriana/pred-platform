@@ -16,14 +16,19 @@ from pred_platform.contract import models, models_v2
 from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.data.dal_m3 import M3DalSource
 from pred_platform.data.fixtures import FixtureRepository
-from pred_platform.data.repository import M3ReserveBlocks
+from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 from tests.test_resultados import _client
 
 RUN = "m3-real-02"
 SKU = "SKU-VALIDADO"
 BLOCKS = M3ReserveBlocks(
-    "2026-07-01", "2026-07-01", "2026-07-02", "2026-07-02", "2026-07-03", "2026-07-04"
+    M3DateRange("2026-06-29", "2026-06-29", 1),
+    M3DateRange("2026-06-30", "2026-06-30", 1),
+    M3DateRange("2026-07-01", "2026-07-02", 2),
+    M3DateRange("2026-06-30", "2026-07-01", 2),
+    M3DateRange("2026-07-02", "2026-07-04", 3),
 )
+
 NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
@@ -116,8 +121,8 @@ class SeriesRepository(FixtureRepository):
             }
         )
 
-    def get_m3_reserve_blocks(self, run_id: str, *, sku: str) -> M3ReserveBlocks | None:
-        self.calls.append(("blocks", run_id, {"sku": sku}))
+    def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
+        self.calls.append(("blocks", run_id, {}))
         if self.issue == "blocks_error":
             raise ArtifactMissing("Sin límites")
         return self.blocks
@@ -147,7 +152,7 @@ def test_consulta_corrida_sku_candidato_publicado_h1_y_todas_las_paginas() -> No
             assert run == RUN and args["sku"] == SKU and args["size"] == 500
             if operation == "forecasts":
                 assert args["candidato_id"] == repo.candidate and args["h"] == 1
-    assert repo.calls[-1] == ("blocks", RUN, {"sku": SKU})
+    assert [call for call in repo.calls if call[0] == "blocks"] == [("blocks", RUN, {})]
     assert [p.valor for p in series.observed] == [10, None, 0, 14]
     assert [p.valor for p in series.forecast] == [11, 9, None, 13]
 
@@ -264,7 +269,7 @@ def test_sin_veredicto_sin_candidato_y_excluidos_no_cargan_series() -> None:
     client, _ = _client(repo=repo)
     page = client.get(f"/resultados/sku/{SKU}")
     assert page.status_code == 200 and "no publicó un candidato campeón" in page.text
-    assert '<svg role="img"' not in page.text and repo.calls == []
+    assert '<svg role="img"' not in page.text and all(op == "blocks" for op, _, _ in repo.calls)
 
 
 @pytest.mark.parametrize("absent", [False, True])
@@ -293,29 +298,52 @@ def test_bloques_solo_dependen_del_valor_resuelto_no_de_reserva_h_o_t_star() -> 
             update={
                 "dm_horizonte": horizon,
                 "n_ventanas": 333,
+                "razon_sn": 0.4,
             }
         )
         changed = replace(published, t_star=cut, verdicts={SKU: verdict})
         series = champion_forecast(repo, changed, SKU)
         assert series.blocks is BLOCKS
     repo.blocks = None
-    assert champion_forecast(repo, published, SKU).blocks is None
+    assert champion_forecast(repo, decision(repo, "m2-ejemplo", [SKU]), SKU).blocks is None
     root = ET.fromstring(champion_forecast_svg(_series(SeriesRepository())))
     test = root.find("svg:rect[@class='pred-forecast__test']/svg:title", NS)
-    assert test is not None and test.text == "Prueba final: 2026-07-03 a 2026-07-04"
+    assert test is not None and test.text == "Prueba final: 2026-07-02 a 2026-07-04"
 
 
-def test_fixture_simula_tres_regiones_y_dal_no_deduce_limites() -> None:
+def test_fixture_separa_origenes_y_objetivos_y_dal_no_deduce_limites() -> None:
     repo = FixtureRepository()
+    blocks = repo.get_m3_reserve_blocks(RUN)
+    assert blocks is not None
+    assert blocks.embargo_origins == M3DateRange("2026-06-30", "2026-06-30", 1)
     series = champion_forecast(repo, decision(repo, "m2-ejemplo", [SKU]), SKU)
-    assert series.blocks == M3ReserveBlocks(
-        "2026-07-01", "2026-07-01", "2026-07-02", "2026-07-02", "2026-07-03", "2026-07-03"
-    )
     svg = champion_forecast_svg(series)
-    assert all(label in svg for label in ("Selección", "Embargo", "Prueba final"))
-    assert repo.get_m3_reserve_blocks("desconocida", sku=SKU) is None
-    assert repo.get_m3_reserve_blocks(RUN, sku="otro") is None
-    assert M3DalSource().get_m3_reserve_blocks(RUN, sku=SKU) is None
+    assert "Selección: 2026-06-30 a 2026-07-01" in svg
+    assert "Prueba final: 2026-07-02 a 2026-07-03" in svg
+    assert 'class="pred-forecast__embargo"' not in svg
+    assert repo.get_m3_reserve_blocks("desconocida") is None
+    assert M3DalSource().get_m3_reserve_blocks(RUN) is None
+
+
+def test_metadatos_compartidos_por_todos_los_sku_de_la_decision() -> None:
+    repo = SeriesRepository()
+    resolved = decision(repo, "m2-ejemplo", [SKU, "SKU-EXPLORATORIO"])
+    champion_forecast(repo, resolved, SKU)
+    champion_forecast(repo, resolved, "SKU-EXPLORATORIO")
+    assert [call for call in repo.calls if call[0] == "blocks"] == [("blocks", RUN, {})]
+
+
+def test_origenes_sobreviven_y_el_embargo_solo_se_informa_en_texto() -> None:
+    repo = SeriesRepository()
+    series = _series(repo)
+    assert [point.origen for point in series.forecast] == [f"2026-06-{27 + i}" for i in range(4)]
+    client, _ = _client(repo=repo)
+    html = client.get(f"/resultados/sku/{SKU}").text
+    assert "Orígenes de embargo" in html and "2026-06-30 a 2026-06-30" in html
+    assert "Fecha objetivo" in html and "Origen" in html and "2026-06-27" in html
+    assert 'class="pred-forecast__embargo"' not in html
+    assert "ajuste BH dentro de cada categoría de demanda" in html
+    assert "ajuste BH de toda la corrida" not in html
 
 
 def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:
@@ -327,7 +355,14 @@ def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:
     assert root.attrib["role"] == "img"
     assert special in (root.findtext("svg:title", namespaces=NS) or "")
     desc = root.findtext("svg:desc", namespaces=NS) or ""
-    for text in (special, "Demanda observada", "h=1", "Selección", "Embargo", "Prueba final"):
+    for text in (
+        special,
+        "Demanda observada",
+        "h=1",
+        "Selección",
+        "orígenes de embargo",
+        "Prueba final",
+    ):
         assert text in desc
     assert "<script>" not in svg and "tabindex" not in svg
     assert root.findall(".//svg:circle", NS) and root.findall(".//svg:g/svg:rect", NS)
@@ -338,28 +373,14 @@ def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:
     assert "Los huecos indican valores ausentes" in page
 
 
-def test_sin_embargo_opcional_no_dibuja_ni_describe_una_region_inexistente() -> None:
-    series = replace(
-        _series(SeriesRepository()),
+def test_origenes_no_mueven_bandas_objetivo() -> None:
+    series = _series(SeriesRepository())
+    other = replace(
+        series,
         blocks=replace(
             BLOCKS,
-            embargo_start=None,
-            embargo_end=None,
+            embargo_origins=M3DateRange("1900-01-01", "2099-12-31", 777),
+            selection_origins=M3DateRange(None, None, 0),
         ),
     )
-    svg = champion_forecast_svg(series)
-    assert "Embargo rayado" not in svg and 'class="pred-forecast__embargo"' not in svg
-    assert "Selección" in svg and "Prueba final" in svg
-
-
-def test_jerarquia_y_exploracion_conservan_evidencia_y_alternativa_tabular() -> None:
-    client, _ = _client(repo=SeriesRepository())
-    html = client.get(f"/resultados/sku/{SKU}?m3={RUN}").text
-    assert '<h1><span class="mono">SKU-VALIDADO</span></h1>' in html
-    assert html.index('id="pronostico-campeon"') < html.index('id="estadistica"')
-    assert "data-evidence-tabs" in html
-    for target in ("comparacion", "estadistica", "familias", "trazabilidad-sku"):
-        assert f'data-evidence-target="{target}"' in html
-    assert "Valores de demanda y pronóstico" in html and "Sin valor" in html
-    assert "Bloques simulados para la demostración" in html
-    assert "Cómo leer el gráfico y consultar sus datos" in html
+    assert champion_forecast_svg(other) == champion_forecast_svg(series)

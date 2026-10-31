@@ -188,15 +188,9 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
 
     regions = "Sin etiquetas de bloques disponibles. "
     if series.blocks:
-        embargo = (
-            "Embargo rayado: sin selección ni prueba. "
-            if series.blocks.embargo_start and series.blocks.embargo_end
-            else ""
-        )
         regions = (
-            "Selección: contexto del campeón congelado. "
-            + embargo
-            + "Prueba final resaltada: región principal de evaluación. "
+            "Selección: fechas objetivo contextuales. Prueba final: fechas objetivo de evaluación. "
+            "Los orígenes de embargo se informan en texto; no son una región de fechas objetivo. "
         )
     description = (
         f"SKU {series.sku}. Campeón {series.candidate}, familia {series.family}. "
@@ -212,15 +206,9 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
     ]
     if series.blocks:
         blocks = series.blocks
-        parts.append(
-            '<defs><pattern id="pred-embargo" width="8" height="8" '
-            'patternUnits="userSpaceOnUse"><path d="M0 8L8 0" '
-            'class="pred-forecast__hatch" /></pattern></defs>'
-        )
         bands = [
-            ("Selección", "selection", blocks.selection_start, blocks.selection_end),
-            ("Embargo", "embargo", blocks.embargo_start, blocks.embargo_end),
-            ("Prueba final", "test", blocks.test_start, blocks.test_end),
+            ("Selección", "selection", blocks.selection_dates.start, blocks.selection_dates.end),
+            ("Prueba final", "test", blocks.test_dates.start, blocks.test_dates.end),
         ]
         for label, kind, start, end in bands:
             if start is None or end is None:
@@ -281,7 +269,10 @@ def _forecast_line(
         cx, cy = x(point.fecha), y(point.valor)
         commands.append(f"{'M' if move else 'L'}{cx:.2f},{cy:.2f}")
         move = False
-        title = f"<title>{escape(point.fecha)}: {format_decimal(point.valor, 3)}</title>"
+        title = f"<title>{escape(point.fecha)}: {format_decimal(point.valor, 3)}"
+        if point.origen is not None:
+            title += f"; origen {escape(point.origen)}"
+        title += "</title>"
         if kind == "observed":
             mark = f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="3">{title}</circle>'
         else:

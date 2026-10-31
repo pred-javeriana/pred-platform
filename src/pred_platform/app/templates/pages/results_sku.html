@@ -4,16 +4,15 @@
 {% from "components/status.html" import status_indicator %}
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/run_line.html" import run_line %}
-{% from "components/evidence.html" import evidence_nav, evidence_panel %}
 
-{% block title %}PRED — {{ sku_id }}{% endblock %}
+{% block title %}PRED — SKU {{ sku_id }}{% endblock %}
 
 {% block content %}
   <a class="pred-back" href="{{ back_href }}">← Volver a la selección por SKU</a>
   <header class="pred-page-header">
     <div>
       <h1><span class="mono">{{ sku_id }}</span></h1>
-      <p>Consulte el modelo elegido, su pronóstico y la evidencia de la evaluación.</p>
+      <p>Revise la decisión publicada por M3 y la comparación por familia. Abra configuraciones, ensayos y ventanas para consultar la evidencia técnica.</p>
     </div>
   </header>
   {% if source == "fixture" %}
@@ -31,60 +30,32 @@
     <div class="pred-workspace pred-workspace--results">
     <div class="pred-panel pred-panel--main">
     <section class="pred-section" id="campeon">
-      <p class="pred-eyebrow">Modelo elegido</p>
+      <p class="pred-eyebrow">Decisión publicada por M3</p>
       {% if verdict %}
-      {% set elegido = verdict.modelos_evaluados | selectattr("candidato_id", "equalto", verdict.candidato_campeon) | first %}
-      <h2 class="pred-panel-title">{{ ("SARIMA" if elegido.modelo == "sarima" else "Seasonal Naive" if elegido.modelo == "seasonal_naive" else elegido.modelo | replace("_", " ")) if elegido else "Sin modelo informado" }}</h2>
-      <p class="pred-meta">Familia {{ family_label(verdict.familia_campeona) }}</p>
+      <h2 class="pred-panel-title">{{ family_label(verdict.familia_campeona) }}</h2>
       <p class="pred-note pred-note--status">
         {{ status_indicator(describe_status("verdict", verdict.veredicto)) }}
         <span>{{ verdict_group(verdict.veredicto) }}</span>
-        {% if not verdict.candidato_campeon %}<span>sin candidato campeón</span>{% endif %}
+        <span aria-hidden="true">·</span>
+        {% if verdict.candidato_campeon %}<span class="mono">{{ verdict.candidato_campeon }}</span>{% else %}<span>sin candidato campeón</span>{% endif %}
       </p>
       <p class="pred-note" id="justificacion">{{ verdict.justificacion }}</p>
-      <div class="pred-decision-measures" aria-label="Medidas de la decisión">
-        <div><span>r frente a Seasonal Naive</span><strong class="mono">{{ format_decimal(verdict.razon_sn, 3) if verdict.razon_sn is not none else "—" }}</strong></div>
-        <div><span>Ventanas válidas</span><strong class="mono">{{ verdict.n_ventanas }}</strong><small>Mínimo {{ verdict.n_min }}</small></div>
-        <div><span>Cobertura</span><strong class="mono">{{ format_decimal(verdict.cobertura * 100, 1) }} %</strong></div>
-      </div>
-      <p class="pred-significance-summary"><strong>Significancia estadística:</strong> {% if verdict.dm_causa %}sin prueba disponible{% elif verdict.dm_significativa %}significativa después del ajuste BH{% else %}no significativa después del ajuste BH{% endif %}. VALIDADO no equivale a significativo. <a href="#estadistica">Consultar la prueba</a></p>
-      {% include "partials/results_forecast.html" %}
-      {% elif m3.excluded.get(sku_id) %}
-      <h2 class="pred-panel-title">Excluido antes de M3</h2>
-      <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star and sku_id in m3.late_launched %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>
-      {% else %}
-      <h2 class="pred-panel-title">Sin veredicto M3</h2>
-      <p class="pred-note pred-note--muted">{% if m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}M3 no publicó un veredicto para este SKU en esta corrida.{% endif %} Abajo está la evidencia de cada familia en M2.</p>
-      {% endif %}
-    </section>
-
-
-    </div>
-    <aside class="pred-panel pred-panel--side" aria-labelledby="contexto-sku">
-      <p class="pred-eyebrow">Contexto del SKU</p>
-      <h2 id="contexto-sku">Demanda y procedencia</h2>
-      <dl class="pred-summary-list">
-        <div><dt>Clase</dt><dd>{{ sku_class_label(selection.sku_class) }}</dd></div>
-        <div><dt>Perfil</dt><dd>{{ profile_label(selection.profile) }}</dd></div>
+      <dl class="pred-kv" id="numeros-decisivos">
+        <dt>Ventanas válidas</dt><dd class="mono">{{ verdict.n_ventanas }} (mínimo n_min {{ verdict.n_min }})</dd>
+        <dt>r frente a Seasonal Naive</dt><dd class="mono">{% if verdict.razon_sn is not none %}{{ format_decimal(verdict.razon_sn, 3) }}{% else %}no calculable{% endif %}</dd>
+        <dt>Cobertura</dt><dd class="mono">{{ format_decimal(verdict.cobertura * 100, 1) }} %</dd>
+        <dt>Pierde frente a la línea base</dt><dd>{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd>
+        <dt>Comparación incompleta</dt><dd>{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd>
+        <dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) }}</dd>
       </dl>
-      {{ run_line(run, selection.run_id) }}
-      {% include "partials/results_m3.html" %}
-      {% include "partials/results_scope.html" %}
-      <nav class="pred-section-links pred-section-links--vertical" aria-label="Detalle del SKU">
-        <a href="#campeon">Decisión</a>{% if verdict %}<a href="#pronostico-campeon">Pronóstico del campeón</a>{% endif %}<a href="#familias">Comparación por familia</a><a href="#trazabilidad-sku">Trazabilidad</a>
-      </nav>
-    </aside>
-    </div>
-    <div class="pred-evidence-area" id="evidencia-sku" data-evidence-tabs>
-    <header class="pred-area-heading"><h2>Explore la evidencia</h2><p>Compare los modelos o consulte el detalle que sustenta la decisión.</p></header>
-    {{ evidence_nav([
-      {"id": "comparacion", "label": "Modelos", "hint": "Comparación publicada"},
-      {"id": "estadistica", "label": "Prueba estadística", "hint": "Significancia y alcance"},
-      {"id": "familias", "label": "Detalle técnico", "hint": "Familias, ensayos y ventanas"},
-      {"id": "trazabilidad-sku", "label": "Trazabilidad", "hint": "Corrida y procedencia"}
-    ], "Evidencia del producto") }}
-    {% call evidence_panel("comparacion", "Comparación de modelos", "Resultados de la reserva; el orden no modifica el campeón publicado.", active=request.query_params.get("reserva")) %}
-      {% if verdict %}
+      <h3>Significancia</h3>
+      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
+      <dl class="pred-kv" id="significancia">
+        {% for label, value in significance_items(verdict) %}
+        <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
+        {% endfor %}
+      </dl>
+      {% include "partials/results_forecast.html" %}
       <h3>Modelos evaluados en la reserva</h3>
       <p class="pred-meta">Ordenados por r frente a Seasonal Naive, tal como los publicó M3.</p>
       {{ table_start(["Familia", "Modelo", "r frente a Seasonal Naive", "Rol"], "Modelos evaluados de " ~ sku_id) }}
@@ -120,29 +91,17 @@
       {% else %}
       <p class="pred-note" id="reserva"><a href="{{ reserve_href }}#reserva">Ver las {{ verdict.n_ventanas }} ventanas de la reserva</a></p>
       {% endif %}
-      {% else %}<p class="pred-note">Sin comparación publicada para este SKU. Consulte el detalle técnico disponible.</p>{% endif %}
-    {% endcall %}
-    {% call evidence_panel("estadistica", "Evidencia estadística", "El resultado descriptivo y la significancia se informan por separado.") %}
-      {% if verdict %}
-      <h3>Significancia</h3>
-      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH de toda la corrida. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
-      <dl class="pred-kv" id="significancia">
-        {% for label, value in significance_items(verdict) %}
-        <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
-        {% endfor %}
-      </dl>
-      <dl class="pred-kv" id="numeros-decisivos">
-        <dt>Ventanas válidas</dt><dd class="mono">{{ verdict.n_ventanas }} (mínimo n_min {{ verdict.n_min }})</dd>
-        <dt>r frente a Seasonal Naive</dt><dd class="mono">{% if verdict.razon_sn is not none %}{{ format_decimal(verdict.razon_sn, 3) }}{% else %}no calculable{% endif %}</dd>
-        <dt>Cobertura</dt><dd class="mono">{{ format_decimal(verdict.cobertura * 100, 1) }} %</dd>
-        <dt>Pierde frente a la línea base</dt><dd>{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd>
-        <dt>Comparación incompleta</dt><dd>{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd>
-        <dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) }}</dd>
-      </dl>
-      {% else %}<p class="pred-note">No hay prueba publicada para este SKU.</p>{% endif %}
-    {% endcall %}
-    <section class="pred-evidence-panel pred-family-explorer" id="familias" data-evidence-panel aria-labelledby="familias-title"{% if with_windows %} data-evidence-active{% endif %}>
-      <h3 id="familias-title">Comparación por familia</h3>
+      {% elif m3.excluded.get(sku_id) %}
+      <h2 class="pred-panel-title">Excluido antes de M3</h2>
+      <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star and sku_id in m3.late_launched %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>
+      {% else %}
+      <h2 class="pred-panel-title">Sin veredicto M3</h2>
+      <p class="pred-note pred-note--muted">{% if m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}M3 no publicó un veredicto para este SKU en esta corrida.{% endif %} Abajo está la evidencia de cada familia en M2.</p>
+      {% endif %}
+    </section>
+
+    <section class="pred-section pred-family-explorer" id="familias">
+      <h2>Comparación por familia</h2>
       <p class="pred-meta">La comparación puede estar incompleta. Cada familia conserva su estado y su causa; una exclusión no es un fallo técnico.</p>
       {% for entry in entries %}
       {% set wf = entry.walk_forward %}
@@ -254,10 +213,28 @@
       {% if with_windows %}
       <p class="pred-note"><a href="{{ hide_windows_href }}">Ocultar las ventanas</a></p>
       {% endif %}
-    </section>    <section class="pred-evidence-panel" id="trazabilidad-sku" aria-labelledby="traza-sku" data-evidence-panel>
+    </section>
+    </div>
+    <aside class="pred-panel pred-panel--side" aria-labelledby="contexto-sku">
+      <p class="pred-eyebrow">Contexto del SKU</p>
+      <h2 id="contexto-sku">Demanda y procedencia</h2>
+      <dl class="pred-summary-list">
+        <div><dt>Clase</dt><dd>{{ sku_class_label(selection.sku_class) }}</dd></div>
+        <div><dt>Perfil</dt><dd>{{ profile_label(selection.profile) }}</dd></div>
+      </dl>
+      {{ run_line(run, selection.run_id) }}
+      {% include "partials/results_m3.html" %}
+      {% include "partials/results_scope.html" %}
+      <nav class="pred-section-links pred-section-links--vertical" aria-label="Detalle del SKU">
+        <a href="#campeon">Decisión</a><a href="#familias">Comparación por familia</a><a href="#trazabilidad-sku">Trazabilidad</a>
+      </nav>
+    </aside>
+    </div>
+    <div class="pred-evidence-area">
+    <header class="pred-area-heading"><h2>Datos de referencia</h2><p>Identificadores y caracterización de este SKU.</p></header>
+    <section class="pred-evidence-panel" id="trazabilidad-sku" aria-labelledby="traza-sku">
       <h3 id="traza-sku">Trazabilidad</h3>
         <dl class="pred-kv">
-          <dt>Candidato campeón</dt><dd class="mono">{{ verdict.candidato_campeon if verdict and verdict.candidato_campeon else "No informado" }}</dd>
           <dt>Ejecución M2</dt><dd class="mono">{{ selection.run_id or "No informada" }}</dd>
           <dt>Corrida M3</dt><dd class="mono">{{ m3.run.run_id if m3.run else "No informada" }}</dd>
           <dt>Ingesta</dt><dd class="mono">{{ m3.run.ingesta_sha256 if m3.run else run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "No informada" }}</dd>

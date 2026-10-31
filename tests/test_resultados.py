@@ -467,9 +467,8 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     page = client.get("/resultados/sku/FIL-0001?m3=m3-real-1")
     text = _text(page.text)
     assert page.status_code == 200
-    assert "Modelo elegido SARIMA Familia Clásica" in text
-    assert "VALIDADO Evaluado" in text
-    assert "FIL-0001/classical/sarima" in text
+    assert "Decisión publicada por M3 Clásica" in text
+    assert "VALIDADO Evaluado · FIL-0001/classical/sarima" in text
     assert "VALIDADO: datos reales, ventanas suficientes y r &lt; 1 (descriptivo)" in text
     assert "Ventanas válidas 40 (mínimo n_min 30)" in text
     assert "r frente a Seasonal Naive 0,800" in text
@@ -829,7 +828,6 @@ def test_the_reserve_windows_are_only_read_on_demand(
     text = _text(html)
 
     assert "Ver las 40 ventanas de la reserva" in text
-    # Las series del gráfico muestran fechas; las métricas por ventana siguen bajo demanda.
     assert "RMSE campeón" not in text
     assert "Ventanas de la reserva de FIL-0001" not in html
     [link] = re.findall(r'href="([^"]*reserva=1[^"]*)"', html)
