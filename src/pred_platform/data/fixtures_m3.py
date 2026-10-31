@@ -29,6 +29,7 @@ from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
 from pred_platform.data.m3_query import M3Query
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.data.repository import M3ReserveBlocks
 from pred_platform.data.scenarios import Scenario
 
 
@@ -47,10 +48,26 @@ def _page(rows: Sequence[Any], query: M3Query) -> tuple[list[Any], models_v2.Pag
 
 
 class M3FixtureSource:
-    """The eleven M3 operations of ``DataRepository`` over a scenario's v2 examples."""
+    """Lecturas M3 de ``DataRepository`` sobre los ejemplos v2 del escenario."""
 
     source: DataSource = "fixture"
     scenario: Scenario
+
+    def get_m3_reserve_blocks(self, run_id: str, *, sku: str) -> M3ReserveBlocks | None:
+        """Simulación explícita de las tres regiones del ejemplo; no es contrato oficial."""
+        observations = self.get_m3_observations(run_id, sku=sku, size=1)
+        if observations.availability.status != "available" or not observations.items:
+            return None
+        if run_id != "m3-real-02" or sku not in ("SKU-VALIDADO", "SKU-EXPLORATORIO"):
+            return None
+        return M3ReserveBlocks(
+            selection_start="2026-07-01",
+            selection_end="2026-07-01",
+            embargo_start="2026-07-02",
+            embargo_end="2026-07-02",
+            test_start="2026-07-03",
+            test_end="2026-07-03",
+        )
 
     # ------------------------------------------------------------------------ runs
     def list_m3_runs(

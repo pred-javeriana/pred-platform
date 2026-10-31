@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
+from pred_platform.app.charts import champion_forecast_svg
 from pred_platform.app.datos import error_view, page_meta
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
@@ -31,6 +32,7 @@ from pred_platform.app.resultados_m3 import (
     reserve_windows,
     summary,
 )
+from pred_platform.app.resultados_pronostico import champion_forecast
 from pred_platform.app.seleccion import (
     FAMILY_ORDER,
     SelectionQuery,
@@ -213,6 +215,7 @@ def sku_detalle(
         else M3Decision()
     )
     # Los enlaces de esta página conservan la corrida M3 resuelta.
+    forecast = champion_forecast(repository, m3, sku_id)
     resolved_m3 = m3.run.run_id if m3.run is not None else wanted_m3
     base = {
         k: v
@@ -242,6 +245,8 @@ def sku_detalle(
         },
         verdict=m3.verdicts.get(sku_id),
         reserve=None,
+        forecast=forecast,
+        forecast_svg=champion_forecast_svg(forecast),
     )
     if params.get("reserva") == "1" and m3.run is not None and sku_id in m3.verdicts:
         context["reserve"] = reserve_windows(repository, m3.run.run_id, m3.verdicts[sku_id])

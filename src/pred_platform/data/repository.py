@@ -56,6 +56,21 @@ class ArtifactDownload:
         return cls(file_name, media_type, content, actual)
 
 
+@dataclass(frozen=True, slots=True)
+class M3ReserveBlocks:
+    """Fechas inclusivas ya resueltas por el productor; nunca parámetros de cálculo.
+
+    Representación local provisional, ajena a los modelos oficiales del contrato M3.
+    """
+
+    selection_start: str
+    selection_end: str
+    embargo_start: str | None
+    embargo_end: str | None
+    test_start: str
+    test_end: str
+
+
 class DataRepository(Protocol):
     """What the views read. Every list is filtered, sorted and paged on the server."""
 
@@ -188,6 +203,10 @@ class DataRepository(Protocol):
         page: int = 1,
         size: int = DEFAULT_SIZE,
     ) -> models_v2.M3Observations: ...
+
+    def get_m3_reserve_blocks(self, run_id: str, *, sku: str) -> M3ReserveBlocks | None:
+        """Límites resueltos de un SKU y corrida exactos, o ausencia de metadatos."""
+        ...
 
     def get_m3_champions(
         self,

@@ -1,0 +1,38 @@
+<section class="pred-section pred-forecast" id="pronostico-campeon" aria-labelledby="titulo-pronostico">
+  <h3 id="titulo-pronostico">Demanda y pronóstico</h3>
+  {% if forecast.problem %}
+  <p class="pred-note pred-note--muted">{{ forecast.problem }}</p>
+  {% else %}
+
+  <ul class="pred-forecast__legend" aria-label="Series del gráfico">
+    <li><span class="pred-forecast__key pred-forecast__key--observed" aria-hidden="true">● ━</span> Demanda observada publicada</li>
+    <li><span class="pred-forecast__key pred-forecast__key--forecast" aria-hidden="true">□ ┄</span> Pronóstico publicado del campeón · horizonte h=1</li>
+  </ul>
+  <figure class="pred-forecast__figure">
+    <div class="pred-chart" tabindex="0" role="region" aria-label="Gráfico desplazable de demanda y pronóstico">
+      {{ forecast_svg | safe }}
+    </div>
+    <figcaption class="pred-meta">{{ forecast.date_range[0] }} al {{ forecast.date_range[1] }} · Los huecos indican valores ausentes; los ceros son demanda válida.</figcaption>
+  </figure>
+  <details class="pred-details"><summary>Cómo leer el gráfico y consultar sus datos</summary>
+  <p class="pred-meta">Pronóstico publicado del campeón con h=1. Esta línea no incluye los demás horizontes evaluados por M3.</p>
+  {% if forecast.blocks %}
+  {% set blocks = forecast.blocks %}
+  <ul class="pred-forecast__blocks">
+    <li>Selección (contexto): {{ blocks.selection_start }} a {{ blocks.selection_end }}.</li>
+    {% if blocks.embargo_start and blocks.embargo_end %}<li>Embargo (rayado): {{ blocks.embargo_start }} a {{ blocks.embargo_end }}; sin selección ni prueba final.</li>{% endif %}
+    <li><strong>Prueba final (región principal de evaluación): {{ blocks.test_start }} a {{ blocks.test_end }}.</strong></li>
+  </ul>
+  {% else %}
+  <p class="pred-meta">Las etiquetas de selección, embargo y prueba final no están disponibles en el contrato de lectura actual. Se muestra la reserva sin inferir sus límites.</p>
+  {% endif %}
+  <div class="pred-evidence-scroll">
+  {{ table_start(["Serie", "Fecha", "Demanda"], "Valores de demanda y pronóstico") }}
+  {% for label, points in [("Observada", forecast.observed), ("Pronóstico h=1", forecast.forecast)] %}
+  {% for point in points %}<tr><th scope="row">{{ label }}</th><td>{{ point.fecha }}</td><td class="num">{{ format_decimal(point.valor, 3) if point.valor is not none else "Sin valor" }}</td></tr>{% endfor %}
+  {% endfor %}{{ table_end() }}
+  </div>
+  </details>
+  {% if source == "fixture" and forecast.blocks %}<p class="pred-meta pred-demo-notice">Datos de prueba · Bloques simulados para la demostración; todavía no forman parte del contrato oficial de lectura M3.</p>{% endif %}
+  {% endif %}
+</section>
