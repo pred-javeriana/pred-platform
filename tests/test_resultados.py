@@ -828,7 +828,8 @@ def test_the_reserve_windows_are_only_read_on_demand(
     text = _text(html)
 
     assert "Ver las 40 ventanas de la reserva" in text
-    assert "RMSE campeón" not in text and "2026-03-15" not in text
+    assert "RMSE campeón" not in text
+    assert "Ventanas de la reserva de FIL-0001" not in html
     [link] = re.findall(r'href="([^"]*reserva=1[^"]*)"', html)
     assert "m3=m3-real-1" in link
 

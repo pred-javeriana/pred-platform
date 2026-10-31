@@ -68,3 +68,39 @@ The read interface also exposes `get_m3_observations` (reserve demand by SKU and
 The cut and late launches come from `m3_cortes` and `m3_lanzamientos_tardios` in SQLite, even
 when the ingestion's Parquet is absent. A published run without `m3_cortes` returns
 `metadata_missing` for evidence and observations and asks for a new execution.
+
+## Visualización del campeón (M4 4.4)
+
+El detalle muestra la demanda observada y el pronóstico h=1 del candidato campeón publicado
+por M3, antes de la comparación de modelos existente. Lee todas las páginas de la corrida,
+SKU y candidato exactos mediante DataRepository. No pronostica, elige modelos ni calcula métricas.
+Los nulos interrumpen las líneas y los ceros se conservan. No se interpolan ni agregan filas.
+Cada pronóstico conserva fecha objetivo, origen y valor; su alternativa tabular incluye el origen.
+
+La representación local provisional M3ReserveBlocks contiene cinco M3DateRange (extremos y
+conteo ya resueltos): orígenes de selección, embargo y prueba, y fechas objetivo de selección
+y prueba. Pertenece al protocolo de la corrida y se lee una sola vez al resolver su decisión,
+compartida por todos sus SKU. El gráfico usa únicamente los rangos de fechas objetivo.
+El embargo se informa como rango de orígenes de ventanas que cruzan la frontera; nunca se
+presenta como banda de demanda observada. No se calculan fronteras desde H, porcentajes,
+longitud de reserva ni t_star.
+
+El fixture simula esos cinco rangos explícitos. No forman parte del contrato oficial de lectura.
+El DAL devuelve None hasta que M3 exponga los valores oficiales; entonces se reemplazará
+únicamente esa lectura. Sin metadatos se dibujan las series sin regiones inferidas.
+La corrección BH se describe dentro de cada categoría de demanda, sin cambiar su cálculo.
+
+El SVG incluye título, descripción, círculos y línea continua para demanda, cuadrados y línea
+discontinua para pronóstico. La ayuda reúne los rangos y la tabla accesible de valores publicados.
+
+### Alcance de la validación de 4.4
+
+Las pruebas de Resultados verifican por separado la evidencia y el SVG: cambiar los tres
+rangos de orígenes, el horizonte informado, la longitud de la reserva, t_star o valores como
+0,4 no mueve las bandas de fechas objetivo resueltas. Las filas conservan su origen y no se
+promedian pronósticos coincidentes.
+
+El fallo de test_lanzamiento_por_linea_de_comandos_declara_datos_reales con WinError 2
+se reprodujo sin cambios en prueba-producto, commit 0846f77: el entorno no encuentra el
+motor que intenta lanzar la CLI. Debe informarse separado de los resultados M4. Ni esa
+prueba, ni el lanzador, ni la detección del motor se modifican como parte de 4.4.

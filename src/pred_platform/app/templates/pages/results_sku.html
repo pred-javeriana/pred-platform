@@ -11,7 +11,7 @@
   <a class="pred-back" href="{{ back_href }}">← Volver a la selección por SKU</a>
   <header class="pred-page-header">
     <div>
-      <h1>SKU <span class="mono">{{ sku_id }}</span></h1>
+      <h1><span class="mono">{{ sku_id }}</span></h1>
       <p>Revise la decisión publicada por M3 y la comparación por familia. Abra configuraciones, ensayos y ventanas para consultar la evidencia técnica.</p>
     </div>
   </header>
@@ -49,12 +49,13 @@
         <dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) }}</dd>
       </dl>
       <h3>Significancia</h3>
-      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH de toda la corrida. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
+      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
       <dl class="pred-kv" id="significancia">
         {% for label, value in significance_items(verdict) %}
         <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
         {% endfor %}
       </dl>
+      {% include "partials/results_forecast.html" %}
       <h3>Modelos evaluados en la reserva</h3>
       <p class="pred-meta">Ordenados por r frente a Seasonal Naive, tal como los publicó M3.</p>
       {{ table_start(["Familia", "Modelo", "r frente a Seasonal Naive", "Rol"], "Modelos evaluados de " ~ sku_id) }}

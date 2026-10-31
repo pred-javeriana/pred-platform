@@ -1,0 +1,39 @@
+<section class="pred-section pred-forecast" id="pronostico-campeon" aria-labelledby="titulo-pronostico">
+  <h3 id="titulo-pronostico">Demanda y pronóstico</h3>
+  {% if forecast.problem %}
+  <p class="pred-note pred-note--muted">{{ forecast.problem }}</p>
+  {% else %}
+
+  <ul class="pred-forecast__legend" aria-label="Series del gráfico">
+    <li><span class="pred-forecast__key pred-forecast__key--observed" aria-hidden="true">● ━</span> Demanda observada publicada</li>
+    <li><span class="pred-forecast__key pred-forecast__key--forecast" aria-hidden="true">□ ┄</span> Pronóstico publicado del campeón · horizonte h=1</li>
+  </ul>
+  <figure class="pred-forecast__figure">
+    <div class="pred-chart" tabindex="0" role="region" aria-label="Gráfico desplazable de demanda y pronóstico">
+      {{ forecast_svg | safe }}
+    </div>
+    <figcaption class="pred-meta">{{ forecast.date_range[0] }} al {{ forecast.date_range[1] }} · Los huecos indican valores ausentes; los ceros son demanda válida.</figcaption>
+  </figure>
+  <details class="pred-details"><summary>Cómo leer el gráfico y consultar sus datos</summary>
+  <p class="pred-meta">Pronóstico publicado del campeón con h=1. Esta línea no incluye los demás horizontes evaluados por M3.</p>
+  {% if forecast.blocks %}
+  {% set blocks = forecast.blocks %}
+  <dl class="pred-kv">
+  {% for label, dates in [("Orígenes de selección", blocks.selection_origins), ("Orígenes de embargo", blocks.embargo_origins), ("Orígenes de prueba", blocks.test_origins), ("Fechas objetivo de selección", blocks.selection_dates), ("Fechas objetivo de prueba", blocks.test_dates)] %}
+    <dt>{{ label }}</dt><dd>{% if dates.count %}{{ dates.start }} a {{ dates.end }} · {{ dates.count }}{% else %}Sin elementos{% endif %}</dd>
+  {% endfor %}
+  </dl>
+  <p class="pred-meta">Los orígenes de embargo corresponden a ventanas que cruzan la frontera entre selección y prueba final; estas ventanas no participan en selección ni prueba final. No representan un intervalo de demanda observada. La prueba final es la región principal de evaluación; la selección aporta contexto.</p>
+  {% else %}
+  <p class="pred-meta">Las etiquetas de selección y prueba final no están disponibles en el contrato de lectura actual. Se muestra la reserva sin inferir sus límites.</p>
+  {% endif %}
+  <div class="pred-evidence-scroll">
+  {{ table_start(["Serie", "Fecha objetivo", "Origen", "Demanda"], "Valores de demanda y pronóstico") }}
+  {% for label, points in [("Observada", forecast.observed), ("Pronóstico h=1", forecast.forecast)] %}
+  {% for point in points %}<tr><th scope="row">{{ label }}</th><td>{{ point.fecha }}</td><td>{{ point.origen or "No aplica" }}</td><td class="num">{{ format_decimal(point.valor, 3) if point.valor is not none else "Sin valor" }}</td></tr>{% endfor %}
+  {% endfor %}{{ table_end() }}
+  </div>
+  </details>
+  {% if source == "fixture" and forecast.blocks %}<p class="pred-meta pred-demo-notice">Datos de prueba · Bloques simulados para la demostración; todavía no forman parte del contrato oficial de lectura M3.</p>{% endif %}
+  {% endif %}
+</section>
