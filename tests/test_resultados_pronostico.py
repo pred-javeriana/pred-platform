@@ -384,3 +384,47 @@ def test_origenes_no_mueven_bandas_objetivo() -> None:
         ),
     )
     assert champion_forecast_svg(other) == champion_forecast_svg(series)
+
+
+def test_bandas_svg_conservan_fechas_objetivo_ante_cambios_metodologicos() -> None:
+    repo = SeriesRepository()
+    resolved = decision(repo, "m2-ejemplo", [SKU])
+
+    def bands(svg: str) -> list[tuple[dict[str, str], str | None]]:
+        root = ET.fromstring(svg)
+        return [
+            (dict(rect.attrib), rect.findtext("svg:title", namespaces=NS))
+            for rect in root.findall("svg:rect", NS)
+        ]
+
+    expected = bands(champion_forecast_svg(champion_forecast(repo, resolved, SKU)))
+    assert [title for _, title in expected] == [
+        "Selección: 2026-06-30 a 2026-07-01",
+        "Prueba final: 2026-07-02 a 2026-07-04",
+    ]
+    for length, horizon, cut, ratio in (
+        (1, 2, "2000-01-01", 0.4),
+        (4, 99, "2099-12-31", 0.99),
+    ):
+        repo.observed_values = [10.0] * length
+        verdict = resolved.verdicts[SKU].model_copy(
+            update={
+                "dm_horizonte": horizon,
+                "n_ventanas": length,
+                "razon_sn": ratio,
+            }
+        )
+        changed = replace(
+            resolved,
+            t_star=cut,
+            verdicts={SKU: verdict},
+            blocks=replace(
+                BLOCKS,
+                selection_origins=M3DateRange("1999-01-01", "1999-02-01", 32),
+                embargo_origins=M3DateRange("2000-01-01", "2000-01-02", 2),
+                test_origins=M3DateRange("2099-01-01", "2099-01-01", 1),
+            ),
+        )
+        svg = champion_forecast_svg(champion_forecast(repo, changed, SKU))
+        assert bands(svg) == expected
+        assert 'class="pred-forecast__embargo"' not in svg

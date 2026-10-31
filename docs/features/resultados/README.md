@@ -92,3 +92,15 @@ La corrección BH se describe dentro de cada categoría de demanda, sin cambiar 
 
 El SVG incluye título, descripción, círculos y línea continua para demanda, cuadrados y línea
 discontinua para pronóstico. La ayuda reúne los rangos y la tabla accesible de valores publicados.
+
+### Alcance de la validación de 4.4
+
+Las pruebas de Resultados verifican por separado la evidencia y el SVG: cambiar los tres
+rangos de orígenes, el horizonte informado, la longitud de la reserva, t_star o valores como
+0,4 no mueve las bandas de fechas objetivo resueltas. Las filas conservan su origen y no se
+promedian pronósticos coincidentes.
+
+El fallo de test_lanzamiento_por_linea_de_comandos_declara_datos_reales con WinError 2
+se reprodujo sin cambios en prueba-producto, commit 0846f77: el entorno no encuentra el
+motor que intenta lanzar la CLI. Debe informarse separado de los resultados M4. Ni esa
+prueba, ni el lanzador, ni la detección del motor se modifican como parte de 4.4.
