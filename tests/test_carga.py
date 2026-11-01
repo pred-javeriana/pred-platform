@@ -7,13 +7,17 @@ archivo: BADHEADER, BADVALUE, CONFLICT, BOOM o SLOW.
 from __future__ import annotations
 
 import hashlib
+import inspect
+import io
 import os
 import re
 from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
 
+from pred_platform.app.datos import read_upload
 from pred_platform.app.main import create_app
 from pred_platform.contract.errors import EngineUnavailable, InvalidQuery
 from pred_platform.data.factory import build_repository
@@ -117,6 +121,27 @@ def test_an_engine_that_hangs_times_out(env: Env) -> None:
         submit_csv(env.settings, "a.csv", _csv("SLOW"), timeout=1)
 
 
+def test_the_thesis_catalog_size_is_within_the_upload_limit_and_the_timeout_waits_for_it() -> None:
+    assert ingesta.MAX_BYTES == 256 * 1024 * 1024
+    assert ingesta.DEFAULT_TIMEOUT_S == 900.0
+    assert inspect.signature(submit_csv).parameters["timeout"].default == 900.0
+
+
+def _padded(size: int) -> bytes:
+    head = _csv("ok")
+    return head + b"#" + b"x" * (size - len(head) - 2) + b"\n"
+
+
+def test_a_file_of_exactly_the_limit_is_accepted_and_one_byte_more_is_not(env: Env) -> None:
+    repo = build_repository(env.settings)
+    at_limit = _padded(ingesta.MAX_BYTES)
+    assert len(at_limit) == ingesta.MAX_BYTES
+
+    assert repo.submit_ingest("catalogo.csv", at_limit).status == "accepted"
+    with pytest.raises(InvalidQuery, match="límite de 256 MiB"):
+        repo.submit_ingest("catalogo.csv", at_limit + b"x")
+
+
 def test_the_name_is_reduced_to_its_base_and_must_be_a_csv() -> None:
     assert safe_name("../../etc/passwd.csv") == "passwd.csv"
     assert safe_name("C:\\datos\\ventas.CSV") == "ventas.CSV"
@@ -134,6 +159,23 @@ def test_bad_uploads_are_invalid_queries(env: Env, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(ingesta, "MAX_BYTES", 10)
     with pytest.raises(InvalidQuery, match="límite"):
         repo.submit_ingest("a.csv", _csv())
+
+
+def test_an_oversized_upload_is_read_only_one_byte_past_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[int] = []
+
+    class Spy(io.BytesIO):
+        def read(self, size: int | None = -1) -> bytes:
+            reads.append(-1 if size is None else size)
+            return super().read(size)
+
+    monkeypatch.setattr(ingesta, "MAX_BYTES", 10)
+    name, content = read_upload(UploadFile(Spy(b"x" * 1000), filename="a.csv"))
+
+    assert name == "a.csv" and len(content) == 11
+    assert reads == [11]
 
 
 # ------------------------------------------------------------------------------- por HTTP

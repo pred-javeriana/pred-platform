@@ -24,8 +24,8 @@ from pathlib import Path, PurePosixPath
 from pred_platform.config import Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
 
-MAX_BYTES = 50 * 1024 * 1024
-DEFAULT_TIMEOUT_S = 300.0
+MAX_BYTES = 256 * 1024 * 1024
+DEFAULT_TIMEOUT_S = 900.0
 
 Submitter = Callable[[str, bytes, bool], str]
 
@@ -70,7 +70,7 @@ def submit_csv(
     if not content:
         raise ValueError("El archivo está vacío.")
     if len(content) > MAX_BYTES:
-        raise ValueError(f"El archivo supera el límite de {MAX_BYTES // (1024 * 1024)} MB.")
+        raise ValueError(f"El archivo supera el límite de {MAX_BYTES // (1024 * 1024)} MiB.")
     sha256 = hashlib.sha256(content).hexdigest()
     root = settings.data_root.resolve()
     staging = root / "staging"

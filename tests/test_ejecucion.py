@@ -77,6 +77,15 @@ def test_the_active_run_shows_its_state_progress_settings_and_tasks() -> None:
     assert "FIL-0001" in text and "classical:sarima" in text
 
 
+def test_the_family_and_model_cells_never_break_a_word() -> None:
+    client, _ = _fixture_client("normal")
+    html = client.get("/ejecucion").text
+
+    cells = r'<td class="pred-nowrap">Cl[^<]*</td>\s*<td class="pred-nowrap">'
+    assert re.search(cells + r'<span class="mono">classical:sarima</span></td>', html)
+    assert html.count('<td class="pred-nowrap">') >= 2 * 7
+
+
 def test_pending_evaluation_settings_show_the_engine_handoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
