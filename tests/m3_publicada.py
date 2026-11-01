@@ -383,3 +383,37 @@ def publish(
                     ],
                 )
         conn.commit()
+
+
+def publish_confirmation(
+    db: Path,
+    *,
+    run_id: str = "m3-real-1",
+    significance: list[tuple[object, ...]],
+    confirmations: list[tuple[object, ...]],
+    comparisons: list[tuple[object, ...]],
+) -> None:
+    """Insert the champion confirmation M3 publishes with the reserve blocks (migration 0011).
+
+    Each tuple holds a row's columns after ``run_id``, in the table's order: ``m3_significancia``
+    (sku_class, n_probados, n_mejores, n_peores, n_mejores_by, n_peores_by, nivel_fcr),
+    ``m3_confirmaciones`` (sku_class, familia_campeona, estado, causa, p_iut, p_holm, alfa,
+    efecto_n_skus, efecto_mediana_r, efecto_ic_inferior, efecto_ic_superior, efecto_causa,
+    contendiente) and ``m3_comparaciones`` (sku_class, competidora, n_skus, mediana_razon,
+    ic_mediana_inferior, ic_mediana_superior, hodges_lehmann, ic_hodges_lehmann_inferior,
+    ic_hodges_lehmann_superior, n_victorias, ic_victorias_inferior, ic_victorias_superior,
+    estadistico_wilcoxon, p_wilcoxon, p_iut, n_mejores, n_peores, causa).
+    """
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        for table, rows in (
+            ("m3_significancia", significance),
+            ("m3_confirmaciones", confirmations),
+            ("m3_comparaciones", comparisons),
+        ):
+            for row in rows:
+                conn.execute(
+                    f"INSERT INTO {table} VALUES ({', '.join('?' * (len(row) + 1))})",
+                    (run_id, *row),
+                )
+        conn.commit()

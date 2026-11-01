@@ -26,6 +26,7 @@ from pred_platform.contract.errors import ContractInvalid
 from pred_platform.dal import evidencia
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
+from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_query import VERDICTS, M3Query
 from pred_platform.data.query import DEFAULT_SIZE
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
@@ -90,6 +91,22 @@ class M3DalSource:
             raise ContractInvalid(
                 f"M3ReserveBlocks: los bloques del protocolo de {run_id} no son válidos: {exc}",
                 field="bloques",
+            ) from exc
+
+    def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
+        """La confirmación del campeón y la significancia por clase de la corrida, o ``None``."""
+        rows = evidencia.confirmation(self.db_path, run_id)
+        if rows is None:
+            return None
+        try:
+            return M3Confirmation.model_validate(rows)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            path = ".".join(str(part) for part in first["loc"])
+            raise ContractInvalid(
+                f"M3Confirmation: la confirmación guardada de {run_id} no es válida: "
+                f"{path or '(raíz)'}: {first['msg']}",
+                field=path or None,
             ) from exc
 
     # ------------------------------------------------------------------------ runs

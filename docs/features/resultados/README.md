@@ -26,7 +26,12 @@ The other tabs read the same resolved M3 run. **Resumen** shows the funnel M3 pu
 whole run and counts the published HLN-DM results (with test, significant after BH within each
 demand class, without test by cause); it never recomputes the test. **Por clase** shows the champion
 family M3 froze for each class on the selection block, its reason, every family's median r and the
-class verdict counts. **Perfiles de error** shows the error profiles of the portfolio (`m3_cartera`, test
+class verdict counts. Below it, **Confirmación del campeón** shows, per class, the champion's state
+on the test block with its IUT and Holm p, its median r against Seasonal Naive with the bootstrap
+interval, and one row per competitor (SKU count, median ratio with interval, Hodges-Lehmann, wins
+with Wilson interval, Wilcoxon p and IUT p). **Significancia frente a Seasonal Naive** lists the
+HLN-DM counts per class after BH and after BY, with the FCR level. A run evaluated before the
+reserve blocks has no confirmation and says so; a class without a row says so in its own line. **Perfiles de error** shows the error profiles of the portfolio (`m3_cartera`, test
 block) for one metric at a time. The SKU detail also draws the champion's published h=1 forecast
 against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
 champion and Seasonal Naive.
@@ -35,6 +40,7 @@ champion and Seasonal Naive.
 
 Views call only `DataRepository` (`list_sku_selections`, `get_sku_selection`, `get_run_status` for the
 run header, `list_m3_runs`, `get_m3_run_status` and `get_m3_evidence` for M3's decision,
+`get_m3_categories` and `get_m3_confirmation` for Por clase,
 `get_capabilities` for the action). Filters, sort and paging are **delegated** to the
 repository and the page shows whatever it returned: nothing is filtered, sorted or computed in the
 view or in the browser (no inline script). `include_windows` is only requested with `?ventanas=1`.

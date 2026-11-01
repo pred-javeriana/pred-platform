@@ -86,6 +86,7 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 | `get_m3_forecasts` | `M3Forecasts` | `m3_pronosticos` |
 | `get_m3_failures` | `M3Failures` | `m3_fallos` |
 | `get_m3_units` | `M3Units` | `m3_unidades` |
+| `get_m3_confirmation` | `M3Confirmation` o `None` | `m3_confirmaciones`, `m3_comparaciones` y `m3_significancia` |
 
 - **Corrida exacta.** Todas las operaciones salvo `list_m3_runs` exigen el `run_id` M3. La lista
   ordena por `creado_en DESC, run_id DESC` y resuelve `selected_run_id` sobre todas las
@@ -113,6 +114,13 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   protocolo no tiene bloques de reserva (`bloques`) se publicó antes de que M3 listara esas
   exclusiones: los dos campos son nulos, porque la falta de filas no significa cero. Resultados
   muestra la causa publicada de cada producto excluido en la lista «Por SKU» y en su detalle.
+- **Confirmación del campeón.** `get_m3_confirmation` lee, de una corrida PUBLICADA, la
+  confirmación de cada campeona con sus comparaciones y la significancia HLN-DM por clase (BH y
+  BY). El contrato v2 no describe estas filas, así que la plataforma las valida al entrar
+  (`data/m3_confirmation.py`): razones de 0 a infinito sin NaN, p entre 0 y 1, intervalos con sus
+  dos extremos en orden y el estado coherente con su causa y su p de Holm. Una corrida cuyo
+  protocolo no tiene bloques de reserva se publicó antes de la confirmación y responde `None`; una
+  fila inválida es `ContractInvalid`.
 - **Demanda y campeones.** `get_m3_observations` conserva las fechas y los valores nulos de la
   reserva. `get_m3_champions` lee los conteos por familia que publica la vista del motor, sin
   calcularlos; las filas con `sku_class` nula corresponden a toda la cartera.
@@ -146,7 +154,8 @@ se construyen sobre estas operaciones.
 
 `tests/test_evidencia_m3.py` comprueba, mediante `DalRepository`, publicación,
 progreso, embudo, exclusiones tardías y de M2 (también nulas en una publicación anterior a
-`m3_exclusiones`), metadatos ausentes o inválidos, filtros,
+`m3_exclusiones`), la confirmación del campeón (solo de una corrida PUBLICADA con bloques, y
+con razones 0 e infinitas), metadatos ausentes o inválidos, filtros,
 grupos, orden y páginas, origen sintético y desconocido, selección de la
 PUBLICADA más nueva con aviso de duplicados, lecturas sin escritura y
 transmisión de la ruta central al proceso del motor. También comprueba bases
@@ -167,6 +176,8 @@ La prueba comprueba, mediante `DalRepository`:
 - Los veredictos y el embudo siguen el corte y las exclusiones que publica M3 en SQLite:
   un veredicto por SKU del panel y el embudo completo.
 - La demanda observada y los campeones por familia tienen filas publicadas, incluida la cartera.
+- Cada clase tiene su confirmación del campeón y su significancia, y las filas que escribe el
+  motor cumplen la validación de la plataforma.
 - Cada fila conserva `run_id`, SKU e ingesta, y la corrida su origen.
 - La reanudación conserva las unidades ya confirmadas y no duplica corridas,
   unidades ni pronósticos.

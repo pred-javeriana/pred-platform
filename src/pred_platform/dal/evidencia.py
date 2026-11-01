@@ -250,13 +250,14 @@ def _policy(protocolo: str | None) -> dict[str, Any] | None:
     return {key: politica.get(key) for key in _POLICY_KEYS}
 
 
-def _lists_eligibility_exclusions(conn: sqlite3.Connection, protocolo: str | None) -> bool:
-    """Whether M3 published the run's M2 exclusions in ``m3_exclusiones``.
+def _publishes_test_block(conn: sqlite3.Connection, protocolo: str | None, table: str) -> bool:
+    """Whether M3 published the run's migration-0011 rows of ``table``.
 
     The engine fixes them with the protocol that carries the reserve blocks (``bloques``, engine
-    ADR-023). An older run has no rows there even if M2 excluded products, so it reports none.
+    ADR-023): the M2 exclusions in ``m3_exclusiones`` and the champion confirmation. An older run
+    has no rows there even if M2 excluded products, so it reports none.
     """
-    if protocolo is None or not _has(conn, "m3_exclusiones"):
+    if protocolo is None or not _has(conn, table):
         return False
     return "bloques" in json.loads(protocolo)
 
@@ -362,6 +363,41 @@ def reserve_blocks(db_path: Path, run_id: str) -> dict[str, Any] | None:
     return bloques if isinstance(bloques, dict) else None
 
 
+def confirmation(db_path: Path, run_id: str) -> dict[str, Any] | None:
+    """The champion confirmation and the per-class significance of a PUBLICADA run, as rows.
+
+    ``clases`` holds each ``m3_confirmaciones`` row with its ``comparaciones``; ``significancia``
+    holds the ``m3_significancia`` rows. ``None`` when the run is unknown, not PUBLICADA, or was
+    published before M3 confirmed champions (its protocol has no reserve blocks).
+    """
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _snapshot(conn):
+            return None
+        row = _find_run(conn, run_id)
+        if (
+            row is None
+            or row["estado"] != "PUBLICADA"
+            or not _publishes_test_block(conn, row["protocolo"], "m3_confirmaciones")
+        ):
+            return None
+
+        def rows(table: str, order: str) -> list[dict[str, Any]]:
+            found = conn.execute(
+                f"SELECT * FROM {table} WHERE run_id = ? ORDER BY {order}", (run_id,)
+            )
+            return [{k: v for k, v in dict(item).items() if k != "run_id"} for item in found]
+
+        comparisons: dict[str, list[dict[str, Any]]] = {}
+        for item in rows("m3_comparaciones", "sku_class, competidora"):
+            comparisons.setdefault(item.pop("sku_class"), []).append(item)
+        classes = [
+            {**item, "comparaciones": comparisons.get(item["sku_class"], [])}
+            for item in rows("m3_confirmaciones", "sku_class")
+        ]
+        significance = rows("m3_significancia", "sku_class")
+    return {"run_id": run_id, "clases": classes, "significancia": significance}
+
+
 def run_status(db_path: Path, run_id: str) -> StatusRead:
     """One run's metadata and durable progress (resolved units), never its metrics."""
     with _open_readonly(db_path) as conn:
@@ -420,7 +456,7 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
                             (run_id,),
                         )
                     ]
-                    if _lists_eligibility_exclusions(conn, row["protocolo"]):
+                    if _publishes_test_block(conn, row["protocolo"], "m3_exclusiones"):
                         eligibility = [
                             dict(item)
                             for item in conn.execute(
