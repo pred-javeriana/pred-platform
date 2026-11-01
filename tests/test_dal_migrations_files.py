@@ -23,6 +23,7 @@ RELEASED: dict[int, str] = {
     9: "ee0d58ffcd57ce34d65478334c571d5196f227dab2cbf2cae0f24175ec99dd01",
     10: "c5488c6fddf87b04ec3dc94b35cfabd2e4a2679db331597bc67b759df576d8a1",
     11: "e68a4352a7510a298a88b1803bbbaf75063e79367524b31c7058847a1368cfb7",
+    12: "1a75cbd757a1050b6382819178c42c950916fea61f629d8af0712f16096ce485",
 }
 
 
@@ -311,7 +312,7 @@ def test_version_10_preserves_published_runs_and_exposes_champions(tmp_path: Pat
         publish_m4=False,
     )
 
-    migrate(db)
+    migrate(db, load_migrations()[:11])
 
     with sqlite3.connect(db) as conn:
         assert conn.execute("PRAGMA user_version").fetchone() == (11,)

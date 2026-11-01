@@ -27,6 +27,7 @@ from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
 from pred_platform.data.m3_query import VERDICTS, M3Query
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.data.repository import M3ReserveBlocks
 
 
 def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
@@ -43,11 +44,16 @@ def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
 
 
 class M3DalSource:
-    """The eleven M3 operations of ``DataRepository`` over the platform's database."""
+    """Lecturas M3 de ``DataRepository`` sobre la base de datos de la plataforma."""
 
     source: DataSource = "dal"
     db_path: Path
     data_root: Path | None
+
+    def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
+        """El contrato de lectura actual aún no expone estos límites resueltos."""
+        # TODO: leer el valor oficial que exponga M3; no deducirlo de cortes ni ventanas.
+        return None
 
     # ------------------------------------------------------------------------ runs
     def list_m3_runs(

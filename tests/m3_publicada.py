@@ -64,13 +64,22 @@ def identity(configuracion: str = "config-1", ingesta_ref: str = "ingesta-1") ->
 
 
 def _verdict(
-    run_id: str, sku: str, sku_class: str, veredicto: str, *, untested: str | None
+    run_id: str,
+    sku: str,
+    sku_class: str,
+    veredicto: str,
+    *,
+    untested: str | None,
+    extra: list[tuple[str, str, float | None]],
+    significant: bool = False,
 ) -> tuple[tuple[object, ...], str | None]:
     """The ``m3_veredictos`` row of one SKU and its champion candidate."""
     baseline = f"{sku}/seasonal_naive/seasonal_naive"
     champion: str | None = f"{sku}/classical/sarima"
     windows, coverage, ratio, loses, iqr = 40, 1.0, 0.8, 0, 0.5
     test: tuple[object, ...] = (40, 7, -2.1, 0.04, 0.08, 0.05, 0, None)
+    if significant:
+        test = (40, 7, -2.9, 0.004, 0.02, 0.05, 1, None)
     if veredicto == "EXPLORATORIO":
         ratio, loses = 1.1, 1
         test = (40, 7, 0.4, 0.6, 0.6, 0.05, 0, None)
@@ -103,6 +112,15 @@ def _verdict(
                 "razon_sn": ratio,
             }
         )
+    models += [
+        {
+            "candidato_id": f"{sku}/{familia}/{modelo}",
+            "familia": familia,
+            "modelo": modelo,
+            "razon_sn": r,
+        }
+        for familia, modelo, r in extra
+    ]
     justification = {
         "VALIDADO": "VALIDADO: datos reales, ventanas suficientes y r < 1 (descriptivo)",
         "EXPLORATORIO": f"EXPLORATORIO: r={ratio} >= 1 (resultado adverso)",
@@ -143,9 +161,22 @@ def publish(
     creado_en: str = "2026-10-27 10:00:00",
     publish_m4: bool = True,
     late: tuple[str, ...] = (),
+    extra_models: dict[str, list[tuple[str, str, float | None]]] | None = None,
+    significant: tuple[str, ...] = (),
+    extra_portfolio: list[tuple[object, ...]] | None = None,
+    windows: dict[str, list[tuple[str, float, float, float | None, str | None]]] | None = None,
+    excluded_from_class: dict[str, str] | None = None,
     eligibility: tuple[tuple[str, str, str], ...] | None = (),
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
+
+    ``extra_models`` adds (familia, modelo, r) to a SKU's evaluated models, beside the baseline and
+    the champion; only the verdict lists them. The HLN-DM test of the ``significant`` SKUs rejects
+    after BH; every other test does not. ``extra_portfolio`` adds ``m3_cartera`` rows (sku_class,
+    familia, metrica, n_skus, n_instancias, n_calculables, n_no_calculables, media, mediana, p25,
+    p75) beside the RMSE of the classical family and the baseline. ``windows`` publishes, per SKU,
+    the reserve windows (fecha, RMSE of the champion, RMSE of the baseline, r, cause of a null r).
+    ``excluded_from_class`` leaves SKUs (SKU -> cause) out of their class's champion selection.
 
     ``eligibility`` lists each product M2 excluded with the two-family rule, its class and the
     published cause. ``None``
@@ -224,12 +255,25 @@ def publish(
                 "INSERT INTO m3_categorias (run_id, sku_class, familia_campeona, motivo, adverso, "
                 "medianas_r, skus_comparables, excluidos, familias_excluidas, conteos, "
                 "porcentajes, mediana_r, n_adversos) VALUES (?, ?, 'classical', 'menor_mediana', "
-                "0, ?, ?, '{}', ?, ?, ?, 0.8, ?)",
+                "0, ?, ?, ?, ?, ?, ?, 0.8, ?)",
                 (
                     run_id,
                     sku_class,
                     json.dumps({"classical": 0.8, "seasonal_naive": 1.0}),
-                    json.dumps(sorted(s for s, (c, _) in verdicts.items() if c == sku_class)),
+                    json.dumps(
+                        sorted(
+                            s
+                            for s, (c, _) in verdicts.items()
+                            if c == sku_class and s not in (excluded_from_class or {})
+                        )
+                    ),
+                    json.dumps(
+                        {
+                            s: cause
+                            for s, cause in (excluded_from_class or {}).items()
+                            if verdicts[s][0] == sku_class
+                        }
+                    ),
                     json.dumps({"dl": "no_entregada"}),
                     json.dumps(conteos),
                     json.dumps({v: 100.0 * n / total for v, n in conteos.items()}),
@@ -237,7 +281,15 @@ def publish(
                 ),
             )
         for sku, (sku_class, veredicto) in verdicts.items():
-            row, champion = _verdict(run_id, sku, sku_class, veredicto, untested=untested)
+            row, champion = _verdict(
+                run_id,
+                sku,
+                sku_class,
+                veredicto,
+                untested=untested,
+                extra=(extra_models or {}).get(sku, []),
+                significant=sku in significant,
+            )
             ratio = row[8]
             conn.execute(f"INSERT INTO m3_veredictos VALUES ({', '.join('?' * len(row))})", row)
             baseline = f"{sku}/seasonal_naive/seasonal_naive"
@@ -304,5 +356,20 @@ def publish(
                     "INSERT INTO m3_cartera VALUES "
                     "(?, ?, ?, 'rmse', 2, 2, 2, 0, 1.5, 1.5, 1.2, 1.8)",
                     (run_id, sku_class, familia),
+                )
+        conn.executemany(
+            "INSERT INTO m3_cartera VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(run_id, *row) for row in extra_portfolio or []],
+        )
+        for sku, rows in (windows or {}).items():
+            champion, baseline = f"{sku}/classical/sarima", f"{sku}/seasonal_naive/seasonal_naive"
+            for fecha, rmse_champion, rmse_baseline, ratio, cause in rows:
+                conn.executemany(
+                    "INSERT INTO m3_metricas VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (run_id, sku, champion, fecha, "rmse", rmse_champion, None),
+                        (run_id, sku, baseline, fecha, "rmse", rmse_baseline, None),
+                        (run_id, sku, champion, fecha, "razon_sn", ratio, cause),
+                    ],
                 )
         conn.commit()

@@ -16,14 +16,31 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
+from pred_platform.app.charts import champion_forecast_svg
 from pred_platform.app.datos import error_view, page_meta
-from pred_platform.app.resultados_m3 import M3Decision, decision
+from pred_platform.app.resultados_m3 import (
+    CLASS_FAMILIES,
+    MOTIVOS,
+    PROFILE_METRICS,
+    M3Classes,
+    M3Decision,
+    M3Profiles,
+    M3Summary,
+    classes,
+    decision,
+    profiles,
+    reserve_windows,
+    summary,
+)
+from pred_platform.app.resultados_pronostico import champion_forecast
 from pred_platform.app.seleccion import (
     FAMILY_ORDER,
     SelectionQuery,
+    family_label,
     parse_selection_query,
     run_action,
 )
+from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing, DataLayerError, InvalidQuery
 from pred_platform.contract.models import RunStatus, SkuSelection, SkuSelectionList
 from pred_platform.data.deps import get_repository
@@ -32,7 +49,7 @@ from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
 
-VIEWS = ("sku", "resumen", "clase")
+VIEWS = ("sku", "resumen", "clase", "errores")
 
 
 def _base_context(repository: DataRepository, vista: str) -> dict[str, Any]:
@@ -80,11 +97,57 @@ def resultados(
         pages=None,
         run=None,
         m3=M3Decision(),
+        m3_summary=M3Summary(),
+        m3_profiles=M3Profiles(),
+        m3_classes=M3Classes(),
+        metric_hrefs={},
+        profile_metrics=PROFILE_METRICS,
+        class_families=CLASS_FAMILIES,
+        class_headers=[family_label(family) for family in CLASS_FAMILIES],
+        motivos=MOTIVOS,
         m3_hrefs={},
         tab_query=urlencode({"ejecucion": query.ejecucion}) if query.ejecucion != LATEST else "",
     )
     if vista == "sku" or vista is None:
         _fill_list(repository, query, context)
+    elif vista in ("resumen", "errores", "clase") and context["champion_capability"].available:
+        context["run"] = run = _run_header(repository, query.ejecucion)
+        if run is not None and run.ejecucion is not None:
+            # Los enlaces de la pestaña conservan la ejecución y la corrida M3 resuelta.
+            base = {"vista": vista}
+            if query.ejecucion != LATEST:
+                base["ejecucion"] = query.ejecucion
+            resolved: models_v2.M3Run | None
+            if vista == "resumen":
+                context["m3_summary"] = found_summary = summary(
+                    repository, run.ejecucion.id, query.m3
+                )
+                resolved = found_summary.run
+            elif vista == "clase":
+                context["m3_classes"] = found_classes = classes(
+                    repository, run.ejecucion.id, query.m3
+                )
+                resolved = found_classes.run
+            else:
+                context["m3_profiles"] = found_profiles = profiles(
+                    repository, run.ejecucion.id, query.m3, params.get("metrica") or "razon_sn"
+                )
+                resolved = found_profiles.run
+                metric_base = {**base, **({"m3": resolved.run_id} if resolved else {})}
+                context["metric_hrefs"] = {
+                    name: "/resultados?" + urlencode({**metric_base, "metrica": name})
+                    for name in PROFILE_METRICS
+                }
+            if resolved is not None:
+                # El panel lateral muestra la misma corrida M3 que la pestaña (sin su causa,
+                # que ya está en el área principal).
+                others = tuple(
+                    r for r in resolved.publicadas_misma_identidad if r != resolved.run_id
+                )
+                context["m3"] = M3Decision(run=resolved, others=others)
+                context["m3_hrefs"] = {
+                    other: "/resultados?" + urlencode({**base, "m3": other}) for other in others
+                }
     return request.app.state.templates.TemplateResponse(request, "pages/results.html", context)
 
 
@@ -152,6 +215,7 @@ def sku_detalle(
         else M3Decision()
     )
     # Los enlaces de esta página conservan la corrida M3 resuelta.
+    forecast = champion_forecast(repository, m3, sku_id)
     resolved_m3 = m3.run.run_id if m3.run is not None else wanted_m3
     base = {
         k: v
@@ -170,6 +234,7 @@ def sku_detalle(
         with_windows=with_windows,
         back_href="/resultados" + (f"?{back}" if back else ""),
         windows_href=f"/resultados/sku/{sku_id}?{urlencode({**base, 'ventanas': 1})}",
+        reserve_href=f"/resultados/sku/{sku_id}?{urlencode({**base, 'reserva': 1})}",
         hide_windows_href=f"/resultados/sku/{sku_id}" + (f"?{urlencode(base)}" if base else ""),
         family_order=FAMILY_ORDER,
         run=None,
@@ -179,7 +244,12 @@ def sku_detalle(
             for other in m3.others
         },
         verdict=m3.verdicts.get(sku_id),
+        reserve=None,
+        forecast=forecast,
+        forecast_svg=champion_forecast_svg(forecast),
     )
+    if params.get("reserva") == "1" and m3.run is not None and sku_id in m3.verdicts:
+        context["reserve"] = reserve_windows(repository, m3.run.run_id, m3.verdicts[sku_id])
     if selection is not None:
         context["run"] = _run_header(repository, selection.run_id or reference)
         context["entries"] = sorted(

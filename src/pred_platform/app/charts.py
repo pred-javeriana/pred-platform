@@ -1,14 +1,18 @@
-"""Gráfico ADI–CV² generado en el servidor a partir de TopologyReport.
+"""Gráficos SVG generados en el servidor con datos del repositorio.
 
 No clasifica SKU ni recalcula umbrales: dibuja los puntos y las líneas que ya
 vienen en el contrato. La clase se distingue por forma y por color (RNF-USA-04).
+La serie del campeón conserva los valores publicados y los bloques ya resueltos.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import date
 from xml.sax.saxutils import escape
 
 from pred_platform.app.presentation import format_decimal, sku_class_label
+from pred_platform.app.resultados_pronostico import ChampionForecastSeries, ForecastPoint
 from pred_platform.contract.models import TopologyMetrics, TopologyReport
 
 _WIDTH = 640
@@ -159,3 +163,123 @@ def _legend() -> str:
         )
     chunks.append("</g>")
     return "".join(chunks)
+
+
+def champion_forecast_svg(series: ChampionForecastSeries) -> str:
+    """Dibuja fechas, valores y bloques recibidos; no resuelve cortes ni agrega pronósticos."""
+    if series.problem or not series.observed or not series.forecast:
+        return ""
+    points = (*series.observed, *series.forecast)
+    dates = sorted({p.fecha for p in points})
+    # El medio día de margen dibuja completos los extremos de las fechas inclusivas.
+    first = date.fromisoformat(dates[0]).toordinal() - 0.5
+    last = date.fromisoformat(dates[-1]).toordinal() + 0.5
+    left, right, top, bottom = 68, 740, 42, 286
+    values = [p.valor for p in points if p.valor is not None]
+    low, high = min(0.0, *values), max(1.0, *values)
+    high += (high - low) * 0.1
+
+    def x(fecha: str, edge: float = 0) -> float:
+        ordinal = date.fromisoformat(fecha).toordinal() + edge
+        return left + (ordinal - first) / (last - first) * (right - left)
+
+    def y(value: float) -> float:
+        return bottom - (value - low) / (high - low) * (bottom - top)
+
+    regions = "Sin etiquetas de bloques disponibles. "
+    if series.blocks:
+        regions = (
+            "Selección: fechas objetivo contextuales. Prueba final: fechas objetivo de evaluación. "
+            "Los orígenes de embargo se informan en texto; no son una región de fechas objetivo. "
+        )
+    description = (
+        f"SKU {series.sku}. Campeón {series.candidate}, familia {series.family}. "
+        f"Demanda observada (línea continua y círculos) y pronóstico publicado h=1 "
+        f"(línea discontinua y cuadrados), de {dates[0]} a {dates[-1]}. "
+        "Los valores ausentes interrumpen las líneas. " + regions
+    )
+    parts = [
+        '<svg role="img" viewBox="0 0 760 350" width="760" height="350" '
+        'xmlns="http://www.w3.org/2000/svg" class="pred-chart__svg pred-forecast__svg">',
+        f"<title>{escape('Demanda y pronóstico del campeón · ' + series.sku)}</title>",
+        f"<desc>{escape(description)}</desc>",
+    ]
+    if series.blocks:
+        blocks = series.blocks
+        bands = [
+            ("Selección", "selection", blocks.selection_dates.start, blocks.selection_dates.end),
+            ("Prueba final", "test", blocks.test_dates.start, blocks.test_dates.end),
+        ]
+        for label, kind, start, end in bands:
+            if start is None or end is None:
+                continue
+            start_x, end_x = max(left, x(start, -0.5)), min(right, x(end, 0.5))
+            if end_x <= start_x:
+                continue
+            parts.extend(
+                [
+                    f'<rect x="{start_x:.2f}" y="{top}" width="{end_x - start_x:.2f}" '
+                    f'height="{bottom - top}" class="pred-forecast__{kind}">'
+                    f"<title>{label}: {escape(start)} a {escape(end)}</title></rect>",
+                    f'<text x="{(start_x + end_x) / 2:.2f}" y="26" text-anchor="middle" '
+                    f'class="pred-chart__tick pred-forecast__label-{kind}">{label}</text>',
+                ]
+            )
+    for value in sorted({low, 0.0, high / 2, high}):
+        position = y(value)
+        parts.append(
+            f'<line x1="{left}" x2="{right}" y1="{position:.2f}" y2="{position:.2f}" '
+            'class="pred-chart__axis" />'
+            f'<text x="{left - 8}" y="{position + 4:.2f}" text-anchor="end" '
+            f'class="pred-chart__tick">{escape(format_decimal(value, 1))}</text>'
+        )
+    parts.append(
+        f'<line x1="{left}" x2="{left}" y1="{top}" y2="{bottom}" '
+        'class="pred-chart__axis" />'
+        '<text x="16" y="164" transform="rotate(-90 16 164)" text-anchor="middle" '
+        'class="pred-chart__axis-label">Demanda</text>'
+        '<text x="404" y="340" text-anchor="middle" '
+        'class="pred-chart__axis-label">Fecha</text>'
+    )
+    for fecha in sorted({dates[0], dates[len(dates) // 2], dates[-1]}):
+        parts.append(
+            f'<text x="{x(fecha):.2f}" y="310" text-anchor="middle" '
+            f'class="pred-chart__tick">{escape(fecha)}</text>'
+        )
+    parts.append(_forecast_line(series.observed, "observed", x, y))
+    parts.append(_forecast_line(series.forecast, "forecast", x, y))
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _forecast_line(
+    points: tuple[ForecastPoint, ...],
+    kind: str,
+    x: Callable[[str], float],
+    y: Callable[[float], float],
+) -> str:
+    """Un nuevo tramo tras cada nulo; las marcas permiten ver también puntos aislados."""
+    commands: list[str] = []
+    markers: list[str] = []
+    move = True
+    for point in points:
+        if point.valor is None:
+            move = True
+            continue
+        cx, cy = x(point.fecha), y(point.valor)
+        commands.append(f"{'M' if move else 'L'}{cx:.2f},{cy:.2f}")
+        move = False
+        title = f"<title>{escape(point.fecha)}: {format_decimal(point.valor, 3)}"
+        if point.origen is not None:
+            title += f"; origen {escape(point.origen)}"
+        title += "</title>"
+        if kind == "observed":
+            mark = f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="3">{title}</circle>'
+        else:
+            mark = f'<rect x="{cx - 3:.2f}" y="{cy - 3:.2f}" width="6" height="6">{title}</rect>'
+        markers.append(mark)
+    return (
+        f'<g class="pred-forecast__{kind}"><path d="{" ".join(commands)}" fill="none" />'
+        + "".join(markers)
+        + "</g>"
+    )
