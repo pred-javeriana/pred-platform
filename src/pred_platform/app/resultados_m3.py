@@ -81,6 +81,13 @@ def _unavailable_evidence(availability: models_v2.Availability) -> M3Problem:
     return _problem(title, availability)
 
 
+def _read_problem(exc: InvalidQuery | DataLayerError) -> M3Problem:
+    """El problema visible de una lectura M3 que falló: consulta inválida o error de datos."""
+    if isinstance(exc, InvalidQuery):
+        return M3Problem("La consulta M3 no es válida.", str(exc), "invalid")
+    return M3Problem("No fue posible leer la evidencia M3.", str(exc), exc.code)
+
+
 def _resolve(
     repository: DataRepository, m2_run_id: str, wanted: str | None
 ) -> models_v2.M3Run | M3Problem:
@@ -126,12 +133,8 @@ def decision(
         evidence = repository.get_m3_evidence(
             resolved.run_id, skus=list(skus), size=max(1, min(len(skus), 500))
         )
-    except InvalidQuery as exc:
-        return M3Decision(problem=M3Problem("La consulta M3 no es válida.", str(exc), "invalid"))
-    except DataLayerError as exc:
-        return M3Decision(
-            problem=M3Problem("No fue posible leer la evidencia M3.", str(exc), exc.code)
-        )
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Decision(problem=_read_problem(exc))
     if evidence.availability.status != "available":
         title = (
             "La publicación M3 no tiene sus metadatos de exclusión."
@@ -195,6 +198,13 @@ class M3Summary:
 
 def summary(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Summary:
     """Resuelve la corrida M3 de ``m2_run_id`` y lee el embudo que M3 publicó para toda ella."""
+    try:
+        return _summary(repository, m2_run_id, wanted)
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Summary(problem=_read_problem(exc))
+
+
+def _summary(repository: DataRepository, m2_run_id: str, wanted: str | None) -> M3Summary:
     resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
     if isinstance(resolved, M3Problem):
         return M3Summary(problem=resolved)
@@ -235,14 +245,13 @@ def profiles(
     metrica: str = "razon_sn",
 ) -> M3Profiles:
     """Resuelve la corrida M3 de ``m2_run_id`` y lee su cartera para ``metrica``."""
-    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
-    if isinstance(resolved, M3Problem):
-        return M3Profiles(problem=resolved, metrica=metrica)
     try:
+        resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+        if isinstance(resolved, M3Problem):
+            return M3Profiles(problem=resolved, metrica=metrica)
         portfolio = repository.get_m3_portfolio(resolved.run_id, metrica=metrica, size=MAX_SIZE)
-    except InvalidQuery as exc:
-        problem = M3Problem("La consulta M3 no es válida.", str(exc), "invalid")
-        return M3Profiles(problem=problem, metrica=metrica)
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Profiles(problem=_read_problem(exc), metrica=metrica)
     if portfolio.availability.status != "available":
         return M3Profiles(problem=_unavailable_evidence(portfolio.availability), metrica=metrica)
     return M3Profiles(run=resolved, metrica=metrica, rows=portfolio.items)
@@ -269,10 +278,13 @@ MOTIVOS: dict[str, str] = {
 
 def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Classes:
     """Resuelve la corrida M3 de ``m2_run_id`` y lee el campeón publicado de cada clase."""
-    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
-    if isinstance(resolved, M3Problem):
-        return M3Classes(problem=resolved)
-    categories = repository.get_m3_categories(resolved.run_id, size=MAX_SIZE)
+    try:
+        resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+        if isinstance(resolved, M3Problem):
+            return M3Classes(problem=resolved)
+        categories = repository.get_m3_categories(resolved.run_id, size=MAX_SIZE)
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Classes(problem=_read_problem(exc))
     if categories.availability.status != "available":
         return M3Classes(problem=_unavailable_evidence(categories.availability))
     rows = sorted(categories.items, key=lambda row: SKU_CLASS_ORDER.index(row.sku_class))

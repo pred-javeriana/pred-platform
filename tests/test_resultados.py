@@ -22,7 +22,7 @@ from pred_platform.app.seleccion import (
 )
 from pred_platform.config import Settings
 from pred_platform.contract import models
-from pred_platform.contract.errors import InvalidQuery
+from pred_platform.contract.errors import ContractInvalid, InvalidQuery
 from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures import FixtureRepository
 from tests.test_seleccion import _run
@@ -736,6 +736,74 @@ def test_the_summary_of_an_unavailable_publication_shows_its_cause_not_zeros(
     assert "La publicación M3 no tiene sus metadatos de exclusión." in text
     assert "no significa cero exclusiones" in text
     assert "Prueba Diebold-Mariano" not in text
+
+
+# ---------------------------------------------------- errores de lectura en las pestañas M3
+def test_a_stored_verdict_that_breaks_the_contract_shows_its_error_in_the_summary(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS)
+    with sqlite3.connect(env.db) as conn:  # SQLite accepts it; the contract does not
+        conn.execute("UPDATE m3_veredictos SET justificacion = ''")
+    client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+
+    response = client.get("/resultados?vista=resumen")
+
+    assert response.status_code == 200
+    text = _text(response.text)
+    assert "No fue posible leer la evidencia M3." in text and "justificacion" in text
+    assert "Prueba Diebold-Mariano" not in text
+
+
+class _FailingRead:
+    """The real DAL, except that one read raises the contract error a broken row gives."""
+
+    def __init__(self, repository: Any, operation: str, from_page: int = 1) -> None:
+        self._repository, self._operation, self._from_page = repository, operation, from_page
+
+    def __getattr__(self, name: str) -> Any:
+        read = getattr(self._repository, name)
+        if name != self._operation:
+            return read
+
+        def failing(*args: Any, **kwargs: Any) -> Any:
+            if kwargs.get("page", 1) >= self._from_page:
+                raise ContractInvalid(f"{name}: fila inválida")
+            return read(*args, **kwargs)
+
+        return failing
+
+
+@pytest.mark.parametrize(
+    ("vista", "operation", "from_page"),
+    [
+        ("resumen", "list_m3_runs", 1),
+        ("resumen", "get_m3_evidence", 2),
+        ("clase", "list_m3_runs", 1),
+        ("clase", "get_m3_categories", 1),
+        ("errores", "get_m3_run_status", 1),
+        ("errores", "get_m3_portfolio", 1),
+    ],
+)
+def test_a_read_error_in_an_m3_tab_is_a_visible_problem_not_a_server_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch, vista: str, operation: str, from_page: int
+) -> None:
+    _run(env, monkeypatch)
+    many = {f"SKU-{i:04d}": ("smooth", "VALIDADO") for i in range(501)}  # two evidence pages
+    _publish_for_the_run(env, verdicts=many)
+    client = _dal_client(env)
+    client.app.state.repository = _FailingRead(env.repo(), operation, from_page)  # type: ignore[attr-defined]
+
+    response = TestClient(client.app, raise_server_exceptions=False).get(
+        f"/resultados?vista={vista}"
+    )
+
+    assert response.status_code == 200
+    text = _text(response.text)
+    assert "No fue posible leer la evidencia M3." in text and "fila inválida" in text
 
 
 # ------------------------------------------------------------------- los perfiles de error
