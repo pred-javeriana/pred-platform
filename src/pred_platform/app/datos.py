@@ -19,6 +19,7 @@ from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_cl
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.worker import ingesta
 
 _PENDING_ATTR = "pending_uploads"
 _SUBMITTED_ATTR = "submitted_reports"
@@ -87,11 +88,15 @@ def validate_upload(file_name: str | None, content: bytes) -> str | None:
 
 
 def read_upload(upload: UploadFile | None) -> tuple[str, bytes]:
-    """Nombre y contenido del archivo recibido; vacíos si no hubo selección."""
+    """Nombre y contenido del archivo recibido; vacíos si no hubo selección.
+
+    Lee a lo sumo un byte más que el límite de carga: ese byte basta para que la ingesta rechace
+    el archivo sin llevar a memoria uno de varios gigabytes.
+    """
     if upload is None:
         return "", b""
     name = (upload.filename or "").strip()
-    content = upload.file.read()
+    content = upload.file.read(ingesta.MAX_BYTES + 1)
     if isinstance(content, str):
         content = content.encode("utf-8")
     return name, content

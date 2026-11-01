@@ -70,7 +70,7 @@ def submit_csv(
     if not content:
         raise ValueError("El archivo está vacío.")
     if len(content) > MAX_BYTES:
-        raise ValueError(f"El archivo supera el límite de {MAX_BYTES // (1024 * 1024)} MB.")
+        raise ValueError(f"El archivo supera el límite de {MAX_BYTES // (1024 * 1024)} MiB.")
     sha256 = hashlib.sha256(content).hexdigest()
     root = settings.data_root.resolve()
     staging = root / "staging"

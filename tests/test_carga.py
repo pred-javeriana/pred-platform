@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import io
 import os
 import re
 from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
 
+from pred_platform.app.datos import read_upload
 from pred_platform.app.main import create_app
 from pred_platform.contract.errors import EngineUnavailable, InvalidQuery
 from pred_platform.data.factory import build_repository
@@ -135,7 +138,7 @@ def test_a_file_of_exactly_the_limit_is_accepted_and_one_byte_more_is_not(env: E
     assert len(at_limit) == ingesta.MAX_BYTES
 
     assert repo.submit_ingest("catalogo.csv", at_limit).status == "accepted"
-    with pytest.raises(InvalidQuery, match="límite de 256 MB"):
+    with pytest.raises(InvalidQuery, match="límite de 256 MiB"):
         repo.submit_ingest("catalogo.csv", at_limit + b"x")
 
 
@@ -156,6 +159,23 @@ def test_bad_uploads_are_invalid_queries(env: Env, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(ingesta, "MAX_BYTES", 10)
     with pytest.raises(InvalidQuery, match="límite"):
         repo.submit_ingest("a.csv", _csv())
+
+
+def test_an_oversized_upload_is_read_only_one_byte_past_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[int] = []
+
+    class Spy(io.BytesIO):
+        def read(self, size: int | None = -1) -> bytes:
+            reads.append(-1 if size is None else size)
+            return super().read(size)
+
+    monkeypatch.setattr(ingesta, "MAX_BYTES", 10)
+    name, content = read_upload(UploadFile(Spy(b"x" * 1000), filename="a.csv"))
+
+    assert name == "a.csv" and len(content) == 11
+    assert reads == [11]
 
 
 # ------------------------------------------------------------------------------- por HTTP

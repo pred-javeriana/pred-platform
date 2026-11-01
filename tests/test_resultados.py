@@ -6,6 +6,7 @@ import json
 import re
 import sqlite3
 from contextlib import closing
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -1021,6 +1022,18 @@ def test_by_class_details_compared_and_excluded_skus_left_out_families_and_verdi
     ) in by_class
 
 
+class _DetailsTags(HTMLParser):
+    """The attributes of every ``<details>`` start tag, whatever their order or spelling."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.attrs: list[dict[str, str | None]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "details":
+            self.attrs.append(dict(attrs))
+
+
 def test_by_class_shows_the_sku_counts_and_keeps_thousands_of_ids_inside_closed_details(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1040,7 +1053,9 @@ def test_by_class_shows_the_sku_counts_and_keeps_thousands_of_ids_inside_closed_
     count = r'<dd><span class="mono">{}</span>\s*<details'
     assert re.search(r"<dt>SKU comparados</dt>" + count.format(3000), section)
     assert re.search(r"<dt>SKU excluidos de la selección</dt>" + count.format(40), section)
-    assert section.count("<details") == 2 and "<details open" not in section
+    tags = _DetailsTags()
+    tags.feed(section)
+    assert len(tags.attrs) == 2 and all("open" not in attrs for attrs in tags.attrs)
     assert section.count("<summary>Ver SKU</summary>") == 2
     visible = re.sub(r"<details.*?</details>", "", section, flags=re.S)
     assert "SKU-02999" not in visible and "EXC-00039" not in visible
