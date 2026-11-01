@@ -293,6 +293,9 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
     )
     assert "Etapa en curso: Ajuste e HPO (M2)" in fragmento()
     assert "Ajuste e HPO (M2) ·" not in fragmento()  # sin plan de la etapa no hay contador
+    # L3 cierra M2 (L2 y L3); M3 es solo L4.
+    _escribir_progreso(env, run.run_id, {"event": "stage_started", "stage": "L3"})
+    assert "Etapa en curso: Validación walk-forward (M2)" in fragmento()
     _escribir_progreso(
         env,
         run.run_id,

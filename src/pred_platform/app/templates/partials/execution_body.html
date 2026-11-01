@@ -52,7 +52,7 @@
   {% endif %}
   {{ progress_bar(done, progress.tareas_total, pct, bar_label, circular=true) }}
   {% if progress.etapa_actual %}
-  {% set etapas = {"L1": "Ingesta de datos (M1)", "L2": "Ajuste e HPO (M2)", "L3": "Validación walk-forward (M3)", "L4": "Evaluación retrospectiva (M3)"} %}
+  {% set etapas = {"L1": "Ingesta de datos (M1)", "L2": "Ajuste e HPO (M2)", "L3": "Validación walk-forward (M2)", "L4": "Evaluación retrospectiva (M3)"} %}
   <p class="pred-meta">Etapa en curso: <strong>{{ etapas.get(progress.etapa_actual, progress.etapa_actual) }}</strong>{% if progress.skus_total is not none %} · {{ format_count(progress.skus_terminados) }} de {{ format_count(progress.skus_total) }} SKU{% endif %}</p>
   {% endif %}
   {% endif %}
