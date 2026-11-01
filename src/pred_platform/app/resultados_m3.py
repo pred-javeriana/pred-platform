@@ -266,8 +266,9 @@ class M3Classes:
     rows: list[models_v2.M3Category] = field(default_factory=list)
 
 
-# Las familias que compiten por clase, en el orden de la tabla; la línea base va al final.
-CLASS_FAMILIES: tuple[str, ...] = ("classical", "ml", "dl", "foundation", "seasonal_naive")
+# Las familias que compiten por clase, en el orden de la tabla. La línea base no lleva columna:
+# M3 no publica su mediana de r, que por definición vale 1.
+CLASS_FAMILIES: tuple[str, ...] = ("classical", "ml", "dl", "foundation")
 MOTIVOS: dict[str, str] = {
     "menor_mediana": "Menor mediana de r",
     "empate_por_simplicidad": "Empate resuelto por simplicidad",

@@ -26,8 +26,10 @@
   {% for row in m3_classes.rows %}
   <h3>{{ sku_class_label(row.sku_class) }}</h3>
   <dl class="pred-kv">
-    <dt>SKU comparados</dt><dd class="mono">{{ row.skus_comparables | join(", ") or "—" }}</dd>
-    <dt>SKU excluidos de la selección</dt><dd>{% for sku, causa in row.excluidos.items() %}<span class="mono">{{ sku }}: {{ causa }}</span>{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</dd>
+    <dt>SKU comparados</dt><dd><span class="mono">{{ row.skus_comparables | length }}</span>{% if row.skus_comparables %}
+      <details class="pred-kv__ids"><summary>Ver SKU</summary><p class="mono pred-kv__list">{{ row.skus_comparables | join(", ") }}</p></details>{% endif %}</dd>
+    <dt>SKU excluidos de la selección</dt><dd><span class="mono">{{ row.excluidos | length }}</span>{% if row.excluidos %}
+      <details class="pred-kv__ids"><summary>Ver SKU</summary><p class="pred-kv__list">{% for sku, causa in row.excluidos.items() %}<span class="mono">{{ sku }}: {{ causa }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p></details>{% endif %}</dd>
     <dt>Familias fuera</dt><dd>{% for family, causa in row.familias_excluidas.items() %}{{ family_label(family) }}: <span class="mono">{{ causa }}</span>{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</dd>
     <dt>Veredictos</dt><dd>{% for veredicto, count in verdict_counts(row) %}<span class="mono">{{ veredicto }}</span> {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}</dd>
     <dt>SKU con resultado adverso</dt><dd class="mono">{{ row.n_adversos }}</dd>

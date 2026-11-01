@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -988,7 +990,8 @@ def test_by_class_shows_the_champion_its_reason_and_each_family_median(
     _publish_for_the_run(env)
     by_class = _by_class(env)
 
-    assert "Smooth (Suave) Clásica Menor mediana de r 0,800 campeona — — — 1,000" in by_class
+    assert "Smooth (Suave) Clásica Menor mediana de r 0,800 campeona — — —" in by_class
+    assert "Clase Campeona Motivo Clásica ML DL Fundacional Smooth" in by_class
     assert "Intermittent (Intermitente) Clásica" in by_class
 
 
@@ -1006,13 +1009,42 @@ def test_by_class_details_compared_and_excluded_skus_left_out_families_and_verdi
     )
     by_class = _by_class(env)
 
-    assert "SKU comparados FIL-0001" in by_class
-    assert "SKU excluidos de la selección FIL-0004: sin_razon_calculable:classical" in by_class
+    assert "SKU comparados 1 Ver SKU FIL-0001" in by_class
+    assert (
+        "SKU excluidos de la selección 1 Ver SKU FIL-0004: sin_razon_calculable:classical"
+        in by_class
+    )
     assert "Familias fuera DL: no_entregada" in by_class
     assert (
         "Veredictos VALIDADO 1 · EXPLORATORIO 0 · FALLO_TECNICO 0 · NO_EVALUABLE 0 · "
         "EVIDENCIA_INSUFICIENTE 1"
     ) in by_class
+
+
+def test_by_class_shows_the_sku_counts_and_keeps_thousands_of_ids_inside_closed_details(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    compared = [f"SKU-{n:05d}" for n in range(3000)]
+    excluded = {f"EXC-{n:05d}": "sin_razon_calculable:classical" for n in range(40)}
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE m3_categorias SET skus_comparables = ?, excluidos = ? "
+            "WHERE sku_class = 'smooth'",
+            (json.dumps(compared), json.dumps(excluded)),
+        )
+    html = _dal_client(env).get("/resultados?vista=clase").text
+
+    section = html.split('id="detalle-por-clase"', 1)[1].split("<h3>", 2)[1]
+    count = r'<dd><span class="mono">{}</span>\s*<details'
+    assert re.search(r"<dt>SKU comparados</dt>" + count.format(3000), section)
+    assert re.search(r"<dt>SKU excluidos de la selección</dt>" + count.format(40), section)
+    assert section.count("<details") == 2 and "<details open" not in section
+    assert section.count("<summary>Ver SKU</summary>") == 2
+    visible = re.sub(r"<details.*?</details>", "", section, flags=re.S)
+    assert "SKU-02999" not in visible and "EXC-00039" not in visible
+    assert "SKU-02999" in section and "EXC-00039: sin_razon_calculable:classical" in section
 
 
 def test_by_class_without_a_published_run_or_with_a_rejected_one_shows_the_cause(

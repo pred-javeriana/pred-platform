@@ -7,6 +7,7 @@ archivo: BADHEADER, BADVALUE, CONFLICT, BOOM o SLOW.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import os
 import re
 from dataclasses import replace
@@ -115,6 +116,27 @@ def test_a_stale_report_of_the_same_file_is_not_mistaken_for_the_new_one(env: En
 def test_an_engine_that_hangs_times_out(env: Env) -> None:
     with pytest.raises(IngestLaunchError, match="tardó más de 1 s"):
         submit_csv(env.settings, "a.csv", _csv("SLOW"), timeout=1)
+
+
+def test_the_thesis_catalog_size_is_within_the_upload_limit_and_the_timeout_waits_for_it() -> None:
+    assert ingesta.MAX_BYTES == 256 * 1024 * 1024
+    assert ingesta.DEFAULT_TIMEOUT_S == 900.0
+    assert inspect.signature(submit_csv).parameters["timeout"].default == 900.0
+
+
+def _padded(size: int) -> bytes:
+    head = _csv("ok")
+    return head + b"#" + b"x" * (size - len(head) - 2) + b"\n"
+
+
+def test_a_file_of_exactly_the_limit_is_accepted_and_one_byte_more_is_not(env: Env) -> None:
+    repo = build_repository(env.settings)
+    at_limit = _padded(ingesta.MAX_BYTES)
+    assert len(at_limit) == ingesta.MAX_BYTES
+
+    assert repo.submit_ingest("catalogo.csv", at_limit).status == "accepted"
+    with pytest.raises(InvalidQuery, match="límite de 256 MB"):
+        repo.submit_ingest("catalogo.csv", at_limit + b"x")
 
 
 def test_the_name_is_reduced_to_its_base_and_must_be_a_csv() -> None:

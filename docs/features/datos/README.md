@@ -46,8 +46,8 @@ the engine's reason (for example, missing canonical columns), or `needs_confirma
 already has a file with that name and other content (G5): confirming repeats the call with
 `--confirm-overwrite` and the engine keeps both files.
 
-- A missing or crashing engine, or one that takes more than 5 minutes, is an `unavailable` state
-  with a retry button, never a 500. Files must be `.csv` and at most 50 MB; only the base name of
+- A missing or crashing engine, or one that takes more than 15 minutes, is an `unavailable` state
+  with a retry button, never a 500. Files must be `.csv` and at most 256 MB; only the base name of
   the uploaded file is used.
 - Aligning free-form headers with an LLM (`pred-engine ingest`) is out of scope: it needs a
   provider and a key the platform does not store.

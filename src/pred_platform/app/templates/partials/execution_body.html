@@ -130,8 +130,8 @@
     {% set task = item.task %}
     <tr>
       <th scope="row" class="pred-sku"><span class="mono">{{ task.sku or "—" }}</span></th>
-      <td>{{ family_label(task.family) if task.family else "—" }}</td>
-      <td><span class="mono">{{ task.modelo }}</span></td>
+      <td class="pred-nowrap">{{ family_label(task.family) if task.family else "—" }}</td>
+      <td class="pred-nowrap"><span class="mono">{{ task.modelo }}</span></td>
       <td>{{ status_indicator(describe_status("task", task.estado)) }}</td>
       <td class="num">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
       <td class="wrap">
