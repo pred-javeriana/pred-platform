@@ -13,6 +13,7 @@ import math
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from pred_platform.app.presentation import SKU_CLASS_ORDER
 from pred_platform.contract import models_v2
@@ -465,9 +466,33 @@ CONFIRMATION_STATES: dict[str, str] = {
 }
 
 
+def _side_digits(value: float, threshold: float | None, digits: int) -> int:
+    """Los decimales, desde ``digits``, que dejan la cifra redondeada del mismo lado del umbral.
+
+    Una razón menor que 1 no se muestra como 1 ni un p menor que α como α: 0,9996 queda 0,9996 y
+    no 1,000. Las cifras lejos del umbral conservan ``digits``.
+    """
+    if threshold is None:
+        return digits
+    side = (value > threshold) - (value < threshold)
+    while digits < 15:
+        rounded = float(f"{value:.{digits}f}")
+        if (rounded > threshold) - (rounded < threshold) == side:
+            break
+        digits += 1
+    return digits
+
+
 def ratio_text(value: float | None) -> str:
-    """Una razón publicada con tres decimales; 0 e infinito son bordes válidos."""
-    return "∞" if value == math.inf else _decimal(value)
+    """Una razón publicada con tres decimales, o más si hacen falta para no confundirla con 1.
+
+    0 e infinito son bordes válidos.
+    """
+    if value is None:
+        return "—"
+    if value == math.inf:
+        return "∞"
+    return _decimal(value, _side_digits(value, 1.0, 3))
 
 
 def interval_text(lower: float | None, upper: float | None, *, percent: bool = False) -> str:
@@ -479,11 +504,24 @@ def interval_text(lower: float | None, upper: float | None, *, percent: bool = F
     return f"[{ratio_text(lower)}; {ratio_text(upper)}]"
 
 
-def p_text(value: float | None) -> str:
-    """Un p-valor publicado con tres decimales; por debajo de 0,001 se muestra el límite."""
-    if value is not None and value < 0.001:
+def p_text(value: float | None, alfa: float | None = None) -> str:
+    """Un p-valor publicado con tres decimales, o más si hacen falta frente a ``alfa``.
+
+    Por debajo de 0,001 se muestra el límite, salvo que α también lo esté. Con ``alfa``, la cifra
+    queda del mismo lado de α que el p publicado: 0,0496 y 0,0504 no se muestran como 0,050.
+    """
+    if value is None:
+        return "—"
+    if value < 0.001 and (alfa is None or alfa >= 0.001):
         return "< 0,001"
-    return _decimal(value)
+    return _decimal(value, _side_digits(value, alfa, 3))
+
+
+def exact_text(value: float) -> str:
+    """La cifra exacta que M3 guardó, sin redondear ni notación científica: 0,00002, ∞."""
+    if value == math.inf:
+        return "∞"
+    return format(Decimal(repr(value)), "f").replace(".", ",")
 
 
 def wins_text(wins: int, n_skus: int) -> str:
@@ -499,9 +537,7 @@ def level_text(level: float) -> str:
     Usa dos decimales y agrega los necesarios para que un nivel menor que 1 quede bajo 100:
     0,99998 se muestra 99,998 %.
     """
-    digits = 2
-    while level < 1 and float(f"{100 * level:.{digits}f}") >= 100 and digits < 15:
-        digits += 1
+    digits = _side_digits(100 * level, 100.0, 2)
     return f"{_decimal(100 * level, digits).rstrip('0').rstrip(',')} %"
 
 

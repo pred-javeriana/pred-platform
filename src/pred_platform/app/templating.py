@@ -41,6 +41,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
     ):
         templates.env.globals[name] = getattr(seleccion, name)
     for name in (
+        "exact_text",
         "funnel_rows",
         "interval_text",
         "level_text",

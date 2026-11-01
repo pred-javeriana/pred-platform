@@ -1204,6 +1204,53 @@ def test_an_fcr_level_below_one_never_shows_as_100_percent(
     assert "Erratic (Errática) 999 1 0 0 0 99,99 %" in text
     assert "Intermittent (Intermitente) 1001 1 0 0 0 99,995 %" in text
     assert "100 %" not in text
+    assert '<td class="num" title="0,99998">99,998 %</td>' in section
+
+
+def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # fmt: off
+    _publish_confirmed(
+        env,
+        confirmations=[
+            ("smooth", "classical", "no_confirmado", "p_holm>0.05", 0.0496, 0.0504, 0.05,
+             412, 0.9998, 0.9996, 1.0003, None, None),
+        ],
+        comparisons=[
+            ("smooth", "ml", 412, 0.9996, 0.9992, 0.9999, 0.9997, 0.9993, 1.0001, 230, 0.51,
+             0.605, 38000.0, 0.0496, 0.0496, 3, 1, None),
+            ("smooth", "foundation", 410, 0.958, 0.921, 0.991, 0.951, 0.93, 0.972, 231, 0.515,
+             0.611, 33012.0, 0.0504, 0.0504, 12, 7, None),
+        ],
+    )
+    # fmt: on
+    text = _confirmation(env)
+
+    # Rounded to three decimals, 0,9996 and 0,9999 would read 1,000 and 0,0496 would read 0,050.
+    assert (
+        "Smooth (Suave) Clásica No confirmado p_holm>0.05 0,0496 0,0504 0,9998 [0,9996; 1,0003] 412"
+    ) in text
+    # 0,9992 keeps three decimals: 0,999 is still below 1.
+    assert (
+        "ML 412 0,9996 [0,999; 0,9999] 0,9997 230 (55,8 %) [51,0 %; 60,5 %] 0,0496 0,0496"
+    ) in text
+    # Values away from 1 and from α keep three decimals.
+    assert (
+        "Fundacional 410 0,958 [0,921; 0,991] 0,951 231 (56,3 %) [51,5 %; 61,1 %] 0,0504 0,0504"
+    ) in text
+    # Each rounded figure carries the exact stored value as its title.
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    for cell in (
+        '<td class="num" title="0,0496">0,0496</td>',
+        '<td class="num" title="0,0504">0,0504</td>',
+        '<td class="num" title="0,9996">0,9996<span class="pred-subvalue" '
+        'title="[0,9992; 0,9999]">[0,999; 0,9999]</span></td>',
+        '<td class="num" title="0,9997">0,9997</td>',
+        '<span class="pred-subvalue" title="[0,9996; 1,0003]">[0,9996; 1,0003]</span>',
+    ):
+        assert cell in html
 
 
 def test_by_class_says_when_the_run_was_published_before_the_confirmation(
