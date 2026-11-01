@@ -20,6 +20,7 @@ from pred_platform.app.ejecucion import (
     FINISHED_STATES,
     METRIC_CHOICES,
     NOTICES,
+    ORIGIN_CHOICES,
     ExecutionQuery,
     FormResult,
     default_form_values,
@@ -156,6 +157,7 @@ def _context(
         "form_error": form_error,
         "family_choices": FAMILY_CHOICES,
         "metric_choices": METRIC_CHOICES,
+        "origin_choices": ORIGIN_CHOICES,
     }
 
 
@@ -204,6 +206,7 @@ def lanzar(
     trials: Annotated[str | None, Form()] = None,
     seed: Annotated[str | None, Form()] = None,
     workers: Annotated[str | None, Form()] = None,
+    data_origin: Annotated[str | None, Form()] = None,
 ) -> HTMLResponse | RedirectResponse:
     form = parse_launch_form(
         families=families or [],
@@ -216,6 +219,7 @@ def lanzar(
             "trials": trials,
             "seed": seed,
             "workers": workers,
+            "data_origin": data_origin,
         },
     )
     form.values["ingest_id"] = ingest_id or ""

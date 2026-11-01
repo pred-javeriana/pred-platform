@@ -10,14 +10,15 @@ Las migraciones 0005 a 0011 incorporan el esquema M3. Sus textos canónicos
 pertenecen a `pred-engine`, en `forecasting/persistencia_evidencia/`:
 `esquema_m3.sql` y `esquema_m3_0002.sql` a `esquema_m3_0007.sql`. La plataforma
 conserva copias exactas con sus hashes de publicación. Las migraciones 0001 a 0004
-no cambian.
+no cambian. La 0012 es solo de la plataforma (estado de tarea `finalizo_m2`): el motor
+acepta la base en esa versión y no aplica nada para ella.
 
 ```bash
 python -m pred_platform.dal.migrate --db data/pred.db
 pred-engine run --csv ventas.csv --data-root data --db-path data/pred.db
 ```
 
-Ambos procesos usan `PRAGMA user_version`, actualmente 11. El motor aplica las
+Ambos procesos usan `PRAGMA user_version`, actualmente 12. El motor aplica las
 migraciones M3 pendientes sobre una base de plataforma existente. No crea una
 base independiente ni modifica una versión desconocida. Si el archivo falta,
 la ejecución se detiene con un mensaje claro antes de M0/M2.

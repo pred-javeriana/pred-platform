@@ -45,6 +45,13 @@ METRIC_CHOICES: tuple[tuple[str, str], ...] = (
     ("smape", "sMAPE"),
     ("mase", "MASE"),
 )
+ORIGIN_CHOICES: tuple[tuple[str, str], ...] = (
+    ("unknown", "No declarar / conservar origen registrado"),
+    ("real", "Reales"),
+    ("synthetic", "Sintéticos"),
+)
+_ORIGIN_VALUES: dict[str, bool | None] = {"unknown": None, "real": False, "synthetic": True}
+
 # Avisos que se muestran tras una acción (el redirect lleva `aviso=<clave>`).
 NOTICES: dict[str, tuple[str, str]] = {
     "en_cola": ("success", "La ejecución quedó en cola; empezará en cuanto el worker la tome."),
@@ -132,6 +139,7 @@ def default_form_values() -> dict[str, Any]:
         "trials": "",
         "seed": str(_DEFAULTS.seed),
         "workers": str(_DEFAULTS.workers),
+        "data_origin": "unknown",
     }
 
 
@@ -155,6 +163,7 @@ def parse_launch_form(
         "families": [f for f in families if f],
         "metric": metric or _DEFAULTS.metric,
         "trials": (fields.get("trials") or "").strip(),
+        "data_origin": (fields.get("data_origin") or "unknown").strip(),
     }
     errors: dict[str, str] = {}
     numbers: dict[str, int] = {}
@@ -183,6 +192,8 @@ def parse_launch_form(
         errors["families"] = "Elija al menos una familia de modelos."
     if values["metric"] not in {key for key, _ in METRIC_CHOICES}:
         errors["metric"] = "Elija una de las métricas de la lista."
+    if values["data_origin"] not in _ORIGIN_VALUES:
+        errors["data_origin"] = "Elija uno de los orígenes de la lista."
     if errors:
         return FormResult(values, None, errors)
     try:
@@ -196,6 +207,7 @@ def parse_launch_form(
             trials=trials,
             seed=numbers["seed"],
             workers=numbers["workers"],
+            datos_sinteticos=_ORIGIN_VALUES[values["data_origin"]],
         )
     except ValueError as exc:  # una regla del motor que el formulario no previó
         return FormResult(values, None, {"form": str(exc)})

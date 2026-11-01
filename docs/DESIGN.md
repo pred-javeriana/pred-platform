@@ -97,7 +97,7 @@ State vocabularies are specific to each context; there is no single fixed total.
 Every presented state uses color + icon + label (RNF-USA-04); color alone never carries meaning.
 
 **Current implementation.** Task lifecycle: pendiente (neutral, clock), ejecutando (info, play),
-exitosa (ok, check), fallida (err, x), no ejecutable (warn, banned-sign). Family states also include
+finalizo_m2 (info, check-circle; M2 finished, waiting for M3), exitosa (ok, check), fallida (err, x), no ejecutable (warn, banned-sign). Family states also include
 excluida. Runs use pendiente, ejecutando, completada, completada_con_fallos and detenida.
 HPO trials use pendiente, corriendo, completado, podado and fallido; podado is distinct from a
 failure. Ingestion has accepted, rejected, failed and needs_confirmation, presented through the
@@ -145,7 +145,7 @@ La revisión espacial solicitada por el auditor usa un área principal amplia y 
 
 En Datos, el estado del archivo y sus conteos tienen la mayor jerarquía; la topología global y la siguiente acción ocupan la columna secundaria. La validez corresponde a la ingesta, no a la calidad predictiva. Diagnóstico, distribución detallada, sustitución de archivo e historial quedan en un navegador inferior con título y descripción por sección. La acción de continuar tiene un área de 48px de alto y usa el ancho de la columna secundaria; las acciones ordinarias conservan ancho intrínseco.
 
-En Ejecución, el gráfico circular representa únicamente el porcentaje ya informado, con conteos y alternativa accesible. A su lado, los cinco estados enlazan con las tareas filtradas. No representa etapas M1–M4 ni estima tiempo restante. Una corrida detenida sigue mostrando las tareas exitosas previas, sin presentar fallos cerrados como progreso logrado. En Resultados, el explorador paginado es el área principal y el contexto metodológico queda al lado; en SKU, decisión y familias preceden a la evidencia técnica.
+En Ejecución, el gráfico circular representa únicamente el porcentaje ya informado, con conteos y alternativa accesible. A su lado, los conteos por estado enlazan con las tareas filtradas. Bajo la barra se nombra la etapa en curso y cuántos de sus SKU terminaron; no estima tiempo restante. Una corrida detenida sigue mostrando las tareas exitosas previas, sin presentar fallos cerrados como progreso logrado. En Resultados, el explorador paginado es el área principal y el contexto metodológico queda al lado; en SKU, decisión y familias preceden a la evidencia técnica.
 
 ## Navegación de evidencia y jerarquía de lectura
 

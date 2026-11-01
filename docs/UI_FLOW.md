@@ -69,8 +69,12 @@ Ver `docs/features/ejecucion/README.md`.
 `detenida`.
 
 **Estados de tarea** (`EstadoTarea`, claves de contrato): `pendiente`, `ejecutando`,
-`exitosa`, `fallida`, `no_ejecutable`. La presentación usa Pendiente, Ejecutando,
-Exitosa, Fallida y No Ejecutable; no se alteran las claves almacenadas ni los filtros.
+`finalizo_m2`, `exitosa`, `fallida`, `no_ejecutable`. Una tarea queda en `finalizo_m2` al
+terminar L2 y L3, y pasa a `exitosa` cuando M3 guarda su candidato. La presentación usa
+Pendiente, Ejecutando, «Terminó configuración con HPO, esperando evaluación retrospectiva»,
+Exitosa, Fallida y No Ejecutable; no se alteran las claves almacenadas ni los filtros. Mientras
+la corrida está en curso, junto a la barra se muestra la etapa en curso y cuántos de sus SKU
+terminaron.
 
 **Estados de trial HPO** (contrato → etiqueta de interfaz):
 
