@@ -2,9 +2,12 @@
 
 Applying an event is idempotent: replaying the whole file (after a restart) leaves the same rows.
 The state of a task follows the unit: ``planned`` -> ``pendiente``, ``unit_started`` ->
-``ejecutando``, a unit finished in L3 -> ``exitosa``, a unit that failed -> ``fallida``, and a
-skipped SKU -> ``no_ejecutable`` (section 7.4 and 18 of the data contract), except a unit of
-it that already failed.
+``ejecutando``, a unit finished in L3 -> ``finalizo_m2`` (M2 is L2 and L3), a unit finished in
+L4 -> ``exitosa`` (M3 stored its candidate), a unit that failed -> ``fallida``, and a skipped
+SKU -> ``no_ejecutable`` (section 7.4 and 18 of the data contract), except a unit of it that
+already failed. A start never takes a task in ``finalizo_m2`` or ``exitosa`` back to
+``ejecutando``. When the run closes, ``worker/importacion.py`` settles every task that finished
+L3 as ``exitosa`` if M3 was published or L4 was blocked, even without L4 events.
 """
 
 from __future__ import annotations
