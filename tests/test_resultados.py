@@ -1183,6 +1183,29 @@ def test_by_class_shows_the_bh_and_by_counts_of_each_class(
     ) in _text(section)
 
 
+def test_an_fcr_level_below_one_never_shows_as_100_percent(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # Level 1 - R * q / m with q = 0,05 and R = 1: two decimals reach 100,00 from m = 1000 on.
+    _publish_confirmed(
+        env,
+        significance=[
+            ("smooth", 2500, 1, 0, 1, 0, 0.99998),
+            ("erratic", 999, 1, 0, 0, 0, 1 - 0.05 / 999),
+            ("intermittent", 1001, 1, 0, 0, 0, 1 - 0.05 / 1001),
+        ],
+    )
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    section = html.split('id="significancia-por-clase"', 1)[1].split("</section>", 1)[0]
+    text = _text(section)
+
+    assert "Smooth (Suave) 2500 1 0 1 0 99,998 %" in text
+    assert "Erratic (Errática) 999 1 0 0 0 99,99 %" in text
+    assert "Intermittent (Intermitente) 1001 1 0 0 0 99,995 %" in text
+    assert "100 %" not in text
+
+
 def test_by_class_says_when_the_run_was_published_before_the_confirmation(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

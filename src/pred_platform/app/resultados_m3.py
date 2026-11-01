@@ -494,8 +494,15 @@ def wins_text(wins: int, n_skus: int) -> str:
 
 
 def level_text(level: float) -> str:
-    """Un nivel de confianza en porcentaje, con hasta dos decimales: 95 %, 99,38 %."""
-    return f"{_decimal(100 * level, 2).rstrip('0').rstrip(',')} %"
+    """Un nivel de confianza en porcentaje: 95 %, 99,38 %; bajo 1 nunca se muestra como 100 %.
+
+    Usa dos decimales y agrega los necesarios para que un nivel menor que 1 quede bajo 100:
+    0,99998 se muestra 99,998 %.
+    """
+    digits = 2
+    while level < 1 and float(f"{100 * level:.{digits}f}") >= 100 and digits < 15:
+        digits += 1
+    return f"{_decimal(100 * level, digits).rstrip('0').rstrip(',')} %"
 
 
 def _decimal(value: float | None, digits: int = 3) -> str:
