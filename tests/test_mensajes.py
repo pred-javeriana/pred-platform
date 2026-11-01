@@ -25,6 +25,7 @@ CODIGOS_DEL_CONTRATO = {
     "handoff.contract",
     "handoff.preservation",
     "handoff.precondition",
+    "handoff.missing_metadata",
     "selection.contract",
     "selection.no_viable_trial",
     "selection.unregistered_family",
@@ -59,6 +60,7 @@ CODIGOS_DEL_CONTRATO = {
     "eligibility.no_reserved_observations",
     "eligibility.non_finite_demand",
     "eligibility.insufficient_history",
+    "eligibility.fewer_than_two_families",
 }
 EJEMPLOS = Path(models.__file__).parent / "examples" / "v1"
 
@@ -166,6 +168,28 @@ def test_un_pronostico_degenerado_tiene_su_mensaje_y_no_se_reintenta() -> None:
     # competencia: la acción no promete que las demás familias no se afecten.
     assert descripcion.accion == (
         "Pruebe con otra familia y revise cuántas familias evaluables conserva el SKU."
+    )
+    assert descripcion.reintentable is False
+
+
+def test_un_panel_sin_corte_pide_volver_a_cargar_el_archivo() -> None:
+    descripcion = mensajes.describir({"code": "handoff.missing_metadata", "stage": "L1"})
+    assert descripcion.titulo == (
+        "El panel clasificado no trae el corte de la reserva ni las exclusiones."
+    )
+    assert descripcion.accion == (
+        "Vuelva a cargar el archivo para que el motor lo clasifique de nuevo y registre el corte."
+    )
+    assert descripcion.reintentable is False
+
+
+def test_un_sku_con_menos_de_dos_familias_queda_fuera_y_no_se_reintenta() -> None:
+    descripcion = mensajes.describir({"code": "eligibility.fewer_than_two_families", "stage": "L2"})
+    assert descripcion.titulo == (
+        "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables."
+    )
+    assert descripcion.accion == (
+        "Revise por qué fallaron sus otras familias o agregue otra familia a la corrida."
     )
     assert descripcion.reintentable is False
 
