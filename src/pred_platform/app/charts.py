@@ -174,7 +174,8 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
     # El medio día de margen dibuja completos los extremos de las fechas inclusivas.
     first = date.fromisoformat(dates[0]).toordinal() - 0.5
     last = date.fromisoformat(dates[-1]).toordinal() + 0.5
-    left, right, top, bottom = 68, 740, 42, 286
+    # Una fecha en mono de 11 px mide 66 px: el margen derecho deja entera la última.
+    left, right, top, bottom = 68, 720, 42, 286
     values = [p.valor for p in points if p.valor is not None]
     low, high = min(0.0, *values), max(1.0, *values)
     high += (high - low) * 0.1
@@ -238,7 +239,7 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
         'class="pred-chart__axis" />'
         '<text x="16" y="164" transform="rotate(-90 16 164)" text-anchor="middle" '
         'class="pred-chart__axis-label">Demanda</text>'
-        '<text x="404" y="340" text-anchor="middle" '
+        f'<text x="{(left + right) / 2:.0f}" y="340" text-anchor="middle" '
         'class="pred-chart__axis-label">Fecha</text>'
     )
     for fecha in sorted({dates[0], dates[len(dates) // 2], dates[-1]}):
