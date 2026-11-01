@@ -25,7 +25,7 @@
   </dl>
   <p class="pred-meta">Los orígenes de embargo corresponden a ventanas que cruzan la frontera entre selección y prueba final; estas ventanas no participan en selección ni prueba final. No representan un intervalo de demanda observada. La prueba final es la región principal de evaluación; la selección aporta contexto.</p>
   {% else %}
-  <p class="pred-meta">Las etiquetas de selección y prueba final no están disponibles en el contrato de lectura actual. Se muestra la reserva sin inferir sus límites.</p>
+  <p class="pred-meta">Esta corrida no publicó los límites de sus bloques de selección y prueba. Se muestra la reserva sin inferir sus límites.</p>
   {% endif %}
   <div class="pred-evidence-scroll">
   {{ table_start(["Serie", "Fecha objetivo", "Origen", "Demanda"], "Valores de demanda y pronóstico") }}
@@ -34,6 +34,5 @@
   {% endfor %}{{ table_end() }}
   </div>
   </details>
-  {% if source == "fixture" and forecast.blocks %}<p class="pred-meta pred-demo-notice">Datos de prueba · Bloques simulados para la demostración; todavía no forman parte del contrato oficial de lectura M3.</p>{% endif %}
   {% endif %}
 </section>

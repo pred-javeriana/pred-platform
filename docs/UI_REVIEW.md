@@ -106,7 +106,7 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 
 | Superficie | Límite |
 | --- | --- |
-| Resultados | Resumen y Por clase están disponibles para navegar, pero se muestran como no disponibles hasta que Módulo 4 las construya. Las vistas actuales consumen la selección por familia y, por SKU, el campeón, el veredicto y la evidencia de una corrida M3 PUBLICADA. |
+| Resultados | Resumen, Por clase, Perfiles de error y Por SKU leen una corrida M3 PUBLICADA exacta: embudo y conteos HLN-DM publicados, campeón por clase, perfiles de error de la cartera y, por SKU, el campeón, el veredicto, su evidencia y su pronóstico h=1. |
 | Resultados | La interfaz no elige campeones ni calcula métricas, distribuciones, ratios, pruebas o p-valores, y conserva `null` con su causa. El filtro de familia es de familia evaluada, no campeona. Segmento, exportación CSV y reimportación de configuración pertenecen a M4. |
 | Resultados | Los cinco veredictos M3 (`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO`, `EXPLORATORIO`) no equivalen al vocabulario retrospectivo v1 de las fixtures. |
 | Ejecución | `RunStatus` no expone la etapa actual ni el error de una corrida sin tareas. La interfaz no los deduce de errores ni de tareas paginadas. |

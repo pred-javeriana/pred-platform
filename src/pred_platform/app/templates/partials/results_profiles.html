@@ -9,7 +9,7 @@
   <nav class="pred-section-links" aria-label="Métrica del perfil">
     {% for name, label in profile_metrics.items() %}<a href="{{ metric_hrefs[name] }}"{% if name == m3_profiles.metrica %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
-  <p class="pred-meta">Distribución de {{ profile_metrics[m3_profiles.metrica] }} tal como la publicó M3{% if m3_profiles.metrica == "razon_sn" %}; la línea base vale 1{% endif %}.</p>
+  <p class="pred-meta">Distribución de {{ profile_metrics[m3_profiles.metrica] }} en el bloque de prueba, tal como la publicó M3{% if m3_profiles.metrica == "razon_sn" %}; la línea base vale 1{% endif %}.</p>
   {{ table_start(["Clase", "Familia", "Media", "Mediana", "p25", "p75", "SKU", "Instancias", "No calculables"], "Perfiles de error de la corrida") }}
   {% for row in m3_profiles.rows %}
   <tr>

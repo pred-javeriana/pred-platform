@@ -90,7 +90,9 @@ terminaron.
 
 El formulario marca por defecto las cuatro familias, incluida Fundacional (Chronos-2),
 y permite desmarcar cualquiera; Fundacional necesita el extra foundation y los pesos
-disponibles en el entorno del motor. También permite declarar el origen
+disponibles en el entorno del motor. Si con las familias elegidas alguna clase de demanda de la
+ingesta queda sin familia admitida por la política del motor, el formulario no lanza y dice qué
+clase queda sin modelo y qué familias agregar. También permite declarar el origen
 de los datos: Reales, Sintéticos o no declarar/conservar el registro existente.
 La opción por defecto no afirma que sean reales. El formulario entrega la declaración
 a `LaunchSettings.datos_sinteticos` y `RunControl`; el motor resuelve el origen
@@ -103,15 +105,17 @@ determina si el contraste es aplicable. La plataforma no implementa funcionalida
 
 **Responsabilidad:** la vista Por SKU consume la selección por familia, la evidencia de un SKU
 y, de una corrida M3 exacta de la ejecución, el campeón, el veredicto y su evidencia (contrato
-v2). Resumen y Por clase no están construidas: pertenecen al Módulo 4 (secciones 4.2 a 4.5) y
-presentarán el resultado de la corrida, el resumen por clase de demanda, la distribución de
-campeones y los veredictos publicados. La interfaz no selecciona ganadores ni recalcula
-métricas.
+v2). Resumen muestra el embudo publicado de toda la corrida y cuenta los resultados HLN-DM
+publicados (BH dentro de cada clase de demanda). Por clase muestra la familia campeona que M3
+congeló en cada clase con el bloque de selección, su motivo, la mediana de r de cada familia y los
+veredictos de la clase. Perfiles de error muestra los perfiles de error de la cartera en el bloque de prueba,
+una métrica a la vez. La interfaz no selecciona ganadores ni recalcula métricas.
 
 **Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
-`get_m3_run_status(...)`, `get_m3_evidence(...)`. Las demás lecturas M3 del contrato v2
-(`get_m3_metrics`, `get_m3_categories`, `get_m3_portfolio`, `get_m3_forecasts`,
-`get_m3_failures`, `get_m3_units`) quedan disponibles para las vistas de M4.
+`get_m3_run_status(...)`, `get_m3_evidence(...)`, `get_m3_categories(...)`,
+`get_m3_portfolio(...)`, `get_m3_metrics(...)`, `get_m3_observations(...)`,
+`get_m3_forecasts(...)` y `get_m3_reserve_blocks(...)` (los límites de los bloques que M3 fijó en
+el protocolo de la corrida).
 
 **Estados de página:** `sin_resultados`, `parciales`, `disponibles`, `error`.
 
@@ -121,9 +125,10 @@ se traducen a otras etiquetas. La significancia HLN-DM/BH, o su causa, se muestr
 veredicto. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
 cuando varias corridas PUBLICADA comparten identidad.
 
-Tabs internas (misma ruta, `?vista=resumen|clase|sku`): Resumen | Por clase | Por SKU. No son
-pantallas nuevas. **Por SKU** está implementada: tabla compacta con evidencia familiar desplegable y detalle
-en `/resultados/sku/{sku_id}`. **Resumen** y **Por clase** se muestran como no disponibles. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
+Tabs internas (misma ruta, `?vista=resumen|clase|errores|sku`): Resumen | Por clase | Perfiles de error |
+Por SKU. No son pantallas nuevas. **Por SKU** es una tabla compacta con evidencia familiar
+desplegable y detalle en `/resultados/sku/{sku_id}`; el detalle dibuja el pronóstico h=1 publicado
+del campeón frente a la demanda observada, con los bloques de selección y prueba. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
 La acción «Configurar nueva ejecución» lleva a Ejecución y se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.

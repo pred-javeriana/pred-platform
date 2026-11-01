@@ -14,7 +14,6 @@ from pred_platform.app.resultados_m3 import M3Decision, decision
 from pred_platform.app.resultados_pronostico import champion_forecast
 from pred_platform.contract import models, models_v2
 from pred_platform.contract.errors import ArtifactMissing
-from pred_platform.data.dal_m3 import M3DalSource
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 from tests.test_resultados import _client
@@ -311,7 +310,7 @@ def test_bloques_solo_dependen_del_valor_resuelto_no_de_reserva_h_o_t_star() -> 
     assert test is not None and test.text == "Prueba final: 2026-07-02 a 2026-07-04"
 
 
-def test_fixture_separa_origenes_y_objetivos_y_dal_no_deduce_limites() -> None:
+def test_fixture_separa_origenes_y_objetivos() -> None:
     repo = FixtureRepository()
     blocks = repo.get_m3_reserve_blocks(RUN)
     assert blocks is not None
@@ -322,7 +321,6 @@ def test_fixture_separa_origenes_y_objetivos_y_dal_no_deduce_limites() -> None:
     assert "Prueba final: 2026-07-02 a 2026-07-03" in svg
     assert 'class="pred-forecast__embargo"' not in svg
     assert repo.get_m3_reserve_blocks("desconocida") is None
-    assert M3DalSource().get_m3_reserve_blocks(RUN) is None
 
 
 def test_metadatos_compartidos_por_todos_los_sku_de_la_decision() -> None:

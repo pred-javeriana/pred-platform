@@ -6,7 +6,7 @@
 {% if m3_classes.run %}
 <section class="pred-section" id="campeon-por-clase">
   <h2>Campeón por clase</h2>
-  <p class="pred-meta">M3 elige una familia campeona por clase de demanda con la mediana de r frente a Seasonal Naive de cada familia. Las cifras son las que publicó; la línea base vale 1.</p>
+  <p class="pred-meta">M3 elige y congela una familia campeona por clase de demanda con la mediana de r frente a Seasonal Naive de cada familia en el bloque de selección de la reserva; los veredictos de cada clase se cuentan en el bloque de prueba. Las cifras son las que publicó; la línea base vale 1.</p>
   {{ table_start(["Clase", "Campeona", "Motivo"] + class_headers, "Campeón y mediana de r por clase") }}
   {% for row in m3_classes.rows %}
   <tr>

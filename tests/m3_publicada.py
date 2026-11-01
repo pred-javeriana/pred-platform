@@ -43,8 +43,18 @@ POLICY = {
     "orden_simplicidad": ["seasonal_naive", "classical", "ml", "dl", "foundation"],
 }
 
-# The reserve blocks the engine fixes with the protocol since it publishes M2's exclusions.
-BLOCKS = {"fraccion_seleccion": 0.4, "dias_reserva": 80, "horizonte": 7, "dias_seleccion": 32}
+# The reserve block limits the engine fixes with the protocol (t* = 2026-03-13).
+BLOCKS = {
+    "fraccion_seleccion": 0.4,
+    "dias_reserva": 80,
+    "horizonte": 7,
+    "dias_seleccion": 32,
+    "origenes_seleccion": {"n": 26, "primero": "2026-03-13", "ultimo": "2026-04-07"},
+    "origenes_embargo": {"n": 6, "primero": "2026-04-08", "ultimo": "2026-04-13"},
+    "origenes_prueba": {"n": 42, "primero": "2026-04-14", "ultimo": "2026-05-25"},
+    "fechas_seleccion": {"n": 32, "primero": "2026-03-14", "ultimo": "2026-04-14"},
+    "fechas_prueba": {"n": 48, "primero": "2026-04-15", "ultimo": "2026-06-01"},
+}
 
 
 def identity(configuracion: str = "config-1", ingesta_ref: str = "ingesta-1") -> str:

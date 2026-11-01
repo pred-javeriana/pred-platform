@@ -67,7 +67,10 @@ class M3DateRange:
 
 @dataclass(frozen=True, slots=True)
 class M3ReserveBlocks:
-    """Metadatos provisionales de corrida: orígenes y fechas objetivo son conceptos distintos."""
+    """Los bloques de la reserva que M3 fijó en el protocolo de la corrida (ADR-03-012).
+
+    Orígenes y fechas objetivo son conceptos distintos: un origen pronostica días posteriores.
+    """
 
     selection_origins: M3DateRange
     embargo_origins: M3DateRange
@@ -210,7 +213,7 @@ class DataRepository(Protocol):
     ) -> models_v2.M3Observations: ...
 
     def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
-        """Límites resueltos del protocolo de una corrida exacta, o ausencia de metadatos."""
+        """Los bloques de la reserva de una corrida exacta; ``None`` si su protocolo no los fija."""
         ...
 
     def get_m3_champions(

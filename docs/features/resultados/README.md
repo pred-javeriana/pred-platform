@@ -20,8 +20,16 @@ side panel shows the contract's notice and links to the others. The five verdict
 verbatim; the detail adds the justification, windows against `n_min`, r against Seasonal Naive,
 coverage, the data origin and, apart from the verdict, the HLN-DM/BH significance or its cause. A
 SKU launched after the cut says so; a run that is not PUBLICADA, or a publication without its
-exclusion metadata, explains why there is no verdict. The **Resumen** and **Por clase** tabs are
-not built yet (Module 4, sections 4.2 to 4.5) and say so.
+exclusion metadata, explains why there is no verdict.
+
+The other tabs read the same resolved M3 run. **Resumen** shows the funnel M3 published for the
+whole run and counts the published HLN-DM results (with test, significant after BH within each
+demand class, without test by cause); it never recomputes the test. **Por clase** shows the champion
+family M3 froze for each class on the selection block, its reason, every family's median r and the
+class verdict counts. **Perfiles de error** shows the error profiles of the portfolio (`m3_cartera`, test
+block) for one metric at a time. The SKU detail also draws the champion's published h=1 forecast
+against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
+champion and Seasonal Naive.
 
 ## How
 
@@ -53,7 +61,8 @@ view or in the browser (no inline script). `include_windows` is only requested w
 | Presentation (`family` and `verdict` vocabularies) | `src/pred_platform/app/presentation.py` |
 | Pages | `src/pred_platform/app/templates/pages/results.html`, `results_sku.html` |
 | Partials and macro | `templates/partials/results_*.html`, `templates/components/run_line.html` |
-| Tests | `tests/test_resultados.py`, `tests/test_presentation.py` |
+| Champion forecast series and chart | `src/pred_platform/app/resultados_pronostico.py`, `src/pred_platform/app/charts.py` |
+| Tests | `tests/test_resultados.py`, `tests/test_resultados_pronostico.py`, `tests/test_presentation.py` |
 
 ## Data
 
@@ -69,38 +78,23 @@ The cut and late launches come from `m3_cortes` and `m3_lanzamientos_tardios` in
 when the ingestion's Parquet is absent. A published run without `m3_cortes` returns
 `metadata_missing` for evidence and observations and asks for a new execution.
 
-## Visualización del campeón (M4 4.4)
+## Champion forecast chart
 
-El detalle muestra la demanda observada y el pronóstico h=1 del candidato campeón publicado
-por M3, antes de la comparación de modelos existente. Lee todas las páginas de la corrida,
-SKU y candidato exactos mediante DataRepository. No pronostica, elige modelos ni calcula métricas.
-Los nulos interrumpen las líneas y los ceros se conservan. No se interpolan ni agregan filas.
-Cada pronóstico conserva fecha objetivo, origen y valor; su alternativa tabular incluye el origen.
+The SKU detail draws the observed demand and the h=1 forecast of the champion candidate M3
+published, before the model comparison. It reads every page of the exact run, SKU and candidate
+through `DataRepository`; it does not forecast, choose models or compute metrics. Nulls break the
+lines, zeros are kept, and rows are never interpolated or averaged. Each forecast keeps its target
+date, origin and value, and the accessible table lists the origin too.
 
-La representación local provisional M3ReserveBlocks contiene cinco M3DateRange (extremos y
-conteo ya resueltos): orígenes de selección, embargo y prueba, y fechas objetivo de selección
-y prueba. Pertenece al protocolo de la corrida y se lee una sola vez al resolver su decisión,
-compartida por todos sus SKU. El gráfico usa únicamente los rangos de fechas objetivo.
-El embargo se informa como rango de orígenes de ventanas que cruzan la frontera; nunca se
-presenta como banda de demanda observada. No se calculan fronteras desde H, porcentajes,
-longitud de reserva ni t_star.
+The reserve blocks come from `get_m3_reserve_blocks`, read once per M3 decision and shared by all
+its SKUs. The DAL reads them from the limits M3 fixed in the run's protocol
+(`m3_protocolos.protocolo`, key `bloques`): the selection, embargo and test origins, and the target
+dates of the selection and test blocks. The chart shades only the target-date ranges. Embargo
+origins are windows that cross the boundary between the blocks; they are listed, never drawn as a
+band of observed demand. No limit is derived from H, the selection fraction, the reserve length or
+t*. A run whose protocol has no blocks is drawn without regions and says so.
 
-El fixture simula esos cinco rangos explícitos. No forman parte del contrato oficial de lectura.
-El DAL devuelve None hasta que M3 exponga los valores oficiales; entonces se reemplazará
-únicamente esa lectura. Sin metadatos se dibujan las series sin regiones inferidas.
-La corrección BH se describe dentro de cada categoría de demanda, sin cambiar su cálculo.
-
-El SVG incluye título, descripción, círculos y línea continua para demanda, cuadrados y línea
-discontinua para pronóstico. La ayuda reúne los rangos y la tabla accesible de valores publicados.
-
-### Alcance de la validación de 4.4
-
-Las pruebas de Resultados verifican por separado la evidencia y el SVG: cambiar los tres
-rangos de orígenes, el horizonte informado, la longitud de la reserva, t_star o valores como
-0,4 no mueve las bandas de fechas objetivo resueltas. Las filas conservan su origen y no se
-promedian pronósticos coincidentes.
-
-El fallo de test_lanzamiento_por_linea_de_comandos_declara_datos_reales con WinError 2
-se reprodujo sin cambios en prueba-producto, commit 0846f77: el entorno no encuentra el
-motor que intenta lanzar la CLI. Debe informarse separado de los resultados M4. Ni esa
-prueba, ni el lanzador, ni la detección del motor se modifican como parte de 4.4.
+The SVG has a title and a description, and uses circles with a solid line for demand and squares
+with a dashed line for the forecast, so colour is never the only cue. The tests check the evidence
+and the SVG separately: changing the origin ranges, the reported horizon, the reserve length, t* or
+values such as 0.4 does not move the target-date bands.
