@@ -106,8 +106,9 @@ Version 11 adds M3's split-reserve evidence: significance per class, the champio
 and its comparisons, the pre-cut robustness selection, the r intervals and the products M2
 excluded. Version 12, which belongs to the platform alone, adds the task state `finalizo_m2`: the
 unit finished M2 (L2 and L3) and waits for M3 to store its candidate.
-The current schema is version 12. An undeclared origin stays unknown and cannot
-produce statistical inference. The file-only website upload does not declare real data.
+The current schema is version 12. The platform runs on real data only: uploading a file declares
+no origin, and every launch declares the data real (`--datos-reales`). The engine refuses a launch
+on an ingest declared synthetic.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
   folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.

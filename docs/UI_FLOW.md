@@ -92,13 +92,11 @@ El formulario marca por defecto las cuatro familias, incluida Fundacional (Chron
 y permite desmarcar cualquiera; Fundacional necesita el extra foundation y los pesos
 disponibles en el entorno del motor. Si con las familias elegidas alguna clase de demanda de la
 ingesta queda sin familia admitida por la política del motor, el formulario no lanza y dice qué
-clase queda sin modelo y qué familias agregar. También permite declarar el origen
-de los datos: Reales, Sintéticos o no declarar/conservar el registro existente.
-La opción por defecto no afirma que sean reales. El formulario entrega la declaración
-a `LaunchSettings.datos_sinteticos` y `RunControl`; el motor resuelve el origen
-(`pred-engine origen`) antes del encolado. La plataforma muestra el detalle de
-un conflicto sin crear la ejecución. El worker transmite `--datos-reales` o
-`--datos-sinteticos`. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
+clase queda sin modelo y qué familias agregar. La plataforma trabaja solo con datos reales: el
+formulario no pregunta el origen y toda ejecución declara sus datos reales. Antes del encolado,
+el motor resuelve el origen de la ingesta (`pred-engine origen --datos-reales`); si la ingesta
+está declarada sintética, la plataforma muestra el conflicto sin crear la ejecución. El worker
+transmite siempre `--datos-reales`. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
 determina si el contraste es aplicable. La plataforma no implementa funcionalidad analítica de M4.
 
 ## 3. Resultados

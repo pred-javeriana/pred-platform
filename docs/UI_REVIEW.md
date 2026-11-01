@@ -93,11 +93,10 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 - El formulario marca por defecto las cuatro familias, incluida Fundacional (Chronos-2), y permite
   desmarcar cualquiera. Fundacional necesita el extra `foundation` y los pesos del motor en el
   entorno del motor; la plataforma no los instala.
-- El origen de los datos ofrece Reales, Sintéticos y «No declarar / conservar origen registrado»
-  (por defecto). Entrega `False`, `True` o `None` a `LaunchSettings.datos_sinteticos`. El motor
-  resuelve el origen (`pred-engine origen`) antes de encolar, y la plataforma muestra el detalle de
-  un conflicto sin crear la ejecución. El worker transmite `--datos-reales` o
-  `--datos-sinteticos`, o ninguno si no se declaró.
+- La plataforma trabaja solo con datos reales: el formulario no pregunta el origen y toda
+  ejecución declara sus datos reales. El motor resuelve el origen (`pred-engine origen`) antes de
+  encolar; si la ingesta está declarada sintética, la plataforma muestra el conflicto sin crear la
+  ejecución. El worker transmite siempre `--datos-reales`.
 - La declaración de datos reales es un requisito de procedencia, no una garantía de que el
   contraste sea calculable. La plataforma no fuerza Diebold–Mariano ni cambia la política
   inferencial del motor.

@@ -1300,6 +1300,7 @@ def test_lanzamiento_por_linea_de_comandos_declara_datos_reales(
         conn.commit()
     monkeypatch.setenv("PRED_DATA_ROOT", str(env.settings.data_root))
     monkeypatch.setenv("PRED_DB_PATH", str(env.db))
+    monkeypatch.setenv("PRED_ENGINE_CMD", f"{sys.executable} {_FAKE}")
 
     assert worker_main(["--launch", "--ingest", env.ingest_id]) == 0
 
