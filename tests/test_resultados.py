@@ -638,7 +638,7 @@ def test_the_summary_shows_the_funnel_m3_published(
 
     for expected in (
         "Productos de la corrida 4",
-        "Excluidos antes de M3 1",
+        "Lanzados después del corte 1",
         "Con veredicto M3 3",
         "Evaluados 2",
         "No evaluados 1",
@@ -649,6 +649,39 @@ def test_the_summary_shows_the_funnel_m3_published(
         "No evaluados EVIDENCIA_INSUFICIENTE 1",
     ):
         assert expected in summary
+
+
+def test_the_summary_counts_the_products_m2_excluded_with_fewer_than_two_families(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.m3_publicada import TWO_FAMILIES_CAUSE
+
+    _run(env, monkeypatch)
+    _publish_for_the_run(  # FIL-0003 is launched after the cut
+        env,
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+        eligibility=(("FIL-0004", "lumpy", TWO_FAMILIES_CAUSE),),
+    )
+    summary = _summary(env).split("Grupo Veredicto SKU", 1)[0]
+
+    # 3 products = 1 launched after the cut + 1 excluded by M2 + 1 with a verdict.
+    for expected in (
+        "Productos de la corrida 3",
+        "Lanzados después del corte 1",
+        "Excluidos por menos de dos familias evaluables (M2) 1",
+        "Con veredicto M3 1",
+    ):
+        assert expected in summary
+
+
+def test_a_run_published_before_m3_listed_m2_exclusions_says_they_are_not_reported(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS, eligibility=None)
+    summary = _summary(env)
+
+    assert "Excluidos por menos de dos familias evaluables (M2) No informado" in summary
 
 
 def test_the_summary_counts_the_dm_test_over_the_run_and_its_causes(

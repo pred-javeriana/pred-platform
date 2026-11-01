@@ -10,7 +10,8 @@
   <p class="pred-meta">Conteos que M3 publicó para toda la corrida, no para una página ni un filtro.</p>
   <dl class="pred-kv">
     <dt>Productos de la corrida</dt><dd class="mono">{{ funnel.total_productos }}</dd>
-    <dt>Excluidos antes de M3</dt><dd class="mono">{{ funnel.excluded_count }}</dd>
+    <dt>Lanzados después del corte</dt><dd class="mono">{{ funnel.excluded_count }}</dd>
+    <dt>Excluidos por menos de dos familias evaluables (M2)</dt><dd>{% if funnel.eligibility_excluded_count is none %}No informado{% else %}<span class="mono">{{ funnel.eligibility_excluded_count }}</span>{% endif %}</dd>
     <dt>Con veredicto M3</dt><dd class="mono">{{ funnel.tras_exclusiones }}</dd>
     <dt>Evaluados</dt><dd class="mono">{{ funnel.evaluados }}</dd>
     <dt>No evaluados</dt><dd class="mono">{{ funnel.no_evaluados }}</dd>
