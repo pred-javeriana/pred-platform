@@ -30,7 +30,7 @@ from pred_platform.contract.errors import InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker.engine import build_command
-from tests.test_worker import Env, _escribir_progreso, _scenario, _wait
+from tests.test_worker import Env, _escribir_progreso, _guardar_origen, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
@@ -439,6 +439,29 @@ def test_the_form_offers_only_accepted_ingestions_and_preselects_the_requested_o
     assert [o[0] for o in options] == [env.ingest_id]  # the failed one is not offered
     assert options[0][1] == " selected"
     assert "Lanzar está deshabilitado" not in html
+
+
+@pytest.mark.parametrize("origin", [True, None], ids=["sinteticos", "sin-declarar"])
+def test_reanudar_una_corrida_con_origen_no_real_lo_rechaza_y_lanzar_abre_otra(
+    env: Env, monkeypatch: pytest.MonkeyPatch, origin: bool | None
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    stopped = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+    assert stopped.headers["location"] == "/ejecucion?ejecucion=1&aviso=detenida"
+    _guardar_origen(env, origin)
+
+    response = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "La plataforma solo ejecuta datos reales" in _text(response.text)
+    assert env.rows("SELECT estado FROM ejecuciones") == [("detenida",)]
+    assert env.worker().run_next() is False  # nada quedó en cola
+    ((raw,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(raw)["datos_sinteticos"] is origin
+    relaunched = _launch(client, env)
+    assert relaunched.headers["location"] == "/ejecucion?ejecucion=2&aviso=en_cola"
 
 
 def test_a_run_followed_stopped_and_resumed_from_the_screen(

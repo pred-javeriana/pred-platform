@@ -108,7 +108,9 @@ excluded. Version 12, which belongs to the platform alone, adds the task state `
 unit finished M2 (L2 and L3) and waits for M3 to store its candidate.
 The current schema is version 12. The platform runs on real data only: uploading a file declares
 no origin, and every launch declares the data real (`--datos-reales`). The engine refuses a launch
-on an ingest declared synthetic.
+on an ingest declared synthetic. A run saved with synthetic data or an undeclared origin is never
+started or resumed: the worker stops it with `run.incompatible_config`, and launching the same
+settings again opens a new run that declares the data real.
 
 - **When it runs.** Starting the app with `PRED_DATA_SOURCE=dal` creates the database file (and its
   folder) if missing and applies whatever is pending; with `fixture` the disk is never touched.

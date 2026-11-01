@@ -43,11 +43,15 @@ su detalle y no crea una ejecución.
 Si la consulta falla o tarda más de 60 segundos, tampoco encola la corrida.
 
 Una configuración guardada con parámetros anteriores a `schema_version=2` no se reutiliza: al
-volver a encolarla, la cola crea una corrida nueva con otro identificador. Un origen desconocido explícito (`null`)
-solo se resuelve mientras la ejecución sigue pendiente. Una ejecución iniciada
-o completada conserva su configuración. El trabajador lanza el origen guardado
-sin resolverlo de nuevo. Una tarea antigua sin ese campo se detiene con un error
-que indica volver a encolarla; la corrida encolada de nuevo es otra corrida.
+volver a encolarla, la cola crea una corrida nueva con otro identificador. El trabajador solo
+arranca el motor para una configuración que guardó `datos_sinteticos=false`. Una corrida que
+guardó datos sintéticos o un origen sin declarar (`null`) se detiene con
+`run.incompatible_config` antes de arrancar el motor, y reanudarla desde la interfaz muestra
+el motivo sin volver a encolarla. Su configuración y lo que publicó no cambian. Lanzar de nuevo
+los mismos ajustes abre otra corrida (`run_id-2`), que declara datos reales. Un origen sin
+declarar de una ejecución que sigue pendiente se resuelve al volver a lanzarla. Una tarea
+antigua sin ese campo se detiene con un error que indica volver a encolarla; la corrida
+encolada de nuevo es otra corrida.
 
 Los parámetros de lanzamiento usan `schema_version=2` y ya no contienen copias
 de agregación ni recorte. Por eso cambia la identidad de las corridas nuevas.

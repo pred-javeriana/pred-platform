@@ -156,6 +156,12 @@ class Worker:
             summary_path = folder / "corrida.json"
             previous_summary = summary_path.stat() if summary_path.exists() else None
             process = self._launch(command, settings=self.settings, log_path=log_path)
+        except engine.OrigenNoReal as exc:
+            # Otra configuración no la vuelve real: la siguiente lanzada abre una corrida nueva.
+            error = platform_error("run.incompatible_config", str(exc))
+            dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
+            dal.finish_run(conn, run.id, estado="detenida", error=error)
+            return
         except ValueError as exc:
             dal.finish_run(
                 conn,

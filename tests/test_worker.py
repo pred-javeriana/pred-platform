@@ -592,6 +592,52 @@ def test_a_run_the_engine_refuses_as_incompatible_says_so_and_relaunching_starts
     assert enqueue_run(env.settings, env.ingest_id, SMALL).ejecucion_id == again.ejecucion_id
 
 
+def _guardar_origen(env: Env, origin: bool | None) -> None:
+    """Deja en la configuración guardada un origen que la plataforma aceptaba antes (esquema 2)."""
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        ((raw,),) = conn.execute("SELECT parametros FROM configuraciones").fetchall()
+        parametros = json.loads(raw)
+        parametros["datos_sinteticos"] = origin
+        conn.execute(
+            "UPDATE configuraciones SET parametros = ?", (json.dumps(parametros, sort_keys=True),)
+        )
+
+
+@pytest.mark.parametrize("origin", [True, None], ids=["sinteticos", "sin-declarar"])
+def test_una_corrida_en_cola_con_origen_no_real_no_arranca_el_motor(
+    env: Env, monkeypatch: pytest.MonkeyPatch, origin: bool | None
+) -> None:
+    _scenario(monkeypatch, "ok")
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
+    _guardar_origen(env, origin)
+    launched: list[list[str]] = []
+
+    def launch(command: list[str], **kwargs: Any) -> subprocess.Popen[bytes]:
+        launched.append(command)
+        return engine.launch(command, **kwargs)
+
+    assert Worker(env.settings, launcher=launch).run_next()
+
+    assert launched == []
+    state, error = _run_state(env)
+    assert state == "detenida"
+    assert json.loads(error or "{}")["code"] == "run.incompatible_config"
+    assert "La plataforma solo ejecuta datos reales" in json.loads(error or "{}")["detail"]
+    ((raw,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(raw)["datos_sinteticos"] is origin  # el origen guardado no cambia
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente', 'ejecutando')") == [
+        (0,)
+    ]
+    # Lanzar otra vez los mismos ajustes abre una corrida nueva, con datos reales.
+    again = enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert again.queued and again.run_id == f"{first.run_id}-2"
+    assert Worker(env.settings, launcher=launch).run_next()
+    assert "--datos-reales" in launched[0]
+    assert env.rows("SELECT estado FROM ejecuciones WHERE id = ?", again.ejecucion_id) == [
+        ("completada",)
+    ]
+
+
 def test_an_engine_that_dies_leaves_a_stopped_run_and_no_task_in_flight(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

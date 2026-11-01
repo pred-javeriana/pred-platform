@@ -96,7 +96,8 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 - La plataforma trabaja solo con datos reales: el formulario no pregunta el origen y toda
   ejecución declara sus datos reales. El motor resuelve el origen (`pred-engine origen`) antes de
   encolar; si la ingesta está declarada sintética, la plataforma muestra el conflicto sin crear la
-  ejecución. El worker transmite siempre `--datos-reales`.
+  ejecución. El worker transmite siempre `--datos-reales` y no arranca el motor para una corrida
+  que guardó otro origen; Reanudar muestra ese motivo y no la vuelve a encolar.
 - La declaración de datos reales es un requisito de procedencia, no una garantía de que el
   contraste sea calculable. La plataforma no fuerza Diebold–Mariano ni cambia la política
   inferencial del motor.

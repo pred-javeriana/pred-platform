@@ -264,7 +264,7 @@ def _act(request: Request, repository: DataRepository, ejecucion: str, action: s
             _context(request, repository, action_error="La ejecución indicada no es válida."),
             400,
         )
-    except ControlUnavailable as exc:
+    except (ControlUnavailable, RunRequestError) as exc:
         return _render(
             request, "pages/execution.html", _context(request, repository, action_error=str(exc))
         )

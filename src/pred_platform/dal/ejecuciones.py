@@ -144,19 +144,23 @@ def create_run(
 def current_run_id(conn: sqlite3.Connection, run_id: str) -> str:
     """El run_id que corresponde hoy a la identidad ``run_id`` de la plataforma.
 
-    Es el de su última generación (``run_id``, ``run_id-2``…). Si el motor rechazó esa generación
-    por identidad incompatible (por ejemplo, otra huella de su código), toca una nueva: reanudarla
-    fallaría siempre.
+    Es el de su última generación (``run_id``, ``run_id-2``…). Toca una nueva si el motor rechazó
+    esa generación por identidad incompatible (por ejemplo, otra huella de su código), o si ya
+    empezó con datos sintéticos o un origen sin declarar: la plataforma solo ejecuta datos reales y
+    el origen de una corrida empezada no cambia, así que reanudarla fallaría siempre.
     """
     rows = conn.execute(
-        "SELECT run_id, json_extract(error_json, '$.code') FROM ejecuciones "
-        "WHERE run_id = ? OR run_id LIKE ? ORDER BY id",
+        "SELECT e.run_id, json_extract(e.error_json, '$.code'), e.estado, "
+        "json_extract(c.parametros, '$.datos_sinteticos') "
+        "FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id "
+        "WHERE e.run_id = ? OR e.run_id LIKE ? ORDER BY e.id",
         (run_id, f"{run_id}-%"),
     ).fetchall()
     if not rows:
         return run_id
-    last, code = rows[-1]
-    return f"{run_id}-{len(rows) + 1}" if code == "run.incompatible_config" else str(last)
+    last, code, estado, origen = rows[-1]
+    dead = code == "run.incompatible_config" or (origen != 0 and estado != "pendiente")
+    return f"{run_id}-{len(rows) + 1}" if dead else str(last)
 
 
 def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
