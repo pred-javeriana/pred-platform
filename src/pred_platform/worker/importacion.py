@@ -21,6 +21,9 @@ from pred_platform.worker.engine import MODELO_POR_FAMILIA, log_tail, model_id
 from pred_platform.worker.errores import error_info, exclusion_info, platform_error
 from pred_platform.worker.seleccion import import_selection
 
+# El mensaje con que el motor rechaza un run_id cuya identidad guardada cambió (run_artifacts.py).
+INCOMPATIBLE_RUN = "run_id incompatible con la entrada o configuracion previa"
+
 
 def _read_units(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
@@ -67,12 +70,18 @@ def finalize(
         detail = log_tail(log_path) or (
             f"El motor terminó con código {returncode} sin publicar corrida.json de este intento."
         )
+        # El motor rechaza reanudar una corrida cuya identidad guardada (entrada, ajustes o huella
+        # del código) ya no coincide: no es un artefacto perdido y reintentarla no sirve.
+        incompatible = INCOMPATIBLE_RUN in detail
         dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
         dal.finish_run(
             conn,
             run.id,
             estado="detenida",
-            error=platform_error("platform.artifact_missing", detail),
+            error=platform_error(
+                "run.incompatible_config" if incompatible else "platform.artifact_missing",
+                f"error: {INCOMPATIBLE_RUN}" if incompatible else detail,
+            ),
         )
         return "detenida"
 
@@ -109,6 +118,7 @@ def finalize(
         return _stop(conn, run, None, error)
 
     # The unit trace is final: reapplying it is idempotent and corrects any missed event.
+    m2_completas: list[tuple[str, str, str]] = []
     for unit in _read_units(run_dir / "unidades.jsonl"):
         modelo = model_id(str(unit["family"]), str(unit.get("model") or unit["family"]))
         stage, sku = str(unit.get("stage", "L2")), str(unit["sku_id"])
@@ -137,6 +147,26 @@ def finalize(
             finished_at=str(unit.get("finished_at") or ""),
             error=None if completed else error_info(stage, unit.get("error"), unit.get("code")),
         )
+        if stage == "L3" and completed:
+            m2_completas.append((sku, modelo, str(unit.get("finished_at") or "")))
+    # unidades.jsonl stops at L3; without M3 in the run (L4 blocked), L3 is the unit's last stage.
+    # A published M3 stored every candidate, even when it was reused and sent no L4 events.
+    l4 = next((s for s in summary.get("stages", []) if s.get("id") == "L4"), {})
+    if l4.get("state") == "blocked" or summary.get("m3", {}).get("estado") == "PUBLICADA":
+        for sku, modelo, finished_at in m2_completas:
+            dal.task_stage_finished(
+                conn,
+                run.id,
+                sku=sku,
+                modelo=modelo,
+                corte=corte,
+                seed=run.seed,
+                stage="L4",
+                completed=True,
+                seconds=None,
+                finished_at=finished_at,
+                error=None,
+            )
     for exclusion in summary.get("exclusions", []):
         for family in families:
             dal.task_excluded(

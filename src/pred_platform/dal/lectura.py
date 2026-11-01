@@ -262,6 +262,7 @@ class RunDetail:
     ingest_sha256: str
     reserva_json: str | None
     error_json: str | None
+    ruta_corrida: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,7 +283,7 @@ class TaskRow:
 
 _RUN_COLUMNS = (
     "e.id, e.run_id, e.estado, e.seed, e.iniciada_en, e.finalizada_en, e.configuracion_id, "
-    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json"
+    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json, e.ruta_corrida"
 )
 _RUN_FROM = (
     "FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id "

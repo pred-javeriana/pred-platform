@@ -26,8 +26,9 @@ from pred_platform.dal.lectura import _open_readonly
 from pred_platform.dal.migrate import apply_migrations, load_migrations, migrate
 from pred_platform.data import m3_query
 from pred_platform.data.dal import DalRepository
+from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 from pred_platform.worker.engine import launch
-from tests.m3_publicada import LATE, TWO_FAMILIES, TWO_FAMILIES_CAUSE, identity, publish
+from tests.m3_publicada import BLOCKS, LATE, TWO_FAMILIES, TWO_FAMILIES_CAUSE, identity, publish
 
 SHA = "c" * 64
 PARQUET = "processed/panel.parquet"
@@ -185,6 +186,40 @@ def test_a_run_without_eligibility_exclusions_reports_zero_not_unknown(root: Pat
     doc = _repo(root).get_m3_evidence(RUN)
     assert doc.funnel is not None and doc.funnel.eligibility_excluded_count == 0
     assert doc.eligibility_exclusions is not None and doc.eligibility_exclusions.items == []
+
+
+def test_the_reserve_blocks_are_the_limits_m3_fixed_in_the_protocol(root: Path) -> None:
+    _publish(root)
+
+    blocks = _repo(root).get_m3_reserve_blocks(RUN)
+
+    assert blocks == M3ReserveBlocks(
+        selection_origins=M3DateRange("2026-03-13", "2026-04-07", 26),
+        embargo_origins=M3DateRange("2026-04-08", "2026-04-13", 6),
+        test_origins=M3DateRange("2026-04-14", "2026-05-25", 42),
+        selection_dates=M3DateRange("2026-03-14", "2026-04-14", 32),
+        test_dates=M3DateRange("2026-04-15", "2026-06-01", 48),
+    )
+    assert _repo(root).get_m3_reserve_blocks("m3-desconocida") is None
+
+
+def test_a_run_evaluated_before_the_blocks_has_no_block_limits(root: Path) -> None:
+    _publish(root, eligibility=None)
+
+    assert _repo(root).get_m3_reserve_blocks(RUN) is None
+
+
+def test_block_limits_that_break_their_shape_are_a_contract_error(root: Path) -> None:
+    _publish(root)
+    broken = {**BLOCKS, "fechas_prueba": {"n": 0, "primero": "2026-04-15", "ultimo": None}}
+    _sql(
+        root,
+        "UPDATE m3_protocolos SET protocolo = json_set(protocolo, '$.bloques', json(?))",
+        json.dumps(broken),
+    )
+
+    with pytest.raises(ContractInvalid, match="bloques"):
+        _repo(root).get_m3_reserve_blocks(RUN)
 
 
 def test_a_run_published_before_m3_listed_m2_exclusions_does_not_report_them_as_zero(

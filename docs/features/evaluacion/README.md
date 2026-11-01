@@ -10,14 +10,15 @@ Las migraciones 0005 a 0011 incorporan el esquema M3. Sus textos canónicos
 pertenecen a `pred-engine`, en `forecasting/persistencia_evidencia/`:
 `esquema_m3.sql` y `esquema_m3_0002.sql` a `esquema_m3_0007.sql`. La plataforma
 conserva copias exactas con sus hashes de publicación. Las migraciones 0001 a 0004
-no cambian.
+no cambian. La 0012 es solo de la plataforma (estado de tarea `finalizo_m2`): el motor
+acepta la base en esa versión y no aplica nada para ella.
 
 ```bash
 python -m pred_platform.dal.migrate --db data/pred.db
 pred-engine run --csv ventas.csv --data-root data --db-path data/pred.db
 ```
 
-Ambos procesos usan `PRAGMA user_version`, actualmente 11. El motor aplica las
+Ambos procesos usan `PRAGMA user_version`, actualmente 12. El motor aplica las
 migraciones M3 pendientes sobre una base de plataforma existente. No crea una
 base independiente ni modifica una versión desconocida. Si el archivo falta,
 la ejecución se detiene con un mensaje claro antes de M0/M2.
@@ -26,12 +27,10 @@ El proceso del motor recibe la ruta efectiva de `Settings.db_path` mediante
 `PRED_DB_PATH`. Una configuración heredada diferente no desvía los resultados
 a otra base. `--db-path` tiene prioridad si se usa explícitamente en el CLI.
 M1 declara `source_file.datos_sinteticos` y `published.sha256`; el motor
-conserva su origen. La plataforma no escribe en las tablas M3. La cola congela
-el veredicto del motor en `LaunchSettings`
-y transmite `--datos-sinteticos` o `--datos-reales` solo si hay declaración.
-La ausencia es origen desconocido y no equivale a datos reales. La carga web
-sigue recibiendo solo el archivo y conserva ese origen desconocido: sus
-resultados son exploratorios, sin valores p. En SQLite, `origen_declarado=0`
+conserva su origen. La plataforma no escribe en las tablas M3. La plataforma
+trabaja solo con datos reales: la carga web recibe solo el archivo, y toda
+ejecución que lanza declara sus datos reales, guarda `datos_sinteticos=false`
+en su configuración y transmite `--datos-reales`. En SQLite, `origen_declarado=0`
 señala que el bit `datos_sinteticos` no contiene una declaración. La vista
 `evidencia_publicada` y `m3_run_status` exponen `origen_declarado` junto a ese
 bit, de modo que una lectura parcial no confunde origen desconocido con real.
@@ -39,15 +38,20 @@ bit, de modo que una lectura parcial no confunde origen desconocido con real.
 El motor resuelve el origen (`pred-engine origen`) antes de que la plataforma
 abra la transacción de encolado. El motor contrasta las declaraciones de la
 ingesta, sus configuraciones y los bytes Parquet compartidos. Si responde con
-un conflicto, la plataforma muestra su detalle y no crea una ejecución.
+un conflicto, por ejemplo una ingesta declarada sintética, la plataforma muestra
+su detalle y no crea una ejecución.
 Si la consulta falla o tarda más de 60 segundos, tampoco encola la corrida.
 
 Una configuración guardada con parámetros anteriores a `schema_version=2` no se reutiliza: al
-volver a encolarla, la cola crea una corrida nueva con otro identificador. Un origen desconocido explícito (`null`)
-solo se resuelve mientras la ejecución sigue pendiente. Una ejecución iniciada
-o completada conserva su configuración. El trabajador lanza el origen guardado
-sin resolverlo de nuevo. Una tarea antigua sin ese campo se detiene con un error
-que indica volver a encolarla; la corrida encolada de nuevo es otra corrida.
+volver a encolarla, la cola crea una corrida nueva con otro identificador. El trabajador solo
+arranca el motor para una configuración que guardó `datos_sinteticos=false`. Una corrida que
+guardó datos sintéticos o un origen sin declarar (`null`) se detiene con
+`run.incompatible_config` antes de arrancar el motor, y reanudarla desde la interfaz muestra
+el motivo sin volver a encolarla. Su configuración y lo que publicó no cambian. Lanzar de nuevo
+los mismos ajustes abre otra corrida (`run_id-2`), que declara datos reales. Un origen sin
+declarar de una ejecución que sigue pendiente se resuelve al volver a lanzarla. Una tarea
+antigua sin ese campo se detiene con un error que indica volver a encolarla; la corrida
+encolada de nuevo es otra corrida.
 
 Los parámetros de lanzamiento usan `schema_version=2` y ya no contienen copias
 de agregación ni recorte. Por eso cambia la identidad de las corridas nuevas.
@@ -153,15 +157,15 @@ Las pruebas de migraciones conservan los hashes de todas las versiones
 publicadas y la compatibilidad con datos previos.
 
 `tests/test_integracion_motor.py` es el caso de integración sobre un panel
-reducido (TASK-EVAL-3.5-A2). Genera un panel sintético de seis SKU, lo ingiere
-con `pred-engine classify`, encola la corrida y deja que el worker lance
+reducido (TASK-EVAL-3.5-A2). Genera un panel determinista de seis SKU, lo carga
+por la misma vía que la web, encola la corrida como datos reales y deja que el worker lance
 `pred-engine run`. El operador la detiene cuando M3 ya confirmó unidades, se
 borra el traspaso local del motor (`candidatos.json`) y la corrida se reanuda.
 La prueba comprueba, mediante `DalRepository`:
 
 - Antes de publicar solo se ve el avance; después, la corrida PUBLICADA completa.
 - Los veredictos y el embudo siguen el corte y las exclusiones que publica M3 en SQLite:
-  un veredicto por SKU del panel, ninguno VALIDADO con datos sintéticos y el embudo completo.
+  un veredicto por SKU del panel y el embudo completo.
 - La demanda observada y los campeones por familia tienen filas publicadas, incluida la cartera.
 - Cada fila conserva `run_id`, SKU e ingesta, y la corrida su origen.
 - La reanudación conserva las unidades ya confirmadas y no duplica corridas,

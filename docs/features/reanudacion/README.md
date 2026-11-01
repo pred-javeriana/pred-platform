@@ -15,7 +15,7 @@ trabajo actual y la importación final marcaba temporalmente tareas exitosas com
 | Cerrar normalmente la aplicación | Se termina el proceso del motor y la ejecución queda pendiente para el siguiente worker. |
 | Caída abrupta del servidor | Al iniciar, se limpia el proceso registrado y se vuelve a encolar la misma ejecución. |
 | Detener desde la interfaz | Permanece detenida hasta que el operador solicita reanudar. |
-| Reanudar o reintentar fallidos | Conserva `run_id`, parámetros, filas de tareas y tareas exitosas; solo las demás vuelven a pendiente. |
+| Reanudar o reintentar fallidos | Conserva `run_id`, parámetros, filas de tareas, tareas exitosas y tareas en `finalizo_m2` (el motor restaura su M2 y solo falta M3); solo las demás vuelven a pendiente. Una corrida que guardó datos sintéticos o un origen sin declarar no se reanuda: la interfaz muestra el motivo. |
 
 En el motor actualizado, cada unidad exitosa de L2/L3 guarda su resultado en un checkpoint
 atómico y sincronizado a disco antes de anunciar su finalización. Incluye la selección,

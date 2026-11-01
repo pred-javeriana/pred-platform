@@ -344,6 +344,24 @@ def _find_run(conn: sqlite3.Connection, run_id: str) -> sqlite3.Row | None:
     return conn.execute(f"{_run_select(conn)} WHERE c.run_id = ?", (run_id,)).fetchone()
 
 
+def reserve_blocks(db_path: Path, run_id: str) -> dict[str, Any] | None:
+    """The reserve block limits M3 fixed in the run's protocol (``protocolo.bloques``).
+
+    ``None`` when the run, its protocol or the key is absent: a run evaluated before the blocks
+    has none, and the limits are never derived from the cut or the windows.
+    """
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _snapshot(conn) or not _has(conn, "m3_protocolos"):
+            return None
+        row = conn.execute(
+            "SELECT protocolo FROM m3_protocolos WHERE run_id = ?", (run_id,)
+        ).fetchone()
+    if row is None or row["protocolo"] is None:
+        return None
+    bloques = json.loads(row["protocolo"]).get("bloques")
+    return bloques if isinstance(bloques, dict) else None
+
+
 def run_status(db_path: Path, run_id: str) -> StatusRead:
     """One run's metadata and durable progress (resolved units), never its metrics."""
     with _open_readonly(db_path) as conn:

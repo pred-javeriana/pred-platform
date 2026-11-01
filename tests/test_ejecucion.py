@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -29,7 +30,7 @@ from pred_platform.contract.errors import InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker.engine import build_command
-from tests.test_worker import Env, _scenario, _wait
+from tests.test_worker import Env, _escribir_progreso, _guardar_origen, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
@@ -234,46 +235,97 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     assert "Pendiente" in _text(page) and "PRED_WORKER=off" in page  # no worker in this app
 
 
-@pytest.mark.parametrize(
-    ("origin", "stored", "flag"),
-    [
-        ("real", False, "--datos-reales"),
-        ("synthetic", True, "--datos-sinteticos"),
-        ("unknown", None, None),
-    ],
-)
-def test_form_origin_reaches_the_existing_worker_command(
-    env: Env, origin: str, stored: bool | None, flag: str | None
-) -> None:
-    response = _launch(_dal_client(env), env, data_origin=origin)
+def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
+    html = _dal_client(env).get(f"/ejecucion?ingest_id={env.ingest_id}").text
+    assert 'action="/ejecucion/lanzar"' in html  # the form is there
+    assert "data_origin" not in html and "Origen de los datos" not in html
+    assert "Sintéticos" not in html
+
+
+def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    assert run.run_id is not None
+
+    def fragmento() -> str:
+        # Lo que la página vuelve a pedir cada 2 s: el dato cambia sin recargar.
+        return _text(client.get("/ejecucion/estado?ejecucion=1").text)
+
+    _escribir_progreso(
+        env,
+        run.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L2"},
+    )
+    assert "Etapa en curso: Ajuste e HPO (M2)" in fragmento()
+    assert "Ajuste e HPO (M2) ·" not in fragmento()  # sin plan de la etapa no hay contador
+    # L3 cierra M2 (L2 y L3); M3 es solo L4.
+    _escribir_progreso(env, run.run_id, {"event": "stage_started", "stage": "L3"})
+    assert "Etapa en curso: Validación walk-forward (M2)" in fragmento()
+    _escribir_progreso(
+        env,
+        run.run_id,
+        {"event": "stage_started", "stage": "L4"},
+        {"event": "planned", "stage": "L4", "units": [{"sku_id": s} for s in "ABC"]},
+        {"event": "unit_finished", "stage": "L4", "sku_id": "A", "state": "completada"},
+        {"event": "unit_finished", "stage": "L4", "sku_id": "B", "state": "completada"},
+    )
+    texto = fragmento()
+    assert "Etapa en curso: Evaluación retrospectiva (M3) · 2 de 3 SKU" in texto
+    page = client.get("/ejecucion?ejecucion=1").text
+    assert "La etapa analítica actual no está informada" not in page
+
+
+def test_ejecutar_muestra_las_tareas_que_terminaron_m2(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        dal.task_stage_finished(
+            conn,
+            run.id,
+            sku="FIL-0001",
+            modelo="classical:sarima",
+            corte=run.t_star,
+            seed=run.seed,
+            stage="L3",
+            completed=True,
+            seconds=1.0,
+            finished_at="2026-10-27T12:00:00+00:00",
+            error=None,
+        )
+    etiqueta = "Terminó configuración con HPO, esperando evaluación retrospectiva"
+
+    # El resumen de estados la cuenta y el filtro por estado la encuentra.
+    assert f"{etiqueta} 1" in _text(client.get("/ejecucion?ejecucion=1").text)
+    filtrada = _text(client.get("/ejecucion?ejecucion=1&estado=finalizo_m2").text)
+    assert "FIL-0001" in filtrada and etiqueta in filtrada
+
+
+def test_a_form_launch_is_recorded_as_real_data_even_if_origin_is_posted(env: Env) -> None:
+    # Sin declaración previa de la ingesta, y con un origen enviado a mano.
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    response = _launch(_dal_client(env), env, data_origin="synthetic")
     assert response.status_code == 303
     with closing(dal.connect(env.db)) as conn:
         run = dal.get_run(conn, 1)
-    assert run is not None and run.parametros["datos_sinteticos"] is stored
+    assert run is not None and run.parametros["datos_sinteticos"] is False
     command = build_command(
         env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
     )
-    if flag is None:
-        assert "--datos-reales" not in command and "--datos-sinteticos" not in command
-    else:
-        assert flag in command
-        opposite = "--datos-sinteticos" if flag == "--datos-reales" else "--datos-reales"
-        assert opposite not in command
-
-
-def test_form_rejects_an_invalid_origin_and_keeps_valid_origin_after_other_errors(env: Env) -> None:
-    client = _dal_client(env)
-    invalid = _launch(client, env, data_origin="inventado")
-    assert "Elija uno de los orígenes de la lista." in invalid.text
-    assert 'id="data_origin"' in invalid.text and 'aria-invalid="true"' in invalid.text
-    retry = _launch(client, env, data_origin="real", horizon="0")
-    assert '<option value="real" selected>' in retry.text
-    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+    assert "--datos-reales" in command and "--datos-sinteticos" not in command
 
 
 def test_form_cannot_contradict_an_existing_origin(env: Env, monkeypatch) -> None:
     monkeypatch.setenv("FAKE_ENGINE_ORIGIN_EXIT", "3")
-    response = _launch(_dal_client(env), env, data_origin="synthetic")
+    response = _launch(_dal_client(env), env)
     assert response.status_code == 200 and "origen incompatible del motor" in response.text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
@@ -343,6 +395,30 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
+def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
+    env: Env,
+) -> None:
+    # The ingest has one smooth, one intermittent and one lumpy SKU; lumpy admits only
+    # the classical and foundation families.
+    response = _launch(_dal_client(env), env, families=["ml", "dl"])
+    text = _text(response.text)
+
+    assert response.status_code == 200
+    assert "1 SKU Lumpy (Grumosa) queda sin modelo" in text
+    assert "Clásica o Fundacional" in text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_families_that_cover_every_class_launch_as_today(env: Env) -> None:
+    response = _launch(_dal_client(env), env, families=["ml", "dl", "foundation"])
+
+    assert response.status_code == 303
+    ((parametros,),) = env.rows(
+        "SELECT c.parametros FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id"
+    )
+    assert json.loads(parametros)["families"] == ["ml", "dl", "foundation"]
+
+
 def test_an_ingestion_that_is_not_accepted_cannot_be_launched(env: Env) -> None:
     from tests.test_worker import _fixture_id
 
@@ -363,6 +439,29 @@ def test_the_form_offers_only_accepted_ingestions_and_preselects_the_requested_o
     assert [o[0] for o in options] == [env.ingest_id]  # the failed one is not offered
     assert options[0][1] == " selected"
     assert "Lanzar está deshabilitado" not in html
+
+
+@pytest.mark.parametrize("origin", [True, None], ids=["sinteticos", "sin-declarar"])
+def test_reanudar_una_corrida_con_origen_no_real_lo_rechaza_y_lanzar_abre_otra(
+    env: Env, monkeypatch: pytest.MonkeyPatch, origin: bool | None
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    stopped = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+    assert stopped.headers["location"] == "/ejecucion?ejecucion=1&aviso=detenida"
+    _guardar_origen(env, origin)
+
+    response = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "La plataforma solo ejecuta datos reales" in _text(response.text)
+    assert env.rows("SELECT estado FROM ejecuciones") == [("detenida",)]
+    assert env.worker().run_next() is False  # nada quedó en cola
+    ((raw,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(raw)["datos_sinteticos"] is origin
+    relaunched = _launch(client, env)
+    assert relaunched.headers["location"] == "/ejecucion?ejecucion=2&aviso=en_cola"
 
 
 def test_a_run_followed_stopped_and_resumed_from_the_screen(

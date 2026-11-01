@@ -1,0 +1,37 @@
+{% from "components/tables.html" import table_start, table_end %}
+{# El campeón que M3 publicó por clase de demanda (m3_categorias). m3_classes es un M3Classes. #}
+{% if m3_classes.problem %}
+<p class="pred-note"><strong>{{ m3_classes.problem.title }}</strong> {{ m3_classes.problem.detail }}</p>
+{% endif %}
+{% if m3_classes.run %}
+<section class="pred-section" id="campeon-por-clase">
+  <h2>Campeón por clase</h2>
+  <p class="pred-meta">M3 elige y congela una familia campeona por clase de demanda con la mediana de r frente a Seasonal Naive de cada familia en el bloque de selección de la reserva; los veredictos de cada clase se cuentan en el bloque de prueba. Las cifras son las que publicó; la línea base vale 1.</p>
+  {{ table_start(["Clase", "Campeona", "Motivo"] + class_headers, "Campeón y mediana de r por clase") }}
+  {% for row in m3_classes.rows %}
+  <tr>
+    <td>{{ sku_class_label(row.sku_class) }}</td>
+    <td>{{ family_label(row.familia_campeona) }}</td>
+    <td>{{ motivos.get(row.motivo, row.motivo) }}</td>
+    {% for family in class_families %}
+    <td class="num">{% if family in row.medianas_r %}{{ format_decimal(row.medianas_r[family], 3) }}{% if family == row.familia_campeona %} campeona{% endif %}{% else %}—{% endif %}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+</section>
+
+<section class="pred-section" id="detalle-por-clase">
+  <h2>Detalle de cada clase</h2>
+  {% for row in m3_classes.rows %}
+  <h3>{{ sku_class_label(row.sku_class) }}</h3>
+  <dl class="pred-kv">
+    <dt>SKU comparados</dt><dd class="mono">{{ row.skus_comparables | join(", ") or "—" }}</dd>
+    <dt>SKU excluidos de la selección</dt><dd>{% for sku, causa in row.excluidos.items() %}<span class="mono">{{ sku }}: {{ causa }}</span>{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</dd>
+    <dt>Familias fuera</dt><dd>{% for family, causa in row.familias_excluidas.items() %}{{ family_label(family) }}: <span class="mono">{{ causa }}</span>{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</dd>
+    <dt>Veredictos</dt><dd>{% for veredicto, count in verdict_counts(row) %}<span class="mono">{{ veredicto }}</span> {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+    <dt>SKU con resultado adverso</dt><dd class="mono">{{ row.n_adversos }}</dd>
+  </dl>
+  {% endfor %}
+</section>
+{% endif %}

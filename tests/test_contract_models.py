@@ -55,7 +55,7 @@ def test_packaged_file_matches_the_lock(relative: str) -> None:
 
 
 def test_every_schema_declares_the_locked_version_of_its_major() -> None:
-    assert _LOCK["contract_versions"] == {"v1": "1.1.0", "v2": "2.2.0"}
+    assert _LOCK["contract_versions"] == {"v1": "1.2.0", "v2": "2.2.0"}
     for kind in document_kinds():
         version = read_schema(kind)["x-contract-version"]
         assert version == _LOCK["contract_versions"][_major(kind)]

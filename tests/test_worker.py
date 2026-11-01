@@ -63,7 +63,6 @@ SMALL = LaunchSettings(
     trials=1,
     workers=2,
     seed=17,
-    datos_sinteticos=False,
 )
 
 
@@ -120,17 +119,10 @@ def env(tmp_path: Path) -> Env:
     return Env(settings, _fixture_id("accepted"))
 
 
-@pytest.mark.parametrize("origin", [True, False, None])
-def test_el_veredicto_del_motor_se_guarda_y_viaja_al_cli(env: Env, monkeypatch, origin):
-    monkeypatch.setenv("FAKE_ENGINE_ORIGIN", json.dumps(origin))
-    queued = enqueue_run(env.settings, env.ingest_id)
-    with closing(dal.connect(env.db)) as conn:
-        run = dal.get_run(conn, queued.ejecucion_id)
-    assert run is not None and run.parametros["datos_sinteticos"] is origin
-    assert queued.run_id == run_id_for(env.ingest_id, LaunchSettings())
-    command = engine.build_command(env.settings, run, Path("data.parquet"))
-    assert ("--datos-sinteticos" in command) is (origin is True)
-    assert ("--datos-reales" in command) is (origin is False)
+def test_la_configuracion_de_lanzamiento_no_admite_origen() -> None:
+    with pytest.raises(TypeError):
+        LaunchSettings(datos_sinteticos=True)  # type: ignore[call-arg]
+    assert LaunchSettings().to_parametros()["datos_sinteticos"] is False
 
 
 def test_el_conflicto_del_motor_no_crea_una_ejecucion(env: Env, monkeypatch):
@@ -224,20 +216,6 @@ def test_consulta_el_origen_sin_bloquear_la_base(env: Env, monkeypatch):
 
     monkeypatch.setattr(engine.subprocess, "run", consult)
     assert enqueue_run(env.settings, env.ingest_id, SMALL).queued
-
-
-def test_ejecucion_completada_de_origen_desconocido_conserva_su_configuracion(env: Env):
-    unknown = replace(SMALL, datos_sinteticos=None)
-    queued = enqueue_run(env.settings, env.ingest_id, unknown)
-    assert env.worker().run_next() is True
-    assert _run_state(env) == ("completada", None)
-    before = env.rows("SELECT parametros FROM configuraciones")
-    with pytest.raises(RunRequestError, match="no puede cambiar"):
-        enqueue_run(env.settings, env.ingest_id, SMALL)
-    assert env.rows("SELECT parametros FROM configuraciones") == before
-    assert json.loads(before[0][0])["datos_sinteticos"] is None
-    again = enqueue_run(env.settings, env.ingest_id, unknown)
-    assert (again.ejecucion_id, again.queued) == (queued.ejecucion_id, False)
 
 
 def test_configuracion_antigua_sin_origen_exige_volver_a_encolar(env: Env):
@@ -580,6 +558,86 @@ def test_retry_that_crashes_cannot_import_the_previous_attempt_as_its_final_resu
     ]
 
 
+def test_a_run_the_engine_refuses_as_incompatible_says_so_and_relaunching_starts_a_new_one(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
+    env.worker().run_next()
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, first.ejecucion_id) is False  # completed: nothing to resume
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'detenida' WHERE id = ?", (first.ejecucion_id,)
+        )
+        conn.commit()
+        assert dal.resume_run(conn, first.ejecucion_id)
+    _scenario(monkeypatch, "incompatible")
+    env.worker().run_next()
+
+    state, error = _run_state(env)
+    assert state == "detenida"
+    assert json.loads(error or "{}")["code"] == "run.incompatible_config"
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, first.ejecucion_id) is False  # resuming would fail again
+
+    _scenario(monkeypatch, "ok")
+    again = enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert again.queued and again.ejecucion_id != first.ejecucion_id
+    assert again.run_id == f"{first.run_id}-2"
+    env.worker().run_next()
+    assert env.rows("SELECT estado FROM ejecuciones WHERE id = ?", again.ejecucion_id) == [
+        ("completada",)
+    ]
+    # Asking once more resolves to the new run, not to the refused one.
+    assert enqueue_run(env.settings, env.ingest_id, SMALL).ejecucion_id == again.ejecucion_id
+
+
+def _guardar_origen(env: Env, origin: bool | None) -> None:
+    """Deja en la configuración guardada un origen que la plataforma aceptaba antes (esquema 2)."""
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        ((raw,),) = conn.execute("SELECT parametros FROM configuraciones").fetchall()
+        parametros = json.loads(raw)
+        parametros["datos_sinteticos"] = origin
+        conn.execute(
+            "UPDATE configuraciones SET parametros = ?", (json.dumps(parametros, sort_keys=True),)
+        )
+
+
+@pytest.mark.parametrize("origin", [True, None], ids=["sinteticos", "sin-declarar"])
+def test_una_corrida_en_cola_con_origen_no_real_no_arranca_el_motor(
+    env: Env, monkeypatch: pytest.MonkeyPatch, origin: bool | None
+) -> None:
+    _scenario(monkeypatch, "ok")
+    first = enqueue_run(env.settings, env.ingest_id, SMALL)
+    _guardar_origen(env, origin)
+    launched: list[list[str]] = []
+
+    def launch(command: list[str], **kwargs: Any) -> subprocess.Popen[bytes]:
+        launched.append(command)
+        return engine.launch(command, **kwargs)
+
+    assert Worker(env.settings, launcher=launch).run_next()
+
+    assert launched == []
+    state, error = _run_state(env)
+    assert state == "detenida"
+    assert json.loads(error or "{}")["code"] == "run.incompatible_config"
+    assert "La plataforma solo ejecuta datos reales" in json.loads(error or "{}")["detail"]
+    ((raw,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(raw)["datos_sinteticos"] is origin  # el origen guardado no cambia
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado IN ('pendiente', 'ejecutando')") == [
+        (0,)
+    ]
+    # Lanzar otra vez los mismos ajustes abre una corrida nueva, con datos reales.
+    again = enqueue_run(env.settings, env.ingest_id, SMALL)
+    assert again.queued and again.run_id == f"{first.run_id}-2"
+    assert Worker(env.settings, launcher=launch).run_next()
+    assert "--datos-reales" in launched[0]
+    assert env.rows("SELECT estado FROM ejecuciones WHERE id = ?", again.ejecucion_id) == [
+        ("completada",)
+    ]
+
+
 def test_an_engine_that_dies_leaves_a_stopped_run_and_no_task_in_flight(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -624,12 +682,25 @@ def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
     error = json.loads(error_json or "{}")
     assert error["code"] == "pipeline.stage_failed"
     assert "L4" in error["detail"]
-    # The successful L2/L3 tasks stay stored.
+    # M3 did not finish: the tasks that completed L2/L3 stay in finalizo_m2, not failed.
     counts = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
-    assert counts.get("exitosa", 0) == 12  # 3 SKU × 4 families
-    assert counts.get("fallida", 0) == 0
+    assert counts == {"finalizo_m2": 12}  # 3 SKU × 4 families
     # The per-SKU selection (G4) was imported and linked.
     assert env.rows("SELECT COUNT(*) FROM selecciones")[0][0] > 0
+
+
+def test_al_cerrar_una_corrida_con_m3_publicado_las_tareas_quedan_exitosas(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "m3_ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+
+    env.worker().run_next()
+
+    # El progreso no trae eventos de L4: el cierre lee en corrida.json que M3 quedó publicado.
+    assert _run_state(env)[0] == "completada"
+    # 3 SKU × 4 familias
+    assert env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado") == [("exitosa", 12)]
 
 
 def test_a_missing_engine_command_is_a_clear_stopped_run(env: Env) -> None:
@@ -884,6 +955,62 @@ def test_applying_the_progress_twice_leaves_the_same_tasks(
     assert after == before
 
 
+def test_una_tarea_pasa_por_finalizo_m2_y_queda_exitosa_al_terminar_m3(env: Env) -> None:
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
+    unidad = {"sku_id": "FIL-0001", "family": "classical", "model": "sarima"}
+
+    def fin(etapa: str) -> dict[str, Any]:
+        return {
+            "event": "unit_finished",
+            "stage": etapa,
+            **unidad,
+            "state": "completada",
+            "seconds": 2.0,
+            "finished_at": "2026-10-27T12:00:00+00:00",
+        }
+
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        ruta = env.settings.data_root / "runs" / queued.run_id / "progreso.jsonl"
+        follower = ProgressFollower(conn, run, ruta, corte=run.t_star)
+
+        def estado() -> str:
+            follower.poll()
+            ((valor,),) = env.rows("SELECT estado FROM tareas WHERE sku = 'FIL-0001'")
+            return str(valor)
+
+        _escribir_progreso(
+            env,
+            queued.run_id,
+            {"event": "planned", "stage": "L2", "units": [unidad]},
+            {
+                "event": "unit_started",
+                "stage": "L2",
+                **unidad,
+                "started_at": "2026-10-27T11:59:00+00:00",
+            },
+            fin("L2"),
+            {"event": "planned", "stage": "L3", "units": [unidad]},
+            fin("L3"),
+        )
+        assert estado() == "finalizo_m2"  # M2 terminó; M3 todavía no guardó su candidato
+        _escribir_progreso(
+            env,
+            queued.run_id,
+            {"event": "planned", "stage": "L4", "units": [unidad]},
+            {
+                "event": "unit_started",
+                "stage": "L4",
+                **unidad,
+                "started_at": "2026-10-27T12:00:30+00:00",
+            },
+        )
+        assert estado() == "finalizo_m2"  # empezar M3 no la devuelve a ejecutando
+        _escribir_progreso(env, queued.run_id, fin("L4"))
+        assert estado() == "exitosa"
+
+
 # ----------------------------------------------------------------- reading the run
 def _conforms(document: Any) -> None:
     validator = Draft202012Validator(
@@ -955,6 +1082,165 @@ def test_no_run_yet_is_an_empty_state_and_an_unknown_run_is_missing(env: Env) ->
     enqueue_run(env.settings, env.ingest_id, SMALL)
     with pytest.raises(ArtifactMissing):
         env.repo().get_run_status("999")
+
+
+def _escribir_progreso(env: Env, run_id: str, *eventos: dict[str, Any]) -> None:
+    ruta = env.settings.data_root / "runs" / run_id / "progreso.jsonl"
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with ruta.open("a", encoding="utf-8") as archivo:
+        archivo.writelines(json.dumps(evento) + "\n" for evento in eventos)
+
+
+def test_el_estado_de_la_ejecucion_informa_la_etapa_en_curso(env: Env) -> None:
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+
+    def etapa() -> str | None:
+        progress = env.repo().get_run_status(queued.run_id).progress
+        assert progress is not None
+        return progress.etapa_actual
+
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L1"},
+        {"event": "stage_finished", "stage": "L1", "state": "completed"},
+        {"event": "stage_started", "stage": "L2"},
+    )
+    assert etapa() == "L2"
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "stage_finished", "stage": "L2", "state": "completed"},
+        {"event": "stage_started", "stage": "L3"},
+    )
+    assert etapa() == "L3"
+    # Una reanudación empieza un intento nuevo: la etapa del intento anterior ya no está en curso.
+    _escribir_progreso(env, queued.run_id, {"event": "run_started", "attempt": 2})
+    assert etapa() is None
+    _escribir_progreso(env, queued.run_id, {"event": "stage_started", "stage": "L4"})
+    assert etapa() == "L4"
+    # Una ejecución que terminó ya no tiene etapa en curso.
+    with closing(dal.connect(env.db)) as conn:
+        dal.finish_run(conn, run.id, estado="completada")
+    assert etapa() is None
+
+
+def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> None:
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+
+    def m3() -> tuple[int | None, int | None]:
+        progress = env.repo().get_run_status(queued.run_id).progress
+        assert progress is not None
+        return progress.skus_terminados, progress.skus_total
+
+    plan_m3 = {"event": "planned", "stage": "L4", "units": [{"sku_id": s} for s in "ABC"]}
+
+    def fin(sku: str) -> dict[str, Any]:
+        return {"event": "unit_finished", "stage": "L4", "sku_id": sku, "state": "completada"}
+
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L3"},
+    )
+    assert m3() == (None, None)  # M3 todavía no empezó
+    _escribir_progreso(env, queued.run_id, {"event": "stage_started", "stage": "L4"}, plan_m3)
+    assert m3() == (0, 3)
+    _escribir_progreso(env, queued.run_id, fin("A"), fin("B"))
+    assert m3() == (2, 3)
+    # Al reanudar, el motor vuelve a anunciar el plan y los SKU ya guardados: no cuentan doble.
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 2},
+        {"event": "stage_started", "stage": "L4"},
+        plan_m3,
+        fin("A"),
+        fin("B"),
+    )
+    assert m3() == (2, 3)
+    _escribir_progreso(env, queued.run_id, fin("C"))
+    assert m3() == (3, 3)
+
+
+def test_el_contador_de_m3_cuenta_sku_distintos(env: Env) -> None:
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    # El motor anuncia M3 por SKU x candidato: dos SKU con dos candidatos cada uno.
+    unidades = [{"sku_id": s, "family": f} for s in "AB" for f in ("classical", "ml")]
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L4"},
+        {"event": "planned", "stage": "L4", "units": unidades},
+        *(
+            {"event": "unit_finished", "stage": "L4", **u, "state": "completada"}
+            for u in unidades[:2]
+        ),
+    )
+
+    progress = env.repo().get_run_status(queued.run_id).progress
+    assert progress is not None
+    assert (progress.skus_terminados, progress.skus_total) == (1, 2)
+
+
+def test_el_contador_cuenta_un_sku_de_m2_solo_cuando_terminan_todas_sus_familias(
+    env: Env,
+) -> None:
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    a_clasica, a_ml, b_clasica, b_ml = (
+        {"sku_id": s, "family": f} for s in "AB" for f in ("classical", "ml")
+    )
+    plan = [a_clasica, a_ml, b_clasica, b_ml]
+
+    def fin(etapa: str, unidad: dict[str, str], estado: str = "completada") -> dict[str, Any]:
+        return {"event": "unit_finished", "stage": etapa, **unidad, "state": estado}
+
+    def avance() -> tuple[str | None, int | None, int | None]:
+        progress = env.repo().get_run_status(queued.run_id).progress
+        assert progress is not None
+        return progress.etapa_actual, progress.skus_terminados, progress.skus_total
+
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "run_started", "attempt": 1},
+        {"event": "stage_started", "stage": "L2"},
+        {"event": "planned", "stage": "L2", "units": plan},
+        fin("L2", a_clasica),
+        fin("L2", a_ml),
+        fin("L2", b_clasica, "fallida"),  # una unidad fallida también terminó
+    )
+    assert avance() == ("L2", 1, 2)  # B todavía tiene una familia en HPO
+    _escribir_progreso(env, queued.run_id, fin("L2", b_ml))
+    assert avance() == ("L2", 2, 2)
+    # La etapa siguiente empieza su propio conteo con su plan.
+    _escribir_progreso(
+        env,
+        queued.run_id,
+        {"event": "stage_started", "stage": "L3"},
+        {"event": "planned", "stage": "L3", "units": [a_clasica, a_ml, b_ml]},
+        fin("L3", b_ml),
+    )
+    assert avance() == ("L3", 1, 2)
 
 
 def test_the_capability_of_orchestration_is_available(env: Env) -> None:
@@ -1045,6 +1331,32 @@ def test_the_cli_rejects_a_launch_without_a_valid_ingestion(
     assert worker_main(["--launch"]) == 2
     assert worker_main(["--launch", "--ingest", "c" * 64]) == 1
     assert "no existe la ingesta" in capsys.readouterr().err
+
+
+def test_lanzamiento_por_linea_de_comandos_declara_datos_reales(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Una ingesta sin origen declarado, ni en su informe ni en la base.
+    path = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    report = json.loads(path.read_text())
+    report["source_file"]["datos_sinteticos"] = None
+    path.write_text(json.dumps(report))
+    with closing(dal.connect(env.db)) as conn:
+        conn.execute("DELETE FROM m3_ingestas")
+        conn.commit()
+    monkeypatch.setenv("PRED_DATA_ROOT", str(env.settings.data_root))
+    monkeypatch.setenv("PRED_DB_PATH", str(env.db))
+    monkeypatch.setenv("PRED_ENGINE_CMD", f"{sys.executable} {_FAKE}")
+
+    assert worker_main(["--launch", "--ingest", env.ingest_id]) == 0
+
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, 1)
+    assert run is not None and run.parametros["datos_sinteticos"] is False
+    command = engine.build_command(
+        env.settings, run, env.settings.data_root / "processed/demo_canonico.parquet"
+    )
+    assert "--datos-reales" in command and "--datos-sinteticos" not in command
 
 
 # -------------------------------------------------------------------- the app

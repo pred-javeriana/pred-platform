@@ -20,8 +20,16 @@ side panel shows the contract's notice and links to the others. The five verdict
 verbatim; the detail adds the justification, windows against `n_min`, r against Seasonal Naive,
 coverage, the data origin and, apart from the verdict, the HLN-DM/BH significance or its cause. A
 SKU launched after the cut says so; a run that is not PUBLICADA, or a publication without its
-exclusion metadata, explains why there is no verdict. The **Resumen** and **Por clase** tabs are
-not built yet (Module 4, sections 4.2 to 4.5) and say so.
+exclusion metadata, explains why there is no verdict.
+
+The other tabs read the same resolved M3 run. **Resumen** shows the funnel M3 published for the
+whole run and counts the published HLN-DM results (with test, significant after BH within each
+demand class, without test by cause); it never recomputes the test. **Por clase** shows the champion
+family M3 froze for each class on the selection block, its reason, every family's median r and the
+class verdict counts. **Perfiles de error** shows the error profiles of the portfolio (`m3_cartera`, test
+block) for one metric at a time. The SKU detail also draws the champion's published h=1 forecast
+against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
+champion and Seasonal Naive.
 
 ## How
 
@@ -53,7 +61,8 @@ view or in the browser (no inline script). `include_windows` is only requested w
 | Presentation (`family` and `verdict` vocabularies) | `src/pred_platform/app/presentation.py` |
 | Pages | `src/pred_platform/app/templates/pages/results.html`, `results_sku.html` |
 | Partials and macro | `templates/partials/results_*.html`, `templates/components/run_line.html` |
-| Tests | `tests/test_resultados.py`, `tests/test_presentation.py` |
+| Champion forecast series and chart | `src/pred_platform/app/resultados_pronostico.py`, `src/pred_platform/app/charts.py` |
+| Tests | `tests/test_resultados.py`, `tests/test_resultados_pronostico.py`, `tests/test_presentation.py` |
 
 ## Data
 
@@ -68,3 +77,24 @@ The read interface also exposes `get_m3_observations` (reserve demand by SKU and
 The cut and late launches come from `m3_cortes` and `m3_lanzamientos_tardios` in SQLite, even
 when the ingestion's Parquet is absent. A published run without `m3_cortes` returns
 `metadata_missing` for evidence and observations and asks for a new execution.
+
+## Champion forecast chart
+
+The SKU detail draws the observed demand and the h=1 forecast of the champion candidate M3
+published, before the model comparison. It reads every page of the exact run, SKU and candidate
+through `DataRepository`; it does not forecast, choose models or compute metrics. Nulls break the
+lines, zeros are kept, and rows are never interpolated or averaged. Each forecast keeps its target
+date, origin and value, and the accessible table lists the origin too.
+
+The reserve blocks come from `get_m3_reserve_blocks`, read once per M3 decision and shared by all
+its SKUs. The DAL reads them from the limits M3 fixed in the run's protocol
+(`m3_protocolos.protocolo`, key `bloques`): the selection, embargo and test origins, and the target
+dates of the selection and test blocks. The chart shades only the target-date ranges. Embargo
+origins are windows that cross the boundary between the blocks; they are listed, never drawn as a
+band of observed demand. No limit is derived from H, the selection fraction, the reserve length or
+t*. A run whose protocol has no blocks is drawn without regions and says so.
+
+The SVG has a title and a description, and uses circles with a solid line for demand and squares
+with a dashed line for the forecast, so colour is never the only cue. The tests check the evidence
+and the SVG separately: changing the origin ranges, the reported horizon, the reserve length, t* or
+values such as 0.4 does not move the target-date bands.

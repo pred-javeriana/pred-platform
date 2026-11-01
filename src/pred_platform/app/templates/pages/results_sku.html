@@ -11,7 +11,7 @@
   <a class="pred-back" href="{{ back_href }}">← Volver a la selección por SKU</a>
   <header class="pred-page-header">
     <div>
-      <h1>SKU <span class="mono">{{ sku_id }}</span></h1>
+      <h1><span class="mono">{{ sku_id }}</span></h1>
       <p>Revise la decisión publicada por M3 y la comparación por familia. Abra configuraciones, ensayos y ventanas para consultar la evidencia técnica.</p>
     </div>
   </header>
@@ -49,12 +49,48 @@
         <dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) }}</dd>
       </dl>
       <h3>Significancia</h3>
-      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH de toda la corrida. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
+      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
       <dl class="pred-kv" id="significancia">
         {% for label, value in significance_items(verdict) %}
         <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
         {% endfor %}
       </dl>
+      {% include "partials/results_forecast.html" %}
+      <h3>Modelos evaluados en la reserva</h3>
+      <p class="pred-meta">Ordenados por r frente a Seasonal Naive, tal como los publicó M3.</p>
+      {{ table_start(["Familia", "Modelo", "r frente a Seasonal Naive", "Rol"], "Modelos evaluados de " ~ sku_id) }}
+      {% for model in ranking(verdict) %}
+      {% set roles = [] %}
+      {% if model.candidato_id == verdict.candidato_campeon %}{% set _ = roles.append("Campeón") %}{% endif %}
+      {% if model.familia == "seasonal_naive" %}{% set _ = roles.append("Línea base") %}{% endif %}
+      <tr>
+        <td>{{ family_label(model.familia) }}</td>
+        <td><span class="mono">{{ model.modelo }}</span></td>
+        <td class="num">{% if model.razon_sn is not none %}{{ format_decimal(model.razon_sn, 3) }}{% else %}no calculable{% endif %}</td>
+        <td>{{ roles | join(" · ") or "—" }}</td>
+      </tr>
+      {% endfor %}
+      {{ table_end() }}
+      {% if reserve is not none %}
+      <h3 id="reserva">Ventanas de la reserva</h3>
+      <p class="pred-meta">RMSE del campeón y de Seasonal Naive, y r, en cada ventana de la reserva, tal como los publicó M3.</p>
+      {% for causa, count in reserve.sin_r.items() %}
+      <p class="pred-note">{{ count }} {{ "ventana" if count == 1 else "ventanas" }} sin r: <span class="mono">{{ causa }}</span></p>
+      {% endfor %}
+      {{ table_start(["Ventana", "RMSE campeón", "RMSE Seasonal Naive", "r frente a Seasonal Naive"], "Ventanas de la reserva de " ~ sku_id) }}
+      {% for window in reserve.windows %}
+      <tr>
+        <td><span class="mono">{{ window.fecha }}</span></td>
+        {% for value in (window.rmse_campeon, window.rmse_linea_base) %}
+        <td class="num">{% if value is not none %}{{ format_decimal(value, 3) }}{% else %}—{% endif %}</td>
+        {% endfor %}
+        <td class="num">{% if window.razon_sn is not none %}{{ format_decimal(window.razon_sn, 3) }}{% elif window.causa %}no calculable: <span class="mono">{{ window.causa }}</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {{ table_end() }}
+      {% else %}
+      <p class="pred-note" id="reserva"><a href="{{ reserve_href }}#reserva">Ver las {{ verdict.n_ventanas }} ventanas de la reserva</a></p>
+      {% endif %}
       {% elif m3.excluded.get(sku_id) %}
       <h2 class="pred-panel-title">Excluido antes de M3</h2>
       <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star and sku_id in m3.late_launched %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>

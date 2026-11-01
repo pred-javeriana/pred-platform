@@ -56,6 +56,29 @@ class ArtifactDownload:
         return cls(file_name, media_type, content, actual)
 
 
+@dataclass(frozen=True, slots=True)
+class M3DateRange:
+    """Rango y conteo ya publicados; los extremos nulos representan un rango vacío."""
+
+    start: str | None
+    end: str | None
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class M3ReserveBlocks:
+    """Los bloques de la reserva que M3 fijó en el protocolo de la corrida (ADR-03-012).
+
+    Orígenes y fechas objetivo son conceptos distintos: un origen pronostica días posteriores.
+    """
+
+    selection_origins: M3DateRange
+    embargo_origins: M3DateRange
+    test_origins: M3DateRange
+    selection_dates: M3DateRange
+    test_dates: M3DateRange
+
+
 class DataRepository(Protocol):
     """What the views read. Every list is filtered, sorted and paged on the server."""
 
@@ -188,6 +211,10 @@ class DataRepository(Protocol):
         page: int = 1,
         size: int = DEFAULT_SIZE,
     ) -> models_v2.M3Observations: ...
+
+    def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
+        """Los bloques de la reserva de una corrida exacta; ``None`` si su protocolo no los fija."""
+        ...
 
     def get_m3_champions(
         self,

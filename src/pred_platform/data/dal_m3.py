@@ -14,6 +14,7 @@ the contract raise ``ContractInvalid``.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
 from pred_platform.data.m3_query import VERDICTS, M3Query
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 
 
 def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
@@ -42,12 +44,53 @@ def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
         ) from exc
 
 
+# Campo de M3ReserveBlocks -> clave de ``protocolo.bloques`` (``BloquesReserva.limites`` del motor).
+_BLOCK_KEYS = {
+    "selection_origins": "origenes_seleccion",
+    "embargo_origins": "origenes_embargo",
+    "test_origins": "origenes_prueba",
+    "selection_dates": "fechas_seleccion",
+    "test_dates": "fechas_prueba",
+}
+
+
+def _date_range(value: Any) -> M3DateRange:
+    """Un rango ``{"n", "primero", "ultimo"}`` del protocolo: fechas ISO, o nulas si n es 0."""
+    count, start, end = value["n"], value["primero"], value["ultimo"]
+    if type(count) is not int or count < 0:
+        raise ValueError("n debe ser un entero >= 0")
+    if count == 0:
+        if start is not None or end is not None:
+            raise ValueError("un rango vacío no tiene extremos")
+        return M3DateRange(None, None, 0)
+    if not isinstance(start, str) or not isinstance(end, str):
+        raise ValueError("un rango con elementos exige sus extremos")
+    if date.fromisoformat(start) > date.fromisoformat(end):
+        raise ValueError("los extremos están invertidos")
+    return M3DateRange(start, end, count)
+
+
 class M3DalSource:
-    """The eleven M3 operations of ``DataRepository`` over the platform's database."""
+    """Lecturas M3 de ``DataRepository`` sobre la base de datos de la plataforma."""
 
     source: DataSource = "dal"
     db_path: Path
     data_root: Path | None
+
+    def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
+        """Los límites de bloques que M3 fijó en el protocolo de la corrida, o ``None``."""
+        limits = evidencia.reserve_blocks(self.db_path, run_id)
+        if limits is None:
+            return None
+        try:
+            return M3ReserveBlocks(
+                **{field: _date_range(limits[key]) for field, key in _BLOCK_KEYS.items()}
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ContractInvalid(
+                f"M3ReserveBlocks: los bloques del protocolo de {run_id} no son válidos: {exc}",
+                field="bloques",
+            ) from exc
 
     # ------------------------------------------------------------------------ runs
     def list_m3_runs(

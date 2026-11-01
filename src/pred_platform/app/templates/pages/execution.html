@@ -3,6 +3,10 @@
 
 {% block title %}PRED — Ejecución{% endblock %}
 
+{# htmx copia por defecto las clases del cuerpo viejo al nuevo hasta asentarlo; eso deshace las
+   pestañas que pred.js arma tras cada sondeo y la página salta cada 2 s. #}
+{% block head %}<meta name="htmx-config" content='{"attributesToSettle": []}'>{% endblock %}
+
 {% block content %}
   <header class="pred-page-header">
     <div>

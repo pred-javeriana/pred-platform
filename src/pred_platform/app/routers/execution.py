@@ -20,7 +20,6 @@ from pred_platform.app.ejecucion import (
     FINISHED_STATES,
     METRIC_CHOICES,
     NOTICES,
-    ORIGIN_CHOICES,
     ExecutionQuery,
     FormResult,
     default_form_values,
@@ -29,6 +28,7 @@ from pred_platform.app.ejecucion import (
     parse_launch_form,
     run_actions,
     settings_items,
+    uncovered_classes,
 )
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
@@ -40,7 +40,7 @@ from pred_platform.worker.control import ControlUnavailable, RunControl
 
 router = APIRouter()
 
-_TASK_STATES = ("pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable")
+_TASK_STATES = ("pendiente", "ejecutando", "finalizo_m2", "exitosa", "fallida", "no_ejecutable")
 
 
 def _control(request: Request) -> RunControl:
@@ -156,7 +156,6 @@ def _context(
         "form_error": form_error,
         "family_choices": FAMILY_CHOICES,
         "metric_choices": METRIC_CHOICES,
-        "origin_choices": ORIGIN_CHOICES,
     }
 
 
@@ -205,7 +204,6 @@ def lanzar(
     trials: Annotated[str | None, Form()] = None,
     seed: Annotated[str | None, Form()] = None,
     workers: Annotated[str | None, Form()] = None,
-    data_origin: Annotated[str | None, Form()] = None,
 ) -> HTMLResponse | RedirectResponse:
     form = parse_launch_form(
         families=families or [],
@@ -218,12 +216,19 @@ def lanzar(
             "trials": trials,
             "seed": seed,
             "workers": workers,
-            "data_origin": data_origin,
         },
     )
     form.values["ingest_id"] = ingest_id or ""
     if not ingest_id:
         form.errors["ingest_id"] = "Elija la ingesta que se va a ejecutar."
+    elif not form.errors:
+        try:
+            by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
+        except DataLayerError:
+            by_class = {}  # sin topología publicada, decide el motor
+        uncovered = uncovered_classes(by_class, form.values["families"])
+        if uncovered:
+            form.errors["families"] = uncovered
     if form.errors or form.settings is None or ingest_id is None:
         return _render(request, "pages/execution.html", _context(request, repository, form=form))
     try:
@@ -259,7 +264,7 @@ def _act(request: Request, repository: DataRepository, ejecucion: str, action: s
             _context(request, repository, action_error="La ejecución indicada no es válida."),
             400,
         )
-    except ControlUnavailable as exc:
+    except (ControlUnavailable, RunRequestError) as exc:
         return _render(
             request, "pages/execution.html", _context(request, repository, action_error=str(exc))
         )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from contextlib import closing
+from typing import Any
 
 import pytest
 
@@ -162,6 +163,42 @@ def test_resuming_puts_the_tasks_the_stop_closed_back_to_pending(
     # Until the engine starts them again nothing may look finished or failed.
     assert env.rows("SELECT DISTINCT estado FROM tareas") == [("pendiente",)]
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE detalle_error IS NOT NULL") == [(0,)]
+
+
+def test_detener_y_reanudar_conservan_las_tareas_en_finalizo_m2(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow_m3")
+    control = _control(env)
+    control.launch(env.ingest_id, SMALL)
+    thread = threading.Thread(target=env.worker().run_next)
+    thread.start()
+    _wait(
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'")[0][0] == 4,
+        what="M3 to store the first SKU",
+    )
+
+    def estados() -> list[tuple[Any, ...]]:
+        return env.rows(
+            "SELECT sku, estado, COUNT(*) FROM tareas GROUP BY sku, estado ORDER BY sku"
+        )
+
+    # M3 guardó FIL-0001; los otros dos SKU terminaron M2 y esperan su evaluación
+    # (4 familias por SKU).
+    m3_a_medias = [
+        ("FIL-0001", "exitosa", 4),
+        ("FIL-0002", "finalizo_m2", 4),
+        ("FIL-0003", "finalizo_m2", 4),
+    ]
+    assert estados() == m3_a_medias
+
+    assert control.stop(1) is True
+    thread.join(timeout=20)
+    assert not thread.is_alive()
+    assert estados() == m3_a_medias  # detener no da por fallida una tarea que terminó M2
+
+    assert control.resume(1) is True
+    assert estados() == m3_a_medias  # reanudar no la devuelve a pendiente
 
 
 def test_stopping_a_queued_retry_closes_the_tasks_it_was_resumed_with(

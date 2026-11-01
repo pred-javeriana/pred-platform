@@ -36,6 +36,11 @@ class StatusPresentation:
 _TASK: dict[str, StatusPresentation] = {
     "pendiente": StatusPresentation("i-clock", "Pendiente", "neutral"),
     "ejecutando": StatusPresentation("i-play", "Ejecutando", "info"),
+    "finalizo_m2": StatusPresentation(
+        "i-check-circle",
+        "Terminó configuración con HPO, esperando evaluación retrospectiva",
+        "info",
+    ),
     "exitosa": StatusPresentation("i-check", "Exitosa", "ok"),
     "fallida": StatusPresentation("i-x", "Fallida", "err"),
     "no_ejecutable": StatusPresentation("i-ban", "No Ejecutable", "warn"),

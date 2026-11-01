@@ -18,7 +18,7 @@ from pred_platform.contract.resources import document_model, example_names, read
 
 
 def test_the_contract_versions_are_the_locked_ones() -> None:
-    assert (CONTRACT_VERSION, M3_CONTRACT_VERSION) == ("1.1.0", "2.2.0")
+    assert (CONTRACT_VERSION, M3_CONTRACT_VERSION) == ("1.2.0", "2.2.0")
 
 
 @pytest.mark.parametrize("name", example_names())
@@ -71,7 +71,7 @@ def test_a_newer_minor_version_of_the_same_major_is_accepted() -> None:
     assert parse_as(models.RunStatus, document).schema_version == "1.7.3"
 
 
-@pytest.mark.parametrize("version", [None, 1, "", "x.y.z", "v1.0.0"])
+@pytest.mark.parametrize("version", [None, 1, "", "x.y.z", "v1.1.0"])
 def test_a_missing_or_malformed_version_is_a_contract_error(version: object) -> None:
     document = json.loads(read_example("run_status.normal"))
     document["schema_version"] = version

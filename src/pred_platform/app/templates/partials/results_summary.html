@@ -1,0 +1,52 @@
+{% from "components/tables.html" import table_start, table_end %}
+{# El resumen de la corrida M3 resuelta (contrato v2). m3_summary es un M3Summary. #}
+{% if m3_summary.problem %}
+<p class="pred-note"><strong>{{ m3_summary.problem.title }}</strong> {{ m3_summary.problem.detail }}</p>
+{% endif %}
+{% if m3_summary.funnel %}
+{% set funnel = m3_summary.funnel %}
+<section class="pred-section" id="embudo">
+  <h2>Embudo de la corrida</h2>
+  <p class="pred-meta">Conteos que M3 publicó para toda la corrida, no para una página ni un filtro.</p>
+  <dl class="pred-kv">
+    <dt>Productos de la corrida</dt><dd class="mono">{{ funnel.total_productos }}</dd>
+    <dt>Lanzados después del corte</dt><dd class="mono">{{ funnel.excluded_count }}</dd>
+    <dt>Excluidos por menos de dos familias evaluables (M2)</dt><dd>{% if funnel.eligibility_excluded_count is none %}No informado{% else %}<span class="mono">{{ funnel.eligibility_excluded_count }}</span>{% endif %}</dd>
+    <dt>Con veredicto M3</dt><dd class="mono">{{ funnel.tras_exclusiones }}</dd>
+    <dt>Evaluados</dt><dd class="mono">{{ funnel.evaluados }}</dd>
+    <dt>No evaluados</dt><dd class="mono">{{ funnel.no_evaluados }}</dd>
+  </dl>
+  {{ table_start(["Grupo", "Veredicto", "SKU"], "Veredictos de la corrida") }}
+  {% for group, veredicto, count in funnel_rows(funnel) %}
+  <tr>
+    <td>{{ group }}</td>
+    <td><span class="mono">{{ veredicto }}</span></td>
+    <td class="num">{{ count }}</td>
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+</section>
+{% endif %}
+{% if m3_summary.dm %}
+{% set dm = m3_summary.dm %}
+<section class="pred-section" id="prueba-dm">
+  <h2>Prueba Diebold-Mariano</h2>
+  <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. M4 cuenta los veredictos publicados; no calcula la prueba. VALIDADO no equivale a significativo.</p>
+  <dl class="pred-kv">
+    <dt>Con prueba HLN-DM</dt><dd class="mono">{{ dm.con_prueba }}</dd>
+    <dt>Significativas después de BH</dt><dd class="mono">{{ dm.significativas }}</dd>
+    <dt>No significativas</dt><dd class="mono">{{ dm.no_significativas }}</dd>
+    <dt>Sin prueba</dt><dd class="mono">{{ dm.sin_prueba.values() | sum }}</dd>
+  </dl>
+  {% if dm.sin_prueba %}
+  {{ table_start(["Causa publicada", "SKU"], "SKU sin prueba HLN-DM por causa") }}
+  {% for causa, count in dm.sin_prueba.items() %}
+  <tr>
+    <td><span class="mono">{{ causa }}</span></td>
+    <td class="num">{{ count }}</td>
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+  {% endif %}
+</section>
+{% endif %}

@@ -40,7 +40,14 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "window_metric_names",
     ):
         templates.env.globals[name] = getattr(seleccion, name)
-    for name in ("origin_label", "significance_items", "verdict_group"):
+    for name in (
+        "funnel_rows",
+        "origin_label",
+        "ranking",
+        "significance_items",
+        "verdict_counts",
+        "verdict_group",
+    ):
         templates.env.globals[name] = getattr(resultados_m3, name)
     templates.env.globals["error_action"] = mensajes.accion
     templates.env.globals["describir_error"] = mensajes.describir

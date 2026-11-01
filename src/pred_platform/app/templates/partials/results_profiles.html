@@ -1,0 +1,28 @@
+{% from "components/tables.html" import table_start, table_end %}
+{# Los perfiles de error de la corrida M3 resuelta (m3_cartera). m3_profiles es un M3Profiles. #}
+{% if m3_profiles.problem %}
+<p class="pred-note"><strong>{{ m3_profiles.problem.title }}</strong> {{ m3_profiles.problem.detail }}</p>
+{% endif %}
+{% if m3_profiles.run %}
+<section class="pred-section" id="perfiles-error">
+  <h2>Perfiles de error por clase y familia</h2>
+  <nav class="pred-section-links" aria-label="Métrica del perfil">
+    {% for name, label in profile_metrics.items() %}<a href="{{ metric_hrefs[name] }}"{% if name == m3_profiles.metrica %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
+  <p class="pred-meta">Distribución de {{ profile_metrics[m3_profiles.metrica] }} en el bloque de prueba, tal como la publicó M3{% if m3_profiles.metrica == "razon_sn" %}; la línea base vale 1{% endif %}.</p>
+  {{ table_start(["Clase", "Familia", "Media", "Mediana", "p25", "p75", "SKU", "Instancias", "No calculables"], "Perfiles de error de la corrida") }}
+  {% for row in m3_profiles.rows %}
+  <tr>
+    <td>{{ sku_class_label(row.sku_class) }}</td>
+    <td>{{ family_label(row.familia) }}</td>
+    {% for value in (row.media, row.mediana, row.p25, row.p75) %}
+    <td class="num">{% if value is not none %}{{ format_decimal(value, 3) }}{% else %}—{% endif %}</td>
+    {% endfor %}
+    <td class="num">{{ row.n_skus }}</td>
+    <td class="num">{{ row.n_instancias }}</td>
+    <td class="num">{{ row.n_no_calculables }}</td>
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+</section>
+{% endif %}

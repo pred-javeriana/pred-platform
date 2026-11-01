@@ -15,6 +15,7 @@ from typing import Protocol
 from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
+from pred_platform.worker.engine import require_real_origin
 from pred_platform.worker.errores import run_stopped_error
 from pred_platform.worker.service import (
     EnqueueResult,
@@ -65,8 +66,18 @@ class DalRunControl:
             return dal.request_stop(conn, ejecucion_id, error=run_stopped_error())
 
     def resume(self, ejecucion_id: int) -> bool:
-        """Queue again a stopped run or one that ended with failures. False if it cannot be."""
+        """Queue again a stopped run or one that ended with failures. False if it cannot be.
+
+        Raises:
+            RunRequestError: the run saved synthetic data, an undeclared origin or no origin.
+        """
         with closing(dal.connect(self._db_path)) as conn:
+            run = dal.get_run(conn, ejecucion_id)
+            if run is not None:
+                try:
+                    require_real_origin(run.parametros)
+                except ValueError as exc:  # el worker la detendría sin arrancar el motor
+                    raise RunRequestError(str(exc)) from exc
             return dal.resume_run(conn, ejecucion_id)
 
 

@@ -13,9 +13,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 from pred_platform import mensajes
-from pred_platform.app.presentation import format_decimal
-from pred_platform.app.seleccion import int_param
-from pred_platform.contract.models import RunSettings
+from pred_platform.app.presentation import format_decimal, sku_class_label
+from pred_platform.app.seleccion import family_label, int_param
+from pred_platform.contract.models import RunSettings, SkuClass
 from pred_platform.data.query import DEFAULT_SIZE, LATEST
 from pred_platform.worker.service import LaunchSettings
 
@@ -30,19 +30,21 @@ FAMILY_CHOICES: tuple[tuple[str, str], ...] = (
     ("dl", "Aprendizaje profundo (MLP)"),
     ("foundation", "Fundacional (Chronos-2)"),
 )
+# Copia de la matriz de la política 2.2.0-initial del motor (FAMILIES_BY_SKU_CLASS en
+# pred-engine optimizacion/router/politica.py). La plataforma no importa el motor: si la
+# política cambia allá, esta copia también.
+FAMILIES_BY_SKU_CLASS: dict[str, tuple[str, ...]] = {
+    "smooth": ("classical", "ml", "dl", "foundation"),
+    "erratic": ("classical", "ml", "dl", "foundation"),
+    "intermittent": ("classical", "ml", "foundation"),
+    "lumpy": ("classical", "foundation"),
+}
 METRIC_CHOICES: tuple[tuple[str, str], ...] = (
     ("rmse", "RMSE"),
     ("mae", "MAE"),
     ("smape", "sMAPE"),
     ("mase", "MASE"),
 )
-ORIGIN_CHOICES: tuple[tuple[str, str], ...] = (
-    ("unknown", "No declarar / conservar origen registrado"),
-    ("real", "Reales"),
-    ("synthetic", "Sintéticos"),
-)
-_ORIGIN_VALUES: dict[str, bool | None] = {"unknown": None, "real": False, "synthetic": True}
-
 # Avisos que se muestran tras una acción (el redirect lleva `aviso=<clave>`).
 NOTICES: dict[str, tuple[str, str]] = {
     "en_cola": ("success", "La ejecución quedó en cola; empezará en cuanto el worker la tome."),
@@ -130,7 +132,6 @@ def default_form_values() -> dict[str, Any]:
         "trials": "",
         "seed": str(_DEFAULTS.seed),
         "workers": str(_DEFAULTS.workers),
-        "data_origin": "unknown",
     }
 
 
@@ -154,7 +155,6 @@ def parse_launch_form(
         "families": [f for f in families if f],
         "metric": metric or _DEFAULTS.metric,
         "trials": (fields.get("trials") or "").strip(),
-        "data_origin": (fields.get("data_origin") or "unknown").strip(),
     }
     errors: dict[str, str] = {}
     numbers: dict[str, int] = {}
@@ -183,8 +183,6 @@ def parse_launch_form(
         errors["families"] = "Elija al menos una familia de modelos."
     if values["metric"] not in {key for key, _ in METRIC_CHOICES}:
         errors["metric"] = "Elija una de las métricas de la lista."
-    if values["data_origin"] not in _ORIGIN_VALUES:
-        errors["data_origin"] = "Elija uno de los orígenes de la lista."
     if errors:
         return FormResult(values, None, errors)
     try:
@@ -198,11 +196,28 @@ def parse_launch_form(
             trials=trials,
             seed=numbers["seed"],
             workers=numbers["workers"],
-            datos_sinteticos=_ORIGIN_VALUES[values["data_origin"]],
         )
     except ValueError as exc:  # una regla del motor que el formulario no previó
         return FormResult(values, None, {"form": str(exc)})
     return FormResult(values, settings, {})
+
+
+def uncovered_classes(by_class: Mapping[SkuClass, int], families: Sequence[str]) -> str | None:
+    """Qué clases de la ingesta quedan sin ninguna familia elegida; ``None`` si todas tienen.
+
+    El motor no excluye esos SKU: la etapa L2 falla entera, por eso se avisa antes de lanzar.
+    """
+    parts = []
+    for sku_class, count in by_class.items():
+        admitted = FAMILIES_BY_SKU_CLASS.get(sku_class, ())
+        if count and not set(admitted) & set(families):
+            names = [family_label(f) for f in admitted]
+            options = " o ".join([", ".join(names[:-1]), names[-1]]) if len(names) > 1 else names[0]
+            verb = "queda" if count == 1 else "quedan"
+            parts.append(
+                f"{count} SKU {sku_class_label(sku_class)} {verb} sin modelo: agregue {options}."
+            )
+    return " ".join(parts) or None
 
 
 # ----------------------------------------------------------------------------- vistas

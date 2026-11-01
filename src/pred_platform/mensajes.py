@@ -120,6 +120,10 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         "Hay SKU sin demanda positiva; no se pueden clasificar.",
         "Quite esos SKU del archivo o complete su demanda y vuelva a cargarlo.",
     ),
+    "handoff.missing_metadata": Mensaje(
+        "El panel clasificado no trae el corte de la reserva ni las exclusiones.",
+        "Vuelva a cargar el archivo para que el motor lo clasifique de nuevo y registre el corte.",
+    ),
     # --- L2: selección, reanudación y elegibilidad
     "selection.contract": Mensaje(
         "No se pudo seleccionar un modelo para el SKU.",
@@ -184,6 +188,10 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     "eligibility.insufficient_history": Mensaje(
         "La historia es demasiado corta para entrenar y evaluar.",
         "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento (min_train).",
+    ),
+    "eligibility.fewer_than_two_families": Mensaje(
+        "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables.",
+        "Revise por qué fallaron sus otras familias o agregue otra familia a la corrida.",
     ),
     # --- L2/L3: modelos, búsqueda y evaluación
     "model.series_too_short": Mensaje(

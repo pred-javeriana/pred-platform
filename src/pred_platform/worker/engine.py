@@ -79,6 +79,30 @@ def run_dir(settings: Settings, run: Ejecucion) -> Path:
     return (settings.data_root / "runs" / run.run_id).resolve()
 
 
+class OrigenNoReal(ValueError):
+    """La corrida guardó un origen sintético o sin declarar; la plataforma no la ejecuta."""
+
+
+def require_real_origin(parametros: dict[str, Any]) -> None:
+    """Exige el origen real guardado: la plataforma solo arranca o reanuda corridas de datos reales.
+
+    Raises:
+        OrigenNoReal: la corrida guardó datos sintéticos o un origen sin declarar.
+        ValueError: la configuración no trae el origen o no es booleano ni nulo.
+    """
+    origen = parametros.get("datos_sinteticos")
+    if "datos_sinteticos" not in parametros or (origen is not None and type(origen) is not bool):
+        raise ValueError(
+            "procedencia ausente o invalida; vuelva a encolar la corrida para registrar el origen"
+        )
+    if origen is not False:
+        guardado = "datos sintéticos" if origen else "un origen sin declarar"
+        raise OrigenNoReal(
+            f"La plataforma solo ejecuta datos reales y esta corrida guardó {guardado}. "
+            "Lance una corrida nueva sobre una ingesta de datos reales."
+        )
+
+
 def build_command(settings: Settings, run: Ejecucion, parquet: Path) -> list[str]:
     """The ``pred-engine run`` line for ``run``, from its stored parameters."""
     p: dict[str, Any] = run.parametros
@@ -108,13 +132,8 @@ def build_command(settings: Settings, run: Ejecucion, parquet: Path) -> list[str
         "--workers",
         str(p.get("workers", 1)),
     ]
-    origen = p.get("datos_sinteticos")
-    if "datos_sinteticos" not in p or (origen is not None and type(origen) is not bool):
-        raise ValueError(
-            "procedencia ausente o invalida; vuelva a encolar la corrida para registrar el origen"
-        )
-    if origen is not None:
-        command.append("--datos-sinteticos" if origen else "--datos-reales")
+    require_real_origin(p)
+    command.append("--datos-reales")
     if p.get("trials") is not None:
         command += ["--trials", str(p["trials"])]
     return command

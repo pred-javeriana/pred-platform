@@ -93,11 +93,11 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 - El formulario marca por defecto las cuatro familias, incluida Fundacional (Chronos-2), y permite
   desmarcar cualquiera. Fundacional necesita el extra `foundation` y los pesos del motor en el
   entorno del motor; la plataforma no los instala.
-- El origen de los datos ofrece Reales, Sintéticos y «No declarar / conservar origen registrado»
-  (por defecto). Entrega `False`, `True` o `None` a `LaunchSettings.datos_sinteticos`. El motor
-  resuelve el origen (`pred-engine origen`) antes de encolar, y la plataforma muestra el detalle de
-  un conflicto sin crear la ejecución. El worker transmite `--datos-reales` o
-  `--datos-sinteticos`, o ninguno si no se declaró.
+- La plataforma trabaja solo con datos reales: el formulario no pregunta el origen y toda
+  ejecución declara sus datos reales. El motor resuelve el origen (`pred-engine origen`) antes de
+  encolar; si la ingesta está declarada sintética, la plataforma muestra el conflicto sin crear la
+  ejecución. El worker transmite siempre `--datos-reales` y no arranca el motor para una corrida
+  que guardó otro origen; Reanudar muestra ese motivo y no la vuelve a encolar.
 - La declaración de datos reales es un requisito de procedencia, no una garantía de que el
   contraste sea calculable. La plataforma no fuerza Diebold–Mariano ni cambia la política
   inferencial del motor.
@@ -106,7 +106,7 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 
 | Superficie | Límite |
 | --- | --- |
-| Resultados | Resumen y Por clase están disponibles para navegar, pero se muestran como no disponibles hasta que Módulo 4 las construya. Las vistas actuales consumen la selección por familia y, por SKU, el campeón, el veredicto y la evidencia de una corrida M3 PUBLICADA. |
+| Resultados | Resumen, Por clase, Perfiles de error y Por SKU leen una corrida M3 PUBLICADA exacta: embudo y conteos HLN-DM publicados, campeón por clase, perfiles de error de la cartera y, por SKU, el campeón, el veredicto, su evidencia y su pronóstico h=1. |
 | Resultados | La interfaz no elige campeones ni calcula métricas, distribuciones, ratios, pruebas o p-valores, y conserva `null` con su causa. El filtro de familia es de familia evaluada, no campeona. Segmento, exportación CSV y reimportación de configuración pertenecen a M4. |
 | Resultados | Los cinco veredictos M3 (`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO`, `EXPLORATORIO`) no equivalen al vocabulario retrospectivo v1 de las fixtures. |
 | Ejecución | `RunStatus` no expone la etapa actual ni el error de una corrida sin tareas. La interfaz no los deduce de errores ni de tareas paginadas. |

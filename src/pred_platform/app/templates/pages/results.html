@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "components/states.html" import empty_state, unavailable_state %}
+{% from "components/states.html" import unavailable_state %}
 {% from "components/tabs.html" import tabs %}
 {% from "components/run_line.html" import run_line %}
 
@@ -21,6 +21,7 @@
     [
       {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "clase", "label": "Por clase", "href": "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "errores", "label": "Perfiles de error", "href": "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "sku", "label": "Por SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")}
     ],
     vista
@@ -29,10 +30,9 @@
   {% if vista == "sku" %}
     {% include "partials/results_sku_list.html" %}
   {% elif champion_capability.available %}
-    {{ empty_state(
-      "Esta vista todavía no está construida.",
-      "M3 ya publica el campeón y el veredicto de cada SKU, pero el resumen y la vista por clase aún no se han implementado en la interfaz. «Por SKU» muestra el campeón y el veredicto publicados junto a la evidencia de cada familia."
-    ) }}
+    {% if vista == "resumen" %}{% include "partials/results_summary.html" %}
+    {% elif vista == "errores" %}{% include "partials/results_profiles.html" %}
+    {% else %}{% include "partials/results_classes.html" %}{% endif %}
   {% else %}
     {{ unavailable_state(
       "Todavía no hay campeón por SKU.",

@@ -28,8 +28,6 @@
       {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
     </div>
 
-    {{ field("data_origin", "Origen de los datos", value=form.data_origin, input_type="select", options=origin_choices, hint="Declare el origen solo si lo conoce. No puede contradecir el origen ya registrado de la ingesta. El motor determina si corresponde realizar las pruebas estadísticas.", error=form_errors.get("data_origin", "")) }}
-
     <fieldset class="pred-fieldset"{% if form_errors.get('families') %} aria-describedby="families-error"{% endif %}>
       <legend>Familias de modelos</legend>
       {% for code, label in family_choices %}
