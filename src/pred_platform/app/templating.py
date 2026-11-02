@@ -41,14 +41,21 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
     ):
         templates.env.globals[name] = getattr(seleccion, name)
     for name in (
+        "exact_text",
         "funnel_rows",
+        "interval_text",
+        "level_text",
         "origin_label",
+        "p_text",
         "ranking",
+        "ratio_text",
         "significance_items",
         "verdict_counts",
         "verdict_group",
+        "wins_text",
     ):
         templates.env.globals[name] = getattr(resultados_m3, name)
+    templates.env.globals["CONFIRMATION_STATES"] = resultados_m3.CONFIRMATION_STATES
     templates.env.globals["error_action"] = mensajes.accion
     templates.env.globals["describir_error"] = mensajes.describir
     templates.env.globals["CATALOGO_ERRORES"] = mensajes.CATALOGO

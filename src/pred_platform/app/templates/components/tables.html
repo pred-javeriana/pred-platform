@@ -1,7 +1,7 @@
 {# Región desplazable accesible con teclado y encabezados de columna explícitos. #}
-{% macro table_start(headers, caption="Tabla de datos") %}
+{% macro table_start(headers, caption="Tabla de datos", modifier="") %}
 <div class="pred-table-wrap" role="region" aria-label="{{ caption }}" tabindex="0">
-  <table class="pred-table">
+  <table class="pred-table{% if modifier %} pred-table--{{ modifier }}{% endif %}">
     <caption class="pred-sr-only">{{ caption }}</caption>
     <thead>
       <tr>

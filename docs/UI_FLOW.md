@@ -107,14 +107,19 @@ y, de una corrida M3 exacta de la ejecución, el campeón, el veredicto y su evi
 v2). Resumen muestra el embudo publicado de toda la corrida y cuenta los resultados HLN-DM
 publicados (BH dentro de cada clase de demanda). Por clase muestra la familia campeona que M3
 congeló en cada clase con el bloque de selección, su motivo, la mediana de r de cada familia y los
-veredictos de la clase. Perfiles de error muestra los perfiles de error de la cartera en el bloque de prueba,
+veredictos de la clase. Debajo, «Confirmación del campeón» muestra el estado de cada campeona en el
+bloque de prueba con su p IUT y su p Holm, la mediana de r frente a Seasonal Naive con su intervalo
+bootstrap y una fila por competidora (SKU, mediana de la razón con intervalo, Hodges-Lehmann,
+victorias con intervalo de Wilson, p de Wilcoxon y p IUT). «Significancia frente a Seasonal Naive»
+muestra por clase los SKU probados y los significativos por BH y por BY, con el nivel FCR. Perfiles de error muestra los perfiles de error de la cartera en el bloque de prueba,
 una métrica a la vez. La interfaz no selecciona ganadores ni recalcula métricas.
 
 **Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
 `get_m3_run_status(...)`, `get_m3_evidence(...)`, `get_m3_categories(...)`,
 `get_m3_portfolio(...)`, `get_m3_metrics(...)`, `get_m3_observations(...)`,
-`get_m3_forecasts(...)` y `get_m3_reserve_blocks(...)` (los límites de los bloques que M3 fijó en
-el protocolo de la corrida).
+`get_m3_forecasts(...)`, `get_m3_reserve_blocks(...)` (los límites de los bloques que M3 fijó en
+el protocolo de la corrida) y `get_m3_confirmation(...)` (la confirmación del campeón y la
+significancia por clase).
 
 **Estados de página:** `sin_resultados`, `parciales`, `disponibles`, `error`.
 

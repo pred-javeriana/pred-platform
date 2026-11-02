@@ -27,6 +27,7 @@ from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
+from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_query import M3Query
 from pred_platform.data.query import DEFAULT_SIZE
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
@@ -64,6 +65,10 @@ class M3FixtureSource:
             selection_dates=M3DateRange("2026-06-30", "2026-07-01", 2),
             test_dates=M3DateRange("2026-07-02", "2026-07-03", 2),
         )
+
+    def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
+        """Los ejemplos v2 no tienen la confirmación del campeón: el contrato no la describe."""
+        return None
 
     # ------------------------------------------------------------------------ runs
     def list_m3_runs(

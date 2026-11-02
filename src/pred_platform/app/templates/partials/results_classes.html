@@ -1,4 +1,7 @@
 {% from "components/tables.html" import table_start, table_end %}
+{# La cifra exacta guardada como título de la celda que la muestra redondeada. #}
+{% macro exact(value) %}{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}{% endmacro %}
+{% macro exact_interval(lower, upper) %}{% if lower is not none and upper is not none %} title="[{{ exact_text(lower) }}; {{ exact_text(upper) }}]"{% endif %}{% endmacro %}
 {# El campeón que M3 publicó por clase de demanda (m3_categorias). m3_classes es un M3Classes. #}
 {% if m3_classes.problem %}
 <p class="pred-note"><strong>{{ m3_classes.problem.title }}</strong> {{ m3_classes.problem.detail }}</p>
@@ -10,7 +13,7 @@
   {{ table_start(["Clase", "Campeona", "Motivo"] + class_headers, "Campeón y mediana de r por clase") }}
   {% for row in m3_classes.rows %}
   <tr>
-    <td>{{ sku_class_label(row.sku_class) }}</td>
+    <td class="pred-nowrap">{{ sku_class_label(row.sku_class) }}</td>
     <td>{{ family_label(row.familia_campeona) }}</td>
     <td>{{ motivos.get(row.motivo, row.motivo) }}</td>
     {% for family in class_families %}
@@ -20,6 +23,77 @@
   {% endfor %}
   {{ table_end() }}
 </section>
+
+<section class="pred-section" id="confirmacion-del-campeon">
+  <h2>Confirmación del campeón</h2>
+  {% if m3_classes.confirmation_problem %}
+  <p class="pred-note"><strong>{{ m3_classes.confirmation_problem.title }}</strong> {{ m3_classes.confirmation_problem.detail }}</p>
+  {% elif not m3_classes.confirmation %}
+  <p class="pred-note">M3 no publicó la confirmación del campeón para esta corrida. Las corridas evaluadas antes de los bloques de selección y de prueba de la reserva no la tienen.</p>
+  {% else %}
+  {% set confirmation = m3_classes.confirmation %}
+  {% set by_class = m3_classes.confirmations %}
+  <p class="pred-meta">En el bloque de prueba, M3 compara la campeona congelada de cada clase con cada familia competidora, en los SKU que tienen ambas. La razón de un SKU es RMSE de la campeona / RMSE de la competidora: menos de 1 favorece a la campeona. Hodges-Lehmann estima la razón típica y las victorias cuentan los SKU con razón menor que 1. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y p Holm lo ajusta entre clases. La campeona queda confirmada si p Holm ≤ α y el intervalo bootstrap de la mediana de razones queda bajo 1 frente a cada competidora. Una confirmación fallida nunca cambia a la campeona.{% if confirmation.alfa is not none %} α = {{ format_decimal(confirmation.alfa, 3).rstrip("0") }}; intervalos al {{ level_text(1 - confirmation.alfa) }}.{% endif %}</p>
+  {{ table_start(["Clase", "Campeona", "Estado", "p IUT", "p Holm", "r frente a Seasonal Naive", "SKU"], "Confirmación del campeón por clase", "confirmation") }}
+  {% for row in m3_classes.rows %}
+  {% set found = by_class.get(row.sku_class) %}
+  <tr>
+    <td class="pred-nowrap">{{ sku_class_label(row.sku_class) }}</td>
+    <td>{{ family_label(found.familia_campeona if found else row.familia_campeona) }}</td>
+    {% if found %}
+    <td><strong class="pred-nowrap">{{ CONFIRMATION_STATES[found.estado] }}</strong>{% if found.causa %}<span class="pred-subvalue mono">{{ found.causa }}</span>{% endif %}</td>
+    <td class="num"{{ exact(found.p_iut) }}>{{ p_text(found.p_iut, found.alfa) }}</td>
+    <td class="num"{{ exact(found.p_holm) }}>{{ p_text(found.p_holm, found.alfa) }}</td>
+    <td class="num"{{ exact(found.efecto_mediana_r) }}>{{ ratio_text(found.efecto_mediana_r) }}{% if found.efecto_ic_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(found.efecto_ic_inferior, found.efecto_ic_superior) }}>{{ interval_text(found.efecto_ic_inferior, found.efecto_ic_superior) }}</span>{% endif %}{% if found.efecto_causa %}<span class="pred-subvalue mono">{{ found.efecto_causa }}</span>{% endif %}</td>
+    <td class="num">{{ found.efecto_n_skus if found.efecto_n_skus is not none else "—" }}</td>
+    {% else %}
+    <td colspan="5">Sin confirmación publicada para esta clase.</td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+  {% for row in m3_classes.rows if by_class.get(row.sku_class) and by_class[row.sku_class].comparaciones %}
+  {% set found = by_class[row.sku_class] %}
+  <h3>{{ sku_class_label(row.sku_class) }}: {{ family_label(found.familia_campeona) }} frente a cada competidora</h3>
+  {% if found.contendiente %}
+  <p class="pred-meta">Mejor familia sin la fundacional: {{ family_label(found.contendiente) }}.</p>
+  {% endif %}
+  {{ table_start(["Competidora", "SKU", "Mediana de la razón", "Hodges-Lehmann", "Victorias de la campeona", "p Wilcoxon", "p IUT"], "Campeona de " ~ sku_class_label(row.sku_class) ~ " frente a cada competidora", "competitors") }}
+  {% for comparison in found.comparaciones %}
+  <tr>
+    <td>{{ family_label(comparison.competidora) }}{% if comparison.causa %}<span class="pred-subvalue mono">{{ comparison.causa }}</span>{% endif %}</td>
+    <td class="num">{{ comparison.n_skus }}</td>
+    <td class="num"{{ exact(comparison.mediana_razon) }}>{{ ratio_text(comparison.mediana_razon) }}{% if comparison.ic_mediana_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(comparison.ic_mediana_inferior, comparison.ic_mediana_superior) }}>{{ interval_text(comparison.ic_mediana_inferior, comparison.ic_mediana_superior) }}</span>{% endif %}</td>
+    <td class="num"{{ exact(comparison.hodges_lehmann) }}>{{ ratio_text(comparison.hodges_lehmann) }}</td>
+    <td class="num">{{ wins_text(comparison.n_victorias, comparison.n_skus) }}{% if comparison.ic_victorias_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(comparison.ic_victorias_inferior, comparison.ic_victorias_superior) }}>{{ interval_text(comparison.ic_victorias_inferior, comparison.ic_victorias_superior, percent=true) }}</span>{% endif %}</td>
+    <td class="num"{{ exact(comparison.p_wilcoxon) }}>{{ p_text(comparison.p_wilcoxon, found.alfa) }}</td>
+    <td class="num"{{ exact(comparison.p_iut) }}>{{ p_text(comparison.p_iut, found.alfa) }}</td>
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+  {% endfor %}
+  {% endif %}
+</section>
+
+{% if m3_classes.significance %}
+<section class="pred-section" id="significancia-por-clase">
+  <h2>Significancia frente a Seasonal Naive</h2>
+  <p class="pred-meta">Prueba HLN-DM de la campeona frente a Seasonal Naive en cada SKU del bloque de prueba. Benjamini-Hochberg (BH) ajusta los p dentro de cada clase; Benjamini-Yekutieli (BY) se informa como sensibilidad. Mejores y peores cuentan los SKU significativos a favor o en contra de la campeona. El nivel FCR es el de los intervalos de r de los SKU significativos por BH.</p>
+  {{ table_start(["Clase", "SKU probados", "Mejores (BH)", "Peores (BH)", "Mejores (BY)", "Peores (BY)", "Nivel FCR"], "Significancia HLN-DM por clase") }}
+  {% for row in m3_classes.significance %}
+  <tr>
+    <td class="pred-nowrap">{{ sku_class_label(row.sku_class) }}</td>
+    <td class="num">{{ row.n_probados }}</td>
+    <td class="num">{{ row.n_mejores }}</td>
+    <td class="num">{{ row.n_peores }}</td>
+    <td class="num">{{ row.n_mejores_by }}</td>
+    <td class="num">{{ row.n_peores_by }}</td>
+    <td class="num"{{ exact(row.nivel_fcr) }}>{{ level_text(row.nivel_fcr) if row.nivel_fcr is not none else "—" }}</td>
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+</section>
+{% endif %}
 
 <section class="pred-section" id="detalle-por-clase">
   <h2>Detalle de cada clase</h2>

@@ -6,6 +6,7 @@ import json
 import re
 import sqlite3
 from contextlib import closing
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -1060,6 +1061,261 @@ def test_by_class_shows_the_sku_counts_and_keeps_thousands_of_ids_inside_closed_
     visible = re.sub(r"<details.*?</details>", "", section, flags=re.S)
     assert "SKU-02999" not in visible and "EXC-00039" not in visible
     assert "SKU-02999" in section and "EXC-00039: sin_razon_calculable:classical" in section
+
+
+# ------------------------------------------------------------ la confirmación del campeón
+INF = float("inf")
+_CLASSES = {
+    "FIL-0001": ("smooth", "VALIDADO"),
+    "FIL-0002": ("intermittent", "EXPLORATORIO"),
+    "FIL-0004": ("erratic", "VALIDADO"),
+    "FIL-0005": ("lumpy", "VALIDADO"),
+}
+# Smooth confirms; intermittent fails Holm and one interval; erratic has too few SKUs against ML;
+# lumpy has no confirmation row.
+_SIGNIFICANCE = [
+    ("smooth", 410, 37, 4, 29, 3, 0.9955),
+    ("intermittent", 96, 0, 0, 0, 0, None),
+    ("erratic", 40, 2, 0, 1, 0, 0.9975),
+]
+# fmt: off
+_CONFIRMATIONS = [
+    ("smooth", "classical", "confirmado", None, 0.00002, 0.00006, 0.05,
+     412, 0.842, 0.801, 0.889, None, "ml"),
+    ("intermittent", "classical", "no_confirmado", "p_holm>0.05; intervalo_no_bajo_1:ml",
+     0.081, 0.162, 0.05, 96, 0.874, 0.812, 0.947, None, None),
+    ("erratic", "classical", "sin_comparables", "pocos_skus:ml", None, None, 0.05,
+     40, 0.913, 0.861, 0.968, None, None),
+]
+_COMPARISONS = [
+    ("smooth", "ml", 412, 0.912, 0.871, 0.955, 0.905, 0.884, 0.927, 268, 0.603, 0.695,
+     21040.5, 0.00002, 0.00002, 31, 9, None),
+    ("smooth", "foundation", 410, 0.958, 0.921, 0.991, 0.951, 0.93, 0.972, 231, 0.515, 0.611,
+     33012.0, 0.0004, 0.0004, 12, 7, None),
+    ("intermittent", "ml", 96, 0.973, 0.921, 1.024, 0.968, 0.94, 0.997, 52, 0.443, 0.637,
+     2050.0, 0.081, 0.081, 2, 1, None),
+    ("intermittent", "foundation", 95, 0.881, 0.0, INF, None, None, None, 58, 0.511, 0.701,
+     1610.0, 0.031, 0.031, 3, 0, "perdida_cero:hodges_lehmann"),
+    ("erratic", "ml", 7, 0.95, None, None, None, None, None, 4, None, None,
+     None, None, None, None, None, "pocos_skus:7<10"),
+    ("erratic", "foundation", 38, 0.902, 0.84, 0.97, 0.9, 0.86, 0.95, 25, 0.5, 0.79,
+     180.0, 0.012, 0.012, 2, 0, None),
+]
+# fmt: on
+
+
+def _publish_confirmed(env: Env, **rows: Any) -> None:
+    from tests.m3_publicada import publish_confirmation
+
+    _publish_for_the_run(env, verdicts=_CLASSES)
+    publish_confirmation(
+        env.db,
+        significance=rows.get("significance", _SIGNIFICANCE),
+        confirmations=rows.get("confirmations", _CONFIRMATIONS),
+        comparisons=rows.get("comparisons", _COMPARISONS),
+    )
+
+
+def _confirmation(env: Env) -> str:
+    """The champion confirmation section, as the reader sees it."""
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    assert 'id="confirmacion-del-campeon"' in html
+    section = html.split('id="confirmacion-del-campeon"', 1)[1].split("</section>", 1)[0]
+    return unescape(_text(section))
+
+
+def test_by_class_shows_each_class_confirmation_state_holm_p_and_effect(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_confirmed(env)
+    text = _confirmation(env)
+
+    assert "α = 0,05; intervalos al 95 %." in text
+    assert (
+        "Clase Campeona Estado p IUT p Holm r frente a Seasonal Naive SKU "
+        "Smooth (Suave) Clásica Confirmado < 0,001 < 0,001 0,842 [0,801; 0,889] 412 "
+        "Erratic (Errática) Clásica Sin comparables pocos_skus:ml — — 0,913 [0,861; 0,968] 40 "
+        "Intermittent (Intermitente) Clásica No confirmado p_holm>0.05; intervalo_no_bajo_1:ml "
+        "0,081 0,162 0,874 [0,812; 0,947] 96 "
+        "Lumpy (Grumosa) Clásica Sin confirmación publicada para esta clase."
+    ) in text
+
+
+def test_by_class_lists_every_competitor_with_its_effect_sizes_and_tests(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_confirmed(env)
+    text = _confirmation(env)
+
+    smooth = text.split("Smooth (Suave): Clásica frente a cada competidora", 1)[1]
+    assert smooth.startswith(" Mejor familia sin la fundacional: ML. ")
+    assert (
+        "Competidora SKU Mediana de la razón Hodges-Lehmann Victorias de la campeona "
+        "p Wilcoxon p IUT "
+        "ML 412 0,912 [0,871; 0,955] 0,905 268 (65,0 %) [60,3 %; 69,5 %] < 0,001 < 0,001 "
+        "Fundacional 410 0,958 [0,921; 0,991] 0,951 231 (56,3 %) [51,5 %; 61,1 %] < 0,001 < 0,001"
+    ) in smooth
+    # A zero loss leaves Hodges-Lehmann undefined and the interval open to infinity.
+    assert (
+        "Fundacional perdida_cero:hodges_lehmann 95 0,881 [0,000; ∞] — 58 (61,1 %) "
+        "[51,1 %; 70,1 %] 0,031 0,031"
+    ) in text
+    # Too few SKUs: only the count, the median and the wins, and the published cause.
+    assert "ML pocos_skus:7<10 7 0,950 — 4 (57,1 %) — —" in text
+    assert "Lumpy (Grumosa): " not in text
+
+
+def test_by_class_shows_the_bh_and_by_counts_of_each_class(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_confirmed(env)
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    section = html.split('id="significancia-por-clase"', 1)[1].split("</section>", 1)[0]
+
+    assert (
+        "Clase SKU probados Mejores (BH) Peores (BH) Mejores (BY) Peores (BY) Nivel FCR "
+        "Smooth (Suave) 410 37 4 29 3 99,55 % "
+        "Erratic (Errática) 40 2 0 1 0 99,75 % "
+        "Intermittent (Intermitente) 96 0 0 0 0 —"
+    ) in _text(section)
+
+
+def test_an_fcr_level_below_one_never_shows_as_100_percent(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # Level 1 - R * q / m with q = 0,05 and R = 1: two decimals reach 100,00 from m = 1000 on.
+    _publish_confirmed(
+        env,
+        significance=[
+            ("smooth", 2500, 1, 0, 1, 0, 0.99998),
+            ("erratic", 999, 1, 0, 0, 0, 1 - 0.05 / 999),
+            ("intermittent", 1001, 1, 0, 0, 0, 1 - 0.05 / 1001),
+        ],
+    )
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    section = html.split('id="significancia-por-clase"', 1)[1].split("</section>", 1)[0]
+    text = _text(section)
+
+    assert "Smooth (Suave) 2500 1 0 1 0 99,998 %" in text
+    assert "Erratic (Errática) 999 1 0 0 0 99,99 %" in text
+    assert "Intermittent (Intermitente) 1001 1 0 0 0 99,995 %" in text
+    assert "100 %" not in text
+    assert '<td class="num" title="0,99998">99,998 %</td>' in section
+
+
+def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # fmt: off
+    _publish_confirmed(
+        env,
+        confirmations=[
+            ("smooth", "classical", "no_confirmado", "p_holm>0.05", 0.0496, 0.0504, 0.05,
+             412, 0.9998, 0.9996, 1.0003, None, None),
+        ],
+        comparisons=[
+            ("smooth", "ml", 412, 0.9996, 0.9992, 0.9999, 0.9997, 0.9993, 1.0001, 230, 0.51,
+             0.605, 38000.0, 0.0496, 0.0496, 3, 1, None),
+            ("smooth", "foundation", 410, 0.958, 0.921, 0.991, 0.951, 0.93, 0.972, 231, 0.515,
+             0.611, 33012.0, 0.0504, 0.0504, 12, 7, None),
+        ],
+    )
+    # fmt: on
+    text = _confirmation(env)
+
+    # Rounded to three decimals, 0,9996 and 0,9999 would read 1,000 and 0,0496 would read 0,050.
+    assert (
+        "Smooth (Suave) Clásica No confirmado p_holm>0.05 0,0496 0,0504 0,9998 [0,9996; 1,0003] 412"
+    ) in text
+    # 0,9992 keeps three decimals: 0,999 is still below 1.
+    assert (
+        "ML 412 0,9996 [0,999; 0,9999] 0,9997 230 (55,8 %) [51,0 %; 60,5 %] 0,0496 0,0496"
+    ) in text
+    # Values away from 1 and from α keep three decimals.
+    assert (
+        "Fundacional 410 0,958 [0,921; 0,991] 0,951 231 (56,3 %) [51,5 %; 61,1 %] 0,0504 0,0504"
+    ) in text
+    # Each rounded figure carries the exact stored value as its title.
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    for cell in (
+        '<td class="num" title="0,0496">0,0496</td>',
+        '<td class="num" title="0,0504">0,0504</td>',
+        '<td class="num" title="0,9996">0,9996<span class="pred-subvalue" '
+        'title="[0,9992; 0,9999]">[0,999; 0,9999]</span></td>',
+        '<td class="num" title="0,9997">0,9997</td>',
+        '<span class="pred-subvalue" title="[0,9996; 1,0003]">[0,9996; 1,0003]</span>',
+    ):
+        assert cell in html
+
+
+def test_win_shares_at_the_edges_read_as_the_engine_stored_them(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # Wilson bounds exactly as the engine computes them (alfa 0,05): unclipped past 1 and 0.
+    # fmt: off
+    _publish_confirmed(
+        env,
+        confirmations=[
+            ("smooth", "classical", "no_confirmado", "p_holm>0.05; intervalo_no_bajo_1:foundation",
+             1.0, 1.0, 0.05, 2037, 0.84, 0.8, 0.88, None, None),
+        ],
+        comparisons=[
+            ("smooth", "ml", 16, 0.81, 0.74, 0.88, 0.82, 0.75, 0.89, 16,
+             0.8063923194655637, 1.0000000000000002, 0.0, 0.0004, 0.0004, 5, 0, None),
+            ("smooth", "dl", 2000, 0.62, 0.6, 0.64, 0.63, 0.61, 0.65, 1999,
+             0.9971731374967338, 0.9999117322692944, 1.0, 0.0, 0.0, 950, 0, None),
+            ("smooth", "foundation", 21, 1.21, 1.1, 1.33, 1.2, 1.1, 1.3, 0,
+             -1.3877787807814457e-17, 0.154639018924847, 231.0, 0.00006, 1.0, 0, 9, None),
+        ],
+    )
+    # fmt: on
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _confirmation(env)
+
+    assert "No fue posible leer" not in _text(html)
+    assert "16 (100,0 %) [80,6 %; 100,0 %]" in text
+    assert "0 (0,0 %) [0,0 %; 15,5 %]" in text
+    # Below 100 % never reads 100,0 %.
+    assert "1999 (99,95 %) [99,7 %; 99,99 %]" in text
+    assert 'title="[0,8063923194655637; 1,0000000000000002]">[80,6 %; 100,0 %]</span>' in html
+    assert 'title="[0,9971731374967338; 0,9999117322692944]">[99,7 %; 99,99 %]</span>' in html
+    assert 'id="significancia-por-clase"' in html
+
+
+def test_by_class_says_when_the_run_was_published_before_the_confirmation(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, eligibility=None)  # no reserve blocks: an older engine
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _text(html)
+
+    assert "Smooth (Suave) Clásica Menor mediana de r 0,800" in text
+    assert "M3 no publicó la confirmación del campeón para esta corrida." in text
+    assert "p Holm" not in text
+    assert 'id="significancia-por-clase"' not in html
+
+
+def test_an_invalid_confirmation_row_is_a_visible_problem_and_the_champions_stay(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    smooth_ml = _COMPARISONS[0]
+    inverted = (*smooth_ml[:4], smooth_ml[5], smooth_ml[4], *smooth_ml[6:])  # upper < lower
+    _publish_confirmed(env, comparisons=[inverted])
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _text(html)
+
+    assert "Smooth (Suave) Clásica Menor mediana de r 0,800" in text
+    assert "No fue posible leer la evidencia M3." in text
+    assert "ic_mediana: los extremos están invertidos" in text
+    assert 'id="significancia-por-clase"' not in html
 
 
 def test_by_class_without_a_published_run_or_with_a_rejected_one_shows_the_cause(

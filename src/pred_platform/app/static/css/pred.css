@@ -875,6 +875,38 @@ samp,
   font-variant-numeric: tabular-nums;
 }
 
+/* Un intervalo o una causa bajo la cifra de su celda; el intervalo no se corta. */
+.pred-table .pred-subvalue {
+  display: block;
+  color: var(--muted-text);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.pred-table .pred-subvalue.mono {
+  white-space: normal;
+}
+
+/* La confirmación del campeón se desplaza en pantallas angostas en vez de cortar sus cifras;
+   las tablas de competidoras de cada clase comparten el ancho de sus columnas. */
+.pred-table.pred-table--confirmation,
+.pred-table.pred-table--competitors {
+  min-width: 56rem;
+}
+
+.pred-table--competitors {
+  table-layout: fixed;
+}
+
+.pred-table--competitors th { white-space: normal; }
+.pred-table--competitors th:nth-child(1) { width: 24%; }
+.pred-table--competitors th:nth-child(2) { width: 6%; }
+.pred-table--competitors th:nth-child(3) { width: 15%; }
+.pred-table--competitors th:nth-child(4) { width: 16%; }
+.pred-table--competitors th:nth-child(5) { width: 17%; }
+.pred-table--competitors th:nth-child(6),
+.pred-table--competitors th:nth-child(7) { width: 11%; }
+
 .pred-table .wrap {
   max-width: 30rem;
   white-space: normal;

@@ -28,7 +28,15 @@ from pred_platform.data import m3_query
 from pred_platform.data.dal import DalRepository
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 from pred_platform.worker.engine import launch
-from tests.m3_publicada import BLOCKS, LATE, TWO_FAMILIES, TWO_FAMILIES_CAUSE, identity, publish
+from tests.m3_publicada import (
+    BLOCKS,
+    LATE,
+    TWO_FAMILIES,
+    TWO_FAMILIES_CAUSE,
+    identity,
+    publish,
+    publish_confirmation,
+)
 
 SHA = "c" * 64
 PARQUET = "processed/panel.parquet"
@@ -220,6 +228,59 @@ def test_block_limits_that_break_their_shape_are_a_contract_error(root: Path) ->
 
     with pytest.raises(ContractInvalid, match="bloques"):
         _repo(root).get_m3_reserve_blocks(RUN)
+
+
+# fmt: off
+_CONFIRMED = {
+    "significance": [("smooth", 3, 1, 0, 1, 0, 0.983)],
+    "confirmations": [
+        ("smooth", "classical", "no_confirmado", "p_holm>0.05", 0.3, 0.3, 0.05,
+         3, 0.8, 0.0, float("inf"), None, None),
+    ],
+    "comparisons": [
+        ("smooth", "ml", 3, 0.0, 0.0, float("inf"), None, None, None, 2, 0.21, 0.94,
+         1.0, 0.3, 0.3, 0, 0, "perdida_cero:hodges_lehmann"),
+    ],
+}
+# fmt: on
+
+
+def test_the_champion_confirmation_is_read_only_from_a_published_run_with_blocks(
+    root: Path,
+) -> None:
+    _publish(root, estado="SELECCIONADA")
+    publish_confirmation(_db(root), **_CONFIRMED)
+    assert _repo(root).get_m3_confirmation(RUN) is None
+
+    _sql(root, "UPDATE m3_corridas SET estado = 'PUBLICADA'")
+    confirmation = _repo(root).get_m3_confirmation(RUN)
+
+    assert confirmation is not None and confirmation.alfa == 0.05
+    [smooth] = confirmation.clases
+    [ml] = smooth.comparaciones
+    # Zero losses are evidence: a ratio of 0 and an interval open to infinity survive the read.
+    assert (ml.mediana_razon, ml.ic_mediana_superior, smooth.efecto_ic_superior) == (
+        0.0,
+        float("inf"),
+        float("inf"),
+    )
+    assert [row.nivel_fcr for row in confirmation.significancia] == [0.983]
+    assert _repo(root).get_m3_confirmation("m3-desconocida") is None
+
+
+def test_a_run_evaluated_before_the_blocks_has_no_champion_confirmation(root: Path) -> None:
+    _publish(root, eligibility=None)
+
+    assert _repo(root).get_m3_confirmation(RUN) is None
+
+
+def test_a_confirmation_that_breaks_its_rules_is_a_contract_error(root: Path) -> None:
+    _publish(root)
+    publish_confirmation(_db(root), **_CONFIRMED)
+    _sql(root, "UPDATE m3_comparaciones SET p_wilcoxon = 1.5")  # the schema does not bound p
+
+    with pytest.raises(ContractInvalid, match=r"clases\.0\.comparaciones\.0\.p_wilcoxon"):
+        _repo(root).get_m3_confirmation(RUN)
 
 
 def test_a_run_published_before_m3_listed_m2_exclusions_does_not_report_them_as_zero(

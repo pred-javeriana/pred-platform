@@ -9,13 +9,21 @@ traducen los cinco veredictos.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from pred_platform.app.presentation import SKU_CLASS_ORDER
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
+from pred_platform.data.m3_confirmation import (
+    M3ClassConfirmation,
+    M3ClassSignificance,
+    M3Comparison,
+    M3Confirmation,
+)
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository, M3ReserveBlocks
@@ -259,11 +267,39 @@ def profiles(
 
 @dataclass(frozen=True, slots=True)
 class M3Classes:
-    """El campeón que M3 publicó para cada clase de demanda (``m3_categorias``)."""
+    """El campeón que M3 publicó para cada clase de demanda (``m3_categorias``).
+
+    ``confirmation`` es la confirmación del campeón en el bloque de prueba; ``None`` si la
+    corrida se publicó sin ella o si su lectura falló, con la causa en ``confirmation_problem``.
+    """
 
     run: models_v2.M3Run | None = None
     problem: M3Problem | None = None
     rows: list[models_v2.M3Category] = field(default_factory=list)
+    confirmation: M3Confirmation | None = None
+    confirmation_problem: M3Problem | None = None
+
+    @property
+    def confirmations(self) -> dict[str, M3ClassConfirmation]:
+        """La confirmación de cada clase, con sus competidoras en el orden de la tabla."""
+        if self.confirmation is None:
+            return {}
+        return {
+            row.sku_class: row.model_copy(
+                update={"comparaciones": sorted(row.comparaciones, key=_family_position)}
+            )
+            for row in self.confirmation.clases
+        }
+
+    @property
+    def significance(self) -> list[M3ClassSignificance]:
+        """La significancia HLN-DM frente a Seasonal Naive de cada clase, en el orden de clases."""
+        if self.confirmation is None:
+            return []
+        return sorted(
+            self.confirmation.significancia,
+            key=lambda row: SKU_CLASS_ORDER.index(row.sku_class),
+        )
 
 
 # Las familias que compiten por clase, en el orden de la tabla. La línea base no lleva columna:
@@ -277,8 +313,17 @@ MOTIVOS: dict[str, str] = {
 }
 
 
+def _family_position(row: M3Comparison) -> int:
+    family = row.competidora
+    return CLASS_FAMILIES.index(family) if family in CLASS_FAMILIES else len(CLASS_FAMILIES)
+
+
 def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Classes:
-    """Resuelve la corrida M3 de ``m2_run_id`` y lee el campeón publicado de cada clase."""
+    """Resuelve la corrida M3 de ``m2_run_id`` y lee el campeón publicado de cada clase.
+
+    La confirmación del campeón se lee aparte: si falla, el campeón de cada clase se sigue
+    mostrando y la sección de la confirmación explica la causa.
+    """
     try:
         resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
         if isinstance(resolved, M3Problem):
@@ -289,7 +334,11 @@ def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = Non
     if categories.availability.status != "available":
         return M3Classes(problem=_unavailable_evidence(categories.availability))
     rows = sorted(categories.items, key=lambda row: SKU_CLASS_ORDER.index(row.sku_class))
-    return M3Classes(run=resolved, rows=rows)
+    try:
+        confirmation = repository.get_m3_confirmation(resolved.run_id)
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Classes(run=resolved, rows=rows, confirmation_problem=_read_problem(exc))
+    return M3Classes(run=resolved, rows=rows, confirmation=confirmation)
 
 
 def verdict_counts(row: models_v2.M3Category) -> list[tuple[str, int]]:
@@ -407,6 +456,106 @@ def ranking(row: models_v2.M3Verdict) -> list[models_v2.EvaluatedModel]:
         row.modelos_evaluados,
         key=lambda model: (model.razon_sn is None, model.razon_sn or 0.0),
     )
+
+
+CONFIRMATION_STATES: dict[str, str] = {
+    "confirmado": "Confirmado",
+    "no_confirmado": "No confirmado",
+    "sin_comparables": "Sin comparables",
+    "no_aplica": "No aplica",
+}
+
+
+def _side_digits(value: float, threshold: float | None, digits: int) -> int:
+    """Los decimales, desde ``digits``, que dejan la cifra redondeada del mismo lado del umbral.
+
+    Una razón menor que 1 no se muestra como 1 ni un p menor que α como α: 0,9996 queda 0,9996 y
+    no 1,000. Las cifras lejos del umbral conservan ``digits``.
+    """
+    if threshold is None:
+        return digits
+    side = (value > threshold) - (value < threshold)
+    while digits < 15:
+        rounded = float(f"{value:.{digits}f}")
+        if (rounded > threshold) - (rounded < threshold) == side:
+            break
+        digits += 1
+    return digits
+
+
+def ratio_text(value: float | None) -> str:
+    """Una razón publicada con tres decimales, o más si hacen falta para no confundirla con 1.
+
+    0 e infinito son bordes válidos.
+    """
+    if value is None:
+        return "—"
+    if value == math.inf:
+        return "∞"
+    return _decimal(value, _side_digits(value, 1.0, 3))
+
+
+def interval_text(lower: float | None, upper: float | None, *, percent: bool = False) -> str:
+    """Un intervalo publicado, ``[inferior; superior]``; vacío si M3 no lo publicó."""
+    if lower is None or upper is None:
+        return ""
+    if percent:
+        return f"[{percent_text(lower)}; {percent_text(upper)}]"
+    return f"[{ratio_text(lower)}; {ratio_text(upper)}]"
+
+
+def percent_text(share: float) -> str:
+    """Una proporción en porcentaje con un decimal; entre 0 y 1 nunca se muestra 0,0 % ni 100,0 %.
+
+    La proporción se acota a [0, 1] y lo que dista menos de 1e-12 de 0 o de 1 es 0 o 1, porque el
+    motor guarda las cotas de Wilson sin recortar. Si el redondeo llevaría una proporción interior a
+    un borde, se agregan decimales: 1999 de 2000 se muestra 99,95 %.
+    """
+    share = min(max(share, 0.0), 1.0)
+    if share < 1e-12:
+        share = 0.0
+    elif share > 1 - 1e-12:
+        share = 1.0
+    value = 100 * share
+    digits = max(_side_digits(value, 0.0, 1), _side_digits(value, 100.0, 1))
+    return f"{_decimal(value, digits)} %"
+
+
+def p_text(value: float | None, alfa: float | None = None) -> str:
+    """Un p-valor publicado con tres decimales, o más si hacen falta frente a ``alfa``.
+
+    Por debajo de 0,001 se muestra el límite, salvo que α también lo esté. Con ``alfa``, la cifra
+    queda del mismo lado de α que el p publicado: 0,0496 y 0,0504 no se muestran como 0,050.
+    """
+    if value is None:
+        return "—"
+    if value < 0.001 and (alfa is None or alfa >= 0.001):
+        return "< 0,001"
+    return _decimal(value, _side_digits(value, alfa, 3))
+
+
+def exact_text(value: float) -> str:
+    """La cifra exacta que M3 guardó, sin redondear ni notación científica: 0,00002, ∞."""
+    if value == math.inf:
+        return "∞"
+    return format(Decimal(repr(value)), "f").replace(".", ",")
+
+
+def wins_text(wins: int, n_skus: int) -> str:
+    """Las victorias del campeón y su proporción entre los SKU comparados."""
+    if n_skus == 0:
+        return "—"
+    return f"{wins} ({percent_text(wins / n_skus)})"
+
+
+def level_text(level: float) -> str:
+    """Un nivel de confianza en porcentaje: 95 %, 99,38 %; bajo 1 nunca se muestra como 100 %.
+
+    Usa dos decimales y agrega los necesarios para que un nivel menor que 1 quede bajo 100:
+    0,99998 se muestra 99,998 %.
+    """
+    digits = _side_digits(100 * level, 100.0, 2)
+    return f"{_decimal(100 * level, digits).rstrip('0').rstrip(',')} %"
 
 
 def _decimal(value: float | None, digits: int = 3) -> str:

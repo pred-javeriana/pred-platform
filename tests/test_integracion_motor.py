@@ -285,6 +285,14 @@ def test_the_engine_publishes_observations_and_champion_portfolio(caso: Caso) ->
     assert [(row.familia, row.n_skus) for row in portfolio] == expected
 
 
+def test_the_engine_publishes_the_champion_confirmation_of_each_class(caso: Caso) -> None:
+    confirmation = caso.repo.get_m3_confirmation(caso.run_id)
+    classes = {row.sku_class for row in caso.repo.get_m3_categories(caso.run_id).items}
+    assert confirmation is not None and classes
+    assert {row.sku_class for row in confirmation.clases} == classes
+    assert {row.sku_class for row in confirmation.significancia} == classes
+
+
 def test_resume_reuses_committed_units_and_leaves_no_duplicates(caso: Caso) -> None:
     repo = caso.repo
     detenida = caso.estado_detenida.progress

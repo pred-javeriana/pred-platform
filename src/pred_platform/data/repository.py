@@ -30,6 +30,7 @@ from pred_platform.contract.models import (
     SyntheticRun,
     TopologyReport,
 )
+from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.query import DEFAULT_SIZE
 
 
@@ -214,6 +215,13 @@ class DataRepository(Protocol):
 
     def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
         """Los bloques de la reserva de una corrida exacta; ``None`` si su protocolo no los fija."""
+        ...
+
+    def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
+        """La confirmación del campeón en el bloque de prueba de una corrida PUBLICADA.
+
+        ``None`` si la corrida no está PUBLICADA o se publicó antes de que M3 la calculara.
+        """
         ...
 
     def get_m3_champions(
