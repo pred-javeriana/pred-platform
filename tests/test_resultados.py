@@ -1081,7 +1081,7 @@ _SIGNIFICANCE = [
 # fmt: off
 _CONFIRMATIONS = [
     ("smooth", "classical", "confirmado", None, 0.00002, 0.00006, 0.05,
-     412, 0.842, 0.801, 0.889, None, "ml"),
+     412, 0.842, 0.801, 0.889, None, "classical"),
     ("intermittent", "classical", "no_confirmado", "p_holm>0.05; intervalo_no_bajo_1:ml",
      0.081, 0.162, 0.05, 96, 0.874, 0.812, 0.947, None, None),
     ("erratic", "classical", "sin_comparables", "pocos_skus:ml", None, None, 0.05,
@@ -1133,11 +1133,13 @@ def test_by_class_shows_each_class_confirmation_state_holm_p_and_effect(
 
     assert "α = 0,05; intervalos al 95 %." in text
     assert (
-        "Clase Campeona Estado p IUT p Holm r frente a Seasonal Naive SKU "
+        "Clase Campeona Estado p IUT p Holm Mediana de r frente a Seasonal Naive (IC) "
+        "SKU comparados "
         "Smooth (Suave) Clásica Confirmado < 0,001 < 0,001 0,842 [0,801; 0,889] 412 "
-        "Erratic (Errática) Clásica Sin comparables pocos_skus:ml — — 0,913 [0,861; 0,968] 40 "
-        "Intermittent (Intermitente) Clásica No confirmado p_holm>0.05; intervalo_no_bajo_1:ml "
-        "0,081 0,162 0,874 [0,812; 0,947] 96 "
+        "Erratic (Errática) Clásica Sin comparables pocos SKU frente a ML — — "
+        "0,913 [0,861; 0,968] 40 "
+        "Intermittent (Intermitente) Clásica No confirmado p Holm > 0,05; "
+        "intervalo no bajo 1 frente a ML 0,081 0,162 0,874 [0,812; 0,947] 96 "
         "Lumpy (Grumosa) Clásica Sin confirmación publicada para esta clase."
     ) in text
 
@@ -1150,7 +1152,8 @@ def test_by_class_lists_every_competitor_with_its_effect_sizes_and_tests(
     text = _confirmation(env)
 
     smooth = text.split("Smooth (Suave): Clásica frente a cada competidora", 1)[1]
-    assert smooth.startswith(" Mejor familia sin la fundacional: ML. ")
+    # The engine stores the champion as its own contender when it is not Fundacional.
+    assert "Mejor familia sin la fundacional" not in text
     assert (
         "Competidora SKU Mediana de la razón Hodges-Lehmann Victorias de la campeona "
         "p Wilcoxon p IUT "
@@ -1159,12 +1162,103 @@ def test_by_class_lists_every_competitor_with_its_effect_sizes_and_tests(
     ) in smooth
     # A zero loss leaves Hodges-Lehmann undefined and the interval open to infinity.
     assert (
-        "Fundacional perdida_cero:hodges_lehmann 95 0,881 [0,000; ∞] — 58 (61,1 %) "
+        "Fundacional sin Hodges-Lehmann por pérdidas cero 95 0,881 [0,000; ∞] — 58 (61,1 %) "
         "[51,1 %; 70,1 %] 0,031 0,031"
     ) in text
     # Too few SKUs: only the count, the median and the wins, and the published cause.
-    assert "ML pocos_skus:7<10 7 0,950 — 4 (57,1 %) — —" in text
+    assert "ML 7 SKU (mínimo 10) 7 0,950 — 4 (57,1 %) — —" in text
     assert "Lumpy (Grumosa): " not in text
+
+
+def test_a_fundacional_champion_names_the_best_family_without_it_and_reads_every_cause(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # fmt: off
+    _publish_confirmed(
+        env,
+        confirmations=[
+            ("smooth", "foundation", "no_confirmado",
+             "p_holm>0.05; intervalo_no_bajo_1:classical,ml",
+             0.081, 0.162, 0.05, 412, 0.842, 0.801, 0.889, None, "ml"),
+            ("intermittent", "classical", "sin_comparables", "pocos_skus:dl,foundation,ml",
+             None, None, 0.05, 96, None, None, None, "perdida_cero:mediana_r,ic_mediana",
+             "classical"),
+            ("erratic", "seasonal_naive", "no_aplica", "campeon_es_linea_base", None, None, 0.05,
+             None, None, None, None, None, None),
+        ],
+        comparisons=[
+            ("smooth", "classical", 412, 0.973, 0.921, 1.024, 0.968, 0.94, 0.997, 190, 0.41,
+             0.51, 2050.0, 0.081, 0.081, 2, 1, None),
+            ("smooth", "ml", 412, 0.912, 0.871, 1.002, 0.905, 0.884, 0.927, 268, 0.603, 0.695,
+             21040.5, 0.00002, 0.00002, 31, 9, None),
+            ("intermittent", "dl", 3, None, None, None, None, None, None, 1, None, None,
+             None, None, None, None, None, "pocos_skus:3<10; perdida_cero:mediana_razon"),
+        ],
+    )
+    # fmt: on
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _confirmation(env)
+
+    assert (
+        "Smooth (Suave) Fundacional No confirmado p Holm > 0,05; "
+        "intervalo no bajo 1 frente a Clásica y ML 0,081 0,162 0,842 [0,801; 0,889] 412 "
+        "Erratic (Errática) Seasonal Naive No aplica la campeona es la línea base — — — — "
+        "Intermittent (Intermitente) Clásica Sin comparables pocos SKU frente a DL, "
+        "Fundacional y ML — — — sin mediana de r e intervalo de la mediana por pérdidas cero 96 "
+    ) in text
+    smooth = text.split("Smooth (Suave): Fundacional frente a cada competidora", 1)[1]
+    assert smooth.startswith(" Mejor familia sin la fundacional: ML. ")
+    intermittent = text.split("Intermittent (Intermitente): Clásica frente a cada competidora")[1]
+    assert not intermittent.startswith(" Mejor familia")
+    assert "DL 3 SKU (mínimo 10); sin mediana de la razón por pérdidas cero 3 —" in intermittent
+    # The champion never breaks inside its name; a cause breaks only between words.
+    assert '<td class="pred-nowrap">Fundacional</td>' in html
+    assert (
+        '<span class="pred-subvalue pred-cause">p Holm &gt; 0,05; '
+        "intervalo no bajo 1 frente a Clásica y ML</span>"
+    ) in html
+
+
+@pytest.mark.parametrize(
+    ("estado", "code", "expected"),
+    [
+        ("no_aplica", "datos_sinteticos", "No aplica datos sintéticos"),
+        ("no_aplica", "origen_desconocido", "No aplica origen de los datos desconocido"),
+        (
+            "sin_comparables",
+            "sin_familias_competidoras",
+            "Sin comparables sin familias competidoras",
+        ),
+    ],
+)
+def test_each_class_cause_without_arguments_reads_in_spanish(
+    env: Env, monkeypatch: pytest.MonkeyPatch, estado: str, code: str, expected: str
+) -> None:
+    _run(env, monkeypatch)
+    _publish_confirmed(
+        env,
+        confirmations=[
+            (
+                "smooth",
+                "classical",
+                estado,
+                code,
+                None,
+                None,
+                0.05,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        ],
+        comparisons=[],
+    )
+
+    assert f"Smooth (Suave) Clásica {expected} — —" in _confirmation(env)
 
 
 def test_by_class_shows_the_bh_and_by_counts_of_each_class(
@@ -1230,7 +1324,8 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
 
     # Rounded to three decimals, 0,9996 and 0,9999 would read 1,000 and 0,0496 would read 0,050.
     assert (
-        "Smooth (Suave) Clásica No confirmado p_holm>0.05 0,0496 0,0504 0,9998 [0,9996; 1,0003] 412"
+        "Smooth (Suave) Clásica No confirmado p Holm > 0,05 "
+        "0,0496 0,0504 0,9998 [0,9996; 1,0003] 412"
     ) in text
     # 0,9992 keeps three decimals: 0,999 is still below 1.
     assert (

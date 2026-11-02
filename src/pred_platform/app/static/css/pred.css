@@ -883,8 +883,11 @@ samp,
   white-space: nowrap;
 }
 
-.pred-table .pred-subvalue.mono {
+/* Una causa es texto, también bajo una cifra, y se parte entre palabras, nunca dentro de una. */
+.pred-table .pred-subvalue.pred-cause {
+  font-family: var(--font-body);
   white-space: normal;
+  overflow-wrap: normal;
 }
 
 /* La confirmación del campeón se desplaza en pantallas angostas en vez de cortar sus cifras;
@@ -898,7 +901,8 @@ samp,
   table-layout: fixed;
 }
 
-.pred-table--competitors th { white-space: normal; }
+.pred-table--confirmation th,
+.pred-table--competitors th { white-space: normal; overflow-wrap: normal; }
 .pred-table--competitors th:nth-child(1) { width: 24%; }
 .pred-table--competitors th:nth-child(2) { width: 6%; }
 .pred-table--competitors th:nth-child(3) { width: 15%; }

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from pred_platform.app.presentation import SKU_CLASS_ORDER
+from pred_platform.app.seleccion import family_label
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.data.m3_confirmation import (
@@ -464,6 +465,60 @@ CONFIRMATION_STATES: dict[str, str] = {
     "sin_comparables": "Sin comparables",
     "no_aplica": "No aplica",
 }
+
+# Las causas sin argumento que escribe la confirmación del motor (confirmacion.py).
+_CAUSES: dict[str, str] = {
+    "campeon_es_linea_base": "la campeona es la línea base",
+    "origen_desconocido": "origen de los datos desconocido",
+    "datos_sinteticos": "datos sintéticos",
+    "sin_familias_competidoras": "sin familias competidoras",
+}
+
+# Los valores que una pérdida cero deja sin definir (``perdida_cero:<campos>``).
+_UNDEFINED_FIELDS: dict[str, str] = {
+    "mediana_r": "mediana de r",
+    "mediana_razon": "mediana de la razón",
+    "ic_mediana": "intervalo de la mediana",
+    "hodges_lehmann": "Hodges-Lehmann",
+}
+
+
+def _spanish_list(items: Sequence[str]) -> str:
+    if len(items) == 1:
+        return items[0]
+    last = items[-1]
+    # «y» se vuelve «e» ante un sonido /i/: «mediana de r e intervalo de la mediana».
+    conjunction = "e" if last.startswith(("i", "hi")) and not last.startswith("hie") else "y"
+    return f"{', '.join(items[:-1])} {conjunction} {last}"
+
+
+def _families(codes: str) -> str:
+    return _spanish_list([family_label(code) for code in codes.split(",")])
+
+
+def _cause_part(code: str) -> str:
+    name, _, argument = code.partition(":")
+    if name in _CAUSES and not argument:
+        return _CAUSES[name]
+    if name == "pocos_skus" and "<" in argument:
+        n, minimum = argument.split("<", 1)
+        return f"{n} SKU (mínimo {minimum})"
+    if name == "pocos_skus" and argument:
+        return f"pocos SKU frente a {_families(argument)}"
+    if name == "intervalo_no_bajo_1" and argument:
+        return f"intervalo no bajo 1 frente a {_families(argument)}"
+    if name == "perdida_cero" and argument:
+        fields = [_UNDEFINED_FIELDS.get(field, field) for field in argument.split(",")]
+        return f"sin {_spanish_list(fields)} por pérdidas cero"
+    if code.startswith("p_holm>"):
+        return f"p Holm > {code.removeprefix('p_holm>').replace('.', ',')}"
+    return code
+
+
+def cause_text(code: str) -> str:
+    """Una causa de la confirmación del motor en español: ``pocos_skus:7<10`` es «7 SKU (mínimo
+    10)». Las causas unidas por ``; `` se traducen una a una; una causa desconocida queda igual."""
+    return "; ".join(_cause_part(part) for part in code.split("; "))
 
 
 def _side_digits(value: float, threshold: float | None, digits: int) -> int:
