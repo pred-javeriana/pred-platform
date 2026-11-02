@@ -65,7 +65,7 @@
     <td class="num">{{ comparison.n_skus }}</td>
     <td class="num"{{ exact(comparison.mediana_razon) }}>{{ ratio_text(comparison.mediana_razon) }}{% if comparison.ic_mediana_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(comparison.ic_mediana_inferior, comparison.ic_mediana_superior) }}>{{ interval_text(comparison.ic_mediana_inferior, comparison.ic_mediana_superior) }}</span>{% endif %}</td>
     <td class="num"{{ exact(comparison.hodges_lehmann) }}>{{ ratio_text(comparison.hodges_lehmann) }}</td>
-    <td class="num">{{ wins_text(comparison.n_victorias, comparison.n_skus) }}{% if comparison.ic_victorias_inferior is not none %}<span class="pred-subvalue">{{ interval_text(comparison.ic_victorias_inferior, comparison.ic_victorias_superior, percent=true) }}</span>{% endif %}</td>
+    <td class="num">{{ wins_text(comparison.n_victorias, comparison.n_skus) }}{% if comparison.ic_victorias_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(comparison.ic_victorias_inferior, comparison.ic_victorias_superior) }}>{{ interval_text(comparison.ic_victorias_inferior, comparison.ic_victorias_superior, percent=true) }}</span>{% endif %}</td>
     <td class="num"{{ exact(comparison.p_wilcoxon) }}>{{ p_text(comparison.p_wilcoxon, found.alfa) }}</td>
     <td class="num"{{ exact(comparison.p_iut) }}>{{ p_text(comparison.p_iut, found.alfa) }}</td>
   </tr>

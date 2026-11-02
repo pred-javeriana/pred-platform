@@ -500,8 +500,25 @@ def interval_text(lower: float | None, upper: float | None, *, percent: bool = F
     if lower is None or upper is None:
         return ""
     if percent:
-        return f"[{_decimal(100 * lower, 1)} %; {_decimal(100 * upper, 1)} %]"
+        return f"[{percent_text(lower)}; {percent_text(upper)}]"
     return f"[{ratio_text(lower)}; {ratio_text(upper)}]"
+
+
+def percent_text(share: float) -> str:
+    """Una proporción en porcentaje con un decimal; entre 0 y 1 nunca se muestra 0,0 % ni 100,0 %.
+
+    La proporción se acota a [0, 1] y lo que dista menos de 1e-12 de 0 o de 1 es 0 o 1, porque el
+    motor guarda las cotas de Wilson sin recortar. Si el redondeo llevaría una proporción interior a
+    un borde, se agregan decimales: 1999 de 2000 se muestra 99,95 %.
+    """
+    share = min(max(share, 0.0), 1.0)
+    if share < 1e-12:
+        share = 0.0
+    elif share > 1 - 1e-12:
+        share = 1.0
+    value = 100 * share
+    digits = max(_side_digits(value, 0.0, 1), _side_digits(value, 100.0, 1))
+    return f"{_decimal(value, digits)} %"
 
 
 def p_text(value: float | None, alfa: float | None = None) -> str:
@@ -528,7 +545,7 @@ def wins_text(wins: int, n_skus: int) -> str:
     """Las victorias del campeón y su proporción entre los SKU comparados."""
     if n_skus == 0:
         return "—"
-    return f"{wins} ({_decimal(100 * wins / n_skus, 1)} %)"
+    return f"{wins} ({percent_text(wins / n_skus)})"
 
 
 def level_text(level: float) -> str:

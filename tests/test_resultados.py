@@ -1253,6 +1253,41 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
         assert cell in html
 
 
+def test_win_shares_at_the_edges_read_as_the_engine_stored_them(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    # Wilson bounds exactly as the engine computes them (alfa 0,05): unclipped past 1 and 0.
+    # fmt: off
+    _publish_confirmed(
+        env,
+        confirmations=[
+            ("smooth", "classical", "no_confirmado", "p_holm>0.05; intervalo_no_bajo_1:foundation",
+             1.0, 1.0, 0.05, 2037, 0.84, 0.8, 0.88, None, None),
+        ],
+        comparisons=[
+            ("smooth", "ml", 16, 0.81, 0.74, 0.88, 0.82, 0.75, 0.89, 16,
+             0.8063923194655637, 1.0000000000000002, 0.0, 0.0004, 0.0004, 5, 0, None),
+            ("smooth", "dl", 2000, 0.62, 0.6, 0.64, 0.63, 0.61, 0.65, 1999,
+             0.9971731374967338, 0.9999117322692944, 1.0, 0.0, 0.0, 950, 0, None),
+            ("smooth", "foundation", 21, 1.21, 1.1, 1.33, 1.2, 1.1, 1.3, 0,
+             -1.3877787807814457e-17, 0.154639018924847, 231.0, 0.00006, 1.0, 0, 9, None),
+        ],
+    )
+    # fmt: on
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _confirmation(env)
+
+    assert "No fue posible leer" not in _text(html)
+    assert "16 (100,0 %) [80,6 %; 100,0 %]" in text
+    assert "0 (0,0 %) [0,0 %; 15,5 %]" in text
+    # Below 100 % never reads 100,0 %.
+    assert "1999 (99,95 %) [99,7 %; 99,99 %]" in text
+    assert 'title="[0,8063923194655637; 1,0000000000000002]">[80,6 %; 100,0 %]</span>' in html
+    assert 'title="[0,9971731374967338; 0,9999117322692944]">[99,7 %; 99,99 %]</span>' in html
+    assert 'id="significancia-por-clase"' in html
+
+
 def test_by_class_says_when_the_run_was_published_before_the_confirmation(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

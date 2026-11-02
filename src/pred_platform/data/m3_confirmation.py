@@ -25,6 +25,9 @@ Count = Annotated[int, Field(ge=0, strict=True)]
 # ge=0 rejects NaN (every comparison with NaN is false) and keeps infinity.
 Ratio = Annotated[float, Field(ge=0, strict=True)]
 Probability = Annotated[float, Field(ge=0, le=1, strict=True)]
+# The engine stores Wilson bounds unclipped: when the champion wins all or none of the SKUs, float
+# noise puts a bound just past 1 or 0 (1.0000000000000002, -1.4e-17). Only that noise is accepted.
+WilsonBound = Annotated[float, Field(ge=-1e-9, le=1 + 1e-9, strict=True)]
 Level = Annotated[float, Field(gt=0, lt=1, strict=True)]
 Statistic = Annotated[float, Field(ge=0, allow_inf_nan=False, strict=True)]
 Estado = Literal["confirmado", "no_confirmado", "sin_comparables", "no_aplica"]
@@ -53,8 +56,8 @@ class M3Comparison(_Row):
     ic_hodges_lehmann_inferior: Ratio | None
     ic_hodges_lehmann_superior: Ratio | None
     n_victorias: Count
-    ic_victorias_inferior: Probability | None
-    ic_victorias_superior: Probability | None
+    ic_victorias_inferior: WilsonBound | None
+    ic_victorias_superior: WilsonBound | None
     estadistico_wilcoxon: Statistic | None
     p_wilcoxon: Probability | None
     p_iut: Probability | None
