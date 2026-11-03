@@ -1,0 +1,101 @@
+{% from "components/forms.html" import field %}
+{% from "components/buttons.html" import button %}
+{% from "components/alerts.html" import alert %}
+{% from "components/status.html" import status_indicator %}
+{% from "components/tables.html" import table_start, table_end, table_empty %}
+{# La consulta de veredictos de la corrida M3 resuelta. m3_consulta es un M3Consulta; cq, su consulta. #}
+{% set found = m3_consulta %}
+<section class="pred-results-list" id="consulta-m3">
+  <h2>Consulta de resultados de M3</h2>
+  <p class="pred-meta">Filtra los veredictos que M3 publicó para una corrida. Los filtros, el orden y las páginas los resuelve el repositorio; esta vista no recalcula ni reetiqueta nada. La selección por familia de M2 está en «Por SKU».</p>
+
+  {% if consulta_error %}
+    {{ alert(consulta_error, variant="warning") }}
+  {% endif %}
+
+  {% if found.problem %}
+  <p class="pred-note"><strong>{{ found.problem.title }}</strong> {{ found.problem.detail }}</p>
+  {% elif not found.run %}
+  <p class="pred-note"><strong>Todavía no hay una ejecución con resultados.</strong> Cuando una ejecución tenga una corrida M3 PUBLICADA, aquí podrá consultar sus veredictos.</p>
+  {% endif %}
+
+  {% if found.run %}
+  <form method="get" action="/resultados" class="pred-filters" id="filtros-consulta">
+    <input type="hidden" name="vista" value="consulta">
+    {% if cq.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ cq.ejecucion }}">{% endif %}
+    {% if cq.m3 %}<input type="hidden" name="m3" value="{{ cq.m3 }}">{% endif %}
+    {{ field("sku_class", "Clase", value=cq.sku_class or "", input_type="select", options=[
+      ("", "Todas"), ("smooth", "Smooth (Suave)"), ("erratic", "Erratic (Errática)"), ("intermittent", "Intermittent (Intermitente)"), ("lumpy", "Lumpy (Grumosa)")
+    ]) }}
+    {{ field("familia_campeona", "Familia campeona", value=cq.familia_campeona or "", input_type="select", options=[
+      ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional"), ("seasonal_naive", "Seasonal Naive")
+    ]) }}
+    {{ field("veredicto", "Veredicto", value=cq.veredicto or "", input_type="select", options=[
+      ("", "Todos"), ("VALIDADO", "VALIDADO"), ("EXPLORATORIO", "EXPLORATORIO"), ("FALLO_TECNICO", "FALLO_TECNICO"),
+      ("NO_EVALUABLE", "NO_EVALUABLE"), ("EVIDENCIA_INSUFICIENTE", "EVIDENCIA_INSUFICIENTE")
+    ]) }}
+    {{ field("q", "Buscar SKU", value=cq.q or "", placeholder="FIL-0001") }}
+    {{ field("sort", "Ordenar por", value=cq.sort, input_type="select", options=[
+      ("sku", "SKU"), ("sku_class", "Clase"), ("veredicto", "Veredicto"),
+      ("razon_sn", "r frente a Seasonal Naive"), ("n_ventanas", "Ventanas"), ("dm_p_ajustado", "p ajustado (BH)")
+    ]) }}
+    {{ field("descending", "Descendente", value=cq.descending, input_type="checkbox") }}
+    <input type="hidden" name="size" value="{{ cq.size }}">
+    {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
+    <a href="/resultados?{{ cq.query_string(sku_class='', familia_campeona='', veredicto='', q='', sort='', descending='', page='') }}">Limpiar filtros</a>
+  </form>
+  {% endif %}
+
+  {% if found.evidence %}
+  {% set evidence = found.evidence %}
+  <p class="pred-query-count"><strong class="mono">{{ format_count(evidence.page.total) }}</strong> SKU coinciden con la consulta.</p>
+  {% if evidence.funnel %}
+  <p class="pred-meta">La corrida tiene <span class="mono">{{ format_count(evidence.funnel.tras_exclusiones) }}</span> SKU con veredicto M3 de <span class="mono">{{ format_count(evidence.funnel.total_productos) }}</span> productos. Esos conteos son de toda la corrida y no cambian con los filtros.</p>
+  {% endif %}
+  <p class="pred-actions">
+    {{ button("Exportar CSV", variant="secondary", href="/resultados/exportar.csv?" ~ cq.query_string(vista="", page="", size=""), icon="i-download") }}
+    <a href="/resultados/exclusiones.csv?{{ cq.query_string(vista='', sku_class='', familia_campeona='', veredicto='', q='', sort='', descending='', page='', size='') }}">Exportar exclusiones (CSV)</a>
+  </p>
+  <p class="pred-meta">El CSV trae todos los SKU de la consulta, no solo esta página, con la corrida M3 y la ingesta de cada fila. Las exclusiones son las de toda la corrida.</p>
+  {{ table_start(["SKU", "Clase", "Campeón", "Veredicto", "r", "Ventanas", "Significancia"], "Veredictos publicados por M3") }}
+  {% if evidence.items %}
+    {% for row in evidence.items %}
+    <tr>
+      <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ row.sku | urlencode }}?{{ cq.detail_query() }}" aria-label="Ver evidencia del SKU {{ row.sku }}">{{ row.sku }}</a></th>
+      <td class="pred-demand-class">{{ sku_class_label(row.sku_class) }}</td>
+      <td class="pred-nowrap">{{ family_label(row.familia_campeona) }}</td>
+      <td class="pred-nowrap">{{ status_indicator(describe_status("verdict", row.veredicto)) }}</td>
+      <td class="num mono">{{ ratio_text(row.razon_sn) }}</td>
+      <td class="num mono">{{ row.n_ventanas }} de {{ row.n_min }}</td>
+      <td>
+        {% if row.dm_causa %}
+        <span class="pred-cell--none">Sin prueba: <span class="mono">{{ row.dm_causa }}</span></span>
+        {% else %}
+        <span class="mono">p ajustado {{ p_text(row.dm_p_ajustado, row.dm_alfa) }}</span>
+        <span>{{ "significativa" if row.dm_significativa else "no significativa" }}</span>
+        {% endif %}
+        <details class="pred-details">
+          <summary>Ver prueba<span class="pred-sr-only"> de {{ row.sku }}</span></summary>
+          <dl class="pred-kv">
+            {% for label, value in significance_items(row) %}
+            <dt>{{ label }}</dt><dd>{{ value }}</dd>
+            {% endfor %}
+          </dl>
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+  {% else %}
+    {{ table_empty(7, "Sin coincidencias", "No hay SKU con veredicto M3 que coincidan con los filtros seleccionados.") }}
+  {% endif %}
+  {{ table_end() }}
+
+  {% if consulta_pages.show %}
+  <nav class="pred-pager" aria-label="Paginación de la consulta">
+    <span>Página {{ evidence.page.number }} de {{ consulta_pages.total_pages }} · {{ format_count(evidence.page.total) }} SKU</span>
+    {% if consulta_pages.has_prev %}<a href="/resultados?{{ cq.query_string(page=evidence.page.number - 1) }}">Anterior</a>{% endif %}
+    {% if consulta_pages.has_next %}<a href="/resultados?{{ cq.query_string(page=evidence.page.number + 1) }}">Siguiente</a>{% endif %}
+  </nav>
+  {% endif %}
+  {% endif %}
+</section>

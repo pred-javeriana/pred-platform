@@ -36,6 +36,62 @@ block) for one metric at a time. The SKU detail also draws the champion's publis
 against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
 champion and Seasonal Naive.
 
+**Champion distribution** (RF-CON-08, task A4). **Resumen** also answers which family dominates the
+portfolio: after the funnel it shows "Distribución de campeones por familia" and "Campeones por clase
+de demanda". It counts the SKU with a verdict by the champion family M3 published for each SKU
+(`get_m3_champions`, the `m3_campeones` view; `seasonal_naive` when the baseline wins) and shows it as a
+horizontal bar chart (`champion_share_svg` in `app/charts.py`, server-side SVG, one series, value at the
+tip in ink, no script) with the equivalent table beside it: evaluated, not evaluated, SKU and the share.
+The share is a presentation of two published figures, the family's count over the funnel's
+`tras_exclusiones` (SKU with a verdict); the platform does not add or recompute counts. Products
+excluded before M3 are in the funnel and not here. The portfolio rows are checked against that
+denominator and, if they do not add up, the page says so with both numbers instead of adjusting one.
+The family of a SKU can differ from its class champion (shown in "Por clase") by the fallback M3
+documents in the justification. If the read of `m3_campeones` fails or comes incomplete, the funnel and
+the test counts stay and the cause is shown. "Por SKU" remains the entry of Resultados and links to
+the summary ("Ver distribución de campeones") when a PUBLICADA M3 run is resolved.
+
+**Consulta** (`?vista=consulta`, RF-CON-05 of section 4.5) is the query over M3's published verdicts.
+Unlike Por SKU, whose rows are M2's selection per family, its list comes from `get_m3_evidence` of
+the resolved M3 run, so it can filter by the three things M3 decides: demand class (Syntetos-Boylan),
+champion family and verdict (the five exact labels). They combine, with a SKU search, and the list
+sorts by SKU, class, verdict, r, windows or BH-adjusted p. Each row shows the champion family, the
+verdict, r, windows against `n_min` and, apart from the verdict, the significance (BH-adjusted p and
+whether it is significant) or the cause M3 published when there is no test; the full test opens on
+demand. The count is the filtered total, while the funnel line (SKU with a verdict out of all the
+products) is the whole run's and does not change with the filters. The M2 family state is not a
+verdict filter (contract v2, section 7), so those filters stay in Por SKU. An unknown filter value is
+rejected by the repository and shown as a notice; it is never ignored. Query code is
+`app/consulta.py` (`ConsultaQuery`, whose `query_string` the CSV export will reuse), the view is
+`consulta()` in `app/resultados_m3.py` and the template is `partials/results_consulta.html`.
+
+**CSV export** (RF-CON-06, tarea A2) hangs from the Consulta tab. `GET /resultados/exportar.csv` takes
+the same query string as the tab (the "Exportar CSV" link already carries the filters and the resolved
+`m3=` run; `page` and `size` are ignored) and returns every SKU of the query, not one page, in the
+same order as the view. `GET /resultados/exclusiones.csv` lists the products without a verdict for the
+whole run (launched after the cut, with `t_star`, and excluded by M2 with their class, code and cause);
+verdict filters do not reach it. Both are built by `app/exportar.py` from what the repository returned:
+nothing is recomputed or relabelled, values are written as they are (so identifiers match the internal
+records) and a null is an empty cell, with `dm_causa` as the cause when there is no HLN-DM test.
+
+- **Format.** RFC 4180 CSV, UTF-8 without BOM, comma separator, dot decimal, `true`/`false`. Excel in
+  Spanish locales may need *Datos > Desde texto/CSV* to read the comma and the dot. The file name is
+  `pred-resultados-<m3 run_id>.csv` (`pred-exclusiones-…`).
+- **Columns of the verdicts file** (`VERDICT_COLUMNS`, fixed): `run_id` (M3), `run_id_m2`,
+  `ingesta_sha256`, `sku`, `sku_class`, `veredicto`, `justificacion`, `familia_campeona`,
+  `candidato_campeon`, `n_ventanas`, `n_min`, `cobertura`, `razon_sn`, `pierde_frente_a_linea_base`,
+  `comparacion_incompleta`, `iqr_diferencia_mae`, the seven `dm_*` columns apart from the verdict, and
+  `datos_sinteticos` / `origen_declarado`. The per-candidate list (`modelos_evaluados`) and the run's
+  `identidad` are not exported; the identity is found with `run_id`.
+- **One consistent read.** The export reads the pages (500 SKU each) of `get_m3_evidence`; each page
+  is its own read, so it checks that the total, the funnel and the PUBLICADA state do not change
+  between pages and, if they do, answers 409 instead of a file that mixes two states.
+- **Errors, never a partial file.** An invalid filter or page is 400; an execution or M3 run that does
+  not exist (or has no M3 evaluation) is 404; a run that is not PUBLICADA, a publication without its
+  exclusion metadata or a read that changed is 409. The body is the reason in plain text.
+- **Speed.** On a local SQLite the 1,000-SKU export took about 0.03 s and the 3,499-SKU one about 0.1
+  to 0.2 s (in-process, three runs each; the formal measurement is task B1).
+
 ## How
 
 Views call only `DataRepository` (`list_sku_selections`, `get_sku_selection`, `get_run_status` for the

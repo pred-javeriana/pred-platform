@@ -29,6 +29,9 @@
   <p class="pred-eyebrow">Ejecución <span class="mono">#{{ run.id }}</span></p>
   <h2 class="pred-hero-status" id="titulo-ejecucion">{{ status_indicator(describe_status("run", run.estado)) }}</h2>
   <p class="pred-meta">Iniciada {{ format_when(run.iniciada_en) }}{% if run.ingest_id %} · Ingesta <span class="mono">{{ abbreviate_id(run.ingest_id) }}</span>{% endif %}</p>
+  {% if source != "fixture" %}
+  <p class="pred-meta"><a href="/ejecucion/configuracion.json?ejecucion={{ run.id }}">Exportar configuración (JSON)</a> para reproducir esta ejecución.</p>
+  {% endif %}
   {% if run.estado == "pendiente" and not worker_active and not control_reason %}
   <p class="pred-meta">En cola: esta aplicación no ejecuta el worker (PRED_WORKER=off); inícielo con <span class="mono">make worker</span>.</p>
   {% elif run.estado == "pendiente" %}

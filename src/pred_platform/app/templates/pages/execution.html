@@ -24,7 +24,7 @@
   {% if query_error %}{{ alert(query_error, variant="warning") }}{% endif %}
 
 
-  {% if not run or request.query_params.get("ingest_id") or form_errors or form_error %}
+  {% if not run or request.query_params.get("ingest_id") or form_errors or form_error or imported %}
   {% include "partials/execution_launch.html" %}
   {% endif %}
   <div class="pred-poll-controls">

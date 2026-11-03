@@ -16,6 +16,7 @@ from starlette.datastructures import UploadFile
 
 from pred_platform import mensajes
 from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_class_label
+from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
 from pred_platform.data.query import DEFAULT_SIZE
@@ -182,7 +183,7 @@ def topology_summary_metrics(report: TopologyReport) -> list[dict[str, str | Non
     return items
 
 
-def page_meta(page: Page) -> dict[str, object]:
+def page_meta(page: Page | models_v2.Page) -> dict[str, object]:
     total_pages = max(1, (page.total + page.size - 1) // page.size)
     return {
         "total_pages": total_pages,

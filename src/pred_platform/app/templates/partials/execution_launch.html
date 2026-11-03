@@ -4,13 +4,20 @@
 
 <section class="pred-detail-section pred-launch-section" id="lanzar">
   {# Plegado cuando ya hay una corrida que mostrar, para que su avance quede a la vista. #}
-  <details class="pred-details pred-details--launch"{% if not run or request.query_params.get("ingest_id") or form_errors or form_error %} open{% endif %}>
+  <details class="pred-details pred-details--launch"{% if not run or request.query_params.get("ingest_id") or form_errors or form_error or imported %} open{% endif %}>
   <summary><span><strong>Configurar nueva ejecución</strong><span class="pred-disclosure-hint">Elija los datos, modelos y horizonte de análisis</span></span></summary>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
 
   {% if not ingests %}
     <p class="pred-note pred-note--muted">Todavía no hay ninguna ingesta aceptada. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
   {% else %}
+  <form method="post" action="/ejecucion/configuracion" enctype="multipart/form-data" class="pred-import" id="importar-configuracion">
+    <p class="pred-eyebrow">Reproducir una ejecución</p>
+    <div class="pred-filters">
+      {{ field("archivo", "Importar configuración (.json)", input_type="file", accept=".json,application/json", hint="Rellena el formulario con los ajustes de otra ejecución; no lanza nada.") }}
+      {{ button("Importar", variant="secondary", type="submit", icon="i-upload") }}
+    </div>
+  </form>
   <form method="post" action="/ejecucion/lanzar" class="pred-launch pred-workspace">
     <div class="pred-panel pred-panel--main">
     <p class="pred-eyebrow">Configuración</p>
@@ -19,6 +26,7 @@
       <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
         <label class="pred-field__label" for="ingest_id">Ingesta</label>
         <select class="pred-field__control" id="ingest_id" name="ingest_id"{% if form_errors.get('ingest_id') %} aria-invalid="true" aria-describedby="ingest_id-error"{% endif %}>
+          {% if not selected_ingest %}<option value="" selected disabled>Elija una ingesta</option>{% endif %}
           {% for item in ingests %}
           <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU · {{ abbreviate_id(item.ingest_id, 8) }}</option>
           {% endfor %}

@@ -148,6 +148,11 @@ samp,
   white-space: nowrap;
 }
 
+/* Un veredicto con nombre largo (EVIDENCIA_INSUFICIENTE) no se parte dentro de su celda. */
+.pred-nowrap .pred-status {
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------- Shell */
 .pred-shell {
   min-height: 100vh;
@@ -849,6 +854,25 @@ samp,
   fill: var(--muted-text);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+/* Distribución de campeones: una serie, la barra lleva el color y el texto va en tinta. */
+.pred-champion__bar {
+  fill: var(--primary);
+}
+
+.pred-champion__label,
+.pred-champion__value {
+  fill: var(--ink-soft);
+  font-size: 12px;
+}
+
+.pred-champion__label {
+  font-family: var(--font-body);
+}
+
+.pred-champion__value {
+  font-family: var(--font-mono);
 }
 
 /* ------------------------------------------------- Superficie Resultados (C2) */

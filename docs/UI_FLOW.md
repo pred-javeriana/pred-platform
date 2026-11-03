@@ -23,8 +23,12 @@ La navegación de producto es `PRED · Datos | Ejecución | Resultados`.
 | `/` | Redirige a `/datos`. No hay landing. |
 | `/datos` | Datos |
 | `/ejecucion` | Ejecución |
-| `/resultados` | Resultados (tabs; «Por SKU» es la vista por defecto) |
+| `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
+| `POST /ejecucion/configuracion` | Importa ese JSON y rellena el formulario de lanzamiento; no lanza ni guarda nada |
+| `/resultados` | Resultados (tabs; «Por SKU» es la vista por defecto; «Consulta», `?vista=consulta`, filtra los veredictos de M3 por clase, familia campeona y veredicto; «Resumen», `?vista=resumen`, muestra el embudo, la distribución de campeones por familia y por clase y la prueba HLN-DM) |
 | `/resultados/sku/{sku_id}` | Detalle de un SKU: decisión, familias y evidencia bajo demanda |
+| `/resultados/exportar.csv` | Descarga CSV de los veredictos de la consulta de «Consulta», sin el límite de página |
+| `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la corrida M3 (lanzamientos tardíos y elegibilidad) |
 | `/health` | Sonda JSON, sin cambios. |
 | `/_dev/componentes` | Catálogo interno de componentes. Fuera de la navegación. |
 

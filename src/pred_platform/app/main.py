@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from pred_platform.app.routers import catalog, data, execution, results
+from pred_platform.app.routers import catalog, data, execution, exportar, results
 from pred_platform.app.templating import build_templates
 from pred_platform.config import Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
@@ -88,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(data.router)
     application.include_router(execution.router)
     application.include_router(results.router)
+    application.include_router(exportar.router)
     application.include_router(catalog.router)
     return application
 
