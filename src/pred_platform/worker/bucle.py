@@ -74,6 +74,7 @@ class Worker:
 
     def drain(self) -> None:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``)."""
+        self.recover()
         while self.run_next() or self._unsettled is not None:
             if self._unsettled is not None:
                 time.sleep(self.poll_interval)  # the database still fails: wait, then retry
@@ -223,6 +224,12 @@ class Worker:
             )
             return
         except sqlite3.Error:  # the database failed with the engine already running
+            engine.terminate(process.pid)
+            process.wait()
+            raise
+        except BaseException:
+            # An interrupt or shutdown: the engine runs in its own session, so stop it here and
+            # leave the run `ejecutando` for `recover()` to queue again.
             engine.terminate(process.pid)
             process.wait()
             raise

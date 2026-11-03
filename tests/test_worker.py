@@ -893,6 +893,50 @@ def test_a_run_left_running_by_a_crash_is_queued_again_and_finishes(
     assert _run_state(env)[0] == "completada"
 
 
+def test_drain_resumes_a_run_left_running_with_a_dead_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn, conn:
+        assert dal.claim_pending(conn) is not None
+        conn.execute("UPDATE ejecuciones SET pid=42424242")
+    monkeypatch.setattr(engine, "is_alive", lambda pid: False)
+
+    env.worker().drain()
+
+    assert _run_state(env)[0] == "completada"
+
+
+def test_an_interrupt_stops_the_engine_and_leaves_the_run_running(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    children: list[subprocess.Popen[bytes]] = []
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        child = subprocess.Popen(["sleep", "300"], start_new_session=True)
+        children.append(child)
+        return child
+
+    def interrupt(*args: Any, **kwargs: Any) -> Any:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(dal, "run_estado", interrupt)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            Worker(env.settings, launcher=launcher).run_next()
+        (child,) = children
+        assert child.poll() is not None  # terminated and reaped, not left running
+        assert _run_state(env)[0] == "ejecutando"
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+
 @pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
 def test_recovery_after_m3_publication_only_requeues_unreaped_claims(
     env: Env, monkeypatch: pytest.MonkeyPatch, state: str
