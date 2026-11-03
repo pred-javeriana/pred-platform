@@ -22,7 +22,8 @@
       {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "clase", "label": "Por clase", "href": "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "errores", "label": "Perfiles de error", "href": "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "sku", "label": "Por SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")}
+      {"id": "sku", "label": "Por SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "consulta", "label": "Consulta", "href": "/resultados?vista=consulta" ~ ("&" ~ tab_query if tab_query else "")}
     ],
     vista
   ) }}
@@ -32,6 +33,7 @@
   {% elif champion_capability.available %}
     {% if vista == "resumen" %}{% include "partials/results_summary.html" %}
     {% elif vista == "errores" %}{% include "partials/results_profiles.html" %}
+    {% elif vista == "consulta" %}{% include "partials/results_consulta.html" %}
     {% else %}{% include "partials/results_classes.html" %}{% endif %}
   {% else %}
     {{ unavailable_state(

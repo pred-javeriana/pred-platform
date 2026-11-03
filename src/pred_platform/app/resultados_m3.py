@@ -15,7 +15,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from pred_platform.app.presentation import SKU_CLASS_ORDER
+from pred_platform.app.consulta import ConsultaQuery
+from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count
 from pred_platform.app.seleccion import family_label
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
@@ -195,14 +196,141 @@ def _dm_counts(rows: Sequence[models_v2.M3Verdict]) -> DmCounts:
     )
 
 
+# Las familias que pueden ser la campeona publicada de un SKU, en el orden de las tablas; la línea
+# base gana cuando ninguna familia la supera.
+CHAMPION_FAMILIES: tuple[str, ...] = ("classical", "ml", "dl", "foundation", "seasonal_naive")
+
+
+@dataclass(frozen=True, slots=True)
+class ChampionRow:
+    """Los SKU con veredicto cuya campeona publicada es ``familia``, tal como los contó M3."""
+
+    familia: str
+    n_skus: int
+    n_evaluados: int
+    n_no_evaluados: int
+    # Fracción de los SKU con veredicto (``ChampionDistribution.published_total``); ``None`` si
+    # no hay ninguno. Es presentación de dos cifras publicadas, no un conteo nuevo.
+    share: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ClassChampions:
+    """Cuántos SKU de una clase tienen a cada familia como campeona publicada."""
+
+    sku_class: str
+    counts: dict[str, int]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class ChampionDistribution:
+    """La distribución de campeones por familia de una corrida M3 (``m3_campeones``).
+
+    ``published_total`` es el denominador que M3 publicó en el embudo (SKU con veredicto). Las
+    filas de cartera deben sumarlo: si no, ``consistent`` es falso y la vista lo dice en vez de
+    ajustar una cifra.
+    """
+
+    portfolio: tuple[ChampionRow, ...]
+    classes: tuple[ClassChampions, ...]
+    published_total: int
+    counted_total: int
+
+    @property
+    def consistent(self) -> bool:
+        return self.counted_total == self.published_total
+
+
+def champion_distribution(
+    items: Sequence[models_v2.M3ChampionCount], published_total: int
+) -> ChampionDistribution:
+    """Ordena las filas publicadas por familia y por clase; no las recalcula ni las completa.
+
+    Las familias que M3 no publicó para un grupo salen con 0, para que las tablas sean
+    comparables entre corridas. ``sku_class`` nulo es la cartera completa.
+    """
+    portfolio = {row.familia: row for row in items if row.sku_class is None}
+    rows = tuple(
+        ChampionRow(
+            familia=familia,
+            n_skus=(found.n_skus if (found := portfolio.get(familia)) else 0),
+            n_evaluados=(found.n_evaluados if found else 0),
+            n_no_evaluados=(found.n_no_evaluados if found else 0),
+            share=((found.n_skus if found else 0) / published_total if published_total else None),
+        )
+        for familia in CHAMPION_FAMILIES
+    )
+    by_class: dict[str, dict[str, int]] = {}
+    for row in items:
+        if row.sku_class is not None:
+            by_class.setdefault(row.sku_class, {})[row.familia] = row.n_skus
+    classes = tuple(
+        ClassChampions(
+            sku_class=sku_class,
+            counts={familia: by_class[sku_class].get(familia, 0) for familia in CHAMPION_FAMILIES},
+            total=sum(by_class[sku_class].values()),
+        )
+        for sku_class in SKU_CLASS_ORDER
+        if sku_class in by_class
+    )
+    return ChampionDistribution(
+        portfolio=rows,
+        classes=classes,
+        published_total=published_total,
+        counted_total=sum(row.n_skus for row in rows),
+    )
+
+
+def champion_share_text(row: ChampionRow) -> str:
+    """El valor de una familia como se lee en la tabla y en el gráfico: ``5 SKU · 41,7 %``."""
+    count = f"{format_count(row.n_skus)} SKU"
+    return count if row.share is None else f"{count} · {percent_text(row.share)}"
+
+
+def champion_bars(distribution: ChampionDistribution) -> list[tuple[str, float | None, str]]:
+    """(familia, fracción, valor) de cada familia, en el orden de la tabla, para el gráfico."""
+    return [
+        (family_label(row.familia), row.share, champion_share_text(row))
+        for row in distribution.portfolio
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class M3Summary:
-    """El resumen de la corrida M3 resuelta para una ejecución M2: embudo publicado y prueba DM."""
+    """El resumen de la corrida M3 resuelta para una ejecución M2: embudo publicado y prueba DM.
+
+    ``champions`` es la distribución de campeones por familia; si su lectura falló, el resto del
+    resumen sigue y la causa queda en ``champions_problem``.
+    """
 
     run: models_v2.M3Run | None = None
     problem: M3Problem | None = None
     funnel: models_v2.M3Funnel | None = None
     dm: DmCounts | None = None
+    champions: ChampionDistribution | None = None
+    champions_problem: M3Problem | None = None
+
+
+def _champions(
+    repository: DataRepository, run_id: str, funnel: models_v2.M3Funnel | None
+) -> tuple[ChampionDistribution | None, M3Problem | None]:
+    """La distribución de campeones de la corrida, o por qué no se pudo leer."""
+    if funnel is None:
+        return None, None
+    try:
+        read = repository.get_m3_champions(run_id, size=MAX_SIZE)
+    except (InvalidQuery, DataLayerError) as exc:
+        return None, _read_problem(exc)
+    if read.availability.status != "available":
+        return None, _unavailable_evidence(read.availability)
+    if read.page.total != len(read.items):
+        return None, M3Problem(
+            "La distribución de campeones llegó incompleta.",
+            f"M3 publicó {read.page.total} filas y se leyeron {len(read.items)}.",
+            "incomplete",
+        )
+    return champion_distribution(read.items, funnel.tras_exclusiones), None
 
 
 def summary(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Summary:
@@ -224,7 +352,108 @@ def _summary(repository: DataRepository, m2_run_id: str, wanted: str | None) -> 
     # El conteo DM es de toda la corrida: se leen todas las páginas de veredictos.
     for page in range(2, -(-evidence.page.total // MAX_SIZE) + 1):
         rows += repository.get_m3_evidence(resolved.run_id, page=page, size=MAX_SIZE).items
-    return M3Summary(run=resolved, funnel=evidence.funnel, dm=_dm_counts(rows))
+    champions, champions_problem = _champions(repository, resolved.run_id, evidence.funnel)
+    return M3Summary(
+        run=resolved,
+        funnel=evidence.funnel,
+        dm=_dm_counts(rows),
+        champions=champions,
+        champions_problem=champions_problem,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class M3Consulta:
+    """Los veredictos de la corrida M3 resuelta: la página pedida y el embudo completo."""
+
+    run: models_v2.M3Run | None = None
+    problem: M3Problem | None = None
+    evidence: models_v2.M3Evidence | None = None
+
+
+def consulta(repository: DataRepository, m2_run_id: str, query: ConsultaQuery) -> M3Consulta:
+    """Resuelve la corrida M3 de ``m2_run_id`` y delega el filtro, el orden y la página a M3.
+
+    Un filtro desconocido lo rechaza el repositorio: el aviso es visible y la corrida resuelta se
+    conserva para que el panel lateral y los enlaces sigan mostrándola.
+    """
+    try:
+        resolved = _resolve(repository, m2_run_id, query.m3)
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Consulta(problem=_read_problem(exc))
+    if isinstance(resolved, M3Problem):
+        return M3Consulta(problem=resolved)
+    try:
+        evidence = repository.get_m3_evidence(resolved.run_id, **query.as_kwargs())
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Consulta(run=resolved, problem=_read_problem(exc))
+    if evidence.availability.status != "available":
+        return M3Consulta(run=resolved, problem=_unavailable_evidence(evidence.availability))
+    return M3Consulta(run=resolved, evidence=evidence)
+
+
+@dataclass(frozen=True, slots=True)
+class M3Export:
+    """Todo lo que una exportación necesita de la corrida M3 resuelta, sin el límite de página."""
+
+    run: models_v2.M3Run | None = None
+    problem: M3Problem | None = None
+    items: tuple[models_v2.M3Verdict, ...] = ()
+    late_launches: models_v2.LateLaunches | None = None
+    eligibility_exclusions: models_v2.EligibilityExclusions | None = None
+
+
+_CHANGED = M3Problem(
+    "La evidencia cambió durante la exportación.",
+    "La corrida M3 dejó de coincidir entre dos páginas. No se entregó un archivo parcial; "
+    "vuelva a exportar.",
+    "changed",
+)
+
+
+def export_evidence(
+    repository: DataRepository, m2_run_id: str, query: ConsultaQuery, *, rows: bool = True
+) -> M3Export:
+    """Lee todas las páginas de la consulta, con los mismos filtros y orden que la vista.
+
+    Cada página es una lectura propia del repositorio: si entre dos páginas cambia el total, el
+    embudo o el estado de la corrida, la exportación se aborta en vez de mezclar dos instantáneas.
+    Con ``rows=False`` solo se lee lo de toda la corrida (exclusiones), sin recorrer los veredictos.
+    """
+    try:
+        resolved = _resolve(repository, m2_run_id, query.m3)
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Export(problem=_read_problem(exc))
+    if isinstance(resolved, M3Problem):
+        return M3Export(problem=resolved)
+    kwargs = {**query.as_kwargs(), "page": 1, "size": MAX_SIZE if rows else 1}
+    try:
+        first = repository.get_m3_evidence(resolved.run_id, **kwargs)
+        if first.availability.status != "available":
+            return M3Export(run=resolved, problem=_unavailable_evidence(first.availability))
+        items = list(first.items)
+        last_page = -(-first.page.total // MAX_SIZE) if rows else 1
+        for number in range(2, last_page + 1):
+            page = repository.get_m3_evidence(resolved.run_id, **{**kwargs, "page": number})
+            if (
+                page.availability.status != "available"
+                or page.run is None
+                or page.run.estado != "PUBLICADA"
+                or page.page.total != first.page.total
+                or page.funnel != first.funnel
+            ):
+                return M3Export(run=resolved, problem=_CHANGED)
+            items += page.items
+    except (InvalidQuery, DataLayerError) as exc:
+        return M3Export(run=resolved, problem=_read_problem(exc))
+    if rows and len(items) != first.page.total:
+        return M3Export(run=resolved, problem=_CHANGED)
+    return M3Export(
+        run=resolved,
+        items=tuple(items) if rows else (),
+        late_launches=first.late_launches,
+        eligibility_exclusions=first.eligibility_exclusions,
+    )
 
 
 @dataclass(frozen=True, slots=True)

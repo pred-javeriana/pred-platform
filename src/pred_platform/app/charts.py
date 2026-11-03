@@ -7,7 +7,7 @@ La serie del campeón conserva los valores publicados y los bloques ya resueltos
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from xml.sax.saxutils import escape
 
@@ -284,3 +284,67 @@ def _forecast_line(
         + "".join(markers)
         + "</g>"
     )
+
+
+_CHAMPION_LEFT = 150
+_CHAMPION_PLOT = 330
+_CHAMPION_ROW = 34
+_CHAMPION_BAR = 18
+_CHAMPION_TOP = 10
+_CHAMPION_ROOM = 160
+
+
+def champion_share_svg(bars: Sequence[tuple[str, float | None, str]], total: int) -> str:
+    """Barras horizontales: cada familia con su fracción de los SKU con veredicto.
+
+    Dibuja lo que recibe (familia, fracción y el texto del valor ya formateado) y no cuenta nada.
+    El largo es la fracción sobre 100 %, para que las barras se comparen entre sí; el valor va en
+    la punta, con el texto en tinta y no en el color de la barra. Una sola serie no lleva leyenda:
+    el título la nombra, y la tabla de al lado dice lo mismo.
+    """
+    if not bars:
+        return ""
+    height = _CHAMPION_TOP * 2 + _CHAMPION_ROW * len(bars)
+    width = _CHAMPION_LEFT + _CHAMPION_PLOT + _CHAMPION_ROOM
+    description = (
+        f"Fracción de los {total} SKU con veredicto M3 según su familia campeona publicada: "
+        + "; ".join(f"{label}, {value or '0 SKU'}" for label, _, value in bars)
+        + "."
+    )
+    parts = [
+        f'<svg role="img" viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+        'xmlns="http://www.w3.org/2000/svg" class="pred-chart__svg pred-champion__svg">',
+        "<title>Distribución de campeones por familia</title>",
+        f"<desc>{escape(description)}</desc>",
+        f'<line x1="{_CHAMPION_LEFT}" x2="{_CHAMPION_LEFT}" y1="{_CHAMPION_TOP}" '
+        f'y2="{height - _CHAMPION_TOP}" class="pred-chart__axis" />',
+    ]
+    for index, (label, share, value) in enumerate(bars):
+        top = _CHAMPION_TOP + index * _CHAMPION_ROW + (_CHAMPION_ROW - _CHAMPION_BAR) / 2
+        middle = top + _CHAMPION_BAR / 2
+        length = 0.0 if not share else max(2.0, min(share, 1.0) * _CHAMPION_PLOT)
+        parts.append(
+            f'<text x="{_CHAMPION_LEFT - 12}" y="{middle + 4:.1f}" text-anchor="end" '
+            f'class="pred-champion__label">{escape(label)}</text>'
+        )
+        if length:
+            parts.append(_champion_bar(top, length, f"{label}: {value}"))
+        parts.append(
+            f'<text x="{_CHAMPION_LEFT + length + 8:.1f}" y="{middle + 4:.1f}" '
+            f'class="pred-champion__value">{escape(value)}</text>'
+        )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _champion_bar(top: float, length: float, tip: str) -> str:
+    """Una barra anclada a la base: recta en el eje y con 4 px de radio en el extremo del dato."""
+    radius = min(4.0, length / 2)
+    x0, x1 = _CHAMPION_LEFT, _CHAMPION_LEFT + length
+    y0, y1 = top, top + _CHAMPION_BAR
+    path = (
+        f"M{x0},{y0:.1f} H{x1 - radius:.1f} A{radius:.1f},{radius:.1f} 0 0 1 {x1:.1f},"
+        f"{y0 + radius:.1f} V{y1 - radius:.1f} A{radius:.1f},{radius:.1f} 0 0 1 "
+        f"{x1 - radius:.1f},{y1:.1f} H{x0} Z"
+    )
+    return f'<path d="{path}" class="pred-champion__bar"><title>{escape(tip)}</title></path>'

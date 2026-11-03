@@ -7,12 +7,21 @@ repositorio. Mientras la corrida está en curso el cuerpo se refresca con HTMX c
 
 from __future__ import annotations
 
+import json
+from importlib.metadata import version as package_version
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 
+from pred_platform.app.configuracion import (
+    MAX_BYTES,
+    ConfigExportError,
+    config_filename,
+    export_config,
+    parse_config,
+)
 from pred_platform.app.datos import error_view, page_meta
 from pred_platform.app.ejecucion import (
     ACTIVE_STATES,
@@ -31,12 +40,16 @@ from pred_platform.app.ejecucion import (
     uncovered_classes,
 )
 from pred_platform.app.seleccion import error_title
+from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import RunStatus
+from pred_platform.dal import lectura
 from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.data.deps import get_repository
+from pred_platform.data.query import LATEST
 from pred_platform.data.repository import DataRepository
 from pred_platform.worker.control import ControlUnavailable, RunControl
+from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION
 
 router = APIRouter()
 
@@ -89,7 +102,11 @@ def _context(
     form: FormResult | None = None,
     form_error: str | None = None,
     action_error: str | None = None,
+    imported: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
+    """``imported`` es el aviso (variante, texto) de una configuración importada: abre el formulario
+    con sus valores y, si el archivo trae otra ingesta que esta plataforma no tiene, sin ingesta
+    elegida, para que nadie lance los ajustes importados sobre otros datos sin darse cuenta."""
     params = dict(request.query_params)
     control = _control(request)
     capabilities = repository.get_capabilities()
@@ -113,10 +130,10 @@ def _context(
     estado = run.estado if run is not None else None
     ingests = _accepted_ingests(repository)
     selected = (form.values.get("ingest_id") if form else None) or params.get("ingest_id")
-    if not selected and ingests:
+    if not selected and ingests and imported is None:
         selected = ingests[0].ingest_id
     poll = estado in ACTIVE_STATES and control.reason is None
-    notice = NOTICES.get(params.get("aviso", ""))
+    notice = imported or NOTICES.get(params.get("aviso", ""))
     progress = status.progress if status is not None else None
     return {
         "active_surface": "ejecucion",
@@ -148,6 +165,7 @@ def _context(
         "finished": estado in FINISHED_STATES,
         "results_href": f"/resultados?ejecucion={run.id}" if run is not None else None,
         "notice": notice,
+        "imported": imported is not None,
         "action_error": action_error,
         "ingests": ingests,
         "selected_ingest": selected,
@@ -249,6 +267,80 @@ def lanzar(
     return RedirectResponse(
         f"/ejecucion?{urlencode({'ejecucion': result.ejecucion_id, 'aviso': aviso})}",
         status_code=303,
+    )
+
+
+@router.get("/ejecucion/configuracion.json", response_model=None)
+def exportar_configuracion(request: Request) -> Response:
+    """La configuración de una ejecución guardada (``?ejecucion=``; vacío, la más reciente)."""
+    settings = request.app.state.settings
+    if settings.data_source == "fixture":
+        return PlainTextResponse(
+            "Estás viendo datos de prueba: no hay una configuración real que exportar "
+            "(PRED_DATA_SOURCE=dal).\n",
+            status_code=409,
+        )
+    reference = (request.query_params.get("ejecucion") or "").strip() or LATEST
+    detail = lectura.get_run(settings.db_path, reference)
+    if detail is None:
+        return PlainTextResponse(
+            f"No existe la ejecución {reference!r}: no hay una configuración que exportar.\n",
+            status_code=404,
+        )
+    versions = {
+        "plataforma": package_version("pred-platform"),
+        "contrato_v1": CONTRACT_VERSION,
+        "contrato_v2": M3_CONTRACT_VERSION,
+        "formato_parametros": PARAMETERS_SCHEMA_VERSION,
+    }
+    try:
+        document = export_config(detail, versions)
+    except ConfigExportError as exc:
+        return PlainTextResponse(f"{exc}\n", status_code=409)
+    return Response(
+        content=json.dumps(document, indent=2, ensure_ascii=False) + "\n",
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{config_filename(detail.run_id)}"'},
+    )
+
+
+@router.post("/ejecucion/configuracion", response_model=None)
+def importar_configuracion(
+    request: Request,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+    archivo: Annotated[UploadFile | None, File()] = None,
+) -> HTMLResponse:
+    """Rellena el formulario de lanzamiento con un archivo exportado. No lanza ni guarda nada."""
+    raw = b"" if archivo is None else archivo.file.read(MAX_BYTES + 1)
+    imported = parse_config(raw if isinstance(raw, bytes) else raw.encode("utf-8"))
+    if imported.values is None:
+        reasons = " ".join(imported.errors)
+        return _render(
+            request,
+            "pages/execution.html",
+            _context(request, repository, form_error=f"No se importó la configuración. {reasons}"),
+            400,
+        )
+    known = {item.ingest_id for item in _accepted_ingests(repository)}
+    form = FormResult(imported.values, None, {})
+    origin = f" de la ejecución {imported.source_run_id}" if imported.source_run_id else ""
+    if imported.ingest_sha256 in known:
+        form.values["ingest_id"] = imported.ingest_sha256
+        notice = (
+            "success",
+            f"Configuración importada{origin}. Revise los valores y lance la ejecución.",
+        )
+    else:
+        form.values["ingest_id"] = ""
+        notice = (
+            "warning",
+            f"Configuración importada{origin}, pero su ingesta "
+            f"({(imported.ingest_sha256 or '')[:12]}…) no está aceptada en esta plataforma. "
+            "Elija otra ingesta antes de lanzar: los resultados solo son comparables "
+            "sobre los mismos datos.",
+        )
+    return _render(
+        request, "pages/execution.html", _context(request, repository, form=form, imported=notice)
     )
 
 

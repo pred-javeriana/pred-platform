@@ -16,6 +16,31 @@ written by an older engine, which carry none, fall back to the class name or the
 (`worker/errores.py`). A stopped run does not show
 its closed tasks as progress: its bar counts the successful ones.
 
+**Export and import the configuration** (RF-CON-07, task A3 of section 4.5). The shown run has an
+"Exportar configuración (JSON)" link (`GET /ejecucion/configuracion.json?ejecucion=<id>`, the latest
+run when omitted) and the launch panel has an "Importar configuración" form
+(`POST /ejecucion/configuracion`, multipart field `archivo`). The file is JSON with its own format
+(`pred-platform.configuracion-ejecucion`, `schema_version` 1) and holds the stored `run_id`, the
+`identidad` (`run_id_for`, the id the platform uses to recognise the same run), the SHA-256 of the
+ingestion, the nine parameters (`min_train`, `horizon`, `step`, `seasonality`, `metric`, `families`,
+`trials`, `seed`, `workers`) and the versions that read it (platform, contract v1 and v2, format of
+`parametros`). Nothing local travels (no execution id, no dates). Importing only **fills the launch
+form**: it validates with the same rule as a launch (`parse_launch_form`), never writes to the
+database and never launches; the operator reviews and presses "Lanzar ejecución". A file that is
+empty, over 64 KB, not JSON, of another format or major version, with unknown or missing fields, a
+wrong type or a value the launch rejects is refused (400) with its cause. If the file's ingestion is
+not accepted here, its settings are imported but no ingestion is chosen and the notice names the
+expected SHA, so settings are not launched over other data by accident. Reading uses
+`dal/lectura.get_run` (not `DataRepository`: the public `RunSettings` has no `trials`, `seed` or
+`workers`), so with fixtures the export answers 409. Code: `app/configuracion.py`,
+`routers/execution.py`.
+
+Reproducibility: asking again for the same ingestion and settings resolves to the same run, because
+its identity does not count `workers`; a changed seed or horizon is another run. The file pins the
+settings. The same *results* also need the same engine code: the platform does not import the
+engine nor record its version, and the engine already refuses a run stored with another code
+fingerprint (`run.incompatible_config`).
+
 ## How
 
 - **Reads** go through `DataRepository` (`get_run_status` with the `latest` alias or `?ejecucion=`,

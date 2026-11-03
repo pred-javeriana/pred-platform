@@ -16,17 +16,21 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
-from pred_platform.app.charts import champion_forecast_svg
+from pred_platform.app.charts import champion_forecast_svg, champion_share_svg
+from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
 from pred_platform.app.datos import error_view, page_meta
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
     PROFILE_METRICS,
     M3Classes,
+    M3Consulta,
     M3Decision,
     M3Profiles,
     M3Summary,
+    champion_bars,
     classes,
+    consulta,
     decision,
     profiles,
     reserve_windows,
@@ -49,7 +53,7 @@ from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
 
-VIEWS = ("sku", "resumen", "clase", "errores")
+VIEWS = ("sku", "resumen", "clase", "errores", "consulta")
 
 
 def _base_context(repository: DataRepository, vista: str) -> dict[str, Any]:
@@ -100,6 +104,11 @@ def resultados(
         m3_summary=M3Summary(),
         m3_profiles=M3Profiles(),
         m3_classes=M3Classes(),
+        champion_svg="",
+        m3_consulta=M3Consulta(),
+        cq=ConsultaQuery(),
+        consulta_error=None,
+        consulta_pages=None,
         metric_hrefs={},
         profile_metrics=PROFILE_METRICS,
         class_families=CLASS_FAMILIES,
@@ -110,6 +119,8 @@ def resultados(
     )
     if vista == "sku" or vista is None:
         _fill_list(repository, query, context)
+    elif vista == "consulta" and context["champion_capability"].available:
+        _fill_consulta(repository, params, context)
     elif vista in ("resumen", "errores", "clase") and context["champion_capability"].available:
         context["run"] = run = _run_header(repository, query.ejecucion)
         if run is not None and run.ejecucion is not None:
@@ -123,6 +134,11 @@ def resultados(
                     repository, run.ejecucion.id, query.m3
                 )
                 resolved = found_summary.run
+                if found_summary.champions is not None:
+                    context["champion_svg"] = champion_share_svg(
+                        champion_bars(found_summary.champions),
+                        found_summary.champions.published_total,
+                    )
             elif vista == "clase":
                 context["m3_classes"] = found_classes = classes(
                     repository, run.ejecucion.id, query.m3
@@ -149,6 +165,32 @@ def resultados(
                     other: "/resultados?" + urlencode({**base, "m3": other}) for other in others
                 }
     return request.app.state.templates.TemplateResponse(request, "pages/results.html", context)
+
+
+def _fill_consulta(
+    repository: DataRepository, params: dict[str, str], context: dict[str, Any]
+) -> None:
+    """La pestaña «Consulta»: veredictos de M3 que el repositorio filtra, ordena y pagina."""
+    try:
+        cq = parse_consulta_query(params)
+    except InvalidQuery as exc:
+        cq, context["consulta_error"] = ConsultaQuery(), str(exc)
+    context["cq"] = cq
+    context["run"] = run = _run_header(repository, cq.ejecucion)
+    if run is None or run.ejecucion is None:
+        return
+    found = consulta(repository, run.ejecucion.id, cq)
+    context["m3_consulta"] = found
+    if found.run is not None:
+        # Filtros, páginas y detalle conservan la corrida M3 resuelta, no «la más nueva».
+        context["cq"] = cq = replace(cq, m3=found.run.run_id)
+        others = tuple(r for r in found.run.publicadas_misma_identidad if r != found.run.run_id)
+        context["m3"] = M3Decision(run=found.run, others=others)
+        context["m3_hrefs"] = {
+            other: "/resultados?" + cq.query_string(m3=other, page="") for other in others
+        }
+    if found.evidence is not None:
+        context["consulta_pages"] = page_meta(found.evidence.page)
 
 
 def _fill_list(repository: DataRepository, query: SelectionQuery, context: dict[str, Any]) -> None:

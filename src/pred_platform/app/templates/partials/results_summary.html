@@ -27,6 +27,61 @@
   {{ table_end() }}
 </section>
 {% endif %}
+{% if m3_summary.champions_problem %}
+<p class="pred-note"><strong>{{ m3_summary.champions_problem.title }}</strong> {{ m3_summary.champions_problem.detail }}</p>
+{% endif %}
+{% if m3_summary.champions %}
+{% set champions = m3_summary.champions %}
+{% set funnel = m3_summary.funnel %}
+<section class="pred-section" id="campeones-por-familia">
+  <h2>Distribución de campeones por familia</h2>
+  <p class="pred-meta">Cuenta los SKU con veredicto M3 según la familia campeona que M3 publicó para cada uno: M3 elige y esta vista solo cuenta. El porcentaje es la parte de los <span class="mono">{{ format_count(champions.published_total) }}</span> SKU con veredicto; los productos excluidos antes de M3 están en el embudo y no entran aquí. Es evidencia retrospectiva sobre la reserva, no una estimación del desempeño futuro.</p>
+  {% if not champions.consistent %}
+  <p class="pred-note"><strong>Las cifras no cuadran.</strong> Las familias suman <span class="mono">{{ format_count(champions.counted_total) }}</span> SKU y el embudo publicó <span class="mono">{{ format_count(champions.published_total) }}</span> con veredicto. Se muestran tal como las publicó M3.</p>
+  {% endif %}
+  {% if champion_svg %}
+  <figure class="pred-chart" aria-label="Gráfico: SKU por familia campeona">
+    {{ champion_svg | safe }}
+  </figure>
+  {% endif %}
+  {{ table_start(["Familia campeona", "Evaluados", "No evaluados", "SKU", "% de los SKU con veredicto"], "SKU por familia campeona publicada") }}
+  {% for row in champions.portfolio %}
+  <tr>
+    <th scope="row" class="pred-nowrap">{{ family_label(row.familia) }}</th>
+    <td class="num">{{ format_count(row.n_evaluados) }}</td>
+    <td class="num">{{ format_count(row.n_no_evaluados) }}</td>
+    <td class="num">{{ format_count(row.n_skus) }}</td>
+    <td class="num">{{ percent_text(row.share) if row.share is not none else "—" }}</td>
+  </tr>
+  {% endfor %}
+  <tr>
+    <th scope="row">Con veredicto M3</th>
+    <td class="num">{{ format_count(funnel.evaluados) }}</td>
+    <td class="num">{{ format_count(funnel.no_evaluados) }}</td>
+    <td class="num">{{ format_count(funnel.tras_exclusiones) }}</td>
+    <td class="num">{{ percent_text(1.0) if funnel.tras_exclusiones else "—" }}</td>
+  </tr>
+  {{ table_end() }}
+  <p class="pred-meta">Evaluados son VALIDADO y EXPLORATORIO; no evaluados, FALLO_TECNICO, NO_EVALUABLE y EVIDENCIA_INSUFICIENTE. Un SKU con fallo técnico no tiene candidato campeón y cuenta en la familia que M3 publicó para él.</p>
+</section>
+{% if champions.classes %}
+<section class="pred-section" id="campeones-por-clase">
+  <h2>Campeones por clase de demanda</h2>
+  <p class="pred-meta">SKU con veredicto de cada clase, según la familia campeona publicada de cada SKU. Puede diferir de la familia campeona de la clase (en «Por clase») cuando M3 aplicó el fallback que documenta en la justificación.</p>
+  {{ table_start(["Clase"] + CHAMPION_HEADERS + ["SKU"], "SKU por clase y familia campeona") }}
+  {% for row in champions.classes %}
+  <tr>
+    <th scope="row" class="pred-nowrap">{{ sku_class_label(row.sku_class) }}</th>
+    {% for family in CHAMPION_FAMILIES %}
+    <td class="num">{{ format_count(row.counts[family]) }}</td>
+    {% endfor %}
+    <td class="num">{{ format_count(row.total) }}</td>
+  </tr>
+  {% endfor %}
+  {{ table_end() }}
+</section>
+{% endif %}
+{% endif %}
 {% if m3_summary.dm %}
 {% set dm = m3_summary.dm %}
 <section class="pred-section" id="prueba-dm">

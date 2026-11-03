@@ -40,14 +40,20 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "window_metric_names",
     ):
         templates.env.globals[name] = getattr(seleccion, name)
+    templates.env.globals["CHAMPION_FAMILIES"] = resultados_m3.CHAMPION_FAMILIES
+    templates.env.globals["CHAMPION_HEADERS"] = [
+        seleccion.family_label(family) for family in resultados_m3.CHAMPION_FAMILIES
+    ]
     for name in (
         "cause_text",
+        "champion_share_text",
         "exact_text",
         "funnel_rows",
         "interval_text",
         "level_text",
         "origin_label",
         "p_text",
+        "percent_text",
         "ranking",
         "ratio_text",
         "significance_items",
