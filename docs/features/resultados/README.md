@@ -4,19 +4,26 @@ Session that lands TASK-UI-1.2-C2 (model selection per SKU) on the `/resultados`
 
 ## What
 
-`/resultados` is no longer a B3 placeholder. Its **Por SKU** view shows, for the latest run (or the
-one in `?ejecucion=`), a table with one row per SKU: demand class and profile, the state and value of
-each of the four families (Clásica, ML, DL, Fundacional) and the champion with its verdict, as M3
-published them. `/resultados/sku/{sku_id}`
-is the detail: per family its state, the evidence of the chosen configuration, the HPO trials
+`/resultados` has four tabs, overview first: **Resumen**, **Por clase**, **SKU** and **Perfiles de
+error**. Without `?ejecucion=` it shows the newest execution with a PUBLICADA M3 run, because the
+newest execution may still be running; a picker in the context bar lists the executions with
+published evidence. Without `?vista=` it opens on Resumen when the execution shown has published M3
+evidence and on the SKU tab otherwise. The SKU tab has two readings of the same products, chosen with
+a segmented control: **Veredictos de M3** (`?vista=sku`, what M3 decided per SKU; the old
+`?vista=consulta` link still opens it) and **Familias de M2** (`?vista=sku&lista=familias`, one row
+per SKU with its demand class, the state and value of each of the four families, one column per
+family, and the champion with its verdict, as M3 published them). A link with the M2 filters
+(`family`, `estado`) opens the M2 reading. `/resultados/sku/{sku_id}` is the detail, under a
+breadcrumb that goes back to Resultados and to the list the reader came from: per family its state, the evidence of the chosen configuration, the HPO trials
 (completed, **pruned** and **failed**, each with its reason), the Walk-Forward summary and, on
 request, every window with its metrics. Excluded families say why (policy matrix, configured subset,
 series too short) and failed ones show their error.
 
 The champion, the verdict and its evidence come from one exact M3 run of the M2 run shown (contract
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail
-links, filters and pages keep that resolved run. When several PUBLICADA runs share an identity the
-side panel shows the contract's notice and links to the others. The five verdicts are shown
+links, filters and pages keep that resolved run. A context bar above the tabs names the execution,
+its ingest, the M3 run and the data origin. When several PUBLICADA runs share an identity the bar
+shows the contract's notice and links to the others. The five verdicts are shown
 verbatim; the detail adds the justification, windows against `n_min`, r against Seasonal Naive,
 coverage, the data origin and, apart from the verdict, the HLN-DM/BH significance or its cause. A
 SKU launched after the cut says so; a run that is not PUBLICADA, or a publication without its
@@ -48,25 +55,26 @@ excluded before M3 are in the funnel and not here. The portfolio rows are checke
 denominator and, if they do not add up, the page says so with both numbers instead of adjusting one.
 The family of a SKU can differ from its class champion (shown in "Por clase") by the fallback M3
 documents in the justification. If the read of `m3_campeones` fails or comes incomplete, the funnel and
-the test counts stay and the cause is shown. "Por SKU" remains the entry of Resultados and links to
-the summary ("Ver distribución de campeones") when a PUBLICADA M3 run is resolved.
+the test counts stay and the cause is shown. The M2 reading of the SKU tab links back to the summary
+("Ver distribución de campeones") when a PUBLICADA M3 run is resolved.
 
-**Consulta** (`?vista=consulta`, RF-CON-05 of section 4.5) is the query over M3's published verdicts.
-Unlike Por SKU, whose rows are M2's selection per family, its list comes from `get_m3_evidence` of
+**Veredictos de M3** (`?vista=sku`, RF-CON-05 of section 4.5; called Consulta before) is the query
+over M3's published verdicts. Unlike the M2 reading, whose rows are M2's selection per family, its
+list comes from `get_m3_evidence` of
 the resolved M3 run, so it can filter by the three things M3 decides: demand class (Syntetos-Boylan),
 champion family and verdict (the five exact labels). They combine, with a SKU search, and the list
-sorts by SKU, class, verdict, r, windows or BH-adjusted p. Each row shows the champion family, the
-verdict, r, windows against `n_min` and, apart from the verdict, the significance (BH-adjusted p and
-whether it is significant) or the cause M3 published when there is no test; the full test opens on
-demand. The count is the filtered total, while the funnel line (SKU with a verdict out of all the
+sorts by SKU, class, verdict, r, windows or BH-adjusted p. Each row shows the champion family and
+model, the verdict, r, windows with `n_min` under them and, apart from the verdict, the significance
+(whether it is significant, in which direction, and the BH-adjusted p) or the cause M3 published when
+there is no test; the full test opens on demand. The count is the filtered total, while the funnel line (SKU with a verdict out of all the
 products) is the whole run's and does not change with the filters. The M2 family state is not a
-verdict filter (contract v2, section 7), so those filters stay in Por SKU. An unknown filter value is
+verdict filter (contract v2, section 7), so those filters stay in the M2 reading. An unknown filter value is
 rejected by the repository and shown as a notice; it is never ignored. Query code is
 `app/consulta.py` (`ConsultaQuery`, whose `query_string` the CSV export will reuse), the view is
 `consulta()` in `app/resultados_m3.py` and the template is `partials/results_consulta.html`.
 
-**CSV export** (RF-CON-06, tarea A2) hangs from the Consulta tab. `GET /resultados/exportar.csv` takes
-the same query string as the tab (the "Exportar CSV" link already carries the filters and the resolved
+**CSV export** (RF-CON-06, tarea A2) hangs from the verdict list. `GET /resultados/exportar.csv` takes
+the same query string as the list (the "Exportar CSV" link already carries the filters and the resolved
 `m3=` run; `page` and `size` are ignored) and returns every SKU of the query, not one page, in the
 same order as the view. `GET /resultados/exclusiones.csv` lists the products without a verdict for the
 whole run (launched after the cut, with `t_star`, and excluded by M2 with their class, code and cause);
@@ -98,15 +106,19 @@ Views call only `DataRepository` (`list_sku_selections`, `get_sku_selection`, `g
 run header, `list_m3_runs`, `get_m3_run_status` and `get_m3_evidence` for M3's decision,
 `get_m3_categories` and `get_m3_confirmation` for Por clase,
 `get_capabilities` for the action). Filters, sort and paging are **delegated** to the
-repository and the page shows whatever it returned: nothing is filtered, sorted or computed in the
-view or in the browser (no inline script). `include_windows` is only requested with `?ventanas=1`.
+repository and the page shows whatever it returned. The views only order published rows to show
+them (classes, competitors, evaluated models) and format published numbers, for example a share or a
+win percentage from published counts; they never filter rows or recompute a statistic, and the
+browser runs no inline script. `include_windows` is only requested with `?ventanas=1`.
 
 - **Which run.** The repository accepts `latest` (`pred_platform.data.query.LATEST`) wherever it takes a
-  run id, and the views use it by default; `?ejecucion=3` shows another one. It resolves to the run
-  with the highest id.
-- **"Ejecutar selección".** Primary action that leads to `/ejecucion` (launching is C4). It is enabled
-  only when `parquet_read`, `family_comparison` and `selection_results_persisted` are available
-  (contract 7.8); otherwise it is disabled and lists what is missing and why.
+  run id; it resolves to the run with the highest id. Resultados uses it only when no execution has
+  a PUBLICADA M3 run; otherwise it opens the newest one that has. `?ejecucion=3` shows another one,
+  and an execution that does not exist says so instead of showing an empty panel.
+- **"Nueva ejecución".** Secondary action in the page header that opens the launch form of
+  `/ejecucion` with the ingest of the execution shown (launching is C4). It is enabled only when
+  `parquet_read`, `family_comparison` and `selection_results_persisted` are available
+  (contract 7.8); otherwise it is disabled and "Por qué no se puede lanzar" lists what is missing.
 - **States.** Families use the task vocabulary plus `excluida` (neutral, not a failure); trials use
   the trial vocabulary, where *podada* has its own icon and colour (decision D1). Every state is icon
   + text + colour.
@@ -122,7 +134,7 @@ view or in the browser (no inline script). `include_windows` is only requested w
 | M3 run resolution and decision texts | `src/pred_platform/app/resultados_m3.py` |
 | Presentation (`family` and `verdict` vocabularies) | `src/pred_platform/app/presentation.py` |
 | Pages | `src/pred_platform/app/templates/pages/results.html`, `results_sku.html` |
-| Partials and macro | `templates/partials/results_*.html`, `templates/components/run_line.html` |
+| Partials | `templates/partials/results_*.html` (`results_context.html` is the context bar) |
 | Champion forecast series and chart | `src/pred_platform/app/resultados_pronostico.py`, `src/pred_platform/app/charts.py` |
 | Tests | `tests/test_resultados.py`, `tests/test_resultados_pronostico.py`, `tests/test_presentation.py` |
 

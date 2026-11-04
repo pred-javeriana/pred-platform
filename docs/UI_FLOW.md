@@ -16,7 +16,8 @@ plataforma.
         → Monitorear y recuperar la ejecución
         → Consultar resultados
 
-La navegación de producto es `PRED · Datos | Ejecución | Resultados`.
+La navegación de producto es `PRED · 1 Datos | 2 Ejecución | 3 Resultados`: el número de cada
+superficie dice su lugar en el flujo.
 
 | Ruta | Superficie |
 | --- | --- |
@@ -25,9 +26,9 @@ La navegación de producto es `PRED · Datos | Ejecución | Resultados`.
 | `/ejecucion` | Ejecución |
 | `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
 | `POST /ejecucion/configuracion` | Importa ese JSON y rellena el formulario de lanzamiento; no lanza ni guarda nada |
-| `/resultados` | Resultados (tabs; «Por SKU» es la vista por defecto; «Consulta», `?vista=consulta`, filtra los veredictos de M3 por clase, familia campeona y veredicto; «Resumen», `?vista=resumen`, muestra el embudo, la distribución de campeones por familia y por clase y la prueba HLN-DM) |
-| `/resultados/sku/{sku_id}` | Detalle de un SKU: decisión, familias y evidencia bajo demanda |
-| `/resultados/exportar.csv` | Descarga CSV de los veredictos de la consulta de «Consulta», sin el límite de página |
+| `/resultados` | Resultados: pestañas Resumen, Por clase, SKU y Perfiles de error (`?vista=resumen`, `clase`, `sku` o `errores`). Sin `?vista=` abre Resumen si la ejecución tiene evidencia M3 publicada y, si no, SKU. La pestaña SKU tiene dos lecturas: «Veredictos de M3» (`?vista=sku`; `?vista=consulta` es su nombre anterior) y «Familias de M2» (`?vista=sku&lista=familias`) |
+| `/resultados/sku/{sku_id}` | Detalle de un SKU: ruta de migas, decisión, familias y evidencia bajo demanda |
+| `/resultados/exportar.csv` | Descarga CSV de los veredictos filtrados en «Veredictos de M3», sin el límite de página |
 | `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la corrida M3 (lanzamientos tardíos y elegibilidad) |
 | `/health` | Sonda JSON, sin cambios. |
 | `/_dev/componentes` | Catálogo interno de componentes. Fuera de la navegación. |
@@ -106,17 +107,20 @@ determina si el contraste es aplicable. La plataforma no implementa funcionalida
 
 ## 3. Resultados
 
-**Responsabilidad:** la vista Por SKU consume la selección por familia, la evidencia de un SKU
-y, de una corrida M3 exacta de la ejecución, el campeón, el veredicto y su evidencia (contrato
-v2). Resumen muestra el embudo publicado de toda la corrida y cuenta los resultados HLN-DM
-publicados (BH dentro de cada clase de demanda). Por clase muestra la familia campeona que M3
+**Responsabilidad:** mostrar lo que M3 publicó para una ejecución, de la vista general al
+detalle de un SKU. Resumen muestra el embudo publicado de toda la corrida, la distribución de
+campeones por familia y por clase, y cuenta los resultados HLN-DM publicados (BH dentro de cada
+clase de demanda). Por clase muestra la familia campeona que M3
 congeló en cada clase con el bloque de selección, su motivo, la mediana de r de cada familia y los
 veredictos de la clase. Debajo, «Confirmación del campeón» muestra el estado de cada campeona en el
 bloque de prueba con su p IUT y su p Holm, la mediana de r frente a Seasonal Naive con su intervalo
 bootstrap y una fila por competidora (SKU, mediana de la razón con intervalo, Hodges-Lehmann,
 victorias con intervalo de Wilson, p de Wilcoxon y p IUT). «Significancia frente a Seasonal Naive»
-muestra por clase los SKU probados y los significativos por BH y por BY, con el nivel FCR. Perfiles de error muestra los perfiles de error de la cartera en el bloque de prueba,
-una métrica a la vez. La interfaz no selecciona ganadores ni recalcula métricas.
+muestra por clase los SKU probados y los significativos por BH y por BY, con el nivel FCR. SKU
+lista el campeón y el veredicto de cada SKU de una corrida M3 exacta, o la selección de cada
+familia; el detalle de un SKU muestra su evidencia (contrato v2). Perfiles de error muestra los
+perfiles de error de la cartera en el bloque de prueba, una métrica a la vez. La interfaz no
+selecciona ganadores ni recalcula métricas.
 
 **Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
 `get_m3_run_status(...)`, `get_m3_evidence(...)`, `get_m3_categories(...)`,
@@ -130,14 +134,25 @@ significancia por clase).
 **Veredictos:** las vistas muestran literalmente los cinco veredictos que publica M3:
 `FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`. No
 se traducen a otras etiquetas. La significancia HLN-DM/BH, o su causa, se muestra aparte del
-veredicto. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
+veredicto. Sin `?ejecucion=`, la página muestra la ejecución más nueva con una corrida M3
+PUBLICADA. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
 cuando varias corridas PUBLICADA comparten identidad.
 
-Tabs internas (misma ruta, `?vista=resumen|clase|errores|sku`): Resumen | Por clase | Perfiles de error |
-Por SKU. No son pantallas nuevas. **Por SKU** es una tabla compacta con evidencia familiar
-desplegable y detalle en `/resultados/sku/{sku_id}`; el detalle dibuja el pronóstico h=1 publicado
-del campeón frente a la demanda observada, con los bloques de selección y prueba. La ejecución mostrada es la última (`latest`) o la de `?ejecucion=`.
-La acción «Configurar nueva ejecución» lleva a Ejecución y se habilita solo con `parquet_read`,
+Pestañas internas (misma ruta, `?vista=resumen|clase|sku|errores`): Resumen | Por clase | SKU |
+Perfiles de error, en orden de lectura de lo general al detalle. No son pantallas nuevas. Sin
+`?vista=`, la página abre Resumen cuando la ejecución tiene evidencia M3 publicada y, si no, SKU.
+**SKU** tiene dos lecturas, elegidas con un control segmentado. «Veredictos de M3» (`?vista=sku`)
+filtra por clase, familia campeona y veredicto, y exporta CSV. «Familias de M2»
+(`lista=familias`) muestra una columna por familia con su estado y su valor; se abre por defecto
+sin evidencia M3 o con un filtro de familia o de estado. Las dos enlazan al detalle
+`/resultados/sku/{sku_id}`. Su ruta de migas (Resultados › SKU › el SKU) vuelve al Resumen de la
+misma corrida y a la lista con sus filtros. El detalle dibuja el pronóstico h=1 publicado del
+campeón frente a la demanda observada, con los bloques de selección y prueba.
+
+Una barra de contexto, arriba y a lo ancho, muestra la ejecución, la ingesta, la corrida M3 y el
+origen de los datos, y permite elegir otra ejecución con evidencia publicada. La acción secundaria
+«Nueva ejecución» del encabezado abre el formulario de lanzamiento de Ejecución con la misma
+ingesta (`/ejecucion?ingest_id=…#lanzar`). Se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.
 
@@ -165,32 +180,34 @@ inesperado.
 
 ## Jerarquía de Resultados
 
-Resumen de cartera → Por clase de demanda → Por SKU → Decisión y comparación → Evidencia técnica bajo demanda.
+Resumen de cartera → Por clase de demanda → SKU → Decisión y comparación → Evidencia técnica bajo demanda.
 
-Por SKU es la entrada de Resultados. La tabla principal presenta cuatro columnas (SKU, clase, campeón y veredicto M3, y evidencia familiar desplegable); no incorpora columnas de trials, ventanas ni p-valores. Los filtros y la paginación se delegan al repositorio. Configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
+Resumen es la entrada de Resultados cuando hay evidencia M3 publicada: primero la vista general y después el detalle (Shneiderman). La lista «Veredictos de M3» tiene una fila por SKU con su clase, la familia y el modelo campeones, el veredicto, r frente a Seasonal Naive, las ventanas válidas y la significancia, con la prueba desplegable. La lista «Familias de M2» tiene una fila por SKU con su clase, la campeona de M3 y una columna por familia. Los filtros y la paginación se delegan al repositorio. En el detalle, configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
 
-El encabezado comunica alcance retrospectivo y el origen de los datos que declara la corrida M3 (real, sintético o aumentado, o desconocido); sin corrida M3, el origen no informado. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
+La barra de contexto comunica el origen de los datos que declara la corrida M3 (real, sintético o aumentado, o desconocido; sin corrida M3, no informado) y explica bajo demanda cómo leer la evidencia retrospectiva. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
 
 Los agregados de cartera/clase y los exportables se construyen en las vistas de M4 sobre las lecturas del contrato v2. Ver los límites en `docs/UI_REVIEW.md`.
 
 ## Exploración progresiva
 
-Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con archivo/estado/conteos y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cambiar archivo e historial se consultan en la navegación secundaria. Un filtro o página explícitos activan el panel correspondiente.
+Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con el resumen del archivo: nombre, estado, conteos, mezcla de clases de demanda y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cargar otro archivo e historial se consultan en las pestañas de detalle. Un filtro o página explícitos activan la pestaña correspondiente.
 
-Ejecución sin contexto comienza con la corrida actual. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
+Ejecución sin contexto comienza con la corrida actual: estado, acciones, etapas del motor, progreso circular y conteos por estado. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
 
-Resultados mantiene la lista por SKU como entrada actual: filtros plegables, familias por fila y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. El origen de los datos y el alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
+Resultados comienza en Resumen cuando hay evidencia M3 publicada y en la lista de SKU cuando no la hay: filtros en una barra, una fila por SKU y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. El origen de los datos y el alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
 
 ## Composición espacial
 
-Datos: estado del archivo y conteos en el área principal; topología global y continuar en el lateral. Diagnóstico, clases/SKU, carga e historial se consultan debajo mediante un menú persistente y un panel activo. Una consulta de topología o historial selecciona el panel correspondiente.
+Las tres superficies usan una sola columna a todo el ancho: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación; y debajo, pestañas horizontales de detalle con un panel a la vez. No hay columna lateral: el contexto va arriba y a lo ancho, y las tablas ocupan el ancho de su contenido.
 
-Ejecución: estado y progreso circular en el área principal; conteos interactivos por estado y detener/reanudar/resultados en el lateral. Configuración y tareas permanecen debajo, dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él. La configuración contextual conserva su formulario principal y una columna de revisión/acción.
+Datos: el resumen del archivo (nombre, estado, conteos, mezcla de clases y continuar) en un panel; debajo, las pestañas Diagnóstico, Clases y SKU, Cargar otro archivo e Historial. Una consulta de topología o historial selecciona la pestaña correspondiente.
 
-Resultados: consulta por SKU paginada en el área principal; corrida, alcance y configurar otra ejecución en el lateral. Detalle SKU: decisión y familias en el área principal; clase, perfil, procedencia y navegación en el lateral; trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
+Ejecución: un panel de la corrida con su estado y sus acciones (detener, reanudar, ver resultados), los hechos de la corrida, las etapas del motor, el progreso circular y los conteos por estado; debajo, las pestañas Tareas y Configuración. Panel y pestañas están dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él. «Nueva ejecución» es una acción secundaria del encabezado y abre el formulario de lanzamiento encima de la corrida.
+
+Resultados: la barra de contexto, las pestañas y una hoja blanca con la vista elegida. Detalle SKU: ruta de migas, decisión con sus cifras en una fila, familias, y la trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
 
 ## Navegación secundaria
 
-Datos ofrece un navegador persistente: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cambiar archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
+Datos ofrece pestañas horizontales: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cargar otro archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
 
-Ejecución presenta Tareas y Configuración en el mismo patrón dentro del fragmento que se sondea; la sección elegida se conserva al actualizar. El enlace Nueva ejecución lleva a la configuración contextual mediante ingest_id. La configuración de lanzamiento está fuera del fragmento de polling. Detener/reanudar dependen de las capacidades declaradas. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.
+Ejecución presenta Tareas y Configuración con el mismo patrón dentro del fragmento que se sondea; la pestaña elegida se conserva al actualizar. La acción Nueva ejecución abre la configuración de lanzamiento; desde Datos y Resultados llega con `ingest_id`. La configuración de lanzamiento está fuera del fragmento de polling. Detener/reanudar dependen de las capacidades declaradas. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.

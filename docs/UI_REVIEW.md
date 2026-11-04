@@ -2,7 +2,8 @@
 
 Garantías de accesibilidad, composición, navegación y actualización de Datos, Ejecución,
 Resultados y el detalle por SKU, y los límites que conserva la interfaz. El flujo y las
-rutas están en `docs/UI_FLOW.md`. Capturas de la interfaz en `docs/ui-review/`:
+rutas están en `docs/UI_FLOW.md`, y la evaluación heurística que motivó la composición actual,
+en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
 [Datos](ui-review/datos.png), [detalle de Datos](ui-review/detalle-datos.png),
 [topología](ui-review/topologia.png), [lanzamiento](ui-review/lanzamiento.png),
 [Ejecución](ui-review/ejecucion.png), [Resultados](ui-review/resultados.png) y
@@ -28,39 +29,46 @@ rutas están en `docs/UI_FLOW.md`. Capturas de la interfaz en `docs/ui-review/`:
 
 ## Composición y navegación
 
-- **Jerarquía.** El área principal contiene la situación y la acción; el lateral, el contexto;
-  y los exploradores, la evidencia bajo demanda. A anchos de 535 px y 320 px la grilla pasa a
-  una columna sin desborde de página; las tablas se desplazan localmente y las cifras no se
-  parten.
-- **Datos.** Archivo, estado y conteos en el área principal; topología global y continuar en el
-  lateral. Continuar es la acción primaria tras aceptar la ingesta; cargar otro archivo es
-  secundario. El resumen global precede al explorador, y el gráfico ADI–CV² y la tabla se
-  abren juntos e indican que corresponden a la página filtrada.
-- **Navegador de evidencia.** Datos ofrece Diagnóstico, Clases y SKU, Cambiar archivo e Historial.
+- **Jerarquía.** Cada página es una sola columna: el encabezado con la acción, el resumen de la
+  situación y, debajo, pestañas de detalle con la evidencia bajo demanda. No hay columna
+  lateral. A anchos de 390 px y 320 px no hay desborde de página; las tablas se desplazan
+  localmente y las cifras no se parten.
+- **Navegación.** La barra superior numera las superficies en el orden del flujo (1 Datos,
+  2 Ejecución, 3 Resultados) y marca la actual con `aria-current="page"`.
+- **Datos.** El resumen del archivo reúne nombre, estado, conteos, mezcla de clases y continuar.
+  Continuar es la acción primaria tras aceptar la ingesta; cargar otro archivo es secundario.
+  El resumen global precede a las pestañas, y el gráfico ADI–CV² y la tabla se abren juntos e
+  indican que corresponden a la página filtrada.
+- **Navegador de evidencia.** Datos ofrece Diagnóstico, Clases y SKU, Cargar otro archivo e Historial.
   Ejecución ofrece Tareas y Configuración. Se presenta un panel a la vez en un
-  `tablist/tab/tabpanel` nombrado; Flechas, Home, End, Enter y Espacio activan las secciones y
+  `tablist/tab/tabpanel` horizontal y nombrado; Flechas, Home, End, Enter y Espacio activan las secciones y
   los tabs inactivos tienen `tabindex=-1`. Sin JS, los enlaces llevan a secciones visibles. El
   hash conserva la sección al recargar, y una consulta activa su panel.
 - **Historial.** Se pagina; los enlaces conservan `ingest_id` y no alteran la página de SKU.
-- **Ejecución.** Muestra la corrida actual primero, con progreso circular que usa el porcentaje
-  existente y conteos textuales. Los cinco conteos por estado son enlaces al panel de tareas
-  filtrado. Desde Datos con `ingest_id`, o tras un envío inválido, la configuración de
+- **Ejecución.** Muestra la corrida actual primero: estado, acciones, etapas del motor como
+  pasos numerados (`aria-current="step"` en la etapa en curso) y progreso circular que usa el
+  porcentaje existente y conteos textuales. Los conteos por estado son enlaces al panel de
+  tareas filtrado. Desde Datos con `ingest_id`, o tras un envío inválido, la configuración de
   lanzamiento se presenta primero y abierta, con el botón Lanzar de ancho intrínseco y un solo
   chevron en los disclosures.
-- **Resultados.** La consulta por SKU, paginada, ocupa el área principal con cuatro columnas
-  (SKU, clase, campeón y veredicto M3, y evidencia familiar desplegable). Filtros, familias,
-  configuración y ensayos comienzan cerrados; las ventanas se piden con `ventanas=1` y abren
-  las familias que las contienen. El total mostrado es el de la consulta, nunca un agregado de
-  cartera inferido de una página.
-- **Alcance.** Resultados y SKU muestran el alcance retrospectivo y el origen de datos que
-  declara la corrida M3; su explicación ampliada es desplegable.
+- **Resultados.** Abre en Resumen cuando la ejecución tiene evidencia M3 publicada y, si no, en
+  la pestaña SKU. «Veredictos de M3», paginada, tiene una fila por SKU con clase, familia y
+  modelo campeones, veredicto, r frente a Seasonal Naive, ventanas y significancia; «Familias de
+  M2» tiene una columna por familia. Los filtros están a la vista en una barra. En el detalle,
+  familias, configuración y ensayos comienzan cerrados; las ventanas se piden con `ventanas=1` y
+  abren las familias que las contienen. El total mostrado es el de la consulta, nunca un
+  agregado de cartera inferido de una página.
+- **Detalle de SKU.** Una ruta de migas (Resultados › SKU › el SKU) vuelve al Resumen de la
+  misma corrida y a la lista con sus filtros.
+- **Alcance.** La barra de contexto de Resultados y el detalle de SKU muestran el origen de
+  datos que declara la corrida M3; la explicación de la evidencia retrospectiva es desplegable.
 - **Filtros.** Aplicar filtros conserva `size` y reinicia la página. Los filtros y la
   paginación los resuelve el repositorio, no el cliente.
 - **Escala.** Con 3.000 SKU de identificadores de 169 caracteres, Resultados muestra 20 filas por
   página y su total, sin desborde de página.
 - **Tipografía.** Los títulos adaptables pesan 800, las etiquetas usan Archivo, las cifras e
   identificadores Mono, el texto operativo 14 px y los controles 40 px. La escala secundaria
-  es 22/20/16/14 px.
+  es 20/18/16/14 px.
 - **Etiquetas.** Los estados se muestran como Pendiente, Ejecutando, Exitosa, Fallida y No
   Ejecutable, con la misma inicial para corrida, familia y ensayos; las claves contractuales,
   filtros, colores e iconos no cambian. Las clases de demanda usan etiquetas bilingües
@@ -70,8 +78,9 @@ rutas están en `docs/UI_FLOW.md`. Capturas de la interfaz en `docs/ui-review/`:
   intersectan a 1280, 535 y 320 px.
 - **Poda.** El texto de un ensayo podado conserva la regla o motivo registrado. `podada` tiene
   icono y representación propios, distintos de `fallida`.
-- **Resultados desde Ejecución.** La acción «Configurar nueva ejecución» lleva a `/ejecucion` y
-  respeta las comprobaciones de capacidad.
+- **Nueva ejecución desde Resultados.** La acción secundaria «Nueva ejecución» abre el
+  formulario de lanzamiento con la ingesta de la ejecución mostrada y respeta las
+  comprobaciones de capacidad.
 
 ## Actualización de Ejecución
 
@@ -106,7 +115,7 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 
 | Superficie | Límite |
 | --- | --- |
-| Resultados | Resumen, Por clase, Perfiles de error y Por SKU leen una corrida M3 PUBLICADA exacta: embudo y conteos HLN-DM publicados, campeón por clase, perfiles de error de la cartera y, por SKU, el campeón, el veredicto, su evidencia y su pronóstico h=1. |
+| Resultados | Resumen, Por clase, SKU y Perfiles de error leen una corrida M3 PUBLICADA exacta: embudo y conteos HLN-DM publicados, campeón por clase, perfiles de error de la cartera y, por SKU, el campeón, el veredicto, su evidencia y su pronóstico h=1. |
 | Resultados | La interfaz no elige campeones ni calcula métricas, distribuciones, ratios, pruebas o p-valores, y conserva `null` con su causa. El filtro de familia es de familia evaluada, no campeona. Segmento, exportación CSV y reimportación de configuración pertenecen a M4. |
 | Resultados | Los cinco veredictos M3 (`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO`, `EXPLORATORIO`) no equivalen al vocabulario retrospectivo v1 de las fixtures. |
 | Ejecución | `RunStatus` no expone la etapa actual ni el error de una corrida sin tareas. La interfaz no los deduce de errores ni de tareas paginadas. |
