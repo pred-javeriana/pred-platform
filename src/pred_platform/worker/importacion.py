@@ -84,8 +84,12 @@ def finalize(
             conn,
             run.id,
             estado="detenida",
+            # Un motor que murió sin publicar (OOM, kill, caída) se puede reanudar: el motor
+            # retoma sus unidades confirmadas. Solo una identidad incompatible fallaría igual.
             error=platform_error(
-                "run.incompatible_config" if incompatible else "platform.artifact_missing", detail
+                "run.incompatible_config" if incompatible else "platform.artifact_missing",
+                detail,
+                retryable=not incompatible,
             ),
         )
         return "detenida"

@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import sqlite3
+import sys
 import threading
 from contextlib import closing
 from dataclasses import replace
@@ -707,10 +709,10 @@ def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
         env,
         "detenida",
         {
-            "code": "platform.artifact_missing",
+            "code": "run.incompatible_config",
             "stage": "platform",
             "severity": "error",
-            "detail": "No existe processed/demo_canonico.parquet.",
+            "detail": "error: run_id incompatible con la entrada o configuracion previa",
             "retryable": False,
         },
     )
@@ -721,9 +723,71 @@ def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
     assert 'id="accion-reanudar"' not in html and "Reanudar" not in text.replace(
         "Reanudar no se ofrece", ""
     )
-    assert "No se encontró el resultado esperado." in text
-    assert "No existe processed/demo_canonico.parquet." in text
+    assert "La configuración no coincide con la corrida guardada." in text
+    assert "run_id incompatible con la entrada o configuracion previa" in text
     assert "Reanudar no se ofrece: la corrida fallaría igual." in text
+
+
+def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryable(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    # Lo que guardaba el worker antes cuando el motor moría sin publicar corrida.json.
+    _set_run(
+        env,
+        "detenida",
+        {
+            "code": "platform.artifact_missing",
+            "stage": "platform",
+            "severity": "error",
+            "detail": "El motor terminó con código -9 sin publicar corrida.json de este intento.",
+            "retryable": False,
+        },
+    )
+
+    html = client.get("/ejecucion").text
+
+    assert 'id="accion-reanudar"' in html
+    assert "Reanudar no se ofrece" not in _text(html)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL no existe en Windows")
+def test_a_run_whose_engine_is_killed_offers_to_resume_and_resumes(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    client = _dal_client(env)
+    _launch(client, env)
+    thread = threading.Thread(target=env.worker().run_next)
+    thread.start()
+    _wait(
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'ejecutando'")[0][0] > 0,
+        what="a unit running",
+    )
+    pid = env.rows("SELECT pid FROM ejecuciones")[0][0]
+
+    os.kill(pid, signal.SIGKILL)  # lo que hace un OOM kill o un kill manual
+    thread.join(timeout=20)
+
+    ((estado, error_json),) = env.rows("SELECT estado, error_json FROM ejecuciones")
+    error = json.loads(error_json)
+    assert (estado, error["code"], error["retryable"]) == (
+        "detenida",
+        "platform.artifact_missing",
+        True,
+    )
+    html = client.get("/ejecucion").text
+    assert 'id="accion-reanudar"' in html
+    assert "Reanudar no se ofrece" not in _text(html)
+
+    _scenario(monkeypatch, "ok")
+    resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=reanudada"
+    env.worker().run_next()
+    assert env.rows("SELECT estado FROM ejecuciones") == [("completada",)]
+    assert "Completada" in _text(client.get("/ejecucion").text)
 
 
 def test_a_run_stopped_by_the_operator_shows_why_and_offers_to_resume(

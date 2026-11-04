@@ -35,6 +35,8 @@ from pred_platform.worker.service import LaunchSettings
 
 ACTIVE_STATES = ("pendiente", "ejecutando")
 RESUMABLE_STATES = ("detenida", "completada_con_fallos")
+# La única causa que reanudar no corrige: el motor rechaza la identidad guardada de la corrida.
+INCOMPATIBLE_CONFIG = "run.incompatible_config"
 FINISHED_STATES = ("completada", "completada_con_fallos")
 
 # Familias que ofrece el formulario, en el orden del contrato.
@@ -319,7 +321,12 @@ def run_actions(
     """``reason`` es por qué las escrituras están apagadas (``RunControl.reason``)."""
     if estado is None:
         return RunActions(False, False, False, reason)
-    offers_resume = estado in RESUMABLE_STATES and (error is None or error.retryable)
+    # La misma regla que aplica la cola al reanudar (``dal.ejecuciones._resume``): solo una
+    # identidad incompatible no se reanuda. Vale también para filas guardadas antes con
+    # ``retryable`` falso por un motor que murió sin publicar.
+    offers_resume = estado in RESUMABLE_STATES and (
+        error is None or error.code != INCOMPATIBLE_CONFIG
+    )
     return RunActions(
         can_stop=reason is None and estado in ACTIVE_STATES,
         can_resume=reason is None and offers_resume,
