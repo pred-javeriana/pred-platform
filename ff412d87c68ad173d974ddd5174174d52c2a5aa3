@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "summary": "Rebuilds Datos, Ejecución and Resultados as single-column pages with horizontal tabs and fixes the open display and operation defects #63-#98, except #81 and #97, which PR 101 owns.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/routers/results.py",
+      "summary": "Chooses the run, the M3 run, the tab and the SKU list reading for /resultados.",
+      "annotations": [
+        {
+          "newRange": [87, 107],
+          "summary": "_vista opens Resumen when the run has published M3 evidence and the SKU tab otherwise; _lista picks the verdict or the M2 family reading.",
+          "rationale": "Shneiderman's overview first, so the default is the summary, but a run still in progress has nothing to summarize, so the page opens on the M2 list that already exists. ?vista=consulta stays an alias because PR 99 links and bookmarks use it. Verified by test_resultados.py and test_consulta.py through GET /resultados.",
+          "author": "fm/pred-platform-ux-refactor"
+        },
+        {
+          "newRange": [114, 126],
+          "summary": "The page reads the run and the M3 run before the filters, and defaults to the newest run with a PUBLICADA M3 run (#84).",
+          "rationale": "Reading them first means an invalid page or size never drops ejecucion or m3 (#85). Verified by the duplicate-runs and invalid-page tests in test_resultados.py. A run picker with more than the newest published runs is not tested at scale.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/resultados_m3.py",
+      "summary": "Names what M3 published: champion model, executions with evidence, and the number formats of Por clase.",
+      "annotations": [
+        {
+          "newRange": [373, 430],
+          "summary": "published_executions lists each execution with at least one PUBLICADA M3 run, newest first, for the default run and the context bar picker.",
+          "rationale": "Executions without evidence are left out of the picker because Resultados has nothing to show for them; the current one is still selectable from Ejecución links. Verified by test_resultados.py.",
+          "author": "fm/pred-platform-ux-refactor"
+        },
+        {
+          "newRange": [724, 756],
+          "summary": "champion_model returns the model of the published champion candidate, shown as Familia · modelo in both SKU lists.",
+          "rationale": "The row already has the family, so only the model adds information; the helper reads modelos_evaluados and never chooses a champion. Verified by the M3 list test in test_resultados.py.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/engine.py",
+      "summary": "Holds the copy of the engine routing matrix that the launch form and the worker both read.",
+      "annotations": [
+        {
+          "newRange": [32, 41],
+          "summary": "FAMILIES_BY_SKU_CLASS copies the engine policy 2.2.0-initial matrix so the platform does not import the engine.",
+          "rationale": "Risk: if pred-engine changes its policy, this copy must change too, because the launch check (#82) and the excluded-task rows (#98) both read it. No test compares it with the engine.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/progreso.py",
+      "summary": "Applies engine progress events to task rows.",
+      "annotations": [
+        {
+          "newRange": [28, 57],
+          "summary": "exclude_sku writes one no_ejecutable task per family the SKU class routes, not per family of the run (#98).",
+          "rationale": "The engine never plans ML or DL for a lumpy SKU, so the old loop invented phantom rows and inflated the totals. A SKU without a published class keeps one row per run family, because nothing names its class. Verified by two tests in test_worker.py and by a real 30-SKU run.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/ejecucion.py",
+      "summary": "Builds the Ejecución view model: polling rule, stages and actions.",
+      "annotations": [
+        {
+          "newRange": [331, 384],
+          "summary": "should_poll keeps polling a detenida run until no task is pendiente or ejecutando, and STAGES names L1 to L4 for the stepper.",
+          "rationale": "After Detener the worker still closes open tasks, so stopping the poll at once showed stale counts (#83). Verified by test_ejecucion.py through /ejecucion/estado status 200 then 286.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/query.py",
+      "summary": "Validates page and size before they reach SQLite.",
+      "annotations": [
+        {
+          "newRange": [18, 19],
+          "summary": "MAX_PAGE caps the page number at 10^9 so the SQL offset never overflows SQLite INTEGER (#77).",
+          "rationale": "A huge page answered HTTP 500 on three surfaces; now it is an InvalidQuery with a Spanish message. Verified by test_data_query.py and the page tests of each surface.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/contract/errors.py",
+      "summary": "Owns the Spanish text of pydantic validation errors.",
+      "annotations": [
+        {
+          "newRange": [81, 161],
+          "summary": "first_problem turns the first pydantic error into a field path and a Spanish reason; every external-data entry point reports through it (#74).",
+          "rationale": "One owner for the translation, so no page shows pydantic's English text. Rules the platform wrote (value_error) are already Spanish and pass through. Unknown error types fall back to valor no válido.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/m3_confirmation.py",
+      "summary": "Validates the M3 confirmation rows at entry.",
+      "annotations": [
+        {
+          "newRange": [108, 109],
+          "summary": "The reader rejects a confirmado row whose Holm p is above alfa (#63).",
+          "rationale": "The check only compares published values and never recomputes a statistic. Rows from a real engine run pass it, verified by test_by_class_reads_the_rows_a_real_engine_run_wrote (#68).",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/datos.py",
+      "summary": "Keeps uploads that wait for an overwrite confirmation.",
+      "annotations": [
+        {
+          "newRange": [56, 139],
+          "summary": "PendingUploads stores a pending upload on disk under the data root staging folder instead of in process memory (#79).",
+          "rationale": "Memory grew without limit and a restart lost the confirmation; on disk the token survives a restart. Fixture mode keeps no directory. Verified by test_datos.py.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/static/css/pred.css",
+      "summary": "The rewritten brand layer for the single-column layout.",
+      "annotations": [
+        {
+          "newRange": [1255, 1262],
+          "summary": "pred-table-wrap gets position: relative so screen-reader-only text in cells stays inside the table scroll region.",
+          "rationale": "Without it, absolutely positioned sr-only spans escaped the scroll container and widened the page to 814 px on a 320 px phone. Verified in a browser at 320 and 390 px on twelve screens; no automated test covers layout.",
+          "author": "fm/pred-platform-ux-refactor"
+        },
+        {
+          "newRange": [1639, 1643],
+          "summary": "State chips let their label wrap, so the long finalizo_m2 label fits a phone.",
+          "rationale": "The label was 493 px wide and forced page overflow at 320 px; at 1280 px it still fits on one line. Verified in a browser.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/pages/execution.html",
+      "summary": "The Ejecución page shell and its htmx poll.",
+      "annotations": [
+        {
+          "newRange": [43, 45],
+          "summary": "The poll URL carries lanzar=1 while the launch form is open, so a poll re-renders Ver resultados as secondary.",
+          "rationale": "With the form open, Lanzar ejecución is the one primary action of the page; without the flag a poll would paint a second primary button. Verified by test_with_the_launch_form_open_launching_is_the_one_primary_action.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/partials/results_summary.html",
+      "summary": "The Resumen tab: key figures, funnel, champion distribution and HLN-DM counts.",
+      "annotations": [
+        {
+          "newRange": [28, 47],
+          "summary": "The funnel subtracts launches after the cut and M2 exclusions, then splits the exclusions by published code, most frequent first (#91).",
+          "rationale": "The old label named one cause for every exclusion code. Counts are the published funnel values; the view only orders the code rows. Verified by test_the_summary_splits_the_m2_exclusions_by_their_published_code and on a real run with 18 exclusions.",
+          "author": "fm/pred-platform-ux-refactor"
+        }
+      ]
+    }
+  ]
+}
