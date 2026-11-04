@@ -211,6 +211,12 @@ make worker                                     # follow the queue in its own pr
   `make worker`. Point `PRED_ENGINE_CMD` at the engine, for example
   `uv run --project ../pred-engine pred-engine`. If it cannot be launched the run ends `detenida`
   with a readable error and the app keeps working.
+- **One worker per database.** A worker holds an exclusive lock on `<database>.worker.lock`
+  (beside `PRED_DB_PATH`) for as long as it runs; the operating system frees it when the worker
+  exits or crashes. A second `make worker` or app worker waits without touching any run and takes
+  over when the first stops. `--once` next to a running worker exits and leaves the queue to it,
+  so `make launch ARGS="... --once"` while the app runs only queues the run. Do not delete the
+  lock file while a worker runs.
 - **One task per engine unit** (SKU × model, decision D6): `modelo` is `familia:algoritmo`, `corte`
   is the reserve cut t\*. A SKU the engine skips becomes one `no_ejecutable` task per configured
   family, with the cause.
@@ -220,8 +226,9 @@ make worker                                     # follow the queue in its own pr
 - **Resume.** The run id derives from the ingestion and the settings (not the number of
   processes), so launching the same run again resumes it with the same task rows. Successful
   tasks retain their state; historical progress is not replayed as live work. Graceful app shutdown
-  queues interrupted work, and a crash is recovered on startup. Closing a browser tab leaves the
-  server worker running. The accompanying engine checkpoint change also skips successful L2/L3
+  queues interrupted work, and a crash is recovered on startup. Ctrl-C stops the worker's engine
+  and leaves the run `ejecutando`; the next worker that takes the database, `--once` included,
+  queues it again. Closing a browser tab leaves the server worker running. The accompanying engine checkpoint change also skips successful L2/L3
   units; updating platform alone cannot provide that guarantee. See
   [recovery and verification](docs/features/reanudacion/README.md).
 - **Reading it.** `get_run_status` returns the run, its settings, reserve cut, progress over all its

@@ -35,9 +35,10 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.importacion import import_reports
 from pred_platform.dal.schema import create_db
 from pred_platform.data.dal import DalRepository
-from pred_platform.worker import engine
+from pred_platform.worker import bucle, engine
 from pred_platform.worker.__main__ import main as worker_main
 from pred_platform.worker.bucle import Launcher, Worker
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.errores import (
     error_info,
     exclusion_info,
@@ -908,31 +909,213 @@ def test_drain_resumes_a_run_left_running_with_a_dead_engine(
     assert _run_state(env)[0] == "completada"
 
 
-def test_drain_leaves_a_run_with_a_live_engine_untouched(
+def _orphan_engine() -> subprocess.Popen[bytes]:
+    """A live engine whose worker is gone: nobody supervises it, and it is reaped when it dies."""
+    child = subprocess.Popen(  # noqa: S603 - the test's own interpreter
+        [sys.executable, "-c", "import time; time.sleep(300)"], start_new_session=True
+    )
+    threading.Thread(target=child.wait, daemon=True).start()
+    return child
+
+
+def test_drain_stops_the_engine_of_a_run_whose_worker_is_gone_and_resumes_it(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "ok")
     enqueue_run(env.settings, env.ingest_id, SMALL)
-    child = subprocess.Popen(["sleep", "300"], start_new_session=True)
+    child = _orphan_engine()
     try:
         with closing(dal.connect(env.db)) as conn, conn:
             assert dal.claim_pending(conn) is not None
             conn.execute("UPDATE ejecuciones SET pid=?", (child.pid,))
-        launched: list[Any] = []
 
-        def launcher(command: list[str], **kwargs: Any) -> Any:
-            launched.append(command)
-            raise AssertionError("drain must not launch a run another worker supervises")
+        env.worker().drain()
 
-        Worker(env.settings, launcher=launcher).drain()
-
-        assert child.poll() is None  # not signalled
-        assert _run_state(env)[0] == "ejecutando"
-        assert env.rows("SELECT pid FROM ejecuciones") == [(child.pid,)]
-        assert not launched
+        _wait(lambda: child.poll() is not None, timeout=10, what="the orphan engine to stop")
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
     finally:
-        child.kill()
-        child.wait()
+        if child.poll() is None:
+            child.kill()
+
+
+class _Owner:
+    """A worker following the queue in a thread, as the app or ``make worker`` runs it."""
+
+    def __init__(self, env: Env, launcher: Launcher | None = None) -> None:
+        self.stop = threading.Event()
+        worker = Worker(env.settings, poll_interval=0.05, launcher=launcher or engine.launch)
+        self.thread = threading.Thread(target=worker.run_forever, args=(self.stop,))
+        self.thread.start()
+
+    def close(self) -> None:
+        self.stop.set()
+        self.thread.join(timeout=30)
+        assert not self.thread.is_alive()
+
+
+def _not_launched(command: list[str], **kwargs: Any) -> Any:
+    raise AssertionError("a second worker must not launch a run")
+
+
+def test_drain_leaves_a_run_alone_while_its_worker_launches_it(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    launching, launch = threading.Event(), threading.Event()
+
+    def slow_launch(command: list[str], **kwargs: Any) -> Any:
+        launching.set()  # claimed, but the engine pid is not recorded yet
+        assert launch.wait(timeout=30)
+        return engine.launch(command, **kwargs)
+
+    owner = _Owner(env, slow_launch)
+    try:
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        assert launching.wait(timeout=10)
+        claim = env.rows("SELECT estado, intento, pid FROM ejecuciones")
+        assert claim == [("ejecutando", 1, None)]
+
+        Worker(env.settings, launcher=_not_launched).drain()
+
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == claim
+        launch.set()
+        _wait(lambda: _run_state(env)[0] == "completada", what="the owner to finish its run")
+    finally:
+        launch.set()
+        owner.close()
+    assert env.rows("SELECT estado, intento FROM ejecuciones") == [("completada", 1)]
+
+
+def test_drain_leaves_a_run_alone_while_its_worker_finalizes_it(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    finalizing, settle = threading.Event(), threading.Event()
+
+    def slow_finalize(*args: Any, **kwargs: Any) -> str:
+        finalizing.set()  # the engine is reaped, the run is not settled yet
+        assert settle.wait(timeout=30)
+        return finalize(*args, **kwargs)
+
+    monkeypatch.setattr(bucle, "finalize", slow_finalize)
+    owner = _Owner(env)
+    try:
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        assert finalizing.wait(timeout=20)
+        ((pid,),) = env.rows("SELECT pid FROM ejecuciones")
+        assert pid is not None and not engine.is_alive(pid)
+        before = env.rows("SELECT estado, intento, pid FROM ejecuciones")
+        tasks = env.rows("SELECT id, estado FROM tareas ORDER BY id")
+
+        Worker(env.settings, launcher=_not_launched).drain()
+
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == before
+        assert env.rows("SELECT id, estado FROM tareas ORDER BY id") == tasks
+        settle.set()
+        _wait(lambda: env.rows("SELECT pid FROM ejecuciones") == [(None,)], what="the settlement")
+    finally:
+        settle.set()
+        owner.close()
+    assert env.rows("SELECT estado, intento FROM ejecuciones") == [("completada", 1)]
+
+
+def test_a_second_worker_waits_and_takes_over_when_the_first_stops(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="pred_platform.worker")
+    children: list[subprocess.Popen[bytes]] = []
+
+    def launcher(command: list[str], **kwargs: Any) -> Any:
+        child = subprocess.Popen(  # noqa: S603 - the test's own interpreter
+            [sys.executable, "-c", "import time; time.sleep(300)"], start_new_session=True
+        )
+        children.append(child)
+        return child
+
+    first = _Owner(env, launcher)
+    second: _Owner | None = None
+    try:
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        _wait(
+            lambda: (
+                len(children) == 1
+                and env.rows("SELECT pid FROM ejecuciones")[0][0] == children[0].pid
+            ),
+            what="the first worker to launch",
+        )
+        supervised = env.rows("SELECT estado, intento, pid FROM ejecuciones")
+
+        second = _Owner(env, launcher)
+        _wait(
+            lambda: "Otro worker ya atiende" in caplog.text or children[0].poll() is not None,
+            what="the second worker to start",
+        )
+
+        assert children[0].poll() is None  # the supervised engine keeps running
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == supervised
+        assert len(children) == 1
+
+        first.close()  # it stops its engine and queues the run again
+        _wait(
+            lambda: (
+                len(children) == 2
+                and env.rows("SELECT intento, pid FROM ejecuciones") == [(2, children[1].pid)]
+            ),
+            what="the second worker to resume the run",
+        )
+        assert children[0].poll() is not None
+    finally:
+        first.close()
+        if second is not None:
+            second.close()
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+
+_HOLD_THE_WORKER_LOCK = """
+import sys
+from pathlib import Path
+from pred_platform.worker.candado import WorkerLock
+
+assert WorkerLock.for_database(Path(sys.argv[1])).acquire()
+print("held", flush=True)
+sys.stdin.readline()
+"""
+
+
+def test_launch_once_next_to_a_running_worker_queues_the_run_for_it(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("PRED_DATA_ROOT", str(env.settings.data_root))
+    monkeypatch.setenv("PRED_DB_PATH", str(env.db))
+    monkeypatch.setenv("PRED_ENGINE_CMD", f"{sys.executable} {_FAKE}")
+    _scenario(monkeypatch, "ok")
+    holder = subprocess.Popen(  # noqa: S603 - the test's own interpreter and script
+        [sys.executable, "-c", _HOLD_THE_WORKER_LOCK, str(env.db)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None and holder.stdout.readline() == "held\n"
+
+        code = worker_main(["--launch", "--ingest", env.ingest_id, "--min-train", "40", "--once"])
+
+        assert code == 0 and "en cola" in capsys.readouterr().out
+        assert _run_state(env)[0] == "pendiente"  # left for the worker that holds the database
+        assert "Otro worker ya atiende" in caplog.text
+    finally:
+        assert holder.stdin is not None
+        holder.stdin.close()
+        holder.wait(timeout=10)
+
+    assert worker_main(["--once"]) == 0  # the holder is gone: this worker runs the queue
+    assert _run_state(env)[0] == "completada"
 
 
 def test_an_interrupt_stops_the_engine_and_leaves_the_run_running(
@@ -1448,6 +1631,26 @@ def test_the_app_runs_the_worker_as_a_thread_and_stops_it(
         assert client.get("/health").status_code == 200
 
     assert not [t for t in threading.enumerate() if t.name == "pred-worker"]
+
+
+def test_the_app_worker_stays_idle_while_another_worker_holds_the_database(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    settings = replace(env.settings, worker="embedded")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    other = WorkerLock.for_database(env.db)
+    assert other.acquire()
+    try:
+        with TestClient(create_app(settings)) as client:
+            assert client.get("/health").status_code == 200
+            time.sleep(0.5)  # several polls of the app's worker
+            assert _run_state(env)[0] == "pendiente"
+    finally:
+        other.release()
+
+    assert not [t for t in threading.enumerate() if t.name == "pred-worker"]
+    assert _run_state(env)[0] == "pendiente"
 
 
 def test_a_worker_thread_is_not_started_with_the_worker_off(env: Env) -> None:
