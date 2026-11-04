@@ -465,6 +465,7 @@ estado en una celda pasa a otra línea entre palabras en vez de salirse.
 | `veredicto:EVIDENCIA_INSUFICIENTE`, `datos_sinteticos`, `rmse_linea_base_cero` | Significancia, prueba HLN-DM y ventanas de la reserva | «el veredicto es «Evidencia insuficiente», que no lleva prueba», «datos sintéticos», «la línea base no tuvo error (RMSE 0)»; la causa publicada en `title` |
 | `eligibility.fewer_than_two_families`, `lanzado despues del corte` | Embudo, lista de SKU y detalle de SKU | el título del catálogo de mensajes o «Empezó a venderse después de la fecha de corte…»; la causa del motor en `title` o en «Detalle técnico» |
 | `Lectura del Parquet` | Motivos de una acción deshabilitada | «Lectura del panel de datos» |
+| «Detenida» y su aviso en rojo, aunque la página ofrece Reanudar | Ejecución y contexto de Resultados | «Detenida» en ámbar mientras se puede reanudar; en rojo solo si reanudar fallaría igual (#126) |
 | `2.2.0-initial:configured:…` | Trazabilidad de un SKU | se conserva, con el rótulo «Versión de la política de selección» |
 
 ## Capacidades del módulo 4 que se conservan

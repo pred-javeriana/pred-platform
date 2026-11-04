@@ -121,7 +121,10 @@ Every presented state uses color + icon + label (RNF-USA-04); color alone never 
 finalizo_m2 (info, check-circle, shown as «Por evaluar»; M2 finished, waiting for M3), exitosa (ok, check), fallida (err, x), no ejecutable (warn, banned-sign). Family states also include
 excluida. Runs use pendiente, ejecutando, completada, completada_con_fallos and detenida. A run that
 finished with failed tasks still reads «Completada» (ok); the outcome line beside it says how many
-tasks failed and how many products have a verdict.
+tasks failed and how many products have a verdict. A stopped run («Detenida») is warn, like its
+error notice, while the page offers Reanudar; it is err only when resuming would fail the same way
+(`run.incompatible_config`). `presentation.describe_run` owns that tone and `ejecucion.offers_resume`
+owns the rule.
 HPO trials use pendiente, corriendo, completado, podado and fallido; podado is distinct from a
 failure. Ingestion has accepted, rejected, failed and needs_confirmation, presented through the
 ingest vocabulary. These contexts remain separate in the presentation helpers.

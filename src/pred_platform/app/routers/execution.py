@@ -58,6 +58,7 @@ from pred_platform.app.ejecucion import (
     single_family_classes,
     stage_steps,
 )
+from pred_platform.app.presentation import describe_run
 from pred_platform.app.resultados_m3 import run_outcome
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
@@ -200,6 +201,12 @@ def _context(
     poll = should_poll(estado, counts, reason=control.reason)
     notice = imported or NOTICES.get(params.get("aviso", ""))
     error = run_error(repository.get_run_error(run.id)) if run is not None else None
+    actions = run_actions(
+        estado,
+        reason=control.reason,
+        error=error,
+        nothing_to_compare=_nothing_to_compare(repository, run, status),
+    )
     return {
         "active_surface": "ejecucion",
         "page_title": "Ejecución",
@@ -234,12 +241,10 @@ def _context(
         else [],
         "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
         "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
-        "actions": run_actions(
-            estado,
-            reason=control.reason,
-            error=error,
-            nothing_to_compare=_nothing_to_compare(repository, run, status),
-        ),
+        "actions": actions,
+        "run_status": describe_run(run.estado, resumable=actions.offers_resume)
+        if run is not None
+        else None,
         "control_reason": control.reason,
         "worker": _worker_state(request),
         "poll": poll,

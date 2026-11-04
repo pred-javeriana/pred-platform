@@ -75,7 +75,9 @@ Ver `docs/features/ejecucion/README.md`.
 `EstadoEjecucion`: `pendiente`, `ejecutando`, `completada`, `completada_con_fallos`,
 `detenida`. `completada_con_fallos` se lee «Completada»: una frase calculada con los conteos
 publicados dice cuántas tareas fallaron y cuántos productos tienen veredicto
-(`resultados_m3.run_outcome`).
+(`resultados_m3.run_outcome`). `detenida` y su aviso de error son una advertencia mientras la
+página ofrece Reanudar, y un error solo cuando reanudar fallaría igual (`run.incompatible_config`):
+la regla es `ejecucion.offers_resume` y el tono, `presentation.describe_run`.
 
 **Estados de tarea** (`EstadoTarea`, claves de contrato): `pendiente`, `ejecutando`,
 `finalizo_m2`, `exitosa`, `fallida`, `no_ejecutable`. Una tarea queda en `finalizo_m2` al

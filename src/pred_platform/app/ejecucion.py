@@ -566,6 +566,16 @@ class RunActions:
     nothing_to_compare: bool = False
 
 
+def offers_resume(estado: str, error_code: str | None) -> bool:
+    """Si la ejecución se puede reanudar, con la misma regla que aplica la cola al reanudar
+    (``dal.ejecuciones._resume``): solo una identidad incompatible no se reanuda.
+
+    Vale también para filas guardadas antes con ``retryable`` falso por un motor que murió sin
+    publicar.
+    """
+    return estado in RESUMABLE_STATES and error_code != INCOMPATIBLE_CONFIG
+
+
 def run_actions(
     estado: str | None,
     *,
@@ -584,16 +594,15 @@ def run_actions(
     """
     if estado is None:
         return RunActions(False, False, False, reason)
-    offers_resume = (
-        estado in RESUMABLE_STATES
-        and (error is None or error.code != INCOMPATIBLE_CONFIG)
+    resumable = (
+        offers_resume(estado, error.code if error else None)
         and not nothing_to_compare
         and not _same_on_resume(error)
     )
     return RunActions(
         can_stop=reason is None and estado in ACTIVE_STATES,
-        can_resume=reason is None and offers_resume,
-        offers_resume=offers_resume,
+        can_resume=reason is None and resumable,
+        offers_resume=resumable,
         disabled_reason=reason,
         nothing_to_compare=nothing_to_compare and estado in RESUMABLE_STATES,
     )

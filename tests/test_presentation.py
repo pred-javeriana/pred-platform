@@ -10,6 +10,7 @@ from pred_platform.app.presentation import (
     VERDICT_ORDER,
     UnknownStatus,
     abbreviate_id,
+    describe_run,
     describe_status,
     exact_when,
     family_label,
@@ -60,6 +61,16 @@ def test_a_run_with_failed_tasks_reads_as_completed_not_as_a_failure() -> None:
     assert with_failures.hint and "fallaron" in with_failures.hint
     # The stored code stays available for traceability.
     assert with_failures.code == "completada_con_fallos"
+
+
+def test_a_stopped_run_is_a_warning_while_it_can_resume_and_an_error_when_it_cannot() -> None:
+    resumable = describe_run("detenida", resumable=True)
+    final = describe_run("detenida", resumable=False)
+    assert (resumable.label, resumable.modifier) == ("Detenida", "warn")
+    assert (final.label, final.modifier) == ("Detenida", "err")
+    assert final.hint and "ejecución nueva" in final.hint and final.code == "detenida"
+    # Only a stop depends on whether it can resume.
+    assert describe_run("completada", resumable=False) == describe_status("run", "completada")
 
 
 def test_pruned_trial_is_not_rendered_as_failure() -> None:

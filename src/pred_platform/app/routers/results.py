@@ -19,7 +19,8 @@ from fastapi.responses import HTMLResponse
 from pred_platform.app.charts import champion_forecast_svg, champion_share_svg
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
 from pred_platform.app.datos import error_view, ingest_name, page_meta
-from pred_platform.app.presentation import FAMILY_ORDER, family_label
+from pred_platform.app.ejecucion import offers_resume
+from pred_platform.app.presentation import FAMILY_ORDER, describe_run, family_label
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
@@ -48,7 +49,7 @@ from pred_platform.app.seleccion import (
 )
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing, DataLayerError, InvalidQuery
-from pred_platform.contract.models import RunStatus, SkuSelection, SkuSelectionList
+from pred_platform.contract.models import Ejecucion, RunStatus, SkuSelection, SkuSelectionList
 from pred_platform.data.deps import get_repository
 from pred_platform.data.query import LATEST
 from pred_platform.data.repository import DataRepository
@@ -199,6 +200,20 @@ def _describe_run(
         repository, run.ejecucion, counts, resolved.run_id if resolved else None, funnel
     )
     context["run_ingest"] = ingest_name(repository, run.ejecucion.ingest_id)
+    context["run_status"] = describe_run(
+        run.ejecucion.estado, resumable=_resumable(repository, run.ejecucion)
+    )
+
+
+def _resumable(repository: DataRepository, run: Ejecucion) -> bool:
+    """Si la ejecución mostrada se puede reanudar; el error guardado solo se lee si se detuvo."""
+    if run.estado != "detenida":
+        return offers_resume(run.estado, None)
+    try:
+        error = repository.get_run_error(run.id)
+    except DataLayerError:
+        error = None
+    return offers_resume(run.estado, error.code if error else None)
 
 
 def _render(request: Request, context: dict[str, Any]) -> HTMLResponse:

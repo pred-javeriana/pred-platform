@@ -23,7 +23,7 @@
   </form>
   {% endif %}
   <dl class="pred-context__facts">
-    <div><dt>Ejecución</dt><dd><a class="mono" href="/ejecucion?ejecucion={{ shown.id }}">#{{ shown.id }}</a> {{ status_indicator(describe_status("run", shown.estado)) }}</dd></div>
+    <div><dt>Ejecución</dt><dd><a class="mono" href="/ejecucion?ejecucion={{ shown.id }}">#{{ shown.id }}</a> {{ status_indicator(run_status or describe_status("run", shown.estado)) }}</dd></div>
     {% if shown.ingest_id %}<div><dt>Datos</dt><dd title="Ingesta {{ shown.ingest_id }}">{% if run_ingest and run_ingest.file_name %}{{ run_ingest.file_name }}{% else %}<span class="mono">{{ abbreviate_id(shown.ingest_id) }}</span>{% endif %}</dd></div>{% endif %}
     <div><dt>Iniciada</dt><dd>{{ when(shown.iniciada_en) }}</dd></div>
     <div><dt>Evaluación final</dt><dd{% if m3.run %} title="Evaluación {{ m3.run.run_id }}"{% endif %}>{% if m3.run %}<span>{{ evaluation_state_label(m3.run.estado) | capitalize_first }} · {{ when(m3.run.creado_en) }}</span>{% else %}Sin evaluación publicada{% endif %}</dd></div>

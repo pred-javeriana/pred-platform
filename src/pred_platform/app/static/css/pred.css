@@ -1914,9 +1914,10 @@ button.pred-btn {
   border-bottom: 0;
 }
 
+/* La clase y su explicación: la explicación pasa a otra línea antes de empujar la tabla fuera de
+   un teléfono. */
 .pred-class-mix th {
-  width: 15rem;
-  white-space: nowrap;
+  width: 55%;
 }
 
 .pred-class-mix .num {
@@ -1928,6 +1929,7 @@ button.pred-btn {
 }
 
 .pred-class-mix__bar {
+  width: 30%;
   padding-left: var(--space-1);
 }
 

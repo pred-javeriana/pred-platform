@@ -67,6 +67,17 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
+def _run_state_tone(html: str) -> str:
+    """The colour modifier of the run's «Detenida» state, in Ejecución or in Resultados."""
+    found = re.findall(
+        r'<span class="pred-status pred-status--(\w+)"[^>]*>\s*<svg[^>]*><use href="#i-stop">'
+        r'</use></svg>\s*<span class="pred-status__label">Detenida</span>',
+        html,
+    )
+    assert len(set(found)) == 1, found
+    return found[0]
+
+
 # -------------------------------------------------------------------- con los fixtures
 def test_the_active_run_shows_its_state_progress_settings_and_tasks() -> None:
     client, repo = _fixture_client("normal")
@@ -1403,6 +1414,10 @@ def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
     assert "La configuración no coincide con la ejecución guardada." in text
     assert "run_id incompatible con la entrada o configuracion previa" in text
     assert "Reanudar no se ofrece: la ejecución fallaría igual." in text
+    # Nothing to resume: the state and the notice read as an error, here and in Resultados.
+    assert 'pred-callout--err" id="error-ejecucion"' in html
+    assert _run_state_tone(html) == "err"
+    assert _run_state_tone(client.get("/resultados").text) == "err"
 
 
 def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryable(
@@ -1428,6 +1443,10 @@ def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryabl
 
     assert 'id="accion-reanudar"' in html
     assert "Reanudar no se ofrece" not in _text(html)
+    # The page offers Reanudar, so the stop is a warning, not a final error (#126).
+    assert 'pred-callout--warn" id="error-ejecucion"' in html
+    assert _run_state_tone(html) == "warn"
+    assert _run_state_tone(client.get("/resultados").text) == "warn"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL no existe en Windows")

@@ -142,6 +142,8 @@ VERDICT_ORDER: tuple[str, ...] = (
 # Ejecución: claves de EstadoEjecucion. sin_ejecucion es estado de página, no de chip. Una
 # ejecución completada con tareas fallidas terminó bien: el chip dice «Completada» y la página
 # dice al lado cuántas tareas fallaron y cuántos productos tienen veredicto (``run_outcome``).
+# Una detenida es una advertencia mientras pueda reanudarse; ``describe_run`` la vuelve error
+# cuando reanudarla fallaría igual.
 _RUN: dict[str, StatusPresentation] = {
     "pendiente": StatusPresentation(
         "i-clock", "Pendiente", "neutral", "En cola: espera su turno para empezar."
@@ -156,9 +158,16 @@ _RUN: dict[str, StatusPresentation] = {
         "i-check", "Completada", "ok", "Terminó; algunas tareas de modelos fallaron."
     ),
     "detenida": StatusPresentation(
-        "i-stop", "Detenida", "err", "Se detuvo antes de terminar; puede reanudarse."
+        "i-stop", "Detenida", "warn", "Se detuvo antes de terminar; puede reanudarse."
     ),
 }
+_RUN_STOPPED_FOR_GOOD = StatusPresentation(
+    "i-stop",
+    "Detenida",
+    "err",
+    "Se detuvo y reanudarla fallaría igual: corrija la causa y lance una ejecución nueva.",
+    code="detenida",
+)
 
 # Ingesta: claves del contrato; frases de A1 para el diagnóstico.
 _INGEST: dict[str, StatusPresentation] = {
@@ -197,6 +206,17 @@ def describe_status(kind: StatusKind, code: str) -> StatusPresentation:
         return replace(table[code], code=code)
     except KeyError as exc:
         raise UnknownStatus(f"estado {code!r} no pertenece al vocabulario {kind}") from exc
+
+
+def describe_run(estado: str, *, resumable: bool) -> StatusPresentation:
+    """El estado de una ejecución con el tono que corresponde a lo que se puede hacer con ella.
+
+    Una detenida que puede reanudarse es una advertencia; solo una que reanudar no arreglaría
+    (``ejecucion.offers_resume`` es falso, por ejemplo ``run.incompatible_config``) es un error.
+    """
+    if estado == "detenida" and not resumable:
+        return _RUN_STOPPED_FOR_GOOD
+    return describe_status("run", estado)
 
 
 def verdict_label(code: str) -> str:
