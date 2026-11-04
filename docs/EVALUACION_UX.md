@@ -65,7 +65,8 @@ figura de la tesis cuenta al menos como 3, porque la defensa se presenta con est
 ## Resultado
 
 Se encontraron 49 hallazgos: 1 de severidad 4, 15 de severidad 3, 19 de severidad 2 y 14 de
-severidad 1. Este cambio corrige 48; el restante, E9, lo corrige el cambio del worker de #101.
+severidad 1. Este cambio corrige 47. E9 lo corrige el cambio del worker de #101, y E7 queda
+abierto hasta después de la tesis (#98).
 El hallazgo de mayor alcance es la composición: una columna lateral fija le quitaba cerca de un
 tercio del ancho a cada tabla, y en Por clase las tablas de confirmación no cabían a 1280 px. La
 composición nueva es una sola columna:
@@ -212,8 +213,10 @@ resultados están en el encabezado de la corrida.
 
 **E7. Hay tareas `no_ejecutable` de familias que la clase no usa.** H1 y H2, severidad 2 (#98).
 Un SKU excluido recibía una tarea por cada familia de la corrida, incluidas las que su clase
-nunca planifica, e inflaba el total. Corrección: un SKU excluido recibe una tarea por cada
-familia que la política del motor asigna a su clase.
+nunca planifica, e inflaba el total. Sin corregir por ahora: las corridas de la tesis cuentan
+así sus tareas, y la semilla 2 debe contarse con la misma regla que las semillas 0 y 1. Un SKU
+excluido sigue recibiendo una tarea por cada familia de la corrida; #98 queda abierto para
+después de la tesis.
 
 **E8. Exportar la configuración compite con el seguimiento.** H8, severidad 1. «Exportar
 configuración (JSON)» (sección 4.5) estaba en el encabezado de una corrida en curso. Corrección:
