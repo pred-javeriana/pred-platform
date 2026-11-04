@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "summary": "Resultados names the M3 run without counting its units, a read-only database disables the run actions with a reason, and the worker hint checks the worker lock.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/resultados_m3.py",
+      "summary": "Resolves the M3 run of a page from its metadata only.",
+      "annotations": [
+        {
+          "newRange": [134, 139],
+          "summary": "_resolve reads the selected PUBLICADA run with get_m3_run and builds the missing-run problem from NO_RUN.",
+          "rationale": "get_m3_run_status counted 5.2 million m3_unidades rows per page, so every Resultados page cost over a second. The missing-run text and code match what the old unavailable status gave. test_naming_the_m3_run_of_a_page_never_counts_its_units traces the SQL; pages were byte-identical against main on a real copy.",
+          "author": "fm/pred-platform-review-fixes"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/candado.py",
+      "summary": "Adds a probe that tells whether another process holds the worker lock.",
+      "annotations": [
+        {
+          "newRange": [45, 67],
+          "summary": "held_elsewhere takes and releases the same flock or msvcrt lock the worker uses, opening the file read-only and never creating it.",
+          "rationale": "fcntl.lockf would not see a flock lock on Linux, so it would always report free. If a worker starts during the probe instant, make worker retries at its next poll, but --once exits and leaves the run queued. The Windows branch is exercised only by the Windows CI job.",
+          "author": "fm/pred-platform-review-fixes"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/control.py",
+      "summary": "Disables the run actions when the database file is not writable.",
+      "annotations": [
+        {
+          "newRange": [112, 117],
+          "summary": "build_run_control returns UnavailableRunControl when the database file exists without write permission.",
+          "rationale": "Every action writes ejecuciones, so on a 0444 copy Reanudar answered HTTP 500. The check runs once at app start, so a permission change while the app runs is not detected. A read-only directory with a writable file is not covered.",
+          "author": "fm/pred-platform-review-fixes"
+        }
+      ]
+    }
+  ]
+}
