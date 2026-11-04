@@ -1,6 +1,7 @@
 """Fábrica FastAPI de la plataforma PRED."""
 
 import logging
+import sqlite3
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -20,11 +21,30 @@ from pred_platform.data.factory import build_repository
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import build_run_control
 from pred_platform.worker.ingesta import STAGING_DIR
+from pred_platform.worker.solo_lectura import is_read_only_error
 
 _logger = logging.getLogger("pred_platform.app")
 _APP_DIR = Path(__file__).parent
 _TEMPLATES_DIR = _APP_DIR / "templates"
 _STATIC_DIR = _APP_DIR / "static"
+
+
+class DatabaseUnavailable(RuntimeError):
+    """The database file cannot be opened, so the application does not start."""
+
+
+def _migrate(settings: Settings) -> None:
+    try:
+        migrate(settings.db_path)
+    except sqlite3.OperationalError as exc:
+        if not is_read_only_error(exc):
+            raise
+        raise DatabaseUnavailable(
+            f"No se puede abrir la base de datos {settings.db_path} ({exc}). Una copia de solo "
+            "lectura en WAL necesita una carpeta con permiso de escritura; para una carpeta de "
+            "solo lectura, pásela antes a PRAGMA journal_mode=DELETE (README.md, «Serving a "
+            "read-only copy»)."
+        ) from None
 
 
 def _import_engine_reports(settings: Settings) -> None:
@@ -51,7 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # Solo el DAL real tiene esquema que mantener; los fixtures no tocan el disco.
         if active.data_source == "dal":
-            migrate(active.db_path)
+            _migrate(active)
             _import_engine_reports(active)
         stop = threading.Event()
         thread: threading.Thread | None = None

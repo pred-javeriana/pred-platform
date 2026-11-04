@@ -1020,6 +1020,11 @@ button.pred-btn {
   margin-bottom: var(--space-2);
 }
 
+/* Una lista plegada dentro de un aviso deja aire antes de la frase que sigue. */
+.pred-alert .pred-details {
+  margin-bottom: var(--space-2);
+}
+
 /* En una celda o una frase: el chevrón va junto al texto, no al borde derecho. */
 .pred-details--inline > summary {
   display: inline-flex;

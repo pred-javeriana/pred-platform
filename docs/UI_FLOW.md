@@ -65,9 +65,10 @@ en una pantalla aparte. El monitoreo también.
 y `list_ingests(...)` para elegir la ingesta. **Escritura:** `app.state.run_control`
 (`worker/control.py`), un servicio aparte de `DataRepository` (contrato §19): lanzar
 (`POST /ejecucion/lanzar`), detener (`/ejecucion/detener`) y reanudar (`/ejecucion/reanudar`).
-Con fixtures o con una base sin permiso de escritura las acciones salen deshabilitadas con el
-motivo. El cuerpo se refresca con HTMX cada 2 s mientras la corrida está en curso
-(`/ejecucion/estado`, que responde 286 al terminar).
+Con fixtures o con una base de solo lectura las acciones salen deshabilitadas con el
+motivo. El cuerpo se refresca con HTMX cada 2 s mientras la corrida está en curso (no con
+fixtures ni con una base de solo lectura, donde nada avanza) (`/ejecucion/estado`, que responde
+286 al terminar).
 Ver `docs/features/ejecucion/README.md`.
 
 **Estados de corrida:** `sin_ejecucion` (página; `ejecucion is None`), y los de
@@ -100,8 +101,9 @@ disponibles en el entorno del motor. Si con las familias elegidas alguna clase d
 ingesta queda sin familia admitida por la política del motor, el formulario no lanza y dice qué
 clase queda sin modelo y qué familias agregar. Si una clase queda con una sola familia admitida,
 el formulario avisa qué SKU quedarían fuera de la comparación, sin campeón, y qué familia
-agregar; «Lanzar de todos modos» encola la corrida así. Si se cambian las familias, el formulario
-vuelve a revisarlas. La plataforma trabaja solo con datos reales: el
+agregar, y nombra aparte los SKU que la historia deja fuera con cualquier familia; si ninguna
+clase conserva dos familias, avisa que la corrida no elige campeón. «Lanzar de todos modos»
+encola la corrida así. Si se cambian las familias, el formulario vuelve a revisarlas. La plataforma trabaja solo con datos reales: el
 formulario no pregunta el origen y toda ejecución declara sus datos reales. Antes del encolado,
 el motor resuelve el origen de la ingesta (`pred-engine origen --datos-reales`); si la ingesta
 está declarada sintética, la plataforma muestra el conflicto sin crear la ejecución. El worker

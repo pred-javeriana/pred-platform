@@ -25,6 +25,7 @@ from pred_platform.app.datos import (
     store_pending,
     topology_ready,
     topology_summary_metrics,
+    upload_blocked,
     validate_upload,
 )
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
@@ -61,6 +62,10 @@ def cargar(
     confirm_overwrite: Annotated[bool, Form()] = False,
 ) -> HTMLResponse | RedirectResponse:
     """Delega la carga en DataRepository.submit_ingest. Nunca valida el CSV en la vista."""
+    if upload_blocked(request) is not None:
+        if pendiente:
+            discard_pending(request, pendiente)
+        return _render_page(request, repository)  # la página dice por qué no se carga
     if pendiente:
         stored = pop_pending(request, pendiente)
         if stored is None:
@@ -255,6 +260,7 @@ def _render_page(
         "source": source,
         "csv_hint": CSV_HINT,
         "csv_columns": CSV_COLUMNS,
+        "upload_blocked": upload_blocked(request),
     }
     return request.app.state.templates.TemplateResponse(
         request,

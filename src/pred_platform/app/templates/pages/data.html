@@ -25,7 +25,8 @@
       {% for name, meaning in csv_columns %}<dt><span class="mono">{{ name }}</span></dt><dd>{{ meaning }}</dd>{% endfor %}
     </dl>
   </details>
-  <p class="pred-actions">{{ button("Cargar y validar", variant="primary" if upload_first else "secondary", type="submit", icon="i-upload") }}</p>
+  <p class="pred-actions">{{ button("Cargar y validar", variant="primary" if upload_first else "secondary", type="submit", icon="i-upload", disabled=upload_blocked is not none) }}</p>
+  {% if upload_blocked %}<p class="pred-meta">{{ upload_blocked }}</p>{% endif %}
 </form>
 {% endmacro %}
 

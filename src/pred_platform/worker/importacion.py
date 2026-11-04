@@ -12,9 +12,9 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
-from pred_platform.contract.models import RunSettings
+from pred_platform.contract.models import ErrorInfo, RunSettings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker.engine import log_tail, model_id
@@ -24,6 +24,10 @@ from pred_platform.worker.seleccion import import_selection
 
 # El mensaje con que el motor rechaza un run_id cuya identidad guardada cambió (run_artifacts.py).
 INCOMPATIBLE_RUN = "run_id incompatible con la entrada o configuracion previa"
+# The engine stages an ``ErrorInfo`` may name (the contract's ``stage`` without "platform").
+_ENGINE_STAGES = tuple(
+    s for s in get_args(ErrorInfo.model_fields["stage"].annotation) if s != "platform"
+)
 
 
 def _read_units(path: Path) -> list[dict[str, Any]]:
@@ -204,15 +208,14 @@ def finalize(
 
     if failed:
         stage = failed[0]
-        return _stop(
-            conn,
-            run,
-            reserve,
-            platform_error(
-                "pipeline.stage_failed",
-                f"La etapa {stage.get('id')} falló: {stage.get('message', '')}".strip(),
-            ),
+        error = platform_error(
+            "pipeline.stage_failed",
+            f"La etapa {stage.get('id')} falló: {stage.get('message', '')}".strip(),
         )
+        # The page titles the error with its stage («La etapa L2 falló.»), not with "platform".
+        if stage.get("id") in _ENGINE_STAGES:
+            error["stage"] = stage["id"]
+        return _stop(conn, run, reserve, error)
     if not counts:
         return _stop(
             conn,

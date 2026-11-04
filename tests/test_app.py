@@ -10,7 +10,7 @@ import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
 
-from pred_platform.app.main import create_app
+from pred_platform.app.main import DatabaseUnavailable, create_app
 from pred_platform.config import Settings
 from pred_platform.dal.migrate import SchemaTooNew, load_migrations
 from pred_platform.data.deps import get_repository
@@ -153,3 +153,46 @@ def test_starting_twice_does_not_migrate_or_back_up_again(tmp_path: Path) -> Non
             pass
     assert _user_version(settings.db_path) == LATEST_SCHEMA
     assert list(tmp_path.glob("*.bak")) == []
+
+
+def _read_only_copy(tmp_path: Path, journal: str) -> Settings:
+    """A migrated database copied with ``.backup`` into a folder without write permission."""
+    settings = Settings(data_root=tmp_path / "data", db_path=tmp_path / "pred.db")
+    with TestClient(create_app(settings)):
+        pass
+    folder = tmp_path / "copia"
+    folder.mkdir()
+    copy = folder / "pred.db"
+    with closing(sqlite3.connect(settings.db_path)) as source, closing(sqlite3.connect(copy)) as c:
+        source.backup(c)
+        c.execute(f"PRAGMA journal_mode={journal}")
+    copy.chmod(0o444)
+    folder.chmod(0o555)
+    return Settings(data_root=tmp_path / "data", db_path=copy)
+
+
+def test_a_wal_copy_in_a_read_only_folder_stops_startup_with_what_to_do(tmp_path: Path) -> None:
+    settings = _read_only_copy(tmp_path, "WAL")
+    try:
+        with (
+            pytest.raises(DatabaseUnavailable, match="PRAGMA journal_mode=DELETE"),
+            TestClient(create_app(settings)),
+        ):
+            pass
+    finally:
+        settings.db_path.parent.chmod(0o755)
+
+
+def test_a_rollback_journal_copy_in_a_read_only_folder_serves_with_actions_off(
+    tmp_path: Path,
+) -> None:
+    settings = _read_only_copy(tmp_path, "DELETE")
+    try:
+        with TestClient(create_app(settings)) as client:
+            ejecucion = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
+            datos = client.get("/datos")
+    finally:
+        settings.db_path.parent.chmod(0o755)
+
+    assert ejecucion.status_code == 200 and "La base de datos es de solo lectura" in ejecucion.text
+    assert datos.status_code == 200 and "no cargar archivos nuevos" in datos.text

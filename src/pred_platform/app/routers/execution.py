@@ -31,21 +31,26 @@ from pred_platform.app.ejecucion import (
     NOTICES,
     STAGES,
     SYNTHETIC_INGEST,
+    ExclusionWarning,
     ExecutionQuery,
     FormResult,
     LaunchIngest,
     classes_without_family,
+    compares_nothing,
     default_form_values,
     elapsed_text,
     error_action,
     exclusion_confirmation,
     exclusion_warning,
     families_hint,
+    history_needed,
     parse_execution_query,
     parse_launch_form,
+    refusal_text,
     run_actions,
     run_error,
     settings_items,
+    short_of_two,
     should_poll,
     single_family_classes,
     stage_steps,
@@ -53,7 +58,7 @@ from pred_platform.app.ejecucion import (
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import RunStatus, SkuClass
+from pred_platform.contract.models import Ejecucion, RunStatus, SkuClass, TopologyMetrics
 from pred_platform.dal import lectura
 from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.data.deps import get_repository
@@ -81,6 +86,20 @@ def _worker_active(request: Request) -> bool:
     return bool(
         settings.worker == "embedded" or WorkerLock.for_database(settings.db_path).held_elsewhere()
     )
+
+
+def _nothing_to_compare(
+    repository: DataRepository, run: Ejecucion | None, status: RunStatus | None
+) -> bool:
+    """Si las familias de la corrida no dan a ninguna clase de su ingesta dos que comparar."""
+    families = status.settings.families if status is not None and status.settings else None
+    if run is None or run.ingest_id is None or not families:
+        return False
+    try:
+        by_class = repository.get_topology_report(run.ingest_id, size=1).summary.by_class
+    except (DataLayerError, InvalidQuery):
+        return False  # sin topología no se sabe: se ofrece reanudar
+    return compares_nothing(by_class, families)
 
 
 def _accepted_ingests(repository: DataRepository) -> list[LaunchIngest]:
@@ -126,13 +145,13 @@ def _context(
     import_error: str | None = None,
     action_error: str | None = None,
     imported: tuple[str, str] | None = None,
-    exclusion: tuple[str, str] | None = None,
+    exclusion: tuple[ExclusionWarning, str | None] | None = None,
 ) -> dict[str, Any]:
     """``imported`` es el aviso (variante, texto) de una configuración importada: abre el formulario
     con sus valores y, si el archivo trae otra ingesta que esta plataforma no tiene, sin ingesta
     elegida, para que nadie lance los ajustes importados sobre otros datos sin darse cuenta.
     ``exclusion`` es el aviso de los SKU que quedarían sin campeón y la clave que confirma lanzar
-    así."""
+    así (``None`` si el formulario no lanza de todos modos)."""
     params = dict(request.query_params)
     control = _control(request)
     capabilities = repository.get_capabilities()
@@ -192,7 +211,12 @@ def _context(
         else [],
         "stage_label": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
         "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
-        "actions": run_actions(estado, reason=control.reason, error=error),
+        "actions": run_actions(
+            estado,
+            reason=control.reason,
+            error=error,
+            nothing_to_compare=_nothing_to_compare(repository, run, status),
+        ),
         "control_reason": control.reason,
         "worker_active": _worker_active(request),
         "poll": poll,
@@ -255,13 +279,26 @@ def ejecucion_estado(
     )
 
 
-def _class_skus(repository: DataRepository, ingest_id: str, sku_class: str) -> list[str]:
-    """Los SKU de una clase de la ingesta, en orden, hasta una página de la topología."""
-    try:
-        report = repository.get_topology_report(ingest_id, sku_class=sku_class, size=MAX_SIZE)
-    except DataLayerError:
-        return []
-    return [item.sku_id for item in report.items]
+def _class_skus(
+    repository: DataRepository, ingest_id: str, sku_class: SkuClass
+) -> list[TopologyMetrics]:
+    """Todos los SKU de una clase de la ingesta, en orden, página a página de la topología.
+
+    Si una página no se puede leer, los leídos hasta ahí: el aviso cuenta los que no nombra.
+    """
+    rows: list[TopologyMetrics] = []
+    page = 1
+    while True:
+        try:
+            report = repository.get_topology_report(
+                ingest_id, sku_class=sku_class, page=page, size=MAX_SIZE
+            )
+        except DataLayerError:
+            return rows
+        rows.extend(report.items)
+        if not report.items or len(rows) >= report.page.total:
+            return rows
+        page += 1
 
 
 @router.post("/ejecucion/lanzar", response_model=None)
@@ -306,21 +343,28 @@ def lanzar(
             by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
         except DataLayerError:
             by_class = {}  # sin topología publicada, decide el motor
+        except InvalidQuery:  # no es el SHA-256 de una ingesta
+            by_class = {}
+            form.errors["ingest_id"] = "Elija una ingesta aceptada en Datos."
         chosen = form.values["families"]
-        refusal = classes_without_family(by_class, chosen)
+        needed = history_needed(form.settings) if form.settings is not None else 0
         single = single_family_classes(by_class, chosen)
+        skus: dict[SkuClass, list[TopologyMetrics]] = {
+            c: _class_skus(repository, ingest_id, c) for c in short_of_two(by_class, chosen)
+        }
+        refusal = classes_without_family(by_class, chosen, skus, needed)
         key = exclusion_confirmation(ingest_id, chosen)
         if refusal:
-            form.errors["families"] = refusal
-        elif single and confirmar != key:
-            skus: dict[SkuClass, list[str]] = {
-                c: _class_skus(repository, ingest_id, c) for c in single
-            }
-            warning = exclusion_warning(single, by_class, skus)
+            form.errors["families"] = refusal_text(refusal, by_class)
+        # Con un rechazo, el aviso dice además lo que quedaría por corregir, sin lanzar igual.
+        if single and (refusal or confirmar != key):
+            warning = exclusion_warning(chosen, by_class, skus, needed)
             return _render(
                 request,
                 "pages/execution.html",
-                _context(request, repository, form=form, exclusion=(warning, key)),
+                _context(
+                    request, repository, form=form, exclusion=(warning, None if refusal else key)
+                ),
             )
     if form.errors or form.settings is None or ingest_id is None:
         return _render(request, "pages/execution.html", _context(request, repository, form=form))
@@ -417,16 +461,16 @@ def importar_configuracion(
 
 def _act(request: Request, repository: DataRepository, ejecucion: str, action: str) -> Any:
     control = _control(request)
-    try:
-        number = int(ejecucion)
-        done = control.stop(number) if action == "stop" else control.resume(number)
-    except ValueError:
+    number = lectura.run_number(ejecucion.strip())
+    if number is None:
         return _render(
             request,
             "pages/execution.html",
             _context(request, repository, action_error="La ejecución indicada no es válida."),
             400,
         )
+    try:
+        done = control.stop(number) if action == "stop" else control.resume(number)
     except (ControlUnavailable, RunRequestError) as exc:
         return _render(
             request, "pages/execution.html", _context(request, repository, action_error=str(exc))

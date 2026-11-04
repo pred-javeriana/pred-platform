@@ -131,6 +131,25 @@ settings again opens a new run that declares the data real.
 - **Newer than the code.** A database whose version is higher than the last script (for example, a
   backup from a newer platform) makes the app refuse to start, and the file is left untouched.
 
+### Serving a read-only copy
+
+To look at the results of a saved database without changing it, serve a copy without write
+permission. The app then shows launching, stopping, resuming and uploading disabled, with the
+reason. It checks the permissions on every request, so a change takes effect without a restart;
+to make the copy writable again, give write permission to its `-wal` and `-shm` files too
+(`chmod 0644 copia/pred.db*`), because reading the copy leaves them read-only as well.
+
+```bash
+sqlite3 pred.db ".backup copia/pred.db"   # never cp: the last writes can still be in pred.db-wal
+chmod 0444 copia/pred.db
+PRED_DB_PATH=copia/pred.db PRED_WORKER=off make run
+```
+
+Keep the copy in a folder the app can write: a database in WAL mode, as `.backup` leaves it,
+creates its `-wal` and `-shm` files there even to read. For a read-only folder or mount, switch
+the copy to a rollback journal first (`sqlite3 copia/pred.db "PRAGMA journal_mode=DELETE"`, before
+`chmod`). A WAL copy in a read-only folder stops the app at startup with that advice.
+
 ### Adding a migration
 
 1. Create `NNNN_description.sql` (next number, four digits, lowercase `snake_case`) with plain
@@ -273,6 +292,8 @@ make format      # apply ruff fixes and formatting
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
 runtime dependencies only and requests `/health` and `/` (which redirects to `/datos`).
+Run the tests as a regular user, as CI does: root may write a file without write permission, so
+the read-only database tests fail under root.
 CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches
 the engine boundary carries a receipt from `make motor-local`, and the `motor-local` check reads it;
 see [the local engine check](docs/features/motor-local/README.md).

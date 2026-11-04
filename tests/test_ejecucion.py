@@ -9,7 +9,8 @@ import signal
 import sqlite3
 import sys
 import threading
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -410,45 +411,129 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
+# Each SKU of the test ingest has 72 days, 54 before the cut. The engine needs min_train +
+# horizon + 3 steps before the cut: 84 with FORM (every SKU too short), 43 with these.
+LONG_ENOUGH = {"min_train": "20", "step": "7"}
+
+
 def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
     env: Env,
 ) -> None:
     # The ingest has one smooth, one intermittent and one lumpy SKU; lumpy admits only
     # the classical and foundation families, intermittent also ml. Without any family for a
-    # class, the engine's L2 fails for the whole run, so the form does not launch.
-    response = _launch(_dal_client(env), env, families=["ml", "dl"])
+    # class, the engine's L2 fails for the whole run, so the form does not launch. It also names
+    # the class that keeps one family, so one correction is enough.
+    response = _launch(_dal_client(env), env, families=["ml", "dl"], **LONG_ENOUGH)
     text = _text(response.text)
 
     assert response.status_code == 200
     assert "1 SKU Lumpy (Grumosa) queda sin modelo: agregue Clásica y Fundacional." in text
     assert "Sin ninguna familia para una clase, el motor no puede ejecutar." in text
+    assert "1 SKU Intermittent (Intermitente) queda con una sola familia" in text
+    assert "FIL-0002" in text
     assert "Lanzar de todos modos" not in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_a_class_without_family_whose_skus_are_all_too_short_does_not_block_the_launch(
+    env: Env,
+) -> None:
+    # With FORM every SKU is shorter than the 84 days the engine needs: it excludes them with any
+    # family before L2, so a class without family does not make L2 fail.
+    response = _launch(_dal_client(env), env, families=["ml", "dl"])
+    text = _text(response.text)
+
+    assert "queda sin modelo" not in text
+    assert (
+        "1 SKU Intermittent (Intermitente) queda fuera por historia insuficiente con cualquier "
+        "familia (menos de 84 días): FIL-0002 ." in text
+    )
+    assert "Lanzar de todos modos" in text
 
 
 def test_one_family_for_a_class_warns_which_skus_lose_the_comparison(env: Env) -> None:
     # Con Clásica y ML, el SKU lumpy tiene una sola familia: el motor lo deja fuera de la
     # comparación (eligibility.fewer_than_two_families). El formulario lo avisa antes de lanzar.
-    response = _launch(_dal_client(env), env, families=["classical", "ml"])
+    response = _launch(_dal_client(env), env, families=["classical", "ml"], **LONG_ENOUGH)
     text = _text(response.text)
 
     assert response.status_code == 200
     assert (
-        "1 SKU Lumpy (Grumosa) queda con una sola familia (Clásica): FIL-0003. "
+        "1 SKU Lumpy (Grumosa) queda con una sola familia (Clásica): FIL-0003 . "
         "Para evaluarlos, agregue Fundacional." in text
     )
+    assert '<span class="mono pred-nowrap">FIL-0003</span>' in response.text  # never split
     assert "si lanza así, esos SKU quedan fuera de la comparación y sin campeón." in text
     assert "Lanzar de todos modos" in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
+def test_a_sku_too_short_for_any_family_is_not_told_to_add_one(env: Env) -> None:
+    response = _launch(_dal_client(env), env, families=["classical", "ml"])
+    text = _text(response.text)
+
+    assert (
+        "1 SKU Lumpy (Grumosa) queda fuera por historia insuficiente con cualquier familia "
+        "(menos de 84 días): FIL-0003 ." in text
+    )
+    assert "Para evaluarlos" not in text
+
+
+def test_families_that_leave_no_class_two_say_the_run_elects_no_champion(env: Env) -> None:
+    response = _launch(_dal_client(env), env, families=["classical"], **LONG_ENOUGH)
+    text = _text(response.text)
+
+    for sku in ("FIL-0001", "FIL-0002", "FIL-0003"):
+        assert sku in text
+    assert (
+        "Con estas familias ningún SKU tiene dos familias que comparar: la corrida no elige "
+        "ningún campeón y puede detenerse en la etapa L2." in text
+    )
+    assert "si lanza así, esos SKU quedan fuera" not in text
+    assert "Lanzar de todos modos" in text
+
+
+def _ingest_with(env: Env, metrics: list[dict[str, Any]]) -> str:
+    """An accepted ingest with these topology rows, imported as the engine leaves it."""
+    from pred_platform.dal.importacion import import_reports
+
+    source = next((env.settings.data_root / "ingestas").glob(f"{env.ingest_id}.json"))
+    report = json.loads(source.read_text())
+    sha = "b" * 64
+    report["ingest_id"] = report["source_file"]["sha256"] = sha
+    report["validation"]["n_skus"] = report["published"]["n_skus"] = len(metrics)
+    report["topology"]["metrics"] = metrics
+    (env.settings.data_root / "ingestas" / f"{sha}.json").write_text(json.dumps(report))
+    assert import_reports(env.db, env.settings.data_root).ok
+    return sha
+
+
+def test_a_class_larger_than_a_topology_page_is_named_whole_and_folded(env: Env) -> None:
+    row = {"n_periods": 200, "n_positive": 50, "adi": 3.0, "cv2": 0.1}
+    metrics = [{**row, "sku_id": "LIS-0001", "cv2": 0.0, "adi": 1.0, "sku_class": "smooth"}] + [
+        {**row, "sku_id": f"INT-{i:04d}", "sku_class": "intermittent"} for i in range(551)
+    ]
+    ingest = _ingest_with(env, metrics)
+
+    response = _launch(
+        _dal_client(env), env, ingest_id=ingest, families=["classical", "dl"], **LONG_ENOUGH
+    )
+    text = _text(response.text)
+
+    assert "551 SKU Intermittent (Intermitente) quedan con una sola familia (Clásica)." in text
+    assert "Ver los 551 SKU" in text
+    assert "INT-0000" in text and "INT-0550" in text and " más" not in text
+
+
 def test_the_operator_launches_anyway_after_the_warning(env: Env) -> None:
     client = _dal_client(env)
-    warned = _launch(client, env, families=["classical", "ml"])
+    warned = _launch(client, env, families=["classical", "ml"], **LONG_ENOUGH)
     key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
     assert key is not None
 
-    response = _launch(client, env, families=["classical", "ml"], confirmar=key.group(1))
+    response = _launch(
+        client, env, families=["classical", "ml"], confirmar=key.group(1), **LONG_ENOUGH
+    )
 
     assert response.status_code == 303
     ((parametros,),) = env.rows(
@@ -459,15 +544,48 @@ def test_the_operator_launches_anyway_after_the_warning(env: Env) -> None:
 
 def test_a_confirmation_for_other_families_warns_again(env: Env) -> None:
     client = _dal_client(env)
-    warned = _launch(client, env, families=["classical", "ml"])
+    warned = _launch(client, env, families=["classical", "ml"], **LONG_ENOUGH)
     key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
     assert key is not None
 
-    response = _launch(client, env, families=["classical", "dl"], confirmar=key.group(1))
+    response = _launch(
+        client, env, families=["classical", "dl"], confirmar=key.group(1), **LONG_ENOUGH
+    )
     text = _text(response.text)
 
     assert response.status_code == 200
-    assert "queda con una sola familia (Clásica): FIL-0003." in text
+    assert "queda con una sola familia (Clásica): FIL-0003 ." in text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_repeated_families_in_a_crafted_post_count_once(env: Env) -> None:
+    response = _launch(
+        _dal_client(env), env, families=["classical", "classical", "dl", "foundation"]
+    )
+
+    assert response.status_code == 303
+    ((parametros,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(parametros)["families"] == ["classical", "dl", "foundation"]
+
+
+def test_a_form_error_no_field_owns_is_shown(env: Env) -> None:
+    # An unknown family passes the form's own checks; the launch settings refuse it.
+    response = _launch(_dal_client(env), env, families=["classical", "quantum"])
+    text = _text(response.text)
+
+    assert response.status_code == 200
+    assert "quantum" in text and "pred-alert--error" in response.text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+@pytest.mark.parametrize("ingest_id", ["deadbeef", "z" * 64, "../" * 3])
+def test_a_malformed_ingest_id_is_a_form_error_not_a_server_error(env: Env, ingest_id: str) -> None:
+    client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+
+    response = _launch(client, env, ingest_id=ingest_id)
+
+    assert response.status_code == 200
+    assert "Elija una ingesta aceptada en Datos." in _text(response.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
@@ -633,6 +751,190 @@ def test_on_a_read_only_database_the_actions_are_off_and_say_why_not_a_server_er
     assert re.search(r'id="accion-reanudar">.*?<button [^>]*disabled', page, re.S)
     assert response.status_code == 200 and reason in _text(response.text)
     assert env.rows("SELECT estado, error_json FROM ejecuciones") == before
+
+
+READ_ONLY = (
+    "La base de datos es de solo lectura: se pueden consultar los resultados, pero no "
+    "lanzar, detener ni reanudar."
+)
+
+
+def _resume_button(html: str) -> str:
+    found = re.search(r'id="accion-reanudar">.*?<button ([^>]*)>', html, re.S)
+    assert found is not None
+    return "disabled" if "disabled" in found.group(1) else "enabled"
+
+
+@contextmanager
+def _read_only(env: Env, layout: str) -> Iterator[None]:
+    """Make the database read-only the way an operator does it, and undo it afterwards."""
+    folder = env.db.parent
+    if layout == "file":
+        env.db.chmod(0o444)
+    else:  # a rollback-journal copy in a folder without write permission
+        with closing(sqlite3.connect(env.db)) as conn:
+            conn.execute("PRAGMA journal_mode=DELETE")
+        folder.chmod(0o555)
+    try:
+        yield
+    finally:  # what an operator does to make the copy writable again (README)
+        folder.chmod(0o755)
+        for path in folder.glob(env.db.name + "*"):
+            path.chmod(0o644)
+
+
+@pytest.mark.parametrize("layout", ["file", "folder"])
+def test_a_database_made_read_only_while_the_app_runs_disables_the_actions_at_once(
+    env: Env, monkeypatch: pytest.MonkeyPatch, layout: str
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+    _launch(client, env)
+    env.worker().run_next()
+    assert _resume_button(client.get("/ejecucion?ejecucion=1").text) == "enabled"
+    before = env.rows("SELECT estado, error_json FROM ejecuciones")
+
+    with _read_only(env, layout):
+        page = client.get("/ejecucion?ejecucion=1").text
+        resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
+        launched = _launch(client, env, seed="18")
+
+    assert _resume_button(page) == "disabled" and READ_ONLY in _text(page)
+    assert resumed.status_code == 200 and READ_ONLY in _text(resumed.text)
+    assert launched.status_code == 200 and READ_ONLY in _text(launched.text)
+    assert env.rows("SELECT estado, error_json FROM ejecuciones") == before
+
+
+def test_a_copy_made_writable_while_the_app_runs_can_be_resumed_without_a_restart(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    _launch(_dal_client(env), env)
+    env.worker().run_next()
+    with _read_only(env, "file"):
+        client = TestClient(_dal_client(env).app)
+        assert _resume_button(client.get("/ejecucion?ejecucion=1").text) == "disabled"
+
+    resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+
+    assert resumed.status_code == 303 and "aviso=reanudada" in resumed.headers["location"]
+    assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
+
+
+def test_a_write_the_database_refuses_as_read_only_says_why_not_a_server_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A read-only mount, or a copy made read-only between the check and the write, is refused
+    # only by the write itself. The check is made to miss it, the way it misses a mount.
+    _scenario(monkeypatch, "unit_fails")
+    client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+    _launch(client, env)
+    env.worker().run_next()
+    before = env.rows("SELECT estado, error_json FROM ejecuciones")
+    monkeypatch.setattr("pred_platform.worker.control.database_read_only", lambda path: False)
+
+    with _read_only(env, "file"):
+        page = client.get("/ejecucion?ejecucion=1").text
+        resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
+        stopped = client.post("/ejecucion/detener", data={"ejecucion": "1"})
+        launched = _launch(client, env, seed="18")
+
+    assert _resume_button(page) == "enabled"  # the check saw nothing
+    for response in (resumed, stopped, launched):
+        assert response.status_code == 200 and READ_ONLY in _text(response.text)
+    assert env.rows("SELECT estado, error_json FROM ejecuciones") == before
+
+
+def test_reading_a_read_only_copy_keeps_it_read_only_until_its_sidecars_are_writable(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # SQLite gives the -wal and -shm it creates the database file's permissions.
+    _scenario(monkeypatch, "unit_fails")
+    client = _dal_client(env)
+    _launch(client, env)
+    env.worker().run_next()
+    env.db.chmod(0o444)
+    reader = sqlite3.connect(env.db)
+    reader.execute("SELECT COUNT(*) FROM ejecuciones").fetchone()
+    try:
+        env.db.chmod(0o644)
+        still = _resume_button(client.get("/ejecucion?ejecucion=1").text)
+    finally:
+        reader.close()
+        for path in env.db.parent.glob(env.db.name + "*"):
+            path.chmod(0o644)
+
+    assert still == "disabled"
+    assert _resume_button(client.get("/ejecucion?ejecucion=1").text) == "enabled"
+
+
+def test_a_queued_run_in_a_read_only_copy_does_not_promise_to_start(env: Env) -> None:
+    _launch(_dal_client(env), env)
+    with _read_only(env, "file"):
+        text = _text(_dal_client(env).get("/ejecucion?ejecucion=1").text)
+
+    assert READ_ONLY in text
+    assert "empezará en cuanto el worker" not in text and "make worker" not in text
+
+
+@pytest.mark.parametrize("reference", ["99999999999999999999999", "²", "٣", "-1"])
+def test_an_edited_run_number_is_never_a_server_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch, reference: str
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+    _launch(client, env)
+    env.worker().run_next()
+    query = {"ejecucion": reference}
+
+    page = client.get("/ejecucion", params=query)
+    assert page.status_code == 200 and "Ejecución #1" not in page.text
+    assert client.get("/ejecucion/estado", params=query).status_code in (200, 286)
+    assert client.get("/ejecucion/configuracion.json", params=query).status_code == 404
+    assert client.get("/resultados", params=query).status_code == 200
+    assert client.get("/resultados/exportar.csv", params=query).status_code == 404
+    for action in ("reanudar", "detener"):
+        response = client.post(f"/ejecucion/{action}", data=query)
+        assert response.status_code == 400
+        assert "La ejecución indicada no es válida." in _text(response.text)
+    assert env.rows("SELECT estado FROM ejecuciones") == [("completada_con_fallos",)]
+
+
+def test_a_failed_stage_is_named_and_can_be_resumed(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The engine marks any stage that raises as failed and not retryable, also for a cause that
+    # passes: the run keeps Reanudar.
+    _scenario(monkeypatch, "stage_fails")
+    client = _dal_client(env)
+    _launch(client, env)
+    env.worker().run_next()
+
+    page = client.get("/ejecucion?ejecucion=1").text
+
+    assert "La etapa L3 falló." in _text(page) and "etapa platform" not in page
+    assert _resume_button(page) == "enabled"
+
+
+def test_a_run_whose_families_compare_nothing_is_not_offered_again(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "stage_fails")
+    client = _dal_client(env)
+    warned = _launch(client, env, families=["classical"], **LONG_ENOUGH)
+    key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
+    assert key is not None
+    _launch(client, env, families=["classical"], confirmar=key.group(1), **LONG_ENOUGH)
+    env.worker().run_next()
+
+    page = client.get("/ejecucion?ejecucion=1").text
+
+    assert env.rows("SELECT estado FROM ejecuciones") == [("detenida",)]
+    assert 'id="accion-reanudar"' not in page
+    assert (
+        "Reanudar no se ofrece: con las familias de esta corrida ningún SKU tiene dos familias "
+        "que comparar" in _text(page)
+    )
 
 
 def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_worker_runs(

@@ -588,6 +588,21 @@ def test_a_rejected_run_names_its_cause_and_never_its_rows(root: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("estado", ["PUBLICADA", "RECHAZADA", "EN_CURSO"])
+def test_the_run_alone_is_the_run_of_its_status(root: Path, estado: str) -> None:
+    # Resultados names a run with get_m3_run, which skips counting the units; it must be the very
+    # run get_m3_run_status reports, also for a duplicate publication of the same identity.
+    _publish(root, estado=estado, run_id="m3-real-0", creado_en="2026-10-26 10:00:00")
+    _publish(root, estado=estado, creado_en="2026-10-27 10:00:00")
+    repo = _repo(root)
+
+    for run_id in (RUN, "m3-real-0"):
+        run = repo.get_m3_run(run_id)
+        assert run is not None and run.estado == estado
+        assert run == repo.get_m3_run_status(run_id).run
+    assert repo.get_m3_run("otra") is None and repo.get_m3_run_status("otra").run is None
+
+
 def test_an_unknown_run_is_no_data(root: Path) -> None:
     repo = _repo(root)
     for doc in (repo.get_m3_evidence("otra"), repo.get_m3_units("otra")):

@@ -253,3 +253,29 @@ def test_an_oversized_file_is_refused_before_the_engine_runs(
 
     assert response.status_code == 200 and "límite" in response.text
     assert env.rows("SELECT COUNT(*) FROM ingestas") == [(2,)]  # nothing new was ingested
+
+
+def test_on_a_read_only_database_uploading_is_off_and_never_runs_the_engine(env: Env) -> None:
+    client = _client(env)
+    root = env.settings.data_root
+    before = sorted(p.relative_to(root) for p in root.rglob("*"))
+    env.db.chmod(0o444)
+    try:
+        page = client.get("/datos").text
+        response = _upload(client, _csv("ok"))
+    finally:
+        env.db.chmod(0o644)
+
+    reason = (
+        "La base de datos es de solo lectura: se pueden consultar las ingestas cargadas, pero no "
+        "cargar archivos nuevos."
+    )
+    assert reason in page
+    assert re.search(
+        r"<button [^>]*disabled[^>]*>\s*(<svg[^>]*>.*?</svg>)?\s*Cargar y validar", page, re.S
+    )
+    assert response.status_code == 200 and reason in response.text
+    assert "El motor no está disponible" not in response.text
+    after = sorted(p.relative_to(root) for p in root.rglob("*"))
+    assert after == before  # the engine did not run: nothing new under the data root
+    assert env.rows("SELECT COUNT(*) FROM ingestas") == [(2,)]
