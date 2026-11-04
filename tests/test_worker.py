@@ -908,6 +908,33 @@ def test_drain_resumes_a_run_left_running_with_a_dead_engine(
     assert _run_state(env)[0] == "completada"
 
 
+def test_drain_leaves_a_run_with_a_live_engine_untouched(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    child = subprocess.Popen(["sleep", "300"], start_new_session=True)
+    try:
+        with closing(dal.connect(env.db)) as conn, conn:
+            assert dal.claim_pending(conn) is not None
+            conn.execute("UPDATE ejecuciones SET pid=?", (child.pid,))
+        launched: list[Any] = []
+
+        def launcher(command: list[str], **kwargs: Any) -> Any:
+            launched.append(command)
+            raise AssertionError("drain must not launch a run another worker supervises")
+
+        Worker(env.settings, launcher=launcher).drain()
+
+        assert child.poll() is None  # not signalled
+        assert _run_state(env)[0] == "ejecutando"
+        assert env.rows("SELECT pid FROM ejecuciones") == [(child.pid,)]
+        assert not launched
+    finally:
+        child.kill()
+        child.wait()
+
+
 def test_an_interrupt_stops_the_engine_and_leaves_the_run_running(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

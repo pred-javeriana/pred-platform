@@ -72,9 +72,21 @@ class Worker:
                 dal.requeue(conn, run.id)
                 _logger.info("Corrida %s retomada tras una caída", run.run_id)
 
+    def _requeue_orphans(self) -> None:
+        """Queue again the interrupted runs whose engine is gone, without signalling any process.
+
+        Another worker may be supervising a live engine, so that run is left alone.
+        """
+        with closing(dal.connect(self.settings.db_path)) as conn:
+            for run in dal.interrupted_runs(conn):
+                if run.pid is not None and engine.is_alive(run.pid):
+                    continue
+                if dal.requeue(conn, run.id):
+                    _logger.info("Corrida %s retomada tras una caída", run.run_id)
+
     def drain(self) -> None:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``)."""
-        self.recover()
+        self._requeue_orphans()
         while self.run_next() or self._unsettled is not None:
             if self._unsettled is not None:
                 time.sleep(self.poll_interval)  # the database still fails: wait, then retry
