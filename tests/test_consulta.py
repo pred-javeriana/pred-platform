@@ -100,16 +100,25 @@ def test_the_tab_lists_the_published_verdicts_and_keeps_the_run_totals(
     html, text = response.text, _text(response.text)
 
     assert response.status_code == 200
-    assert 'aria-current="page">Veredictos de M3<' in html
+    assert 'aria-current="page">Veredictos<' in html
     for sku in VERDICTS:
         assert f'href="/resultados/sku/{sku}?' in html
     # FIL-0003 no tiene veredicto: no es una fila, solo cuenta en el embudo de la corrida.
     assert 'href="/resultados/sku/FIL-0003' not in html
     assert "3 SKU coinciden con la consulta." in text
-    assert "La corrida tiene 3 SKU con veredicto M3 de 4 productos." in text
-    for label in ("VALIDADO", "EXPLORATORIO", "EVIDENCIA_INSUFICIENTE"):
+    assert (
+        "En toda la ejecución, 3 de 4 productos tienen veredicto; ese conteo no cambia con los "
+        "filtros." in text
+    )
+    for label in ("Validado", "Exploratorio", "Evidencia insuficiente"):
         assert f'pred-status__label">{label}' in html
-    assert "Corrida M3 m3-real-1 PUBLICADA" in text
+    # Each verdict carries its one-line explanation, and a legend explains all five once.
+    assert (
+        'title="Se equivoca menos que la línea base, con datos reales y evidencia suficiente."'
+        in html
+    )
+    assert 'class="pred-legend"' in html
+    assert "Evaluación final Publicada ·" in text
 
 
 def test_the_three_filters_sort_and_page_reach_the_repository_together(
@@ -151,7 +160,10 @@ def test_the_three_filters_sort_and_page_reach_the_repository_together(
     assert 'href="/resultados/sku/FIL-0004?' in response.text
     assert 'href="/resultados/sku/FIL-0001?' not in response.text
     # El embudo sigue siendo el de toda la corrida, aunque la consulta traiga un solo SKU.
-    assert "La corrida tiene 3 SKU con veredicto M3 de 4 productos." in text
+    assert (
+        "En toda la ejecución, 3 de 4 productos tienen veredicto; ese conteo no cambia con los "
+        "filtros." in text
+    )
     # Los controles conservan lo elegido.
     assert '<option value="lumpy" selected>' in response.text
     assert '<option value="classical" selected>' in response.text
@@ -188,11 +200,11 @@ def test_an_unknown_filter_value_is_shown_not_ignored(
     html, text = response.text, _text(response.text)
 
     assert response.status_code == 200
-    assert "La consulta M3 no es válida." in text and "mantiene" in text
+    assert "La consulta no es válida." in text and "mantiene" in text
     # No se muestra una lista que parezca filtrada ni un conteo inventado.
     assert 'href="/resultados/sku/' not in html and "coinciden con la consulta" not in text
     # La corrida y el formulario siguen: quien se equivocó puede corregir.
-    assert 'id="filtros-consulta"' in html and "Corrida M3 m3-real-1 PUBLICADA" in text
+    assert 'id="filtros-consulta"' in html and "Evaluación final Publicada ·" in text
 
 
 def test_a_page_that_is_not_a_number_is_a_warning(
@@ -252,13 +264,14 @@ def test_a_verdict_is_not_called_significant_and_a_missing_test_shows_its_cause(
     _published(env, monkeypatch)
     html = _client(env).get("/resultados?vista=sku").text
 
-    # VALIDADO es descriptivo: puede no ser significativo, y se dice por separado.
+    # Validado es descriptivo: puede no ser significativo, y se dice por separado.
     validated = _row(html, "FIL-0001")
-    assert "VALIDADO" in validated and "p ajustado 0,080" in validated
+    assert "Validado" in validated and "p ajustado 0,080" in validated
     assert "No significativa" in validated
-    # Sin prueba, la causa literal de M3; nunca un p-valor inventado.
+    # Sin prueba, la causa de M3 en palabras, con el código publicado aparte; nunca un p-valor.
     missing = _row(html, "FIL-0004")
-    assert "Sin prueba: veredicto:EVIDENCIA_INSUFICIENTE" in missing
+    assert "Sin prueba: el veredicto es «Evidencia insuficiente», que no lleva prueba" in missing
+    assert 'title="Causa publicada: veredicto:EVIDENCIA_INSUFICIENTE"' in html
     assert "p ajustado" not in missing.split("Ver prueba")[0]
 
 
@@ -269,7 +282,7 @@ def test_a_validated_verdict_whose_test_rejects_after_bh_is_called_significant(
     row = _row(_client(env).get("/resultados?vista=sku").text, "FIL-0001")
 
     # Significativa y a favor de la campeona: el estadístico HLN-DM es negativo.
-    assert "VALIDADO" in row and "Significativa, a favor de la campeona p ajustado 0,020" in row
+    assert "Validado" in row and "Significativa, a favor de la campeona p ajustado 0,020" in row
     assert "No significativa" not in row.split("Ver prueba")[0]
 
 
@@ -281,13 +294,13 @@ def test_an_unpublished_run_explains_why_there_is_nothing_to_query(
     html = _client(env).get("/resultados?vista=sku&lista=veredictos").text
     text = _text(html)
 
-    assert "Esta ejecución todavía no tiene una corrida M3 PUBLICADA." in text
-    assert "La corrida M3 más reciente, m3-real-1, está EVALUADA." in text
+    assert "Esta ejecución todavía no tiene una evaluación publicada." in text
+    assert "La evaluación más reciente está evaluada, sin publicar." in text
     assert 'href="/resultados/sku/' not in html and 'id="filtros-consulta"' not in html
     # Without a published run, the SKU tab opens on what M2 left, with the same explanation.
     default = _client(env).get("/resultados?vista=sku").text
-    assert 'aria-current="page">Familias de M2</a>' in default
-    assert "La corrida M3 más reciente, m3-real-1, está EVALUADA." in _text(default)
+    assert 'aria-current="page">Resultados por familia</a>' in default
+    assert "La evaluación más reciente está evaluada, sin publicar." in _text(default)
 
 
 def test_an_m3_run_of_another_execution_is_refused(
@@ -296,7 +309,7 @@ def test_an_m3_run_of_another_execution_is_refused(
     _published(env, monkeypatch)
     html = _client(env).get("/resultados?vista=sku&m3=m3-ajena").text
 
-    assert "La corrida M3 pedida no corresponde a esta ejecución." in _text(html)
+    assert "La evaluación pedida no corresponde a esta ejecución." in _text(html)
     assert 'href="/resultados/sku/' not in html
 
 
@@ -307,7 +320,7 @@ def test_a_publication_without_its_metadata_gives_no_rows(
     html = _client(env).get("/resultados?vista=sku").text
 
     # No significa cero exclusiones: la corrida se explica y no se inventa una lista.
-    assert "La publicación M3 no tiene sus metadatos de exclusión." in _text(html)
+    assert "La evaluación publicada no trae la lista de productos excluidos." in _text(html)
     assert 'href="/resultados/sku/' not in html
 
 
@@ -316,7 +329,7 @@ def test_without_an_m3_evaluation_the_tab_says_so(
 ) -> None:
     _run(env, monkeypatch)
     text = _text(_client(env).get("/resultados?vista=sku").text)
-    assert "Esta ejecución todavía no tiene evaluación M3." in text
+    assert "Esta ejecución todavía no tiene evaluación final." in text
 
 
 def test_the_selection_tab_is_untouched_by_the_query_tab(
@@ -325,8 +338,8 @@ def test_the_selection_tab_is_untouched_by_the_query_tab(
     _published(env, monkeypatch)
     html = _client(env).get("/resultados?vista=sku&lista=familias").text
 
-    assert 'aria-current="page">Familias de M2<' in html
-    # «Familias de M2» sigue siendo la selección de M2: sus filtros no cambian.
+    assert 'aria-current="page">Resultados por familia<' in html
+    # «Resultados por familia» sigue siendo la selección de M2: sus filtros no cambian.
     assert 'name="estado"' in html and 'name="family"' in html
     assert 'name="familia_campeona"' not in html and 'name="veredicto"' not in html
     assert 'href="/resultados?vista=sku&amp;ejecucion=1&amp;m3=m3-real-1"' in html
@@ -338,4 +351,4 @@ def test_the_old_consulta_link_still_opens_the_verdict_list(
     _published(env, monkeypatch)
     html = _client(env).get("/resultados?vista=consulta").text
 
-    assert 'id="filtros-consulta"' in html and 'aria-current="page">Veredictos de M3<' in html
+    assert 'id="filtros-consulta"' in html and 'aria-current="page">Veredictos<' in html

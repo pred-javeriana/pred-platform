@@ -1,0 +1,12 @@
+{# Un código del contrato con su etiqueta en español y su explicación como title (un Term de
+   presentation). #}
+{% macro term(t) %}{% if t.hint %}<span class="pred-term" title="{{ t.hint }}">{{ t.label }}</span>{% else %}{{ t.label }}{% endif %}{% endmacro %}
+
+{# Un término de la tesis que se conserva (RMSE, HLN-DM, BH…) con su explicación llana. #}
+{% macro gloss(word, shown=none) %}{% set hint = glossary_hint(word) %}{% if hint %}<abbr title="{{ hint }}">{{ shown or word }}</abbr>{% else %}{{ shown or word }}{% endif %}{% endmacro %}
+
+{# Un instante del contrato para leer de un vistazo; el valor exacto queda en el title. #}
+{% macro when(value) %}{% if value %}<time datetime="{{ value.isoformat() }}" title="{{ exact_when(value) }}">{{ format_when(value) }}</time>{% else %}—{% endif %}{% endmacro %}
+
+{# Un día del calendario (texto ISO del contrato) para leer; la fecha ISO queda en el title. #}
+{% macro day(value) %}{% if value %}<time datetime="{{ value }}" title="{{ value }}">{{ format_date(value) }}</time>{% else %}—{% endif %}{% endmacro %}

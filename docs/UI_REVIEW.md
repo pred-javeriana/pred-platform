@@ -52,16 +52,16 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
   lanzamiento se presenta primero y abierta, con el botón Lanzar de ancho intrínseco y un solo
   chevron en los disclosures.
 - **Resultados.** Abre en Resumen cuando la ejecución tiene evidencia M3 publicada y, si no, en
-  la pestaña SKU. «Veredictos de M3», paginada, tiene una fila por SKU con clase, familia y
-  modelo campeones, veredicto, r frente a Seasonal Naive, ventanas y significancia; «Familias de
-  M2» tiene una columna por familia. Los filtros están a la vista en una barra. En el detalle,
+  la pestaña SKU. «Veredictos», paginada, tiene una fila por SKU con clase, familia y
+  modelo campeones, veredicto con su explicación, r frente a la línea base, ventanas y
+  significancia; «Resultados por familia» tiene una columna por familia. Los filtros están a la vista en una barra. En el detalle,
   familias, configuración y ensayos comienzan cerrados; las ventanas se piden con `ventanas=1` y
   abren las familias que las contienen. El total mostrado es el de la consulta, nunca un
   agregado de cartera inferido de una página.
 - **Detalle de SKU.** Una ruta de migas (Resultados › SKU › el SKU) vuelve al Resumen de la
   misma corrida y a la lista con sus filtros.
 - **Alcance.** La barra de contexto de Resultados y el detalle de SKU muestran el origen de
-  datos que declara la corrida M3; la explicación de la evidencia retrospectiva es desplegable.
+  datos que declara la evaluación final; la explicación de la evidencia retrospectiva es desplegable.
 - **Filtros.** Aplicar filtros conserva `size` y reinicia la página. Los filtros y la
   paginación los resuelve el repositorio, no el cliente.
 - **Escala.** Con 3.000 SKU de identificadores de 169 caracteres, Resultados muestra 20 filas por
@@ -69,11 +69,12 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
 - **Tipografía.** Los títulos adaptables pesan 800, las etiquetas usan Archivo, las cifras e
   identificadores Mono, el texto operativo 14 px y los controles 40 px. La escala secundaria
   es 20/18/16/14 px.
-- **Etiquetas.** Los estados se muestran como Pendiente, Ejecutando, Exitosa, Fallida y No
-  Ejecutable, con la misma inicial para corrida, familia y ensayos; las claves contractuales,
-  filtros, colores e iconos no cambian. Las clases de demanda usan etiquetas bilingües
-  canónicas: Smooth (Suave), Erratic (Errática), Intermittent (Intermitente) y Lumpy
-  (Grumosa), sin modificar los literales del contrato.
+- **Etiquetas.** Todo nombre visible sale de `app/presentation.py`. Las tareas se muestran como
+  Pendiente, Ejecutando, Por evaluar, Exitosa, Fallida y No ejecutable; una ejecución terminada
+  dice Completada y, al lado, cuántas tareas fallaron y cuántos productos tienen veredicto. Los
+  veredictos, las clases de demanda (Suave, Errática, Intermitente y Grumosa), las familias y los
+  modelos usan su nombre en español; el código queda en `title` o en el detalle técnico. Las
+  claves contractuales, filtros, CSV, colores e iconos no cambian.
 - **Leyenda ADI–CV².** Dos columnas y dos filas, separadas del eje: las cajas de texto no se
   intersectan a 1280, 535 y 320 px.
 - **Poda.** El texto de un ensayo podado conserva la regla o motivo registrado. `podada` tiene

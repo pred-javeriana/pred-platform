@@ -11,6 +11,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import IO, Any, cast
 from urllib.parse import urlencode
@@ -24,7 +25,8 @@ from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_cl
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError
 from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
-from pred_platform.data.query import DEFAULT_SIZE, int_param
+from pred_platform.data.query import DEFAULT_SIZE, MAX_SIZE, int_param
+from pred_platform.data.repository import DataRepository
 from pred_platform.worker import ingesta
 from pred_platform.worker.solo_lectura import database_read_only
 
@@ -281,6 +283,36 @@ def error_view(exc: DataLayerError) -> dict[str, object]:
         "title": _error_title(info.code),
         "action": mensajes.accion(info.code),
     }
+
+
+@dataclass(frozen=True, slots=True)
+class IngestName:
+    """Cómo se nombra una ingesta en pantalla: el archivo y su fecha; el hash queda de detalle."""
+
+    ingest_id: str
+    file_name: str | None
+    published_at: datetime | None
+
+
+def ingest_name(repository: DataRepository, ingest_id: str | None) -> IngestName | None:
+    """El nombre del archivo de una ingesta, para mostrarlo en lugar de su hash SHA-256.
+
+    Una lectura que falla o una ingesta que ya no está en la lista dejan el hash como nombre.
+    """
+    if not ingest_id:
+        return None
+    try:
+        listing = repository.list_ingests(size=MAX_SIZE)
+    except DataLayerError:
+        listing = None
+    found = (
+        next((item for item in listing.items if item.ingest_id == ingest_id), None)
+        if listing
+        else None
+    )
+    if found is None:
+        return IngestName(ingest_id, None, None)
+    return IngestName(ingest_id, found.name, found.published_at)
 
 
 def topology_ready(report: TopologyReport | None) -> bool:

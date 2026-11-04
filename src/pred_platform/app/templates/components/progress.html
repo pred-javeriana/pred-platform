@@ -1,21 +1,24 @@
-{# Avance de una corrida. completed y total son conteos; percent, el porcentaje publicado (0-100).
+{# Avance de una ejecución. completed y total son conteos; percent, el porcentaje publicado (0-100).
    El texto visible y aria-valuetext van en español (57,1 %, 1.284); aria-valuenow y
-   data-pred-progress conservan el número tal como llega. #}
-{% macro progress_bar(completed, total, percent, label="", status_label="", circular=false) %}
+   data-pred-progress conservan el número tal como llega. working=true marca que el motor sigue
+   trabajando: el anillo lleva un arco que gira (quieto con movimiento reducido). Las cifras con
+   data-pred-tween pasan de su valor anterior al nuevo tras cada sondeo (pred.js). #}
+{% macro progress_bar(completed, total, percent, label="", status_label="", circular=false, working=false) %}
 {% set shown = format_decimal(percent, 1) %}
 {% set counts = format_count(completed) ~ " de " ~ format_count(total) ~ " tareas" %}
 <div class="pred-progress{% if circular %} pred-progress--circular{% endif %}" data-pred-progress="{{ percent }}"{% if status_label %} data-pred-progress-status="{{ status_label }}"{% endif %}>
   {% if circular %}
-  <div class="pred-progress__ring{% if percent >= 100 %} is-complete{% endif %}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}" aria-valuetext="{{ counts }} · {{ shown }} %">
+  <div class="pred-progress__ring{% if percent >= 100 %} is-complete{% endif %}{% if working %} is-working{% endif %}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}" aria-valuetext="{{ counts }} · {{ shown }} %">
     <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
       <circle class="pred-progress__ring-track" cx="60" cy="60" r="52" />
       <circle class="pred-progress__arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="{{ percent }} 100" transform="rotate(-90 60 60)" />
+      {% if working %}<circle class="pred-progress__sweep" cx="60" cy="60" r="43" pathLength="100" stroke-dasharray="14 86" />{% endif %}
     </svg>
-    <span class="pred-progress__ring-value" aria-hidden="true">{{ shown }} <span>%</span></span>
+    <span class="pred-progress__ring-value" aria-hidden="true"><span data-pred-tween="avance-pct" data-pred-decimals="1">{{ shown }}</span> <span class="pred-progress__ring-unit">%</span></span>
   </div>
   <div class="pred-progress__reading">
-    <p class="pred-progress__label">{{ label or "Progreso de la corrida" }}</p>
-    <p class="pred-progress__counts">{{ format_count(completed) }} / {{ format_count(total) }} tareas</p>
+    <p class="pred-progress__label">{{ label or "Avance de la ejecución" }}</p>
+    <p class="pred-progress__counts"><span data-pred-tween="avance-hechas">{{ format_count(completed) }}</span> / {{ format_count(total) }} tareas</p>
   </div>
   {% else %}
   <div class="pred-progress__meta">

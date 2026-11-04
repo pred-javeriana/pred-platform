@@ -2,41 +2,63 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 
-{# Un formulario de una columna, en el orden en que se decide: datos, modelos, ventana y, plegado,
-   lo que casi nunca cambia. Importar una configuración es otra tarea y va aparte. #}
+{# El formulario en filas que llenan el ancho: los datos junto a la ventana de evaluación, las
+   familias junto a las que admite cada clase y, plegado, lo que casi nunca cambia. Importar una
+   configuración es otra tarea y va aparte. #}
 <section class="pred-panel pred-launch-section" id="lanzar" aria-labelledby="titulo-lanzar">
   <h2 id="titulo-lanzar">Nueva ejecución</h2>
-  <p class="pred-meta">Elija la ingesta, las familias de modelos y la ventana de evaluación. La corrida queda en cola y el worker la lanza.</p>
+  <p class="pred-meta">Elija los datos, la ventana de evaluación y las familias de modelos. La ejecución queda en cola y empieza cuando le toca el turno.</p>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
   {% if form_errors.get("form") %}{{ alert(form_errors["form"], variant="error") }}{% endif %}
 
   {% if not ingests %}
-    <p class="pred-note pred-note--muted">Todavía no hay ninguna ingesta aceptada. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
+    <p class="pred-note pred-note--muted">Todavía no hay ningún archivo de datos aceptado. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
   {% else %}
   <form method="post" action="/ejecucion/lanzar" class="pred-launch">
-    <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
-      <label class="pred-field__label" for="ingest_id">Ingesta</label>
-      <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if form_errors.get('ingest_id') %} ingest_id-error{% endif %}"{% if form_errors.get('ingest_id') %} aria-invalid="true"{% endif %}>
-        {% if not selected_ingest %}<option value="" selected disabled>Elija una ingesta</option>{% endif %}
-        {% for choice in ingests %}
-        {% set item = choice.item %}
-        <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU · {{ abbreviate_id(item.ingest_id, 8) }}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>
-        {% endfor %}
-      </select>
-      <p class="pred-field__hint" id="ingest_id-hint">Solo se ofrecen ingestas aceptadas en Datos; una que declara datos sintéticos no se puede ejecutar.</p>
-      {% if form_errors.get('ingest_id') %}<p class="pred-field__error" id="ingest_id-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors['ingest_id'] }}</span></p>{% endif %}
+    <div class="pred-launch__row">
+      <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
+        <label class="pred-field__label" for="ingest_id">Datos</label>
+        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if form_errors.get('ingest_id') %} ingest_id-error{% endif %}"{% if form_errors.get('ingest_id') %} aria-invalid="true"{% endif %}>
+          {% if not selected_ingest %}<option value="" selected disabled>Elija un archivo de datos</option>{% endif %}
+          {% for choice in ingests %}
+          {% set item = choice.item %}
+          <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU{% if item.published_at %} · cargado el {{ format_when(item.published_at) }}{% endif %}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>
+          {% endfor %}
+        </select>
+        <p class="pred-field__hint" id="ingest_id-hint">Solo se ofrecen archivos aceptados en Datos; uno que declara datos sintéticos no se puede ejecutar.</p>
+        {% if form_errors.get('ingest_id') %}<p class="pred-field__error" id="ingest_id-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors['ingest_id'] }}</span></p>{% endif %}
+      </div>
+      <div class="pred-launch__grid pred-launch__window">
+        {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
+        {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", error=form_errors.get("min_train", "")) }}
+        {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", error=form_errors.get("horizon", "")) }}
+      </div>
     </div>
 
-    <fieldset class="pred-fieldset" aria-describedby="families-hint{% if form_errors.get('families') %} families-error{% endif %}">
+    <fieldset class="pred-fieldset pred-launch__families" aria-describedby="families-hint{% if form_errors.get('families') %} families-error{% endif %}">
       <legend>Familias de modelos</legend>
-      <p class="pred-field__hint" id="families-hint">{{ families_hint }}</p>
-      {% for code, label in family_choices %}
-      <label class="pred-field__check" for="fam-{{ code }}">
-        <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true"{% endif %}{% if code in form.families %} checked{% endif %}>
-        <span>{{ label }}{% if code == "foundation" %}<span class="pred-subvalue">Requiere el extra foundation (torch, chronos-forecasting) y los pesos en el entorno del motor.</span>{% endif %}</span>
-      </label>
-      {% endfor %}
-      {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
+      <div class="pred-launch__row">
+        <div class="pred-launch__checks">
+          {% for code, label in family_choices %}
+          <label class="pred-field__check" for="fam-{{ code }}">
+            <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true"{% endif %}{% if code in form.families %} checked{% endif %}>
+            <span>{{ label }}{% if code == "foundation" %}<span class="pred-subvalue">Necesita el modelo Chronos-2 instalado en el equipo del motor; si falta, sus tareas fallan con un aviso.</span>{% endif %}</span>
+          </label>
+          {% endfor %}
+          {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
+        </div>
+        <div class="pred-field__hint pred-family-rules" id="families-hint">
+          <p>Cada SKU necesita al menos dos familias que admitan su clase de demanda:</p>
+          <ul class="pred-family-rules__list">
+            {% for sku_class, families in families_hint %}
+            <li class="pred-family-rules__item">
+              <span class="pred-family-rules__class" title="{{ sku_class_term(sku_class).hint }}">{{ sku_class_label(sku_class) }}</span>
+              <span class="pred-family-rules__families">{% for family in families %}<span class="pred-tag">{{ family_label(family) }}</span>{% endfor %}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
       {% if exclusion_warning %}
       {# Cada grupo nombra sus SKU sin cortar un identificador; una lista larga va plegada. #}
       <div class="pred-alert pred-alert--warning" role="alert" id="aviso-familias">
@@ -57,16 +79,11 @@
       {% endif %}
     </fieldset>
 
-    <div class="pred-launch__grid">
-      {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
-      {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", error=form_errors.get("min_train", "")) }}
-      {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", error=form_errors.get("horizon", "")) }}
-    </div>
     <details class="pred-details pred-launch__advanced"{% if form_errors | select("in", ["step", "seasonality", "trials", "seed", "workers"]) | list %} open{% endif %}><summary>Ajustes de búsqueda y reproducibilidad</summary>
     <div class="pred-launch__grid">
       {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
       {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
-      {{ field("trials", "Ensayos por estudio", value=form.trials, input_type="number", placeholder="los del motor", hint="Vacío: el presupuesto de cada familia.", error=form_errors.get("trials", "")) }}
+      {{ field("trials", "Configuraciones a probar por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", error=form_errors.get("trials", "")) }}
       {{ field("seed", "Semilla", value=form.seed, input_type="number", error=form_errors.get("seed", "")) }}
       {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
     </div>
@@ -79,7 +96,7 @@
       {% else %}
       {{ button("Lanzar ejecución", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
       {% endif %}
-      {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El worker de esta aplicación se detuvo: la corrida quedará en cola; el registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta aplicación no ejecuta el worker (PRED_WORKER=off): la corrida quedará en cola hasta que lo inicie con <span class="mono">make worker</span>.</p>{% endif %}
+      {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El worker de esta aplicación se detuvo: la corrida quedará en cola; el registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta instalación no procesa ejecuciones por sí sola: la ejecución quedará en cola hasta que se inicie el procesador de ejecuciones con <span class="mono">make worker</span>.</p>{% endif %}
     </div>
     {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se puede lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
   </form>

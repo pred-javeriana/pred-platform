@@ -1,13 +1,15 @@
+{% from "components/terms.html" import when %}
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
-{% from "components/status.html" import status_indicator %}
+{% from "components/status.html" import status_indicator, verdict_legend %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/states.html" import unavailable_state %}
-{# La selección de M2 por SKU (C2): el estado y el valor de cada familia, con el veredicto que
-   publicó M3 al lado. Filtros, orden y páginas los resuelve el repositorio. #}
+{# Los resultados por familia de cada SKU (C2): el estado y el valor de cada familia en el ajuste
+   de modelos, con el veredicto de la evaluación final al lado. Filtros, orden y páginas los
+   resuelve el repositorio. #}
 <section class="pred-results-list" id="seleccion-por-sku">
-  <h2 class="pred-sr-only">Selección por SKU</h2>
+  <h2 class="pred-sr-only">Resultados por familia de cada SKU</h2>
 
   {% if query_error %}
     {{ alert(query_error, variant="warning") }}
@@ -17,7 +19,7 @@
     {{ unavailable_state(list_error.title, list_error.detail or "No fue posible leer la selección.", list_error.code, list_error.blocked_by) }}
   {% elif listing and listing.availability.status != "available" %}
     {{ unavailable_state(
-      "Todavía no hay selección por SKU.",
+      "Todavía no hay resultados por familia.",
       listing.availability.detail or "La ejecución aún no dejó resultados.",
       listing.availability.reason_code or "no_data",
       listing.availability.blocked_by
@@ -29,16 +31,9 @@
       {% if query.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ query.ejecucion }}">{% endif %}
       {% if query.m3 %}<input type="hidden" name="m3" value="{{ query.m3 }}">{% endif %}
       {{ field("q", "Buscar SKU", value=query.q or "") }}
-      {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=[
-        ("", "Todas"), ("smooth", "Smooth (Suave)"), ("erratic", "Erratic (Errática)"), ("intermittent", "Intermittent (Intermitente)"), ("lumpy", "Lumpy (Grumosa)")
-      ]) }}
-      {{ field("family", "Familia", value=query.family or "", input_type="select", options=[
-        ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional")
-      ]) }}
-      {{ field("estado", "Estado de la familia", value=query.estado or "", input_type="select", options=[
-        ("", "Todos"), ("exitosa", "Exitosa"), ("fallida", "Fallida"), ("no_ejecutable", "No Ejecutable"),
-        ("excluida", "Excluida"), ("ejecutando", "Ejecutando"), ("pendiente", "Pendiente")
-      ]) }}
+      {{ field("sku_class", "Clase", value=query.sku_class or "", input_type="select", options=sku_class_options()) }}
+      {{ field("family", "Familia", value=query.family or "", input_type="select", options=family_options()) }}
+      {{ field("estado", "Estado de la familia", value=query.estado or "", input_type="select", options=status_options("family", ("exitosa", "fallida", "no_ejecutable", "excluida", "ejecutando", "pendiente"))) }}
       {{ field("sort", "Ordenar por", value=query.sort, input_type="select", options=[
         ("sku_id", "SKU"), ("valor", "Mejor valor")
       ]) }}
@@ -51,30 +46,32 @@
     <div class="pred-list-head">
       <p class="pred-query-count"><strong>{{ format_count(listing.page.total) }}</strong> SKU coinciden con la consulta.</p>
     </div>
-    <p class="pred-meta">Cada columna de familia muestra su estado en M2 y el valor de su configuración elegida: es evidencia de la familia, no un veredicto del SKU. El campeón y el veredicto son los que publicó M3{% if m3.run %} en la corrida <span class="mono">{{ m3.run.run_id }}</span>{% endif %}.{% if m3.run and not m3.problem %} <a href="/resultados?{{ query.query_string(vista='resumen', lista='', sku_class='', family='', estado='', q='', sort='', descending='', page='', size='') }}">Ver distribución de campeones</a>.{% endif %}</p>
+    <p class="pred-meta">Cada columna de familia muestra cómo terminó esa familia en el ajuste de modelos y el error de su configuración elegida: es evidencia de la familia, no un veredicto del producto. El modelo campeón y el veredicto son los de la evaluación final{% if m3.run %}<span title="Evaluación {{ m3.run.run_id }}"> publicada el {{ when(m3.run.creado_en) }}</span>{% endif %}.{% if m3.run and not m3.problem %} <a href="/resultados?{{ query.query_string(vista='resumen', lista='', sku_class='', family='', estado='', q='', sort='', descending='', page='', size='') }}">Ver distribución de campeones</a>.{% endif %}</p>
     {% if m3.problem %}<p class="pred-note"><strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}</p>{% endif %}
-    {{ table_start(["SKU", "Clase", "Campeona (M3)"] + FAMILY_HEADERS, "Selección por SKU de la ejecución", "families") }}
+    {% if m3.verdicts %}{{ verdict_legend() }}{% endif %}
+    {{ table_start(["SKU", "Clase", "Campeón y veredicto"] + FAMILY_HEADERS, "Resultados por familia de cada SKU", "families") }}
     {% if rows %}
       {% for item in rows %}
       <tr>
         <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ item.row.sku_id | urlencode }}?{{ query.detail_query() }}" aria-label="Ver evidencia del SKU {{ item.row.sku_id }}">{{ item.row.sku_id }}</a></th>
-        <td class="pred-demand-class">{{ sku_class_label(item.row.sku_class) }}</td>
+        <td class="pred-demand-class" title="{{ sku_class_term(item.row.sku_class).hint }}">{{ sku_class_label(item.row.sku_class) }}</td>
         <td>
           {% set verdict = m3.verdicts.get(item.row.sku_id) %}
           {% if verdict %}
           {% set model = champion_model(verdict) %}
-          <span class="pred-nowrap">{{ family_label(verdict.familia_campeona) }}{% if model %} · <span class="mono">{{ model }}</span>{% endif %}</span>
+          <span class="pred-nowrap">{{ family_label(verdict.familia_campeona) }}{% if model %} · {{ model_label(model) }}{% endif %}</span>
           <span class="pred-subvalue">{{ status_indicator(describe_status("verdict", verdict.veredicto)) }}</span>
           {% elif m3.excluded.get(item.row.sku_id) %}
-          <span class="pred-cell--none">Excluido antes de M3: {{ m3.excluded[item.row.sku_id] }}</span>
-          {% else %}<span class="pred-cell--none">Sin veredicto M3</span>{% endif %}
+          {% set exclusion = m3.excluded[item.row.sku_id] %}
+          <span class="pred-cell--none" title="Causa publicada: {{ exclusion.detail }}">Excluido antes de evaluar: {{ exclusion.reason }}</span>
+          {% else %}<span class="pred-cell--none">Sin veredicto</span>{% endif %}
         </td>
         {% for family in FAMILY_ORDER %}
         {% set brief = item.cells.get(family) %}
         <td class="pred-family-cell">
           {% if brief %}
           {{ status_indicator(describe_status("family", brief.estado)) }}
-          {% if brief.valor is not none %}<span class="pred-subvalue">{{ brief.metrica_objetivo }} {{ format_decimal(brief.valor, 3) }}</span>{% endif %}
+          {% if brief.valor is not none %}<span class="pred-subvalue" title="{{ metric_term(brief.metrica_objetivo).hint }}">{{ metric_label(brief.metrica_objetivo) }} {{ format_decimal(brief.valor, 3) }}</span>{% endif %}
           {% else %}<span class="pred-cell--none" aria-label="Sin dato">—</span>{% endif %}
         </td>
         {% endfor %}

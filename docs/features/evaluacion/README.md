@@ -117,7 +117,7 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   `total_productos` los incluye. No tienen veredicto ni son un `FALLO_TECNICO`. Una corrida cuyo
   protocolo no tiene bloques de reserva (`bloques`) se publicó antes de que M3 listara esas
   exclusiones: los dos campos son nulos, porque la falta de filas no significa cero. Resultados
-  muestra la causa publicada de cada producto excluido en la lectura «Familias de M2» de la
+  muestra la causa publicada de cada producto excluido en la lectura «Resultados por familia» de la
   pestaña SKU, en su detalle y en el CSV de exclusiones.
 - **Confirmación del campeón.** `get_m3_confirmation` lee, de una corrida PUBLICADA, la
   confirmación de cada campeona con sus comparaciones y la significancia HLN-DM por clase (BH y

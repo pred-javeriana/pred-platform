@@ -202,7 +202,7 @@ def test_uploading_in_the_browser_leads_to_the_diagnosis_and_the_topology(env: E
     assert response.headers["location"] == f"/datos?ingest_id={_sha(content)}"
 
     page = client.get(response.headers["location"]).text
-    assert "Datos válidos" in page and "Topología de demanda" in page
+    assert "Datos válidos" in page and "Clases de demanda" in page
     assert "Continuar a Ejecución" in page
 
 

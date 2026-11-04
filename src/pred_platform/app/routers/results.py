@@ -18,7 +18,8 @@ from fastapi.responses import HTMLResponse
 
 from pred_platform.app.charts import champion_forecast_svg, champion_share_svg
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
-from pred_platform.app.datos import error_view, page_meta
+from pred_platform.app.datos import error_view, ingest_name, page_meta
+from pred_platform.app.presentation import FAMILY_ORDER, family_label
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
@@ -32,16 +33,16 @@ from pred_platform.app.resultados_m3 import (
     classes,
     consulta,
     decision,
+    other_publications,
     profiles,
     published_executions,
     reserve_windows,
+    run_outcome,
     summary,
 )
 from pred_platform.app.resultados_pronostico import champion_forecast
 from pred_platform.app.seleccion import (
-    FAMILY_ORDER,
     SelectionQuery,
-    family_label,
     parse_selection_query,
     run_action,
 )
@@ -167,6 +168,7 @@ def resultados(
     elif champion:
         _fill_m3_view(repository, run.ejecucion.id, vista, params, context)
     resolved = context["m3"].run
+    _describe_run(repository, run, resolved, context)
     if resolved is not None:
         # Las pestañas conservan la corrida M3 resuelta, no «la más nueva».
         context["tab_query"] = urlencode(
@@ -176,6 +178,27 @@ def resultados(
             }
         )
     return _render(request, context)
+
+
+def _describe_run(
+    repository: DataRepository,
+    run: RunStatus,
+    resolved: models_v2.M3Run | None,
+    context: dict[str, Any],
+) -> None:
+    """Lo que la barra de contexto dice de la ejecución: su archivo y qué dejó al terminar."""
+    if run.ejecucion is None:
+        return
+    counts = run.progress.tareas_por_estado if run.progress is not None else None
+    # El embudo que la vista ya leyó (Resumen o Veredictos) evita leerlo otra vez.
+    summary, consulta = context.get("m3_summary"), context.get("m3_consulta")
+    funnel = (summary.funnel if summary is not None else None) or (
+        consulta.evidence.funnel if consulta is not None and consulta.evidence else None
+    )
+    context["outcome"] = run_outcome(
+        repository, run.ejecucion, counts, resolved.run_id if resolved else None, funnel
+    )
+    context["run_ingest"] = ingest_name(repository, run.ejecucion.ingest_id)
 
 
 def _render(request: Request, context: dict[str, Any]) -> HTMLResponse:
@@ -217,10 +240,11 @@ def _fill_m3_view(
     if resolved is not None:
         # El encabezado muestra la misma corrida M3 que la pestaña; la causa de un problema la
         # explica solo la pestaña.
-        others = tuple(r for r in resolved.publicadas_misma_identidad if r != resolved.run_id)
+        others = other_publications(repository, resolved)
         context["m3"] = M3Decision(run=resolved, others=others)
         context["m3_hrefs"] = {
-            other: "/resultados?" + urlencode({**base, "m3": other}) for other in others
+            other.run_id: "/resultados?" + urlencode({**base, "m3": other.run_id})
+            for other in others
         }
 
 
@@ -240,10 +264,11 @@ def _fill_consulta(
     if found.run is not None:
         # Filtros, páginas y detalle conservan la corrida M3 resuelta, no «la más nueva».
         context["cq"] = cq = replace(cq, m3=found.run.run_id)
-        others = tuple(r for r in found.run.publicadas_misma_identidad if r != found.run.run_id)
+        others = other_publications(repository, found.run)
         context["m3"] = M3Decision(run=found.run, others=others)
         context["m3_hrefs"] = {
-            other: "/resultados?" + cq.query_string(m3=other, page="") for other in others
+            other.run_id: "/resultados?" + cq.query_string(m3=other.run_id, page="")
+            for other in others
         }
     if found.evidence is not None:
         context["consulta_pages"] = page_meta(found.evidence.page)
@@ -269,7 +294,8 @@ def _fill_list(repository: DataRepository, query: SelectionQuery, context: dict[
             # Filtros, páginas y detalle conservan la corrida M3 resuelta, no «la más nueva».
             context["query"] = replace(query, m3=m3.run.run_id)
         context["m3_hrefs"] = {
-            other: "/resultados?" + query.query_string(m3=other, page="") for other in m3.others
+            other.run_id: "/resultados?" + query.query_string(m3=other.run_id, page="")
+            for other in m3.others
         }
     # Una celda por familia, en el orden del contrato; una familia que el documento no trae es «—».
     context["rows"] = [
@@ -351,7 +377,7 @@ def sku_detalle(
         run=None,
         m3=m3,
         m3_hrefs={
-            other: f"/resultados/sku/{sku_id}?{urlencode({**base, 'm3': other})}"
+            other.run_id: f"/resultados/sku/{sku_id}?{urlencode({**base, 'm3': other.run_id})}"
             for other in m3.others
         },
         verdict=m3.verdicts.get(sku_id),
@@ -364,7 +390,9 @@ def sku_detalle(
     if params.get("reserva") == "1" and m3.run is not None and sku_id in m3.verdicts:
         context["reserve"] = reserve_windows(repository, m3.run.run_id, m3.verdicts[sku_id])
     if selection is not None:
-        context["run"] = _run_header(repository, selection.run_id or reference)
+        context["run"] = run = _run_header(repository, selection.run_id or reference)
+        if run is not None:
+            _describe_run(repository, run, m3.run, context)
         context["entries"] = sorted(
             selection.families,
             key=lambda f: FAMILY_ORDER.index(f.family) if f.family in FAMILY_ORDER else 99,

@@ -99,7 +99,7 @@ def accepted_ingestion_id(conn: sqlite3.Connection, ingest_sha256: str) -> int:
         raise RunRequestError(f"no existe la ingesta {ingest_sha256[:12]}…")
     if ingest[1] != "accepted":
         raise RunRequestError(
-            f"la ingesta {ingest_sha256[:12]}… no fue aceptada (estado: {ingest[1]})"
+            f"la ingesta {ingest_sha256[:12]}… no fue aceptada; elija un archivo aceptado en Datos"
         )
     return int(ingest[0])
 

@@ -118,15 +118,18 @@ State vocabularies are specific to each context; there is no single fixed total.
 Every presented state uses color + icon + label (RNF-USA-04); color alone never carries meaning.
 
 **Current implementation.** Task lifecycle: pendiente (neutral, clock), ejecutando (info, play),
-finalizo_m2 (info, check-circle; M2 finished, waiting for M3), exitosa (ok, check), fallida (err, x), no ejecutable (warn, banned-sign). Family states also include
-excluida. Runs use pendiente, ejecutando, completada, completada_con_fallos and detenida.
+finalizo_m2 (info, check-circle, shown as «Por evaluar»; M2 finished, waiting for M3), exitosa (ok, check), fallida (err, x), no ejecutable (warn, banned-sign). Family states also include
+excluida. Runs use pendiente, ejecutando, completada, completada_con_fallos and detenida. A run that
+finished with failed tasks still reads «Completada» (ok); the outcome line beside it says how many
+tasks failed and how many products have a verdict.
 HPO trials use pendiente, corriendo, completado, podado and fallido; podado is distinct from a
 failure. Ingestion has accepted, rejected, failed and needs_confirmation, presented through the
 ingest vocabulary. These contexts remain separate in the presentation helpers.
 
-**M3 verdicts (contract v2).** The five verdicts M3 publishes are shown verbatim, never
-translated: VALIDADO (ok, check-circle), EXPLORATORIO (info, info), EVIDENCIA_INSUFICIENTE
-(warn, minus-circle), NO_EVALUABLE (neutral, banned-sign) and FALLO_TECNICO (err, x-circle).
+**M3 verdicts (contract v2).** The five verdicts M3 publishes are shown with a Spanish label and
+a one-line explanation from `app/presentation.py`; the code stays in filters, CSV and `title`:
+Validado (ok, check-circle), Exploratorio (info, info), Evidencia insuficiente (warn,
+minus-circle), No evaluable (neutral, banned-sign) and Error técnico (err, x-circle).
 The significance (HLN-DM/BH) is a separate block, never a verdict tone.
 
 ## Icons
@@ -156,7 +159,7 @@ La paleta base se conserva. Para texto pequeño sobre canvas/surface, pred.css u
 Los títulos primarios usan escala adaptable y peso 800. Las etiquetas KPI usan Archivo; JetBrains Mono queda en cifras e identificadores. Toda tabla ancha tiene una región nombrada desplazable por teclado, caption y scope de encabezados. Las listas primarias se paginan en servidor; evidencia técnica anidada usa details cerrados y un contenedor visual de altura acotada cuando el contrato no ofrece paginación propia. El contenedor pred-evidence-scroll no tiene role, aria-label ni tabindex: la pred-table-wrap interior creada por table_start() es la única región nombrada y enfocable de la tabla.
 
 
-La revisión final D2 usa texto operativo de 14px y controles de 40px. Inputs/selects comparten altura y alineación; una ayuda debajo no desplaza el campo. Checkboxes tienen dimensiones explícitas y los selects conservan un chevron. La navegación de estados se agrupa con tamaños homogéneos. La carga visible usa etiquetas españolas independientemente del idioma del navegador (el diálogo del sistema conserva su propio idioma). Las clases se presentan como Smooth (Suave), Erratic (Errática), Intermittent (Intermitente) y Lumpy (Grumosa); sus códigos contractuales no cambian.
+La revisión final D2 usa texto operativo de 14px y controles de 40px. Inputs/selects comparten altura y alineación; una ayuda debajo no desplaza el campo. Checkboxes tienen dimensiones explícitas y los selects conservan un chevron. La navegación de estados se agrupa con tamaños homogéneos. La carga visible usa etiquetas españolas independientemente del idioma del navegador (el diálogo del sistema conserva su propio idioma). Las clases se presentan como Suave, Errática, Intermitente y Grumosa, cada una con una explicación de una línea; sus códigos contractuales no cambian.
 
 La primera vista presenta situación, resumen y siguiente acción. Diagnóstico y tareas se consultan mediante pestañas de detalle; filtros, familias y evidencia técnica conservan disclosures nativos con semántica expanded/collapsed. Una consulta explícita o error activa el área relevante. Un envío inválido lleva el foco al primer control con error. Ver UI_FLOW.md y UI_REVIEW.md para comportamiento y límites.
 

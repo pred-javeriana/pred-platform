@@ -11,22 +11,24 @@
    acción principal de la página; si no, es una pestaña del detalle. #}
 {% macro upload_form(upload_first) %}
 <form method="post" action="/datos/cargar" enctype="multipart/form-data" class="pred-upload-form">
-  {{ field(
-    "archivo",
-    "Archivo CSV",
-    input_type="file",
-    accept=".csv",
-    hint=csv_hint,
-    error=form_error or ""
-  ) }}
-  <details class="pred-details pred-details--inline" id="columnas-csv"{% if upload_first %} open{% endif %}>
+  <div class="pred-upload-form__file">
+    {{ field(
+      "archivo",
+      "Archivo CSV",
+      input_type="file",
+      accept=".csv",
+      hint=csv_hint,
+      error=form_error or ""
+    ) }}
+    <p class="pred-actions">{{ button("Cargar y validar", variant="primary" if upload_first else "secondary", type="submit", icon="i-upload", disabled=upload_blocked is not none) }}</p>
+    {% if upload_blocked %}<p class="pred-meta">{{ upload_blocked }}</p>{% endif %}
+  </div>
+  <details class="pred-details pred-details--inline pred-upload-form__columns" id="columnas-csv"{% if upload_first %} open{% endif %}>
     <summary>Columnas que debe tener el archivo</summary>
     <dl class="pred-kv pred-kv--compact">
       {% for name, meaning in csv_columns %}<dt><span class="mono">{{ name }}</span></dt><dd>{{ meaning }}</dd>{% endfor %}
     </dl>
   </details>
-  <p class="pred-actions">{{ button("Cargar y validar", variant="primary" if upload_first else "secondary", type="submit", icon="i-upload", disabled=upload_blocked is not none) }}</p>
-  {% if upload_blocked %}<p class="pred-meta">{{ upload_blocked }}</p>{% endif %}
 </form>
 {% endmacro %}
 

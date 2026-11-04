@@ -26,10 +26,10 @@ superficie dice su lugar en el flujo.
 | `/ejecucion` | Ejecución |
 | `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
 | `POST /ejecucion/configuracion` | Importa ese JSON y rellena el formulario de lanzamiento; no lanza ni guarda nada |
-| `/resultados` | Resultados: pestañas Resumen, Por clase, SKU y Perfiles de error (`?vista=resumen`, `clase`, `sku` o `errores`). Sin `?vista=` abre Resumen si la ejecución tiene evidencia M3 publicada y, si no, SKU. La pestaña SKU tiene dos lecturas: «Veredictos de M3» (`?vista=sku`; `?vista=consulta` es su nombre anterior) y «Familias de M2» (`?vista=sku&lista=familias`) |
+| `/resultados` | Resultados: pestañas Resumen, Por clase, SKU y Perfiles de error (`?vista=resumen`, `clase`, `sku` o `errores`). Sin `?vista=` abre Resumen si la ejecución tiene evidencia M3 publicada y, si no, SKU. La pestaña SKU tiene dos lecturas: «Veredictos» (`?vista=sku`; `?vista=consulta` es su nombre anterior) y «Resultados por familia» (`?vista=sku&lista=familias`) |
 | `/resultados/sku/{sku_id}` | Detalle de un SKU: ruta de migas, decisión, familias y evidencia bajo demanda |
-| `/resultados/exportar.csv` | Descarga CSV de los veredictos filtrados en «Veredictos de M3», sin el límite de página |
-| `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la corrida M3 (lanzamientos tardíos y elegibilidad) |
+| `/resultados/exportar.csv` | Descarga CSV de los veredictos filtrados en «Veredictos», sin el límite de página |
+| `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la evaluación final (lanzamientos tardíos y elegibilidad) |
 | `/health` | Sonda JSON, sin cambios. |
 | `/_dev/componentes` | Catálogo interno de componentes. Fuera de la navegación. |
 
@@ -73,15 +73,20 @@ Ver `docs/features/ejecucion/README.md`.
 
 **Estados de corrida:** `sin_ejecucion` (página; `ejecucion is None`), y los de
 `EstadoEjecucion`: `pendiente`, `ejecutando`, `completada`, `completada_con_fallos`,
-`detenida`.
+`detenida`. `completada_con_fallos` se lee «Completada»: una frase calculada con los conteos
+publicados dice cuántas tareas fallaron y cuántos productos tienen veredicto
+(`resultados_m3.run_outcome`).
 
 **Estados de tarea** (`EstadoTarea`, claves de contrato): `pendiente`, `ejecutando`,
 `finalizo_m2`, `exitosa`, `fallida`, `no_ejecutable`. Una tarea queda en `finalizo_m2` al
 terminar L2 y L3, y pasa a `exitosa` cuando M3 guarda su candidato. La presentación usa
-Pendiente, Ejecutando, «Terminó configuración con HPO, esperando evaluación retrospectiva»,
-Exitosa, Fallida y No Ejecutable; no se alteran las claves almacenadas ni los filtros. Mientras
-la corrida está en curso, junto a la barra se muestra la etapa en curso y cuántos de sus SKU
-terminaron.
+Pendiente, Ejecutando, Por evaluar, Exitosa, Fallida y No ejecutable, cada una con su
+explicación en `title`; no se alteran las claves almacenadas ni los filtros. Mientras la corrida
+está en curso, la etapa en curso gira un arco y dice «En curso», el anillo lleva un arco que
+gira, y una línea dice en qué etapa trabaja, cuántos de sus SKU terminaron, cuánto lleva (contado
+cada segundo) y hace cuánto se leyó el avance; con movimiento reducido nada se mueve y el texto
+dice lo mismo. Debajo se listan solo 5 tareas, las fallidas primero; un filtro o
+`?tareas=todas` muestra la lista completa.
 
 **Estados de trial HPO** (contrato → etiqueta de interfaz):
 
@@ -121,9 +126,9 @@ campeones por familia y por clase, y cuenta los resultados HLN-DM publicados (BH
 clase de demanda). Por clase muestra la familia campeona que M3
 congeló en cada clase con el bloque de selección, su motivo, la mediana de r de cada familia y los
 veredictos de la clase. Debajo, «Confirmación del campeón» muestra el estado de cada campeona en el
-bloque de prueba con su p IUT y su p Holm, la mediana de r frente a Seasonal Naive con su intervalo
+bloque de prueba con su p IUT y su p Holm, la mediana de r frente a la línea base con su intervalo
 bootstrap y una fila por competidora (SKU, mediana de la razón con intervalo, Hodges-Lehmann,
-victorias con intervalo de Wilson, p de Wilcoxon y p IUT). «Significancia frente a Seasonal Naive»
+victorias con intervalo de Wilson, p de Wilcoxon y p IUT). «Significancia frente a la línea base»
 muestra por clase los SKU probados y los significativos por BH y por BY, con el nivel FCR. SKU
 lista el campeón y el veredicto de cada SKU de una corrida M3 exacta, o la selección de cada
 familia; el detalle de un SKU muestra su evidencia (contrato v2). Perfiles de error muestra los
@@ -139,9 +144,11 @@ significancia por clase).
 
 **Estados de página:** `sin_resultados`, `parciales`, `disponibles`, `error`.
 
-**Veredictos:** las vistas muestran literalmente los cinco veredictos que publica M3:
-`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`. No
-se traducen a otras etiquetas. La significancia HLN-DM/BH, o su causa, se muestra aparte del
+**Veredictos:** las vistas muestran los cinco veredictos que publica M3 (`FALLO_TECNICO`,
+`NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`) con su etiqueta en
+español y una explicación de una línea, ambas de `app/presentation.py`: «Error técnico», «No
+evaluable», «Evidencia insuficiente», «Validado» y «Exploratorio». El código sigue en los
+filtros, en el CSV y en `title`. La significancia HLN-DM/BH, o su causa, se muestra aparte del
 veredicto. Sin `?ejecucion=`, la página muestra la ejecución más nueva con una corrida M3
 PUBLICADA. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
 cuando varias corridas PUBLICADA comparten identidad.
@@ -149,16 +156,16 @@ cuando varias corridas PUBLICADA comparten identidad.
 Pestañas internas (misma ruta, `?vista=resumen|clase|sku|errores`): Resumen | Por clase | SKU |
 Perfiles de error, en orden de lectura de lo general al detalle. No son pantallas nuevas. Sin
 `?vista=`, la página abre Resumen cuando la ejecución tiene evidencia M3 publicada y, si no, SKU.
-**SKU** tiene dos lecturas, elegidas con un control segmentado. «Veredictos de M3» (`?vista=sku`)
-filtra por clase, familia campeona y veredicto, y exporta CSV. «Familias de M2»
+**SKU** tiene dos lecturas, elegidas con un control segmentado. «Veredictos» (`?vista=sku`)
+filtra por clase, familia campeona y veredicto, y exporta CSV. «Resultados por familia»
 (`lista=familias`) muestra una columna por familia con su estado y su valor; se abre por defecto
 sin evidencia M3 o con un filtro de familia o de estado. Las dos enlazan al detalle
 `/resultados/sku/{sku_id}`. Su ruta de migas (Resultados › SKU › el SKU) vuelve al Resumen de la
 misma corrida y a la lista con sus filtros. El detalle dibuja el pronóstico h=1 publicado del
 campeón frente a la demanda observada, con los bloques de selección y prueba.
 
-Una barra de contexto, arriba y a lo ancho, muestra la ejecución, la ingesta, la corrida M3 y el
-origen de los datos, y permite elegir otra ejecución con evidencia publicada. La acción secundaria
+Una barra de contexto, arriba y a lo ancho, muestra la ejecución, el archivo de datos, la
+evaluación final, el origen de los datos y una frase con lo que pasó en la ejecución, y permite elegir otra ejecución con evidencia publicada. La acción secundaria
 «Nueva ejecución» del encabezado abre el formulario de lanzamiento de Ejecución con la misma
 ingesta (`/ejecucion?ingest_id=…#lanzar`). Se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
@@ -190,9 +197,9 @@ inesperado.
 
 Resumen de cartera → Por clase de demanda → SKU → Decisión y comparación → Evidencia técnica bajo demanda.
 
-Resumen es la entrada de Resultados cuando hay evidencia M3 publicada: primero la vista general y después el detalle (Shneiderman). La lista «Veredictos de M3» tiene una fila por SKU con su clase, la familia y el modelo campeones, el veredicto, r frente a Seasonal Naive, las ventanas válidas y la significancia, con la prueba desplegable. La lista «Familias de M2» tiene una fila por SKU con su clase, la campeona de M3 y una columna por familia. Los filtros y la paginación se delegan al repositorio. En el detalle, configuraciones y trials comienzan cerrados; ventanas solo se solicitan con ventanas=1. Los detalles técnicos conservan códigos y causas para auditoría.
+Resumen es la entrada de Resultados cuando hay evidencia M3 publicada: primero la vista general y después el detalle (Shneiderman). La lista «Veredictos» tiene una fila por SKU con su clase, la familia y el modelo campeones, el veredicto, r frente a la línea base, las ventanas válidas y la significancia, con la prueba desplegable. La lista «Resultados por familia» tiene una fila por SKU con su clase, la familia campeona y una columna por familia. Los filtros y la paginación se delegan al repositorio. En el detalle, configuraciones y ensayos comienzan cerrados; ventanas solo se solicitan con ventanas=1. Cada código aparece después de su nombre en español, en un title o en un detalle técnico, para auditoría.
 
-La barra de contexto comunica el origen de los datos que declara la corrida M3 (real, sintético o aumentado, o desconocido; sin corrida M3, no informado) y explica bajo demanda cómo leer la evidencia retrospectiva. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
+La barra de contexto comunica el origen de los datos que declara la evaluación final (real, sintético o aumentado, o desconocido; sin evaluación final, no informado) y explica bajo demanda cómo leer la evidencia retrospectiva. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
 
 Los agregados de cartera/clase y los exportables se construyen en las vistas de M4 sobre las lecturas del contrato v2. Ver los límites en `docs/UI_REVIEW.md`.
 
@@ -206,7 +213,7 @@ Resultados comienza en Resumen cuando hay evidencia M3 publicada y en la lista d
 
 ## Composición espacial
 
-Las tres superficies usan una sola columna a todo el ancho: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación; y debajo, pestañas horizontales de detalle con un panel a la vez. No hay columna lateral: el contexto va arriba y a lo ancho, y las tablas ocupan el ancho de su contenido.
+Las tres superficies usan una sola columna a todo el ancho: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación; y debajo, pestañas horizontales de detalle con un panel a la vez. No hay columna lateral: el contexto va arriba y a lo ancho, las tablas ocupan el ancho del panel y dos bloques cortos se reparten en dos columnas desde 64rem. La prosa larga conserva una línea legible de a lo sumo 80 caracteres (`max-width: 80ch`).
 
 Datos: el resumen del archivo (nombre, estado, conteos, mezcla de clases y continuar) en un panel; debajo, las pestañas Diagnóstico, Clases y SKU, Cargar otro archivo e Historial. Una consulta de topología o historial selecciona la pestaña correspondiente.
 

@@ -1,3 +1,4 @@
+{% from "components/terms.html" import when %}
 {% from "components/status.html" import status_indicator %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 
@@ -7,8 +8,8 @@
 <tr{% if current %} class="is-current"{% endif %}>
   <th scope="row">
     {% if item.ingest_id %}
-    <a href="/datos?ingest_id={{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
-    <span class="pred-subvalue"><span class="mono" title="{{ item.ingest_id }}">{{ abbreviate_id(item.ingest_id) }}</span>{% if current %} · la que se muestra{% endif %}</span>
+    <a href="/datos?ingest_id={{ item.ingest_id }}" title="Ingesta {{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
+    {% if current %}<span class="pred-subvalue">La que se muestra arriba</span>{% endif %}
     {% else %}
     {{ item.name }}
     {% endif %}
@@ -23,7 +24,7 @@
   </td>
   <td class="num">{{ format_count(item.rows) if item.rows is not none else "—" }}</td>
   <td class="num">{{ format_count(item.n_skus) if item.n_skus is not none else "—" }}</td>
-  <td class="pred-nowrap">{{ format_when(item.published_at) }}</td>
+  <td class="pred-nowrap">{{ when(item.published_at) }}</td>
 </tr>
 {% else %}
 {{ table_empty(5, "Página sin ingestas", "Vuelva a la primera página del historial.") }}

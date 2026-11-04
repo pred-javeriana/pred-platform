@@ -23,10 +23,11 @@ from pred_platform.app.configuracion import (
     export_config,
     parse_config,
 )
-from pred_platform.app.datos import error_view, page_meta
+from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
     FAMILY_CHOICES,
     FINISHED_STATES,
+    FOCUS_SIZE,
     METRIC_CHOICES,
     NOTICES,
     STAGES,
@@ -43,6 +44,8 @@ from pred_platform.app.ejecucion import (
     exclusion_confirmation,
     exclusion_warning,
     families_hint,
+    focus_state,
+    focus_tasks,
     history_needed,
     parse_execution_query,
     parse_launch_form,
@@ -55,6 +58,7 @@ from pred_platform.app.ejecucion import (
     single_family_classes,
     stage_steps,
 )
+from pred_platform.app.resultados_m3 import run_outcome
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
@@ -177,12 +181,22 @@ def _context(
 
     run = status.ejecucion if status is not None else None
     estado = run.estado if run is not None else None
+    progress = status.progress if status is not None else None
+    counts = dict(progress.tareas_por_estado) if progress is not None else {}
+    # Mientras la ejecución avanza, el avance es lo principal: la lista de tareas se reduce a las
+    # que necesitan atención y la completa queda a un enlace.
+    focus = focus_tasks(estado, query)
+    focus_estado = focus_state(counts) if focus else None
+    tasks = status
+    if focus and run is not None:
+        try:
+            tasks = repository.get_run_status(run.id, estado=focus_estado, size=FOCUS_SIZE)
+        except (InvalidQuery, DataLayerError):
+            tasks = status
     ingests = _accepted_ingests(repository)
     selected = (form.values.get("ingest_id") if form else None) or params.get("ingest_id")
     if not selected and imported is None:
         selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
-    progress = status.progress if status is not None else None
-    counts = dict(progress.tareas_por_estado) if progress is not None else {}
     poll = should_poll(estado, counts, reason=control.reason)
     notice = imported or NOTICES.get(params.get("aviso", ""))
     error = run_error(repository.get_run_error(run.id)) if run is not None else None
@@ -207,13 +221,18 @@ def _context(
         ]
         if progress is not None
         else [],
-        "rows": _task_rows(status) if status is not None else [],
-        "pages": page_meta(status.page) if status and status.page else None,
+        "rows": _task_rows(tasks) if tasks is not None else [],
+        "pages": page_meta(tasks.page) if tasks and tasks.page and not focus else None,
+        "focus": focus,
+        "focus_estado": focus_estado,
+        "focus_total": tasks.page.total if focus and tasks and tasks.page else 0,
+        "outcome": run_outcome(repository, run, counts) if run is not None else None,
+        "run_ingest": ingest_name(repository, run.ingest_id) if run is not None else None,
         "run_error": error,
         "steps": stage_steps(run.estado, progress.etapa_actual if progress else None)
         if run is not None
         else [],
-        "stage_label": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
+        "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
         "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
         "actions": run_actions(
             estado,
@@ -339,7 +358,7 @@ def lanzar(
     form.values["ingest_id"] = ingest_id or ""
     synthetic = {i.item.ingest_id for i in _accepted_ingests(repository) if i.synthetic}
     if not ingest_id:
-        form.errors["ingest_id"] = "Elija la ingesta que se va a ejecutar."
+        form.errors["ingest_id"] = "Elija el archivo de datos que se va a ejecutar."
     elif ingest_id in synthetic:
         form.errors["ingest_id"] = SYNTHETIC_INGEST
     elif not form.errors:
@@ -399,8 +418,7 @@ def exportar_configuracion(request: Request) -> Response:
     settings = request.app.state.settings
     if settings.data_source == "fixture":
         return PlainTextResponse(
-            "Estás viendo datos de prueba: no hay una configuración real que exportar "
-            "(PRED_DATA_SOURCE=dal).\n",
+            "Está viendo datos de prueba: no hay una configuración real que exportar.\n",
             status_code=409,
         )
     reference = (request.query_params.get("ejecucion") or "").strip() or LATEST
@@ -453,10 +471,9 @@ def importar_configuracion(
         form.values["ingest_id"] = ""
         notice = (
             "warning",
-            f"Configuración importada{origin}, pero su ingesta "
-            f"({(imported.ingest_sha256 or '')[:12]}…) no está aceptada en esta plataforma. "
-            "Elija otra ingesta antes de lanzar: los resultados solo son comparables "
-            "sobre los mismos datos.",
+            f"Configuración importada{origin}, pero sus datos no están cargados en esta "
+            f"plataforma (ingesta {(imported.ingest_sha256 or '')[:12]}…). Elija otro archivo "
+            "antes de lanzar: los resultados solo son comparables sobre los mismos datos.",
         )
     return _render(
         request, "pages/execution.html", _context(request, repository, form=form, imported=notice)

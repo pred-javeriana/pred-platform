@@ -4,28 +4,29 @@
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/states.html" import unavailable_state %}
 {% from "components/evidence.html" import evidence_panel %}
+{% from "components/terms.html" import day, gloss %}
 
 {% if not topology_details %}
 {# Dentro del resumen del archivo: cuántos SKU hay de cada clase y el paso siguiente. #}
 <div class="pred-topology" id="topologia" aria-labelledby="titulo-topologia">
-  <h3 id="titulo-topologia">Topología de demanda</h3>
+  <h3 id="titulo-topologia">Clases de demanda</h3>
   {% if topology_error %}
     {{ unavailable_state(
       topology_error.title,
-      topology_error.detail or "La ingesta existe, pero las métricas ADI/CV² aún no están persistidas.",
+      topology_error.detail or "El archivo está cargado, pero su clasificación de demanda todavía no está guardada.",
       topology_error.code,
       topology_error.blocked_by
     ) }}
   {% elif topology %}
     {% set summary = topology.summary %}
-    <p class="pred-meta">Los {{ format_count(summary.n_skus) }} SKU de la ingesta según su patrón de demanda (ADI y CV²). Cada clase admite familias de modelos distintas.</p>
+    <p class="pred-meta">Los {{ format_count(summary.n_skus) }} SKU del archivo según cada cuánto venden ({{ gloss("ADI") }}) y cuánto varían sus cantidades ({{ gloss("CV²") }}). Cada clase admite familias de modelos distintas.</p>
     <table class="pred-class-mix">
       <caption class="pred-sr-only">SKU por clase de demanda</caption>
       <tbody>
       {% for code in SKU_CLASS_ORDER %}
       {% set count = summary.by_class.get(code, 0) %}
       <tr{% if not count %} class="is-zero"{% endif %}>
-        <th scope="row">{{ sku_class_label(code) }}</th>
+        <th scope="row">{{ sku_class_label(code) }}<span class="pred-subvalue">{{ sku_class_term(code).hint }}</span></th>
         <td class="num">{{ format_count(count) }}</td>
         <td class="pred-class-mix__bar" aria-hidden="true"><span style="width: {{ (100 * count / summary.n_skus) | round(1) if summary.n_skus else 0 }}%"></span></td>
       </tr>
@@ -35,19 +36,19 @@
     {% if can_continue %}
     <div class="pred-next-action">
       {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id, icon="i-play") }}
-      <p class="pred-meta">El archivo está listo: elija las familias de modelos y lance la corrida.</p>
+      <p class="pred-meta">El archivo está listo: elija las familias de modelos y lance la ejecución.</p>
     </div>
     {% endif %}
   {% endif %}
 </div>
 {% elif topology and not topology_error %}
-{% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Explore la distribución ADI–CV² y consulte los SKU de la página filtrada.", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
+{% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Vea dónde cae cada SKU según cada cuánto vende (ADI) y cuánto varían sus cantidades (CV²), y consulte los SKU de la página filtrada.", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
     <dl class="pred-evidence-facts">
       {% if topology.thresholds %}
-      <div><dt>Umbral ADI</dt><dd class="mono">{{ format_decimal(topology.thresholds.adi) }}</dd></div>
-      <div><dt>Umbral CV²</dt><dd class="mono">{{ format_decimal(topology.thresholds.cv2) }}</dd></div>
+      <div><dt>Umbral {{ gloss("ADI") }}</dt><dd class="mono">{{ format_decimal(topology.thresholds.adi) }}</dd></div>
+      <div><dt>Umbral {{ gloss("CV²") }}</dt><dd class="mono">{{ format_decimal(topology.thresholds.cv2) }}</dd></div>
       {% endif %}
-      {% if topology.t_star %}<div><dt>Historia hasta</dt><dd class="mono">{{ topology.t_star }}</dd></div>{% endif %}
+      {% if topology.t_star %}<div><dt>Historia de entrenamiento hasta</dt><dd>{{ day(topology.t_star) }}</dd></div>{% endif %}
     </dl>
 
     {% if topology.availability.status == "available" %}
@@ -63,13 +64,7 @@
           "Clase",
           value=topology_query.sku_class or "",
           input_type="select",
-          options=[
-            ("", "Todas"),
-            ("smooth", "Smooth (Suave)"),
-            ("erratic", "Erratic (Errática)"),
-            ("intermittent", "Intermittent (Intermitente)"),
-            ("lumpy", "Lumpy (Grumosa)")
-          ]
+          options=sku_class_options()
         ) }}
         {{ field("q", "Buscar SKU", value=topology_query.q or "") }}
         {{ field(
@@ -79,8 +74,8 @@
           input_type="select",
           options=[
             ("sku_id", "SKU"),
-            ("adi", "ADI"),
-            ("cv2", "CV²"),
+            ("adi", "ADI (días entre ventas)"),
+            ("cv2", "CV² (variabilidad)"),
             ("n_positive", "Periodos con demanda")
           ]
         ) }}
@@ -95,7 +90,7 @@
         {% for row in topology.items %}
         <tr>
           <th scope="row" class="pred-sku"><span class="mono">{{ row.sku_id }}</span></th>
-          <td class="pred-demand-class">{{ sku_class_label(row.sku_class) }}</td>
+          <td class="pred-demand-class" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</td>
           <td class="num">{{ format_decimal(row.adi, 3) }}</td>
           <td class="num">{{ format_decimal(row.cv2, 3) }}</td>
           <td class="num">{{ format_count(row.n_periods) }}</td>

@@ -261,7 +261,7 @@ def test_la_pagina_de_una_ingesta_rechazada_oculta_los_umbrales(repo: DalReposit
     assert "Umbral ADI" not in response.text and "Umbral CV²" not in response.text
     assert 'class="pred-chart__threshold"' not in response.text
     assert "El archivo necesita correcciones" in response.text
-    assert "Topología de demanda" not in response.text
+    assert "Clases de demanda" not in response.text
 
 
 def test_la_pagina_de_una_ingesta_sin_umbral_no_lo_inventa(repo: DalRepository):

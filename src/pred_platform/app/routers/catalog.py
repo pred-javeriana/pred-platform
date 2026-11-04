@@ -41,7 +41,7 @@ def catalogo(request: Request) -> HTMLResponse:
             "metric_items": [
                 {"label": "SKU", "value": "110", "tone": "data"},
                 {"label": "Intermitentes", "value": "98", "tone": None},
-                {"label": "Lumpy", "value": "12", "tone": None},
+                {"label": "Grumosas", "value": "12", "tone": None},
                 {"label": "Candidatos", "value": "203", "tone": None},
             ],
             "tab_items": [
