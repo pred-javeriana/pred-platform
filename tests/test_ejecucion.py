@@ -1188,12 +1188,13 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
 ) -> None:
     client = _dal_client(env)
     _launch(client, env)
-    hint = "inícielo con make worker"
+    hint = "hasta que se inicie el procesador de ejecuciones con make worker"
 
     def page() -> str:
         return _text(client.get("/ejecucion?ejecucion=1&lanzar=1").text)
 
-    assert "hasta que lo inicie con make worker" in page() and hint in page()
+    assert "debe iniciar el procesador de ejecuciones con make worker" in page()
+    assert hint in page()
     other = WorkerLock.for_database(env.db)  # a `make worker` beside the app
     assert other.acquire()
     try:
@@ -1202,7 +1203,7 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
         other.release()
 
     assert "make worker" not in shown
-    assert "En cola: empezará en cuanto el worker termine la corrida anterior." in shown
+    assert "En cola: empezará cuando termine la ejecución anterior." in shown
     assert hint in page()  # the lock is free again: nothing runs the queue
 
 

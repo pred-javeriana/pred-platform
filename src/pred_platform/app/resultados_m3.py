@@ -377,7 +377,7 @@ def _champions(
     if read.page.total != len(read.items):
         return None, M3Problem(
             "La distribución de campeones llegó incompleta.",
-            f"M3 publicó {read.page.total} filas y se leyeron {len(read.items)}.",
+            f"La evaluación publicó {read.page.total} filas y se leyeron {len(read.items)}.",
             "incomplete",
         )
     return champion_distribution(read.items, funnel.tras_exclusiones), None
