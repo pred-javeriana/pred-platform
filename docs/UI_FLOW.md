@@ -102,7 +102,9 @@ formulario no pregunta el origen y toda ejecución declara sus datos reales. Ant
 el motor resuelve el origen de la ingesta (`pred-engine origen --datos-reales`); si la ingesta
 está declarada sintética, la plataforma muestra el conflicto sin crear la ejecución. El worker
 transmite siempre `--datos-reales` y no arranca el motor para una corrida que guardó otro
-origen; Reanudar muestra ese motivo y no la vuelve a encolar. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
+origen: la detiene con `run.incompatible_config`, y la página muestra ese motivo y no ofrece
+Reanudar. Si una corrida con otro origen se detuvo por otra causa, Reanudar muestra el mismo
+motivo y no la vuelve a encolar. La plataforma no calcula ni fuerza Diebold–Mariano: el motor
 determina si el contraste es aplicable. La plataforma no implementa funcionalidad analítica de M4.
 
 ## 3. Resultados

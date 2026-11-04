@@ -46,9 +46,10 @@ Una configuración guardada con parámetros anteriores a `schema_version=2` no s
 volver a encolarla, la cola crea una corrida nueva con otro identificador. El trabajador solo
 arranca el motor para una configuración que guardó `datos_sinteticos=false`. Una corrida que
 guardó datos sintéticos o un origen sin declarar (`null`) se detiene con
-`run.incompatible_config` antes de arrancar el motor, y reanudarla desde la interfaz muestra
-el motivo sin volver a encolarla. Su configuración y lo que publicó no cambian. Lanzar de nuevo
-los mismos ajustes abre otra corrida (`run_id-2`), que declara datos reales. Un origen sin
+`run.incompatible_config` antes de arrancar el motor: la página de Ejecución muestra el motivo
+y no ofrece Reanudar. Si una corrida con ese origen se detuvo por otra causa, Reanudar muestra
+el mismo motivo y no la vuelve a encolar. Su configuración y lo que publicó no cambian. Lanzar
+de nuevo los mismos ajustes abre otra corrida (`run_id-2`), que declara datos reales. Un origen sin
 declarar de una ejecución que sigue pendiente se resuelve al volver a lanzarla. Una tarea
 antigua sin ese campo se detiene con un error que indica volver a encolarla; la corrida
 encolada de nuevo es otra corrida.
