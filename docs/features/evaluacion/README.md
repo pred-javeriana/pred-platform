@@ -89,6 +89,7 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 | `get_m3_failures` | `M3Failures` | `m3_fallos` |
 | `get_m3_units` | `M3Units` | `m3_unidades` |
 | `get_m3_confirmation` | `M3Confirmation` o `None` | `m3_confirmaciones`, `m3_comparaciones` y `m3_significancia` |
+| `get_m3_intervals(run_id, skus)` | Lista de `M3Interval` | `m3_intervalos_r`: `sku`, `inferior`, `superior`, `inferior_cola` |
 
 - **Corrida exacta.** Todas las operaciones salvo `list_m3_runs` exigen el `run_id` M3. La lista
   ordena por `creado_en DESC, run_id DESC` y resuelve `selected_run_id` sobre todas las
@@ -97,7 +98,8 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 - **Publicación.** Solo una corrida PUBLICADA expone filas. Otra corrida responde
   `not_published` con sus metadatos y causa; un identificador desconocido, `no_data`. El estado y
   las filas se leen en una sola instantánea de solo lectura (`dal/evidencia.py`).
-- **Trazas.** Cada fila conserva `run_id`, `sku` (nulo en agregados) e `ingesta_sha256`; los bits
+- **Trazas.** Cada fila de los documentos v2 conserva `run_id`, `sku` (nulo en agregados) e
+  `ingesta_sha256`; los bits
   SQLite se presentan como booleanos y los campos JSON con su tipo. Los cinco veredictos se
   conservan literales, el campeón sale de `m3_veredictos` y la significancia (`dm_*`, con su
   causa si no hay prueba) es una columna aparte. Las métricas son MAE, RMSE, MASE, ME y r
@@ -124,6 +126,16 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   dos extremos en orden y el estado coherente con su causa y su p de Holm. Una corrida cuyo
   protocolo no tiene bloques de reserva se publicó antes de la confirmación y responde `None`; una
   fila inválida es `ContractInvalid`.
+- **Intervalos por producto.** `get_m3_intervals(run_id, skus)` lee los extremos sin ajuste de
+  `m3_intervalos_r`, solo para los SKU exactos pedidos y una corrida PUBLICADA. Devuelve una
+  lista ordenada por SKU, sin duplicados ni paginación. Una lista vacía, una corrida desconocida
+  o no publicada, una tabla antigua ausente o un SKU sin fila devuelven `[]`, no un intervalo
+  inventado. `superior=None` significa que no hay cota superior. `inferior_cola` añade un segundo
+  tramo sin cota superior, separado del primero. Los extremos se validan al entrar
+  (`data/m3_intervals.py`), sin calcularlos. El detalle del SKU muestra el intervalo junto a su r,
+  con la precisión completa en `title` y una explicación breve. Un error de lectura se muestra
+  sin ocultar el veredicto. No se leen los campos `*_fcr` ni se infiere significancia BH o un
+  nivel de confianza fijo. Los ejemplos v2 de `fixture` no publican estas filas y devuelven `[]`.
 - **Demanda y campeones.** `get_m3_observations` conserva las fechas y los valores nulos de la
   reserva. `get_m3_champions` lee los conteos por familia que publica la vista del motor, sin
   calcularlos; las filas con `sku_class` nula corresponden a toda la cartera.
@@ -157,7 +169,9 @@ se construyen sobre estas operaciones.
 
 `tests/test_evidencia_m3.py` comprueba, mediante `DalRepository`, publicación,
 progreso, embudo, exclusiones tardías y de M2 (también nulas en una publicación anterior a
-`m3_exclusiones`), la confirmación del campeón (solo de una corrida PUBLICADA con bloques, y
+`m3_exclusiones`), los intervalos de r por producto (acotados, sin cota superior, con dos tramos
+o ausentes, y el rechazo de extremos incoherentes), la confirmación del campeón
+(solo de una corrida PUBLICADA con bloques, y
 con razones 0 e infinitas), metadatos ausentes o inválidos, filtros,
 grupos, orden y páginas, origen sintético y desconocido, selección de la
 PUBLICADA más nueva con aviso de duplicados, lecturas sin escritura y

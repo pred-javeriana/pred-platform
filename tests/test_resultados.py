@@ -467,6 +467,65 @@ def _publish_for_the_run(env: Env, **options: Any) -> str:
     return run_id_m2
 
 
+@pytest.mark.parametrize(
+    ("bounds", "shown", "exact"),
+    [
+        (
+            (0.6193202626195218, 0.8990134844073785, None),
+            "[0,619; 0,899]",
+            "[0,6193202626195218; 0,8990134844073785]",
+        ),
+        ((0.0, None, None), "[0,000; +∞)", "[0,0; +∞)"),
+        ((0.2, 0.8, 1.4), "[0,200; 0,800] o [1,400; +∞)", "[0,2; 0,8] o [1,4; +∞)"),
+    ],
+)
+def test_sku_shows_the_published_interval_beside_r(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+    bounds: tuple[float, float | None, float | None],
+    shown: str,
+    exact: str,
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior, inferior_cola) "
+            "VALUES ('m3-real-1', 'FIL-0001', 0.95, ?, ?, ?)",
+            bounds,
+        )
+        conn.commit()
+    html = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1").text
+    kpis = html.split('id="numeros-decisivos"', 1)[1].split("</dl>", 1)[0]
+    assert "r frente a Seasonal Naive" in kpis and "0,800" in kpis
+    assert f"Intervalo de r {shown}" in _text(kpis)
+    assert f'title="{exact}"' in kpis
+    assert "La prueba no descarta los valores de r de este intervalo." in _text(html)
+    other = _dal_client(env).get("/resultados/sku/FIL-0002?m3=m3-real-1").text
+    assert "Intervalo de r no publicado." in other
+    assert shown not in other
+
+
+def test_invalid_interval_does_not_hide_the_sku_decision(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute("PRAGMA ignore_check_constraints = ON")
+        conn.execute(
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior) "
+            "VALUES ('m3-real-1', 'FIL-0001', 0.95, 0.9, 0.1)"
+        )
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    assert "No fue posible leer el intervalo de r." in response.text
+    assert "Intervalo de r no publicado." not in response.text
+    assert "VALIDADO" in response.text and "0,800" in response.text
+
+
 def test_the_table_shows_the_champion_and_the_five_verdict_labels_m3_published(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -396,6 +396,26 @@ def confirmation(db_path: Path, run_id: str) -> dict[str, Any] | None:
         ]
         significance = rows("m3_significancia", "sku_class")
     return {"run_id": run_id, "clases": classes, "significancia": significance}
+
+
+def intervals(db_path: Path, run_id: str, skus: Sequence[str]) -> list[dict[str, Any]]:
+    """Exact SKU bounds from one read-only snapshot of a PUBLICADA run, ordered by SKU."""
+    if not skus:
+        return []
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _snapshot(conn) or not _has(conn, "m3_intervalos_r"):
+            return []
+        row = _find_run(conn, run_id)
+        if row is None or row["estado"] != "PUBLICADA":
+            return []
+        return [
+            dict(item)
+            for item in conn.execute(
+                "SELECT sku, inferior, superior, inferior_cola FROM m3_intervalos_r "
+                "WHERE run_id = ? AND sku IN (SELECT value FROM json_each(?)) ORDER BY sku",
+                (run_id, json.dumps(list(skus))),
+            )
+        ]
 
 
 def run_metadata(db_path: Path, run_id: str) -> dict[str, Any] | None:

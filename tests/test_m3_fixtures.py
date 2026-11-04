@@ -101,6 +101,14 @@ def test_the_errors_scenario_serves_a_publication_without_its_metadata() -> None
     assert repo.get_m3_failures(RUN).items[0].modelo == ""
 
 
+@pytest.mark.parametrize("scenario", ["normal", "errores", "vacio"])
+def test_fixtures_do_not_invent_unpublished_product_intervals(scenario: str) -> None:
+    repo = FixtureRepository(scenario)
+    assert repo.get_m3_intervals(RUN, ["SKU-VALIDADO"]) == []
+    assert repo.get_m3_intervals("m3-rechazada", ["SKU-VALIDADO"]) == []
+    assert repo.get_m3_intervals("unknown", []) == []
+
+
 def test_the_empty_scenario_has_no_m3_runs() -> None:
     repo = FixtureRepository("vacio")
     assert repo.list_m3_runs().availability.reason_code == "no_data"

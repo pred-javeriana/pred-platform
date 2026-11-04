@@ -312,6 +312,14 @@ def sku_detalle(
         if selection is not None
         else M3Decision()
     )
+    interval = None
+    interval_error = False
+    if m3.run is not None and sku_id in m3.verdicts:
+        try:
+            intervals = repository.get_m3_intervals(m3.run.run_id, [sku_id])
+            interval = next((row for row in intervals if row.sku == sku_id), None)
+        except DataLayerError:
+            interval_error = True
     # Los enlaces de esta página conservan la corrida M3 resuelta.
     forecast = champion_forecast(repository, m3, sku_id)
     resolved_m3 = m3.run.run_id if m3.run is not None else wanted_m3
@@ -347,6 +355,8 @@ def sku_detalle(
             for other in m3.others
         },
         verdict=m3.verdicts.get(sku_id),
+        interval=interval,
+        interval_error=interval_error,
         reserve=None,
         forecast=forecast,
         forecast_svg=champion_forecast_svg(forecast),

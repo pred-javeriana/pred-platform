@@ -32,6 +32,7 @@ from pred_platform.contract.models import (
     TopologyReport,
 )
 from pred_platform.data.m3_confirmation import M3Confirmation
+from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import DEFAULT_SIZE
 
 
@@ -232,6 +233,14 @@ class DataRepository(Protocol):
 
     def get_m3_reserve_blocks(self, run_id: str) -> M3ReserveBlocks | None:
         """Los bloques de la reserva de una corrida exacta; ``None`` si su protocolo no los fija."""
+        ...
+
+    def get_m3_intervals(self, run_id: str, skus: Sequence[str]) -> list[M3Interval]:
+        """Unadjusted r sets for exact SKUs of a PUBLICADA run, ordered by SKU.
+
+        Missing rows, unknown/unpublished runs and older databases return no intervals.
+        ``superior=None`` means unbounded; ``inferior_cola`` adds a disjoint upper tail.
+        """
         ...
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
