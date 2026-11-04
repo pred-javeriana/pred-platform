@@ -138,6 +138,10 @@ class M3DalSource:
             },
         )
 
+    def get_m3_run(self, run_id: str) -> models_v2.M3Run | None:
+        read = evidencia.run_metadata(self.db_path, run_id)
+        return None if read is None else _validated(models_v2.M3Run, read)
+
     def get_m3_run_status(self, run_id: str) -> models_v2.M3RunStatus:
         read = evidencia.run_status(self.db_path, run_id)
         if read.run is None:

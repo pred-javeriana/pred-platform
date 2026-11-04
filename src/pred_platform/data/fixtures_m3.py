@@ -105,6 +105,9 @@ class M3FixtureSource:
             {**dict(doc), "items": items, "page": paging, "selected_run_id": selected}
         )
 
+    def get_m3_run(self, run_id: str) -> models_v2.M3Run | None:
+        return self.get_m3_run_status(run_id).run
+
     def get_m3_run_status(self, run_id: str) -> models_v2.M3RunStatus:
         for example in self.scenario.m3_run_status:
             doc = _load(models_v2.M3RunStatus, example)

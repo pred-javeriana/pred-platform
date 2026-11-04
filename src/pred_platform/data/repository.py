@@ -162,6 +162,11 @@ class DataRepository(Protocol):
         the platform's run id (``ejecuciones.id``) and resolves it to the engine's run id."""
         ...
 
+    def get_m3_run(self, run_id: str) -> models_v2.M3Run | None:
+        """One M3 run's metadata, or ``None`` when it is unknown. Unlike ``get_m3_run_status``
+        it does not count the run's units, so a view can name the run without that cost."""
+        ...
+
     def get_m3_run_status(self, run_id: str) -> models_v2.M3RunStatus: ...
 
     def get_m3_evidence(

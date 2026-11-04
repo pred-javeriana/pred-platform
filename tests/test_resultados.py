@@ -514,6 +514,34 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     assert "corte t* 2026-03-13" in late
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["/resultados", "/resultados/sku/FIL-0001", "/resultados/sku/FIL-0001?m3=m3-real-1"],
+)
+def test_naming_the_m3_run_of_a_page_never_counts_its_units(
+    env: Env, monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
+    # A real run has millions of units: counting them cost every page over a second.
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    client = _dal_client(env)
+    statements: list[str] = []
+    connect = sqlite3.connect
+
+    def traced(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        conn = connect(*args, **kwargs)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", traced)
+
+    response = client.get(url)
+
+    assert response.status_code == 200 and "m3-real-1" in response.text
+    assert any("m3_corridas" in statement for statement in statements)
+    assert not [statement for statement in statements if "m3_unidades" in statement]
+
+
 def test_a_product_m2_excluded_from_the_competition_shows_its_published_cause(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -848,7 +876,7 @@ class _FailingRead:
         ("resumen", "get_m3_evidence", 2),
         ("clase", "list_m3_runs", 1),
         ("clase", "get_m3_categories", 1),
-        ("errores", "get_m3_run_status", 1),
+        ("errores", "get_m3_run", 1),
         ("errores", "get_m3_portfolio", 1),
     ],
 )

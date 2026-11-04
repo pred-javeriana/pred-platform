@@ -3,12 +3,13 @@
 These are writes, so they are not part of the contract's read models (section 19 of the data
 contract) nor of ``DataRepository``: the views get them from ``app.state.run_control``, the same
 way they get the repository. ``DalRunControl`` writes ``ejecuciones`` for the worker to follow;
-``UnavailableRunControl`` is what fixtures use, so the screen can show the actions disabled and
-say why.
+``UnavailableRunControl`` is what fixtures and a read-only database use, so the screen can show
+the actions disabled and say why.
 """
 
 from __future__ import annotations
 
+import os
 from contextlib import closing
 from typing import Protocol
 
@@ -102,11 +103,17 @@ class UnavailableRunControl:
 
 
 def build_run_control(settings: Settings) -> RunControl:
-    """``DalRunControl`` with the real database; with fixtures, the disabled one."""
+    """``DalRunControl`` with a writable real database; otherwise the disabled one, with why."""
     if settings.data_source == "fixture":
         return UnavailableRunControl(
             "Estás viendo datos de prueba: lanzar, detener y reanudar necesitan la base real "
             "(PRED_DATA_SOURCE=dal)."
+        )
+    if settings.db_path.exists() and not os.access(settings.db_path, os.W_OK):
+        # Every action writes ``ejecuciones``: on a read-only copy it would be a server error.
+        return UnavailableRunControl(
+            "La base de datos es de solo lectura: se pueden consultar los resultados, pero no "
+            "lanzar, detener ni reanudar."
         )
     return DalRunControl(settings)
 
