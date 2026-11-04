@@ -1,8 +1,10 @@
 """The worker loop: claim a pending run, launch the engine, follow it, settle it.
 
-One run at a time (the engine already parallelises SKU x family units inside a run). Every state
-change is its own short transaction, so a crash loses at most the event in flight; on the next
-start, a run left ``ejecutando`` is queued again with the same ``run_id`` and the engine resumes.
+One run at a time (the engine already parallelises SKU x family units inside a run), and one worker
+at a time per database (``candado.WorkerLock``): a second worker waits, or with ``--once`` leaves
+the queue to the first. Every state change is its own short transaction, so a crash loses at most
+the event in flight; on the next start, a run left ``ejecutando`` is queued again with the same
+``run_id`` and the engine resumes.
 A run whose database failure could not even be recorded is stopped as soon as the database answers
 again, before the next claim, so a running worker never leaves an unowned run ``ejecutando``.
 """
@@ -22,6 +24,7 @@ from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker import engine
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.errores import platform_error, run_stopped_error
 from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
@@ -40,49 +43,91 @@ class Worker:
         *,
         poll_interval: float = 0.5,
         launcher: Launcher = engine.launch,
+        lock: WorkerLock | None = None,
     ) -> None:
         self.settings = settings
         self.poll_interval = poll_interval
         self._launch = launcher
+        self._lock = lock or WorkerLock.for_database(settings.db_path)
         # The run this worker claimed but could not record as stopped, with the error to record.
         self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
-        """Process queued runs until shutdown, leaving interrupted work queued for restart."""
+        """Process queued runs until shutdown, leaving interrupted work queued for restart.
+
+        While another worker holds the database, this one waits without touching any run.
+        """
+        if not self._wait_for_lock(stop):
+            return
+        try:
+            try:
+                self.recover()
+            except Exception:  # noqa: BLE001 - the loop must start even if recovery fails
+                _logger.exception("No se pudieron retomar las corridas interrumpidas")
+            while not stop.is_set():
+                try:
+                    worked = self.run_next(stop)
+                except Exception:  # noqa: BLE001 - one bad run must not kill the worker thread
+                    _logger.exception("La corrida falló de forma inesperada")
+                    worked = False
+                if not worked:
+                    stop.wait(self.poll_interval)
+        finally:
+            self._lock.release()
+
+    def drain(self) -> None:
+        """Run the queued runs until none is left and no claim is left unsettled (``--once``).
+
+        While another worker holds the database, that worker runs the queue and this one exits.
+        """
+        if not self._lock.acquire():
+            _logger.warning(
+                "Otro worker ya atiende %s; ese worker ejecutará las corridas en cola",
+                self.settings.db_path,
+            )
+            return
         try:
             self.recover()
-        except Exception:  # noqa: BLE001 - the loop must start even if recovery fails
-            _logger.exception("No se pudieron retomar las corridas interrumpidas")
-        while not stop.is_set():
-            try:
-                worked = self.run_next(stop)
-            except Exception:  # noqa: BLE001 - one bad run must not kill the worker thread
-                _logger.exception("La corrida falló de forma inesperada")
-                worked = False
-            if not worked:
-                stop.wait(self.poll_interval)
+            while self.run_next() or self._unsettled is not None:
+                if self._unsettled is not None:
+                    time.sleep(self.poll_interval)  # the database still fails: wait, then retry
+        finally:
+            self._lock.release()
+
+    def _wait_for_lock(self, stop: threading.Event) -> bool:
+        """Take the database for this worker, waiting while another holds it, until ``stop``."""
+        if self._lock.acquire():
+            return True
+        _logger.warning(
+            "Otro worker ya atiende %s; este espera a que termine para seguir la cola",
+            self.settings.db_path,
+        )
+        while not stop.wait(self.poll_interval):
+            if self._lock.acquire():
+                _logger.info("Este worker atiende ahora %s", self.settings.db_path)
+                return True
+        return False
 
     def recover(self) -> None:
-        """Queue again the runs a crashed platform left ``ejecutando``."""
+        """Queue again the runs left ``ejecutando`` by a worker that is gone.
+
+        Only the worker that holds the database lock may call it: no other worker is alive to
+        own those runs, so an engine still running for one of them is an orphan and is stopped.
+        """
         with closing(dal.connect(self.settings.db_path)) as conn:
             for run in dal.interrupted_runs(conn):
                 if run.pid is not None and engine.is_alive(run.pid):
                     engine.terminate(run.pid)
-                dal.requeue(conn, run.id)
-                _logger.info("Corrida %s retomada tras una caída", run.run_id)
-
-    def drain(self) -> None:
-        """Run the queued runs until none is left and no claim is left unsettled (``--once``)."""
-        while self.run_next() or self._unsettled is not None:
-            if self._unsettled is not None:
-                time.sleep(self.poll_interval)  # the database still fails: wait, then retry
+                if dal.requeue(conn, run.id):
+                    _logger.info("Corrida %s retomada tras una caída", run.run_id)
 
     def run_next(self, stop: threading.Event | None = None) -> bool:
         """Claim and run one pending run to the end. Returns whether there was one.
 
-        A run left unsettled by a database failure is stopped first; while the database still
-        fails, nothing new is claimed.
+        The caller holds the database lock (``run_forever`` and ``drain`` take it). A run left
+        unsettled by a database failure is stopped first; while the database still fails,
+        nothing new is claimed.
         """
         with closing(dal.connect(self.settings.db_path)) as conn:
             if not self._settle(conn):
@@ -223,6 +268,12 @@ class Worker:
             )
             return
         except sqlite3.Error:  # the database failed with the engine already running
+            engine.terminate(process.pid)
+            process.wait()
+            raise
+        except BaseException:
+            # An interrupt or shutdown: the engine runs in its own session, so stop it here and
+            # leave the run `ejecutando` for `recover()` to queue again.
             engine.terminate(process.pid)
             process.wait()
             raise

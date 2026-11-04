@@ -14,6 +14,8 @@ trabajo actual y la importación final marcaba temporalmente tareas exitosas com
 | Cerrar la pestaña del navegador | El worker del servidor continúa; volver a `/ejecucion` permite seguirlo. |
 | Cerrar normalmente la aplicación | Se termina el proceso del motor y la ejecución queda pendiente para el siguiente worker. |
 | Caída abrupta del servidor | Al iniciar, se limpia el proceso registrado y se vuelve a encolar la misma ejecución. |
+| Interrumpir el worker con Ctrl-C | El worker detiene el motor y la ejecución queda `ejecutando`; el siguiente worker la vuelve a encolar, también con `--once`. |
+| Iniciar un segundo worker sobre la misma base | No toca ninguna ejecución. `make worker` y el worker de la aplicación esperan a que el primero termine y luego siguen la cola; `--once` sale y deja la cola al primero. |
 | Detener desde la interfaz | Permanece detenida hasta que el operador solicita reanudar. |
 | Reanudar o reintentar fallidos | Conserva `run_id`, parámetros, filas de tareas, tareas exitosas y tareas en `finalizo_m2` (el motor restaura su M2 y solo falta M3); solo las demás vuelven a pendiente. Una corrida que guardó datos sintéticos o un origen sin declarar no se reanuda: la interfaz muestra el motivo. |
 
@@ -41,6 +43,10 @@ Esta carrera también corresponde al diagnóstico de
 
 - Se necesitan **ambas correcciones**, en platform y engine. No basta actualizar la interfaz.
   Platform mantiene la integración mediante CLI; no importa el motor ni modifica contratos copiados.
+- Un solo worker atiende cada base: mientras corre, conserva un bloqueo exclusivo del sistema
+  operativo sobre `<base>.worker.lock`, junto a la base. Solo ese worker vuelve a encolar o
+  reclama ejecuciones, así que una ejecución `ejecutando` con su worker vivo no se toca aunque su
+  PID aún no esté registrado o ya se haya liberado. No borre ese archivo mientras corre un worker.
 - Conservar la base central, el Parquet y el directorio `runs/{run_id}`, incluidos `identidad.json`,
   `hpo/`, `checkpoints/` y los artefactos M3. Borrar esos archivos elimina evidencia necesaria.
 - Los checkpoints validan su integridad y su contexto. La CLI protege la identidad de entrada,
