@@ -16,7 +16,13 @@ from typing import Any, get_args
 
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import InvalidQuery
-from pred_platform.data.query import DEFAULT_SIZE, PageRequest, check_choice, check_sort
+from pred_platform.data.query import (
+    DEFAULT_SIZE,
+    PageRequest,
+    check_choice,
+    check_sort,
+    label,
+)
 
 VERDICTS: tuple[str, ...] = get_args(models_v2.Veredicto)
 # The two presentation groups of the contract (section 4): evaluated and not evaluated.
@@ -78,15 +84,19 @@ def _text(value: str | None) -> str | None:
     return value.strip() if value is not None and value.strip() else None
 
 
+def _date_problem(name: str, value: str) -> str:
+    return f"El parámetro {label(name)} debe ser una fecha AAAA-MM-DD; llegó «{value}»."
+
+
 def _iso_date(name: str, value: str | None) -> str | None:
     if not value:
         return None
     try:
         date.fromisoformat(value)
     except ValueError as exc:
-        raise InvalidQuery(f"{name} must be a date AAAA-MM-DD, got {value!r}") from exc
+        raise InvalidQuery(_date_problem(name, value)) from exc
     if len(value) != 10:
-        raise InvalidQuery(f"{name} must be a date AAAA-MM-DD, got {value!r}")
+        raise InvalidQuery(_date_problem(name, value))
     return value
 
 
@@ -94,7 +104,10 @@ def _positive(name: str, value: int | None) -> int | None:
     if value is None:
         return None
     if type(value) is not int or value < 1:
-        raise InvalidQuery(f"{name} must be an integer >= 1, got {value!r}")
+        raise InvalidQuery(
+            f"El parámetro {label(name)} debe ser un número entero mayor o igual que 1; "
+            f"llegó «{value}»."
+        )
     return value
 
 

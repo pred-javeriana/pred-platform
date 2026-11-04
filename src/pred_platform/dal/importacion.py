@@ -12,6 +12,7 @@ read the files: they read the DAL.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import sqlite3
@@ -24,6 +25,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from pred_platform.contract.errors import first_problem
 from pred_platform.contract.models import Severidad, SkuClass
 
 REPORTS_DIR = "ingestas"
@@ -224,12 +226,35 @@ def parse_report(path: Path) -> EngineIngestFile:
     try:
         report = EngineIngestFile.model_validate(raw)
     except ValidationError as exc:
-        first = exc.errors()[0]
-        where = ".".join(str(p) for p in first["loc"]) or "(raíz)"
-        raise ReportImportError(path, f"{where}: {first['msg']}") from exc
+        raise ReportImportError(path, str(first_problem(exc))) from exc
     if path.stem != report.ingest_id:
         raise ReportImportError(path, "el nombre del archivo no coincide con ingest_id")
     return report
+
+
+def declares_synthetic(data_root: Path, ingest_id: str) -> bool:
+    """Whether the ingestion's report declares synthetic data (``source_file.datos_sinteticos``).
+
+    The platform only runs real data and the engine rejects such an ingestion at launch, so the
+    views mark it before. A missing or invalid report declares nothing. Each version of a report
+    file is read once.
+    """
+    if not _SHA256.match(ingest_id):
+        return False
+    path = data_root / REPORTS_DIR / f"{ingest_id}.json"
+    try:
+        stat = path.stat()
+    except OSError:
+        return False
+    return _declares_synthetic(path, stat.st_mtime_ns, stat.st_size)
+
+
+@functools.lru_cache(maxsize=256)
+def _declares_synthetic(path: Path, _mtime_ns: int, _size: int) -> bool:
+    try:
+        return parse_report(path).source_file.datos_sinteticos is True
+    except ReportImportError:
+        return False
 
 
 def _schema_version(conn: sqlite3.Connection) -> int:

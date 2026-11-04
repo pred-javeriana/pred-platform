@@ -46,9 +46,10 @@ Una configuración guardada con parámetros anteriores a `schema_version=2` no s
 volver a encolarla, la cola crea una corrida nueva con otro identificador. El trabajador solo
 arranca el motor para una configuración que guardó `datos_sinteticos=false`. Una corrida que
 guardó datos sintéticos o un origen sin declarar (`null`) se detiene con
-`run.incompatible_config` antes de arrancar el motor, y reanudarla desde la interfaz muestra
-el motivo sin volver a encolarla. Su configuración y lo que publicó no cambian. Lanzar de nuevo
-los mismos ajustes abre otra corrida (`run_id-2`), que declara datos reales. Un origen sin
+`run.incompatible_config` antes de arrancar el motor: la página de Ejecución muestra el motivo
+y no ofrece Reanudar. Si una corrida con ese origen se detuvo por otra causa, Reanudar muestra
+el mismo motivo y no la vuelve a encolar. Su configuración y lo que publicó no cambian. Lanzar
+de nuevo los mismos ajustes abre otra corrida (`run_id-2`), que declara datos reales. Un origen sin
 declarar de una ejecución que sigue pendiente se resuelve al volver a lanzarla. Una tarea
 antigua sin ese campo se detiene con un error que indica volver a encolarla; la corrida
 encolada de nuevo es otra corrida.
@@ -113,7 +114,8 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
   `total_productos` los incluye. No tienen veredicto ni son un `FALLO_TECNICO`. Una corrida cuyo
   protocolo no tiene bloques de reserva (`bloques`) se publicó antes de que M3 listara esas
   exclusiones: los dos campos son nulos, porque la falta de filas no significa cero. Resultados
-  muestra la causa publicada de cada producto excluido en la lista «Por SKU» y en su detalle.
+  muestra la causa publicada de cada producto excluido en la lectura «Familias de M2» de la
+  pestaña SKU, en su detalle y en el CSV de exclusiones.
 - **Confirmación del campeón.** `get_m3_confirmation` lee, de una corrida PUBLICADA, la
   confirmación de cada campeona con sus comparaciones y la significancia HLN-DM por clase (BH y
   BY). El contrato v2 no describe estas filas, así que la plataforma las valida al entrar
@@ -145,7 +147,7 @@ se oculta como ausencia de datos. Los documentos que no cumplen el contrato prod
 
 M3 también publica CSV y Parquet derivados de SQLite. La vista
 `evidencia_publicada` impide consumir resultados antes de terminar la
-publicación. Las vistas Resultados («Por SKU» y el detalle) muestran el campeón,
+publicación. Las vistas Resultados (la pestaña SKU y el detalle) muestran el campeón,
 el veredicto, la justificación, los números decisivos, el origen y la
 significancia de la corrida M3 resuelta; las vistas nuevas de M4 (4.2 a 4.5)
 se construyen sobre estas operaciones.
@@ -176,8 +178,15 @@ La prueba comprueba, mediante `DalRepository`:
 - Los veredictos y el embudo siguen el corte y las exclusiones que publica M3 en SQLite:
   un veredicto por SKU del panel y el embudo completo.
 - La demanda observada y los campeones por familia tienen filas publicadas, incluida la cartera.
-- Cada clase tiene su confirmación del campeón y su significancia, y las filas que escribe el
-  motor cumplen la validación de la plataforma.
+- Cada clase tiene su confirmación del campeón y su significancia, y la plataforma acepta las
+  filas de confirmación y de significancia que escribe el motor. Con seis SKU ninguna competidora
+  llega al mínimo de 10 SKU, así que este caso no lleva al validador ninguna comparación con
+  prueba: ni cotas de Wilson, ni valores p, ni Hodges-Lehmann. Esas filas las cubre
+  `tests/test_resultados.py`
+  (`test_by_class_reads_the_rows_a_real_engine_run_wrote`), con las filas que escribió una
+  corrida real del motor sobre un panel real de 30 SKU, copiadas tal como quedaron en SQLite, y
+  `test_win_shares_at_the_edges_read_as_the_engine_stored_them`, con cotas de Wilson que pasan
+  de 1 y de 0 por el redondeo de coma flotante.
 - Cada fila conserva `run_id`, SKU e ingesta, y la corrida su origen.
 - La reanudación conserva las unidades ya confirmadas y no duplica corridas,
   unidades ni pronósticos.

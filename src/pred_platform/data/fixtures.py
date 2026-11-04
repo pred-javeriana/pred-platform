@@ -107,9 +107,9 @@ class FixtureRepository(M3FixtureSource):
         self, file_name: str, content: bytes, *, confirm_overwrite: bool = False
     ) -> models.IngestReport:
         if not file_name.strip().lower().endswith(".csv"):
-            raise InvalidQuery(f"file_name must be a .csv file, got {file_name!r}")
+            raise InvalidQuery(f"El archivo debe ser .csv; llegó «{file_name}».")
         if not content:
-            raise InvalidQuery("content is empty")
+            raise InvalidQuery("El archivo está vacío.")
         without, with_confirmation = self.scenario.submit_ingest
         return _load(models.IngestReport, with_confirmation if confirm_overwrite else without)
 
@@ -146,7 +146,13 @@ class FixtureRepository(M3FixtureSource):
         # `summary` describes the whole report, not the filtered page.
         return _with(doc, items=items, page=paging)
 
+    def synthetic_ingests(self, ingest_ids: Sequence[str]) -> frozenset[str]:
+        return frozenset()  # the examples declare no origin
+
     # -------------------------------------------------------------------- run status
+    def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
+        return None  # the examples record no run error
+
     def get_run_status(
         self,
         run_id: str,

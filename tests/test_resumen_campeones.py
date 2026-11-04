@@ -143,7 +143,8 @@ def test_the_class_matrix_sums_to_each_family_of_the_portfolio(
     section = _section(html, "campeones-por-clase")
 
     rows = re.findall(
-        r'<th scope="row" class="pred-nowrap">([^<]+)</th>((?:\s*<td class="num">\d+</td>){6})',
+        r'<th scope="row" class="pred-nowrap">([^<]+)</th>'
+        r'((?:\s*<td class="num(?: is-zero)?">\d+</td>){6})',
         section,
     )
     assert [name.split(" ")[0] for name, _ in rows] == [
@@ -275,14 +276,14 @@ def test_the_selection_tab_links_to_the_distribution_only_with_evidence(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _publish(env, monkeypatch)
-    html = _page(env, query="vista=sku&sku_class=smooth&page=2")
+    html = _page(env, query="vista=sku&lista=familias&sku_class=smooth&page=2")
 
     link = re.search(r'href="(/resultados\?[^"]*)">Ver distribución de campeones', html)
     assert link is not None
-    # Va al resumen de la misma corrida M3 y no arrastra filtros de la lista.
-    assert link.group(1) == "/resultados?vista=resumen&amp;m3=m3-real-1"
-    # La entrada sigue siendo «Por SKU»: la pestaña por defecto no cambió.
-    assert "Selección por SKU" in _text(_page(env, query=""))
+    # Va al resumen de la misma ejecución y corrida M3, y no arrastra filtros de la lista.
+    assert link.group(1) == "/resultados?vista=resumen&amp;ejecucion=1&amp;m3=m3-real-1"
+    # Con evidencia publicada, Resultados abre en el resumen: primero la vista general.
+    assert 'aria-current="page">Resumen</a>' in _page(env, query="")
 
 
 def test_the_link_is_absent_without_published_evidence(

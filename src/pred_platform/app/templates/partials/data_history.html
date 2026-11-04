@@ -1,26 +1,29 @@
 {% from "components/status.html" import status_indicator %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 
-{{ table_start(["Nombre", "Estado", "Filas", "SKU", "Fecha"], "Historial de ingestas") }}
+{{ table_start(["Archivo", "Estado", "Filas", "SKU", "Publicada"], "Historial de ingestas") }}
 {% for item in listing.items %}
-<tr>
-  <td>
+{% set current = report and item.ingest_id == report.ingest_id %}
+<tr{% if current %} class="is-current"{% endif %}>
+  <th scope="row">
     {% if item.ingest_id %}
-    <a href="/datos?ingest_id={{ item.ingest_id }}">{{ item.name }}</a>
+    <a href="/datos?ingest_id={{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
+    <span class="pred-subvalue"><span class="mono" title="{{ item.ingest_id }}">{{ abbreviate_id(item.ingest_id) }}</span>{% if current %} · la que se muestra{% endif %}</span>
     {% else %}
     {{ item.name }}
     {% endif %}
-  </td>
-  <td>
+    {% if item.ingest_id in synthetic_ids %}<span class="pred-subvalue pred-cause">Declara datos sintéticos: no ejecutable</span>{% endif %}
+  </th>
+  <td class="pred-nowrap">
     {% if item.status %}
       {{ status_indicator(describe_status("ingest", item.status)) }}
     {% else %}
       —
     {% endif %}
   </td>
-  <td class="mono">{{ format_count(item.rows) if item.rows is not none else "—" }}</td>
-  <td class="mono">{{ format_count(item.n_skus) if item.n_skus is not none else "—" }}</td>
-  <td class="mono">{{ format_when(item.published_at) }}</td>
+  <td class="num">{{ format_count(item.rows) if item.rows is not none else "—" }}</td>
+  <td class="num">{{ format_count(item.n_skus) if item.n_skus is not none else "—" }}</td>
+  <td class="pred-nowrap">{{ format_when(item.published_at) }}</td>
 </tr>
 {% else %}
 {{ table_empty(5, "Página sin ingestas", "Vuelva a la primera página del historial.") }}

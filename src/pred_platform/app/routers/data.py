@@ -10,7 +10,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pred_platform.app.charts import topology_scatter_svg
 from pred_platform.app.datos import (
+    CSV_COLUMNS,
+    CSV_HINT,
     PendingUpload,
+    discard_pending,
     error_view,
     page_meta,
     parse_topology_query,
@@ -27,11 +30,10 @@ from pred_platform.app.datos import (
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, TopologyReport
 from pred_platform.data.deps import get_repository
+from pred_platform.data.query import MAX_PAGE
 from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
-
-_CSV_HINT = "Seleccione un archivo .csv. Al cargarlo se validarán sus columnas y filas."
 
 
 @router.get("/datos", response_class=HTMLResponse)
@@ -40,6 +42,14 @@ def datos(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
     return _render_page(request, repository)
+
+
+@router.post("/datos/cancelar")
+def cancelar(request: Request, pendiente: Annotated[str | None, Form()] = None) -> RedirectResponse:
+    """Descarta la carga que esperaba confirmación; sus bytes se borran en el acto."""
+    if pendiente:
+        discard_pending(request, pendiente)
+    return RedirectResponse(url="/datos", status_code=303)
 
 
 @router.post("/datos/cargar", response_model=None)
@@ -124,10 +134,13 @@ def _render_page(
     history_page = 1
     try:
         history_page = int(params.get("history_page") or "1")
-        if history_page < 1:
+        if not 1 <= history_page <= MAX_PAGE:
             raise ValueError
     except ValueError:
-        history_query_error = "La página del historial debe ser un entero mayor que cero."
+        history_query_error = (
+            f"La página del historial «{params.get('history_page')}» no existe; "
+            "se muestra la primera."
+        )
         history_page = 1
     try:
         listing = repository.list_ingests(page=history_page, size=20)
@@ -148,10 +161,8 @@ def _render_page(
     query_error = history_query_error
 
     if pending_token:
-        stored = peek_pending(request, pending_token)
-        if stored is not None:
-            report = stored.report
-        elif report_error is None:
+        report = peek_pending(request, pending_token)
+        if report is None and report_error is None:
             report_error = {
                 "code": "platform.artifact_missing",
                 "detail": "La confirmación ya no está disponible. Vuelva a cargar el archivo.",
@@ -202,6 +213,11 @@ def _render_page(
         source = listing.source
     elif report is not None:
         source = report.source
+    synthetic_ids = (
+        repository.synthetic_ingests([item.ingest_id for item in listing.items if item.ingest_id])
+        if listing is not None
+        else frozenset()
+    )
 
     context = {
         "active_surface": "datos",
@@ -209,6 +225,7 @@ def _render_page(
         "capabilities": repository.get_capabilities(),
         "listing": listing,
         "list_error": list_error,
+        "synthetic_ids": synthetic_ids,
         "history_pages": page_meta(listing.page) if listing else None,
         "history_reset_href": "/datos?"
         + urlencode({key: value for key, value in params.items() if key != "history_page"})
@@ -236,8 +253,8 @@ def _render_page(
         and report is not None
         and report.status == "accepted",
         "source": source,
-        "csv_hint": _CSV_HINT,
-        "has_ingest": report is not None,
+        "csv_hint": CSV_HINT,
+        "csv_columns": CSV_COLUMNS,
     }
     return request.app.state.templates.TemplateResponse(
         request,

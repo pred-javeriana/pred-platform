@@ -13,8 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
-from pred_platform.app.seleccion import int_param
-from pred_platform.data.query import DEFAULT_SIZE, LATEST
+from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
 
 # El orden por defecto de la evidencia de M3 es el SKU; el repositorio acepta las claves de
 # ``m3_query.EVIDENCE_SORT`` y rechaza las demás.
@@ -50,9 +49,9 @@ class ConsultaQuery:
         }
 
     def query_string(self, **overrides: object) -> str:
-        """Query string de «Consulta», con filtros, ejecución y corrida M3 conservados."""
+        """Query string de la lista de veredictos; conserva filtros, ejecución y corrida M3."""
         values: dict[str, object] = {
-            "vista": "consulta",
+            "vista": "sku",
             "ejecucion": "" if self.ejecucion == LATEST else self.ejecucion,
             "m3": self.m3 or "",
             "sku_class": self.sku_class or "",

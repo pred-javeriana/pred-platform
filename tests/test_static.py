@@ -21,6 +21,7 @@ _ASSETS = [
     "fonts/Archivo-Variable.woff2",
     "fonts/Archivo-Italic.woff2",
     "fonts/JetBrainsMono-Variable.woff2",
+    "favicon.svg",
 ]
 
 _TEMPLATES = sorted(

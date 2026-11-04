@@ -8,9 +8,9 @@ from pred_platform.app.main import create_app
 def test_three_surfaces_render_and_highlight_navigation() -> None:
     client = TestClient(create_app())
     cases = (
-        ("/datos", "Datos", "PRED — Datos"),
-        ("/ejecucion", "Ejecución", "PRED — Ejecución"),
-        ("/resultados", "Resultados", "PRED — Resultados"),
+        ("/datos", "Datos", "<title>Datos · PRED</title>"),
+        ("/ejecucion", "Ejecución", "<title>Ejecución · PRED</title>"),
+        ("/resultados", "Resultados", "<title>Resultados · PRED</title>"),
     )
     for path, label, title in cases:
         response = client.get(path)

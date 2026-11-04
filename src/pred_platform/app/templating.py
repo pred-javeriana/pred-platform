@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from pred_platform import mensajes
 from pred_platform.app import resultados_m3, seleccion
 from pred_platform.app.presentation import (
+    SKU_CLASS_ORDER,
     abbreviate_id,
     describe_status,
     format_count,
@@ -29,6 +30,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
     templates.env.globals["format_when"] = format_when
     templates.env.globals["abbreviate_id"] = abbreviate_id
     templates.env.globals["sku_class_label"] = sku_class_label
+    templates.env.globals["SKU_CLASS_ORDER"] = SKU_CLASS_ORDER
     for name in (
         "compact_config",
         "error_title",
@@ -46,6 +48,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
     ]
     for name in (
         "cause_text",
+        "champion_model",
         "champion_share_text",
         "exact_text",
         "funnel_rows",
@@ -57,6 +60,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "ranking",
         "ratio_text",
         "significance_items",
+        "significance_text",
         "verdict_counts",
         "verdict_group",
         "wins_text",

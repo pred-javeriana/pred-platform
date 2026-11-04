@@ -1,7 +1,7 @@
 """La decisión publicada por M3 en la superficie Resultados (contrato v2).
 
-Las vistas «Por SKU» y el detalle de un SKU muestran la selección M2 de una ejecución. El campeón,
-el veredicto y su evidencia vienen de una corrida M3 exacta de esa ejecución: la que pide la
+La pestaña SKU y el detalle de un SKU muestran la selección M2 de una ejecución. El campeón, el
+veredicto y su evidencia vienen de una corrida M3 exacta de esa ejecución: la que pide la
 consulta (``m3``) o, si no pide ninguna, la PUBLICADA más nueva que resuelve el repositorio. Aquí
 solo se resuelve esa corrida y se nombra lo que el repositorio entregó; no se recalcula nada ni se
 traducen los cinco veredictos.
@@ -13,8 +13,10 @@ import math
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 
+from pred_platform import mensajes
 from pred_platform.app.consulta import ConsultaQuery
 from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count
 from pred_platform.app.seleccion import family_label
@@ -114,7 +116,14 @@ def _resolve(
         return status.run
     if runs.selected_run_id is None:
         if runs.availability.status != "available":
-            return _problem("Esta ejecución todavía no tiene evaluación M3.", runs.availability)
+            # El listado dice que ninguna corrida coincide con su consulta; aquí se dice cuándo
+            # aparece la evaluación.
+            return M3Problem(
+                "Esta ejecución todavía no tiene evaluación M3.",
+                "M3 publica la evaluación al final de la ejecución, en la etapa L4; entonces "
+                "aparecen el campeón y el veredicto de cada SKU.",
+                runs.availability.reason_code or "",
+            )
         newest = runs.items[0]
         return M3Problem(
             "Esta ejecución todavía no tiene una corrida M3 PUBLICADA.",
@@ -301,7 +310,8 @@ class M3Summary:
     """El resumen de la corrida M3 resuelta para una ejecución M2: embudo publicado y prueba DM.
 
     ``champions`` es la distribución de campeones por familia; si su lectura falló, el resto del
-    resumen sigue y la causa queda en ``champions_problem``.
+    resumen sigue y la causa queda en ``champions_problem``. ``eligibility`` cuenta, por código,
+    las exclusiones de M2 que M3 publicó (``None`` si la publicación no las informa).
     """
 
     run: models_v2.M3Run | None = None
@@ -310,6 +320,7 @@ class M3Summary:
     dm: DmCounts | None = None
     champions: ChampionDistribution | None = None
     champions_problem: M3Problem | None = None
+    eligibility: list[tuple[str, str, int]] | None = None
 
 
 def _champions(
@@ -359,7 +370,66 @@ def _summary(repository: DataRepository, m2_run_id: str, wanted: str | None) -> 
         dm=_dm_counts(rows),
         champions=champions,
         champions_problem=champions_problem,
+        eligibility=eligibility_rows(evidence.eligibility_exclusions),
     )
+
+
+def eligibility_rows(
+    exclusions: models_v2.EligibilityExclusions | None,
+) -> list[tuple[str, str, int]] | None:
+    """(código, motivo, SKU) de las exclusiones de M2 publicadas, una fila por código y la causa
+    más frecuente primero.
+
+    Cuenta las filas publicadas de ``m3_exclusiones``: la historia insuficiente antes de L2 y la
+    regla de dos familias después de L2 son causas distintas y se leen por separado.
+    """
+    if exclusions is None:
+        return None
+    counts = Counter(item.codigo for item in exclusions.items)
+    return [
+        (code, mensajes.titulo(code) if code in mensajes.CATALOGO else code, count)
+        for code, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionChoice:
+    """Una ejecución con una corrida M3 PUBLICADA, para elegir qué resultados ver."""
+
+    ejecucion_id: str
+    estado: str
+    iniciada_en: datetime | None
+    m3_run_id: str
+
+
+def published_executions(repository: DataRepository, limit: int = 20) -> list[ExecutionChoice]:
+    """Las ejecuciones con al menos una corrida M3 PUBLICADA, de la más nueva a la más vieja.
+
+    Resultados abre por defecto la primera: la ejecución más reciente puede seguir en curso y
+    todavía no tener evidencia que mostrar. Una lectura que falla deja la lista vacía.
+    """
+    try:
+        runs = repository.list_m3_runs(estado="PUBLICADA", size=MAX_SIZE)
+    except (InvalidQuery, DataLayerError):
+        return []
+    found: dict[str, ExecutionChoice] = {}
+    for m3_run in runs.items:  # la más nueva primero: queda la corrida M3 más reciente
+        m2_run_id = m3_run.run_id_m2
+        if m2_run_id is None or m2_run_id in found:
+            continue
+        try:
+            status = repository.get_run_status(m2_run_id, size=1)
+        except (InvalidQuery, DataLayerError):
+            continue
+        if status.ejecucion is not None:
+            run = status.ejecucion
+            found[m2_run_id] = ExecutionChoice(run.id, run.estado, run.iniciada_en, m3_run.run_id)
+    choices = sorted(
+        {choice.ejecucion_id: choice for choice in found.values()}.values(),
+        key=lambda choice: (len(choice.ejecucion_id), choice.ejecucion_id),
+        reverse=True,
+    )
+    return choices[:limit]
 
 
 @dataclass(frozen=True, slots=True)
@@ -651,22 +721,57 @@ def verdict_group(veredicto: str) -> str:
     return "Evaluado" if veredicto in GROUPS["evaluados"] else "No evaluado"
 
 
+def champion_model(verdict: models_v2.M3Verdict) -> str | None:
+    """El modelo del candidato campeón publicado: lo que el SKU y la familia de la fila no dicen."""
+    return next(
+        (
+            m.modelo
+            for m in verdict.modelos_evaluados
+            if m.candidato_id == verdict.candidato_campeon
+        ),
+        None,
+    )
+
+
+def _direction(row: models_v2.M3Verdict) -> str | None:
+    """A quién favorece una HLN-DM significativa; ``None`` si no lo fue o no se sabe.
+
+    El estadístico compara la pérdida de la campeona con la de Seasonal Naive: negativo favorece a
+    la campeona y positivo a la línea base (prueba bilateral del motor).
+    """
+    if not row.dm_significativa or row.dm_estadistico is None or row.dm_estadistico == 0:
+        return None
+    return "a favor de la campeona" if row.dm_estadistico < 0 else "en contra de la campeona"
+
+
+def significance_text(row: models_v2.M3Verdict) -> str:
+    """La lectura corta de la HLN-DM de un SKU, con el sentido de una diferencia significativa."""
+    if row.dm_causa is not None:
+        return f"Sin prueba: {row.dm_causa}"
+    if not row.dm_significativa:
+        return "No significativa"
+    direction = _direction(row)
+    return f"Significativa, {direction}" if direction else "Significativa"
+
+
 def significance_items(row: models_v2.M3Verdict) -> list[tuple[str, str]]:
     """La columna Significancia (HLN-DM y BH), separada del veredicto; la causa si no hay prueba."""
     if row.dm_causa is not None:
         return [
             ("Prueba HLN-DM", f"sin prueba: {row.dm_causa}"),
-            ("Ventanas de la prueba", str(row.dm_n_ventanas)),
-            ("Horizonte", str(row.dm_horizonte)),
+            ("Ventanas de la prueba", format_count(row.dm_n_ventanas)),
+            ("Horizonte", format_count(row.dm_horizonte)),
         ]
+    direction = _direction(row)
+    significant = "no" if not row.dm_significativa else f"sí, {direction}" if direction else "sí"
     return [
         ("Estadístico HLN-DM", _decimal(row.dm_estadistico)),
-        ("p-valor", _decimal(row.dm_p_valor)),
-        ("p ajustado (BH)", _decimal(row.dm_p_ajustado)),
-        ("α", _decimal(row.dm_alfa)),
-        ("Significativa", "sí" if row.dm_significativa else "no"),
-        ("Ventanas de la prueba", str(row.dm_n_ventanas)),
-        ("Horizonte", str(row.dm_horizonte)),
+        ("p-valor", p_text(row.dm_p_valor, row.dm_alfa)),
+        ("p ajustado (BH)", p_text(row.dm_p_ajustado, row.dm_alfa)),
+        ("α", exact_text(row.dm_alfa) if row.dm_alfa is not None else "—"),
+        ("Significativa", significant),
+        ("Ventanas de la prueba", format_count(row.dm_n_ventanas)),
+        ("Horizonte", format_count(row.dm_horizonte)),
     ]
 
 
@@ -759,7 +864,8 @@ def _side_digits(value: float, threshold: float | None, digits: int) -> int:
     if threshold is None:
         return digits
     side = (value > threshold) - (value < threshold)
-    while digits < 15:
+    # Un double necesita hasta 17 cifras para distinguirse de su vecino: 0.9999999999999999.
+    while digits < 17:
         rounded = float(f"{value:.{digits}f}")
         if (rounded > threshold) - (rounded < threshold) == side:
             break
@@ -768,15 +874,17 @@ def _side_digits(value: float, threshold: float | None, digits: int) -> int:
 
 
 def ratio_text(value: float | None) -> str:
-    """Una razón publicada con tres decimales, o más si hacen falta para no confundirla con 1.
+    """Una razón publicada con tres decimales, o más si hacen falta para no confundirla con 1 ni
+    con 0.
 
-    0 e infinito son bordes válidos.
+    0 e infinito son bordes válidos: 0 significa que solo la campeona no tiene error, así que una
+    razón positiva muy pequeña (0,0004) nunca se muestra como 0,000.
     """
     if value is None:
         return "—"
     if value == math.inf:
         return "∞"
-    return _decimal(value, _side_digits(value, 1.0, 3))
+    return _decimal(value, max(_side_digits(value, 1.0, 3), _side_digits(value, 0.0, 3)))
 
 
 def interval_text(lower: float | None, upper: float | None, *, percent: bool = False) -> str:
@@ -818,18 +926,30 @@ def p_text(value: float | None, alfa: float | None = None) -> str:
     return _decimal(value, _side_digits(value, alfa, 3))
 
 
+_SUPERSCRIPTS = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
 def exact_text(value: float) -> str:
-    """La cifra exacta que M3 guardó, sin redondear ni notación científica: 0,00002, ∞."""
+    """La cifra exacta que M3 guardó, sin redondear: 0,00002, ∞.
+
+    Bajo 10⁻⁶ se escribe con exponente, para que un p de 3,5 × 10⁻¹⁷¹ no ocupe 175 caracteres.
+    """
     if value == math.inf:
         return "∞"
-    return format(Decimal(repr(value)), "f").replace(".", ",")
+    exact = Decimal(repr(value))
+    exponent = exact.adjusted()
+    if value == 0 or exponent >= -6:
+        return format(exact, "f").replace(".", ",")
+    sign, digits, _ = exact.as_tuple()
+    mantissa = str(digits[0]) + ("," + "".join(map(str, digits[1:])) if len(digits) > 1 else "")
+    return f"{'-' if sign else ''}{mantissa} × 10{str(exponent).translate(_SUPERSCRIPTS)}"
 
 
 def wins_text(wins: int, n_skus: int) -> str:
     """Las victorias del campeón y su proporción entre los SKU comparados."""
     if n_skus == 0:
         return "—"
-    return f"{wins} ({percent_text(wins / n_skus)})"
+    return f"{format_count(wins)} ({percent_text(wins / n_skus)})"
 
 
 def level_text(level: float) -> str:

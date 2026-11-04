@@ -1,4 +1,4 @@
-"""Ayudas de la superficie Resultados, vista «Por SKU» (C2): consulta, textos y evidencia.
+"""Ayudas de la superficie Resultados, lista «Familias de M2» (C2): consulta, textos y evidencia.
 
 La interfaz solo nombra lo que el repositorio ya entregó: no recalcula métricas, no elige
 campeones y no filtra ni ordena. Aquí se arma la consulta que se delega en
@@ -14,7 +14,6 @@ from urllib.parse import urlencode
 
 from pred_platform import mensajes
 from pred_platform.app.presentation import format_decimal
-from pred_platform.contract.errors import InvalidQuery
 from pred_platform.contract.models import (
     Capabilities,
     EvidenciaClasica,
@@ -24,7 +23,7 @@ from pred_platform.contract.models import (
     TrialRow,
     WindowResult,
 )
-from pred_platform.data.query import DEFAULT_SIZE, LATEST
+from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
 
 FAMILY_ORDER: tuple[str, ...] = ("classical", "ml", "dl", "foundation")
 
@@ -95,15 +94,6 @@ def error_title(
     return mensajes.titulo(code, stage=stage, row_index=row_index, column=column)
 
 
-def int_param(raw: str | None, default: int, name: str) -> int:
-    if raw is None or raw == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError as exc:
-        raise InvalidQuery(f"{name} must be an integer, got {raw!r}") from exc
-
-
 @dataclass(frozen=True, slots=True)
 class SelectionQuery:
     """Parámetros que se delegan en ``list_sku_selections``, sin filtrar en el cliente."""
@@ -133,9 +123,10 @@ class SelectionQuery:
         }
 
     def query_string(self, **overrides: object) -> str:
-        """Query string de la vista «Por SKU», con filtros y ejecución conservados."""
+        """Query string de la lista por familia (M2), con filtros y ejecución conservados."""
         values: dict[str, object] = {
             "vista": "sku",
+            "lista": "familias",
             "ejecucion": "" if self.ejecucion == LATEST else self.ejecucion,
             "m3": self.m3 or "",
             "sku_class": self.sku_class or "",

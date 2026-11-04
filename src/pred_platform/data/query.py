@@ -15,6 +15,8 @@ from pred_platform.contract.models import Page
 
 DEFAULT_SIZE = 50
 MAX_SIZE = 500
+# A page past this one cannot exist (500 rows each) and its offset would overflow SQLite's INTEGER.
+MAX_PAGE = 10**9
 
 # A run reference may be this alias instead of an id: the most recent run. A view that does not
 # know which run to show asks for ``LATEST``; the repository resolves it.
@@ -29,10 +31,16 @@ class PageRequest:
     size: int = DEFAULT_SIZE
 
     def __post_init__(self) -> None:
-        if type(self.number) is not int or self.number < 1:
-            raise InvalidQuery(f"page must be an integer >= 1, got {self.number!r}")
+        if type(self.number) is not int or not 1 <= self.number <= MAX_PAGE:
+            limit = f"{MAX_PAGE:,}".replace(",", ".")
+            raise InvalidQuery(
+                f"La página debe ser un número entero de 1 a {limit}; llegó «{self.number}»."
+            )
         if type(self.size) is not int or not 1 <= self.size <= MAX_SIZE:
-            raise InvalidQuery(f"size must be an integer from 1 to {MAX_SIZE}, got {self.size!r}")
+            raise InvalidQuery(
+                f"El tamaño de página debe ser un número entero de 1 a {MAX_SIZE}; "
+                f"llegó «{self.size}»."
+            )
 
 
 def paginate[T](items: Sequence[T], request: PageRequest) -> tuple[list[T], Page]:
@@ -42,10 +50,51 @@ def paginate[T](items: Sequence[T], request: PageRequest) -> tuple[list[T], Page
     return list(items[start : start + request.size]), page
 
 
+# The Spanish name of each query parameter, for the messages a view shows as they are.
+_LABELS = {
+    "sku_class": "clase de demanda",
+    "family": "familia",
+    "familia": "familia",
+    "familia_campeona": "familia campeona",
+    "estado": "estado",
+    "grupo": "grupo",
+    "veredicto": "veredicto",
+    "metrica": "métrica",
+    "ventana": "ventana",
+    "fecha": "fecha",
+    "origen": "origen",
+    "h": "horizonte h",
+    "page": "página",
+    "size": "tamaño de página",
+    "history_page": "página del historial",
+}
+
+
+def label(name: str) -> str:
+    """The Spanish name of the query parameter ``name`` (the name itself when it has none)."""
+    return _LABELS.get(name, name)
+
+
+def _options(allowed: Collection[str]) -> str:
+    return ", ".join(sorted(allowed))
+
+
+def int_param(raw: str | None, default: int, name: str) -> int:
+    """The integer in a query parameter, ``default`` when it is absent or empty."""
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise InvalidQuery(
+            f"El parámetro {label(name)} debe ser un número entero; llegó «{raw}»."
+        ) from exc
+
+
 def check_sort(sort: str, allowed: Collection[str]) -> str:
     """``sort`` if it is one of ``allowed``; otherwise an ``InvalidQuery`` listing the options."""
     if sort not in allowed:
-        raise InvalidQuery(f"unknown sort key {sort!r}; use one of {sorted(allowed)}")
+        raise InvalidQuery(f"Orden desconocido «{sort}»; use uno de: {_options(allowed)}.")
     return sort
 
 
@@ -57,7 +106,9 @@ def check_choice(name: str, value: str | None, allowed: Collection[str]) -> str 
     if value is None or value == "":
         return None
     if value not in allowed:
-        raise InvalidQuery(f"unknown {name} {value!r}; use one of {sorted(allowed)}")
+        raise InvalidQuery(
+            f"Valor desconocido para {label(name)}: «{value}»; use uno de: {_options(allowed)}."
+        )
     return value
 
 

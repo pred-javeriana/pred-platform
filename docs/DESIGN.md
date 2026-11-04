@@ -70,7 +70,11 @@ codes — never used decoratively elsewhere.
 - Sharp corners: 0–2px radius on every control (buttons, inputs, containers). Not the rounded
   6–12px shape that reads as generic template UI.
 - A KPI row is flat — label/value pairs separated by space or a hairline, not a row of cards.
-- Table numerics: aligned columns, `--data` color, `font-variant-numeric: tabular-nums`.
+  Plain counts stay in ink; a row of metrics (`pred-kpis--metrics`) takes `--data`.
+- Table numerics: aligned columns, `--data` color, `font-variant-numeric: tabular-nums`. The
+  header of a numeric column aligns right with its figures.
+- A table is as wide as its content (`width: auto`, at least 36rem) and scrolls inside its own
+  region when it does not fit. A four-column table never stretches across a wide screen.
 
 ## Components
 
@@ -85,8 +89,25 @@ message, never color alone), disabled. Controls share the 0–2px radius.
 Four alert levels (info, success, warning, error), each icon + message, color as reinforcement, not
 the only channel. A message states the fact and, where possible, the next action.
 
-**Execution progress.** Bar interpolates blue (running) → green (complete) on a cubic curve so the
-transition to "complete" is visually obvious. Percentage and label always accompany the color.
+**Execution progress.** The run ring draws only the published percentage: `--info` while the run
+is open and `--ok` at 100 %. The linear bar interpolates blue (running) to green (complete) on a
+cubic curve so the transition to "complete" is visually obvious. Percentage, counts and label
+always accompany the color. The engine stages (L1 to L4) render as a numbered stepper, as GitHub
+Actions and Vercel show a deploy: a finished stage shows a check in `--ok`, the current stage is
+outlined in `--info` with `aria-current="step"`, and a pending stage stays muted.
+
+**Navigation.** The top bar names the product and numbers the three surfaces in flow order
+(1 Datos, 2 Ejecución, 3 Resultados). The current surface carries `aria-current="page"` and an
+underline in `--primary`. The browser tab shows `static/favicon.svg`, three bars in `--primary`.
+
+**Context bar.** A page that reads one run (Resultados) says which run, M3 evidence and data
+origin it shows in a bar at the top, across the full width, between two hairlines. The run
+picker lives in that bar, not in a side column.
+
+**Tabs, segmented control and breadcrumb.** Detail sections are horizontal tabs with a 2px
+underline in `--primary` on the active one. Two readings of one list use a segmented control.
+A detail page under a list opens with a breadcrumb whose links return to the list with its
+filters.
 
 **Empty states.** Guide the next step rather than leaving the screen blank — centered content, max
 width, one clear action.
@@ -137,20 +158,20 @@ Los títulos primarios usan escala adaptable y peso 800. Las etiquetas KPI usan 
 
 La revisión final D2 usa texto operativo de 14px y controles de 40px. Inputs/selects comparten altura y alineación; una ayuda debajo no desplaza el campo. Checkboxes tienen dimensiones explícitas y los selects conservan un chevron. La navegación de estados se agrupa con tamaños homogéneos. La carga visible usa etiquetas españolas independientemente del idioma del navegador (el diálogo del sistema conserva su propio idioma). Las clases se presentan como Smooth (Suave), Erratic (Errática), Intermittent (Intermitente) y Lumpy (Grumosa); sus códigos contractuales no cambian.
 
-La primera vista presenta situación, resumen y siguiente acción. Diagnóstico y tareas se consultan mediante navegación local persistente; filtros, familias y evidencia técnica conservan disclosures nativos con semántica expanded/collapsed. Una consulta explícita o error activa el área relevante. Un envío inválido lleva el foco al primer control con error. Ver UI_FLOW.md y UI_REVIEW.md para comportamiento y límites.
+La primera vista presenta situación, resumen y siguiente acción. Diagnóstico y tareas se consultan mediante pestañas de detalle; filtros, familias y evidencia técnica conservan disclosures nativos con semántica expanded/collapsed. Una consulta explícita o error activa el área relevante. Un envío inválido lleva el foco al primer control con error. Ver UI_FLOW.md y UI_REVIEW.md para comportamiento y límites.
 
-## Composición operativa en dos columnas
+## Composición en una columna
 
-La revisión espacial solicitada por el auditor usa un área principal amplia y un contexto lateral menor. Son dos superficies hermanas, blancas y sin sombras; no se anidan tarjetas ni se convierte cada cifra en una tarjeta. La grilla se apila por debajo de 56rem, conservando el orden de lectura del DOM. Las tablas mantienen su desplazamiento local y la paginación del repositorio.
+Cada superficie es una sola columna de hasta 1360px: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación en un panel blanco; y debajo, pestañas horizontales de detalle con un panel a la vez. Linear y Stripe Dashboard ordenan así sus vistas de detalle: el contexto arriba y a lo ancho, y el contenido debajo, sin una columna lateral que le quite ancho a las tablas. Panel y pestañas son superficies hermanas, blancas y sin sombras; no se anidan tarjetas ni se convierte cada cifra en una tarjeta. Las tablas mantienen su desplazamiento local y la paginación del repositorio.
 
-En Datos, el estado del archivo y sus conteos tienen la mayor jerarquía; la topología global y la siguiente acción ocupan la columna secundaria. La validez corresponde a la ingesta, no a la calidad predictiva. Diagnóstico, distribución detallada, sustitución de archivo e historial quedan en un navegador inferior con título y descripción por sección. La acción de continuar tiene un área de 48px de alto y usa el ancho de la columna secundaria; las acciones ordinarias conservan ancho intrínseco.
+En Datos, el resumen del archivo tiene la mayor jerarquía: nombre, estado, conteos en una fila de KPI, la mezcla de clases de demanda en barras y la acción de continuar. La validez corresponde a la ingesta, no a la calidad predictiva. Diagnóstico, clases y SKU, cargar otro archivo e historial quedan en pestañas con título y descripción por sección. Las acciones conservan ancho intrínseco.
 
-En Ejecución, el gráfico circular representa únicamente el porcentaje ya informado, con conteos y alternativa accesible. A su lado, los conteos por estado enlazan con las tareas filtradas. Bajo la barra se nombra la etapa en curso y cuántos de sus SKU terminaron; no estima tiempo restante. Una corrida detenida sigue mostrando las tareas exitosas previas, sin presentar fallos cerrados como progreso logrado. En Resultados, el explorador paginado es el área principal y el contexto metodológico queda al lado; en SKU, decisión y familias preceden a la evidencia técnica.
+En Ejecución, el panel de la corrida reúne estado, acciones, hechos de la corrida, etapas del motor, el anillo de progreso y los conteos por estado. El anillo representa únicamente el porcentaje ya informado, con conteos y alternativa accesible. A su lado, los conteos por estado enlazan con las tareas filtradas, y se nombra la etapa en curso y cuántos de sus SKU terminaron; no estima tiempo restante. Una corrida detenida sigue mostrando las tareas exitosas previas, sin presentar fallos cerrados como progreso logrado. En Resultados, la barra de contexto precede a las pestañas y a la hoja de la vista elegida; en SKU, la ruta de migas, la decisión y las familias preceden a la evidencia técnica.
 
-## Navegación de evidencia y jerarquía de lectura
+## Pestañas de detalle y jerarquía de lectura
 
-Las secciones secundarias relacionadas se presentan en un solo espacio de consulta: menú vertical persistente y un panel activo. Abrir una sección no desplaza las otras opciones. En pantallas compactas el menú se convierte en dos filas de opciones cortas, sin esconderlas tras scroll horizontal; permanece visible al leer el panel. La comparación principal entre familias no se divide en pestañas, porque se necesita contrastar sus resúmenes simultáneamente.
+Las secciones secundarias relacionadas se presentan como pestañas horizontales sobre un panel activo, como las de GitHub y Stripe. Abrir una sección no desplaza las otras opciones. En pantallas compactas las pestañas pasan a otra fila en vez de esconderse tras scroll horizontal. La comparación principal entre familias no se divide en pestañas, porque se necesita contrastar sus resúmenes simultáneamente.
 
-El componente evidence.html genera enlaces y secciones funcionales sin JavaScript. pred.js mejora ese marcado con tablist/tab/tabpanel, selección, controles y orientación ARIA, un único tab stop en el menú, flechas según orientación, Home/End y Enter/Espacio. Una sola sección está visible con JS. El hash permite volver directamente a ella; filtros/paginación activan el panel correspondiente. El panel elegido sobrevive a los swaps HTMX sin alterar el bloqueo de actualizaciones durante foco o selección.
+El componente evidence.html genera enlaces y secciones funcionales sin JavaScript. pred.js mejora ese marcado con tablist/tab/tabpanel horizontal, selección y controles ARIA, un único tab stop en las pestañas, flechas izquierda y derecha, Home/End y Enter/Espacio. Una sola sección está visible con JS. El hash permite volver directamente a ella; filtros/paginación activan el panel correspondiente. El panel elegido sobrevive a los swaps HTMX sin alterar el bloqueo de actualizaciones durante foco o selección.
 
-La tipografía secundaria diferencia título del espacio (22px), título del panel (20px), subsección (16px) y texto/etiquetas (14px). Ayudas de navegación de 13px se omiten en móvil, donde se conservan los títulos. Publicación y parámetros se leen en pares etiqueta/valor; umbrales y fecha se agrupan como hechos, con fechas y cifras sin cortes internos. Las tablas desplazan localmente cuando hace falta. Los detalles técnicos anidados siguen siendo opcionales. Un único bloque de trazabilidad se muestra directamente, sin un acordeón o una pestaña redundantes.
+La tipografía secundaria diferencia título del panel (20px), título de sección y de pestaña (18px), subsección (16px) y texto/etiquetas (14px). Publicación y parámetros se leen en pares etiqueta/valor; umbrales y fecha se agrupan como hechos, con fechas y cifras sin cortes internos. Las tablas desplazan localmente cuando hace falta. Los detalles técnicos anidados siguen siendo opcionales. Un único bloque de trazabilidad se muestra directamente, sin un acordeón o una pestaña redundantes.

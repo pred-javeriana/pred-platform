@@ -463,6 +463,16 @@ def task_stage_finished(
             )
 
 
+def ingest_sku_class(conn: sqlite3.Connection, ejecucion_id: int, sku: str) -> str | None:
+    """The demand class the run's ingestion published for ``sku`` (``series``), if any."""
+    row = conn.execute(
+        "SELECT s.clase FROM series s JOIN ejecuciones e ON e.ingesta_id = s.ingesta_id "
+        "WHERE e.id = ? AND s.sku = ?",
+        (ejecucion_id, sku),
+    ).fetchone()
+    return None if row is None else row[0]
+
+
 def task_excluded(
     conn: sqlite3.Connection,
     ejecucion_id: int,

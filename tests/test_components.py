@@ -2,56 +2,25 @@
 
 from pathlib import Path
 
-from fastapi.templating import Jinja2Templates
+from fastapi.testclient import TestClient
 
-from pred_platform.app.presentation import describe_status, format_count
-
-_TEMPLATES = Path(__file__).parent.parent / "src" / "pred_platform" / "app" / "templates"
-
-
-def _templates() -> Jinja2Templates:
-    templates = Jinja2Templates(directory=str(_TEMPLATES))
-    templates.env.globals["static_url"] = lambda path: f"/static/{path}"
-    return templates
+from pred_platform.app.main import create_app
+from pred_platform.config import Settings
 
 
 def _catalog_html() -> str:
-    context = {
-        "active_surface": None,
-        "task_statuses": [
-            describe_status("task", code)
-            for code in ("pendiente", "ejecutando", "exitosa", "fallida", "no_ejecutable")
-        ],
-        "trial_statuses": [
-            describe_status("trial", code)
-            for code in ("pendiente", "corriendo", "completado", "podado", "fallido")
-        ],
-        "verdict_statuses": [
-            describe_status("verdict", code)
-            for code in (
-                "VALIDADO",
-                "EXPLORATORIO",
-                "EVIDENCIA_INSUFICIENTE",
-                "NO_EVALUABLE",
-                "FALLO_TECNICO",
-            )
-        ],
-        "progress_completed": format_count(821),
-        "progress_total": format_count(1284),
-        "progress_percent": 64,
-        "metric_items": [
-            {"label": "SKU", "value": "110", "tone": "data"},
-            {"label": "Intermitentes", "value": "98", "tone": None},
-            {"label": "Lumpy", "value": "12", "tone": None},
-            {"label": "Candidatos", "value": "203", "tone": None},
-        ],
-        "tab_items": [
-            {"id": "resumen", "label": "Resumen", "href": "#resumen"},
-            {"id": "clase", "label": "Por clase", "href": "#clase"},
-            {"id": "sku", "label": "Por SKU", "href": "#sku"},
-        ],
-    }
-    return _templates().get_template("pages/catalog.html").render(context)
+    """El catálogo tal como lo sirve la aplicación, con sus filtros y formatos."""
+    app = create_app(
+        Settings(
+            data_root=Path("unused"),
+            db_path=Path("unused/pred.db"),
+            data_source="fixture",
+            worker="off",
+        )
+    )
+    response = TestClient(app).get("/_dev/componentes")
+    assert response.status_code == 200
+    return response.text
 
 
 def test_catalog_renders_every_task_and_trial_label() -> None:
@@ -83,7 +52,7 @@ def test_catalog_does_not_paint_pruned_as_failure_class() -> None:
 def test_catalog_includes_progress_counts_and_percent() -> None:
     html = _catalog_html()
     assert "821 / 1.284 tareas" in html
-    assert "64 %" in html
+    assert "64,0 %" in html
     assert 'data-pred-progress="64"' in html
 
 

@@ -21,6 +21,7 @@ from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ContractInvalid
 from pred_platform.contract.models import (
     Capabilities,
+    ErrorInfo,
     IngestList,
     IngestReport,
     RunStatus,
@@ -107,6 +108,13 @@ class DataRepository(Protocol):
         size: int = DEFAULT_SIZE,
     ) -> TopologyReport: ...
 
+    def synthetic_ingests(self, ingest_ids: Sequence[str]) -> frozenset[str]:
+        """The ingests among ``ingest_ids`` whose report declares synthetic data.
+
+        The platform only runs real data, so the views mark them as not runnable.
+        """
+        ...
+
     def get_run_status(
         self,
         run_id: str,
@@ -117,6 +125,10 @@ class DataRepository(Protocol):
         page: int = 1,
         size: int = DEFAULT_SIZE,
     ) -> RunStatus: ...
+
+    def get_run_error(self, run_id: str) -> ErrorInfo | None:
+        """The error a stopped or failed run recorded; ``Ejecucion`` (contract v1) has none."""
+        ...
 
     def list_sku_selections(
         self,

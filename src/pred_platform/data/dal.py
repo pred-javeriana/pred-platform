@@ -19,16 +19,19 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Never, get_args
+
+from pydantic import ValidationError
 
 from pred_platform.config import DataSource
 from pred_platform.contract import CONTRACT_VERSION, models
 from pred_platform.contract.errors import ArtifactMissing, EngineUnavailable, InvalidQuery
 from pred_platform.contract.models import CapabilityId
 from pred_platform.dal import lectura
-from pred_platform.dal.importacion import PANEL_COLUMNS
+from pred_platform.dal.importacion import PANEL_COLUMNS, declares_synthetic
 from pred_platform.data import capabilities
 from pred_platform.data.dal_m3 import M3DalSource
 from pred_platform.data.query import (
@@ -318,7 +321,22 @@ class DalRepository(M3DalSource):
             page=models.Page(number=request.number, size=request.size, total=total),
         )
 
+    def synthetic_ingests(self, ingest_ids: Sequence[str]) -> frozenset[str]:
+        if self.data_root is None:
+            return frozenset()
+        return frozenset(i for i in ingest_ids if declares_synthetic(self.data_root, i))
+
     # -------------------------------------------------------------------- run status
+    def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
+        # Written by the worker (``worker/errores.py``); one that is not an ErrorInfo is not shown.
+        detail = lectura.get_run(self.db_path, run_id)
+        if detail is None or not detail.error_json:
+            return None
+        try:
+            return models.ErrorInfo.model_validate(json.loads(detail.error_json))
+        except (ValueError, ValidationError):
+            return None
+
     def get_run_status(
         self,
         run_id: str,
@@ -566,7 +584,8 @@ class DalRepository(M3DalSource):
     def _require_ingest(self, ingest_id: str) -> lectura.IngestDetail:
         if not _SHA256.match(ingest_id):
             raise InvalidQuery(
-                f"ingest_id must be a lowercase SHA-256 hex digest, got {ingest_id!r}"
+                "El identificador de la ingesta debe ser un SHA-256 en hexadecimal minúscula; "
+                f"llegó «{ingest_id}»."
             )
         detail = lectura.get_ingesta(self.db_path, ingest_id)
         if detail is None:

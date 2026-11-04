@@ -3,16 +3,25 @@
 {% from "components/states.html" import unavailable_state %}
 {% from "components/status.html" import status_indicator %}
 {% from "components/tables.html" import table_start, table_end %}
-{% from "components/run_line.html" import run_line %}
 
-{% block title %}PRED — SKU {{ sku_id }}{% endblock %}
+{% block title %}SKU {{ sku_id }} · Resultados · PRED{% endblock %}
 
 {% block content %}
-  <a class="pred-back" href="{{ back_href }}">← Volver a la selección por SKU</a>
+  <nav class="pred-breadcrumb" aria-label="Ruta">
+    <ol>
+      <li><a href="{{ results_href }}">Resultados</a></li>
+      <li><a href="{{ list_href }}">SKU</a></li>
+      <li aria-current="page"><span class="mono">{{ sku_id }}</span></li>
+    </ol>
+  </nav>
   <header class="pred-page-header">
     <div>
       <h1><span class="mono">{{ sku_id }}</span></h1>
-      <p>Revise la decisión publicada por M3 y la comparación por familia. Abra configuraciones, ensayos y ventanas para consultar la evidencia técnica.</p>
+      {% if selection %}
+      <p>{{ sku_class_label(selection.sku_class) }} · {{ profile_label(selection.profile) }}</p>
+      {% else %}
+      <p>La decisión que publicó M3 para este SKU y la evidencia de cada familia.</p>
+      {% endif %}
     </div>
   </header>
   {% if source == "fixture" %}
@@ -27,46 +36,67 @@
       detail_error.blocked_by
     ) }}
   {% elif selection %}
-    <div class="pred-workspace pred-workspace--results">
-    <div class="pred-panel pred-panel--main">
-    <section class="pred-section" id="campeon">
+    {% include "partials/results_context.html" %}
+
+    <div class="pred-sheet">
+    <nav class="pred-section-links" aria-label="Secciones del SKU">
+      <a href="#campeon">Decisión</a>
+      {% if verdict %}<a href="#pronostico-campeon">Pronóstico</a><a href="#modelos">Modelos</a>{% endif %}
+      <a href="#familias">Familias</a>
+      <a href="#trazabilidad-sku">Trazabilidad</a>
+    </nav>
+
+    <section class="pred-section pred-decision" id="campeon" aria-labelledby="titulo-decision">
       <p class="pred-eyebrow">Decisión publicada por M3</p>
       {% if verdict %}
-      <h2 class="pred-panel-title">{{ family_label(verdict.familia_campeona) }}</h2>
-      <p class="pred-note pred-note--status">
+      <div class="pred-decision__head">
+        <h2 id="titulo-decision">{{ family_label(verdict.familia_campeona) }}</h2>
         {{ status_indicator(describe_status("verdict", verdict.veredicto)) }}
-        <span>{{ verdict_group(verdict.veredicto) }}</span>
-        <span aria-hidden="true">·</span>
-        {% if verdict.candidato_campeon %}<span class="mono">{{ verdict.candidato_campeon }}</span>{% else %}<span>sin candidato campeón</span>{% endif %}
-      </p>
-      <p class="pred-note" id="justificacion">{{ verdict.justificacion }}</p>
-      <dl class="pred-kv" id="numeros-decisivos">
-        <dt>Ventanas válidas</dt><dd class="mono">{{ verdict.n_ventanas }} (mínimo n_min {{ verdict.n_min }})</dd>
-        <dt>r frente a Seasonal Naive</dt><dd class="mono">{% if verdict.razon_sn is not none %}{{ format_decimal(verdict.razon_sn, 3) }}{% else %}no calculable{% endif %}</dd>
-        <dt>Cobertura</dt><dd class="mono">{{ format_decimal(verdict.cobertura * 100, 1) }} %</dd>
+        <span class="pred-meta">{{ verdict_group(verdict.veredicto) }} · {% if verdict.candidato_campeon %}<span class="mono">{{ verdict.candidato_campeon }}</span>{% else %}sin candidato campeón{% endif %}</span>
+      </div>
+      <p class="pred-decision__why" id="justificacion">{{ verdict.justificacion }}</p>
+      <dl class="pred-kpis pred-kpis--metrics" id="numeros-decisivos">
+        <div class="pred-kpis__item"><dt>r frente a Seasonal Naive</dt><dd{% if verdict.razon_sn is not none %} title="{{ exact_text(verdict.razon_sn) }}"{% endif %}>{% if verdict.razon_sn is not none %}{{ ratio_text(verdict.razon_sn) }}{% else %}no calculable{% endif %}</dd></div>
+        <div class="pred-kpis__item"><dt>Ventanas válidas</dt><dd>{{ format_count(verdict.n_ventanas) }} <span class="pred-kpis__note">mínimo n_min {{ format_count(verdict.n_min) }}</span></dd></div>
+        <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd></div>
+        <div class="pred-kpis__item"><dt>Significancia HLN-DM</dt><dd class="pred-kpis__text">{{ significance_text(verdict) }}</dd></div>
+      </dl>
+      <dl class="pred-kv">
         <dt>Pierde frente a la línea base</dt><dd>{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd>
         <dt>Comparación incompleta</dt><dd>{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd>
-        <dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) }}</dd>
       </dl>
+
       <h3>Significancia</h3>
-      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
+      <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. Un estadístico negativo favorece a la campeona. Se informa aparte del veredicto: VALIDADO no equivale a significativo.</p>
       <dl class="pred-kv" id="significancia">
         {% for label, value in significance_items(verdict) %}
         <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
         {% endfor %}
       </dl>
-      {% include "partials/results_forecast.html" %}
-      <h3>Modelos evaluados en la reserva</h3>
-      <p class="pred-meta">Ordenados por r frente a Seasonal Naive, tal como los publicó M3.</p>
+      {% elif m3.excluded.get(sku_id) %}
+      <h2 id="titulo-decision">Excluido antes de M3</h2>
+      <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star and sku_id in m3.late_launched %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>
+      {% else %}
+      <h2 id="titulo-decision">Sin veredicto M3</h2>
+      <p class="pred-note pred-note--muted">{% if m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}M3 no publicó un veredicto para este SKU en esta corrida.{% endif %} Abajo está la evidencia de cada familia en M2.</p>
+      {% endif %}
+    </section>
+
+    {% if verdict %}
+    {% include "partials/results_forecast.html" %}
+
+    <section class="pred-section" id="modelos" aria-labelledby="titulo-modelos">
+      <h2 id="titulo-modelos">Modelos evaluados en la reserva</h2>
+      <p class="pred-meta">Ordenados por r frente a Seasonal Naive, tal como los publicó M3. r menor que 1 significa menos error que la línea base.</p>
       {{ table_start(["Familia", "Modelo", "r frente a Seasonal Naive", "Rol"], "Modelos evaluados de " ~ sku_id) }}
       {% for model in ranking(verdict) %}
       {% set roles = [] %}
       {% if model.candidato_id == verdict.candidato_campeon %}{% set _ = roles.append("Campeón") %}{% endif %}
       {% if model.familia == "seasonal_naive" %}{% set _ = roles.append("Línea base") %}{% endif %}
-      <tr>
-        <td>{{ family_label(model.familia) }}</td>
+      <tr{% if model.candidato_id == verdict.candidato_campeon %} class="is-champion"{% endif %}>
+        <td class="pred-nowrap">{{ family_label(model.familia) }}</td>
         <td><span class="mono">{{ model.modelo }}</span></td>
-        <td class="num">{% if model.razon_sn is not none %}{{ format_decimal(model.razon_sn, 3) }}{% else %}no calculable{% endif %}</td>
+        <td class="num"{% if model.razon_sn is not none %} title="{{ exact_text(model.razon_sn) }}"{% endif %}>{% if model.razon_sn is not none %}{{ ratio_text(model.razon_sn) }}{% else %}no calculable{% endif %}</td>
         <td>{{ roles | join(" · ") or "—" }}</td>
       </tr>
       {% endfor %}
@@ -75,34 +105,30 @@
       <h3 id="reserva">Ventanas de la reserva</h3>
       <p class="pred-meta">RMSE del campeón y de Seasonal Naive, y r, en cada ventana de la reserva, tal como los publicó M3.</p>
       {% for causa, count in reserve.sin_r.items() %}
-      <p class="pred-note">{{ count }} {{ "ventana" if count == 1 else "ventanas" }} sin r: <span class="mono">{{ causa }}</span></p>
+      <p class="pred-note">{{ format_count(count) }} {{ "ventana" if count == 1 else "ventanas" }} sin r: <span class="mono">{{ causa }}</span></p>
       {% endfor %}
+      <div class="pred-evidence-scroll">
       {{ table_start(["Ventana", "RMSE campeón", "RMSE Seasonal Naive", "r frente a Seasonal Naive"], "Ventanas de la reserva de " ~ sku_id) }}
       {% for window in reserve.windows %}
       <tr>
         <td><span class="mono">{{ window.fecha }}</span></td>
         {% for value in (window.rmse_campeon, window.rmse_linea_base) %}
-        <td class="num">{% if value is not none %}{{ format_decimal(value, 3) }}{% else %}—{% endif %}</td>
+        <td class="num"{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}>{% if value is not none %}{{ format_decimal(value, 3) }}{% else %}—{% endif %}</td>
         {% endfor %}
-        <td class="num">{% if window.razon_sn is not none %}{{ format_decimal(window.razon_sn, 3) }}{% elif window.causa %}no calculable: <span class="mono">{{ window.causa }}</span>{% else %}—{% endif %}</td>
+        <td class="num"{% if window.razon_sn is not none %} title="{{ exact_text(window.razon_sn) }}"{% endif %}>{% if window.razon_sn is not none %}{{ ratio_text(window.razon_sn) }}{% elif window.causa %}no calculable: <span class="mono">{{ window.causa }}</span>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
       {{ table_end() }}
+      </div>
       {% else %}
-      <p class="pred-note" id="reserva"><a href="{{ reserve_href }}#reserva">Ver las {{ verdict.n_ventanas }} ventanas de la reserva</a></p>
-      {% endif %}
-      {% elif m3.excluded.get(sku_id) %}
-      <h2 class="pred-panel-title">Excluido antes de M3</h2>
-      <p class="pred-note">Causa publicada: <span class="mono">{{ m3.excluded[sku_id] }}</span>{% if m3.t_star and sku_id in m3.late_launched %} (corte t* {{ m3.t_star }}){% endif %}. No es un veredicto ni un fallo técnico.</p>
-      {% else %}
-      <h2 class="pred-panel-title">Sin veredicto M3</h2>
-      <p class="pred-note pred-note--muted">{% if m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}M3 no publicó un veredicto para este SKU en esta corrida.{% endif %} Abajo está la evidencia de cada familia en M2.</p>
+      <p class="pred-note" id="reserva"><a href="{{ reserve_href }}#reserva">Ver las {{ format_count(verdict.n_ventanas) }} ventanas de la reserva</a></p>
       {% endif %}
     </section>
+    {% endif %}
 
-    <section class="pred-section pred-family-explorer" id="familias">
-      <h2>Comparación por familia</h2>
-      <p class="pred-meta">La comparación puede estar incompleta. Cada familia conserva su estado y su causa; una exclusión no es un fallo técnico.</p>
+    <section class="pred-section pred-family-explorer" id="familias" aria-labelledby="titulo-familias">
+      <h2 id="titulo-familias">Comparación por familia</h2>
+      <p class="pred-meta">La evidencia que dejó M2 para cada familia. La comparación puede estar incompleta: cada familia conserva su estado y su causa, y una exclusión no es un fallo técnico.</p>
       {% for entry in entries %}
       {% set wf = entry.walk_forward %}
       <details class="pred-family pred-details" id="familia-{{ entry.family }}"{% if with_windows and wf %} open{% endif %}>
@@ -110,7 +136,7 @@
           <h3>{{ family_label(entry.family) }}</h3>
           {{ status_indicator(describe_status("family", entry.estado)) }}
           {% if entry.modelo %}<span class="mono">{{ entry.modelo }}</span>{% endif %}
-          {% if wf and wf.valor_agregado is not none %}<span class="mono">{{ wf.metrica_objetivo }} {{ format_decimal(wf.valor_agregado, 3) }}</span>{% endif %}
+          {% if wf and wf.valor_agregado is not none %}<span class="mono pred-family__value">{{ wf.metrica_objetivo }} {{ format_decimal(wf.valor_agregado, 3) }}</span>{% endif %}
         </summary>
 
         {% if entry.exclusion %}
@@ -119,7 +145,6 @@
 
         {% if entry.error %}
         <p class="pred-note"><strong>{{ error_title(entry.error.code, entry.error.stage, entry.error.row_index, entry.error.column) }}</strong>
-
           {% if error_action(entry.error.code) %}<br><span class="pred-meta">{{ error_action(entry.error.code) }}</span>{% endif %}
         </p>
         <details class="pred-details" id="error-{{ entry.family }}"><summary>Detalle técnico del fallo</summary>
@@ -144,21 +169,21 @@
         {% if entry.trials is not none %}
           {% set counts = trial_counts(entry.trials) %}
           <details class="pred-details" id="ensayos-{{ entry.family }}">
-          <summary>Ensayos de la búsqueda · {{ family_label(entry.family) }} · {{ counts.total }} ensayos</summary>
+          <summary>Ensayos de la búsqueda · {{ family_label(entry.family) }} · {{ format_count(counts.total) }} ensayos</summary>
           {% if entry.trials %}
-          <p class="pred-note">{{ counts.total }} ensayos: {{ counts.completados }} completados, {{ counts.podados }} podados, {{ counts.fallidos }} fallidos.
+          <p class="pred-note">{{ format_count(counts.total) }} ensayos: {{ format_count(counts.completados) }} completados, {{ format_count(counts.podados) }} podados, {{ format_count(counts.fallidos) }} fallidos.
             {% if counts.podados %}<span class="pred-note--muted">Un ensayo podado no es un fallo: la búsqueda lo detuvo según su regla de poda. El motivo de cada ensayo conserva la causa registrada.</span>{% endif %}</p>
           <div class="pred-evidence-scroll">
           {{ table_start(["Ensayo", "Estado", "Valor", "Ventanas", "Configuración", "Motivo", "Cierre"], "Ensayos de " ~ family_label(entry.family)) }}
           {% for trial in entry.trials %}
           <tr>
             <td><span class="mono">{{ trial.id }}</span></td>
-            <td>{{ status_indicator(describe_status("trial", trial.estado)) }}</td>
+            <td class="pred-nowrap">{{ status_indicator(describe_status("trial", trial.estado)) }}</td>
             <td class="num">{% if trial.valor is not none %}{{ format_decimal(trial.valor, 3) }}{% else %}—{% endif %}</td>
-            <td class="num">{{ trial.n_ventanas }}</td>
+            <td class="num">{{ format_count(trial.n_ventanas) }}</td>
             <td class="wrap mono">{{ compact_config(trial.configuracion) }}</td>
             <td class="wrap">{{ trial.motivo or "—" }}</td>
-            <td>{{ format_when(trial.timestamp) }}</td>
+            <td class="pred-nowrap">{{ format_when(trial.timestamp) }}</td>
           </tr>
           {% endfor %}
           {{ table_end() }}
@@ -176,7 +201,7 @@
         <dl class="pred-kv">
           <dt>Métrica objetivo</dt><dd class="mono">{{ wf.metrica_objetivo }}</dd>
           <dt>Valor agregado</dt><dd class="mono">{% if wf.valor_agregado is not none %}{{ format_decimal(wf.valor_agregado, 3) }}{% else %}—{% endif %}</dd>
-          <dt>Ventanas evaluadas</dt><dd class="mono">{{ wf.n_ventanas_evaluadas }} de {{ wf.n_ventanas_totales }}{% if not wf.completo %} · incompleto{% endif %}</dd>
+          <dt>Ventanas evaluadas</dt><dd class="mono">{{ format_count(wf.n_ventanas_evaluadas) }} de {{ format_count(wf.n_ventanas_totales) }}{% if not wf.completo %} · incompleto{% endif %}</dd>
           <dt>Alcance</dt><dd>Misma historia que la búsqueda: no es una validación independiente.</dd>
           <dt>Comparación estadística</dt><dd>{{ "Disponible" if wf.statistical_comparison_available else "No disponible" }}</dd>
         </dl>
@@ -204,8 +229,8 @@
         </details>
         {% elif with_windows %}
         <p class="pred-note pred-note--muted">No hay ventanas guardadas para esta familia.</p>
-        {% elif not with_windows %}
-        <p class="pred-note"><a href="{{ windows_href }}#familia-{{ entry.family }}">Ver las {{ wf.n_ventanas_evaluadas }} ventanas</a></p>
+        {% else %}
+        <p class="pred-note"><a href="{{ windows_href }}#familia-{{ entry.family }}">Ver las {{ format_count(wf.n_ventanas_evaluadas) }} ventanas</a></p>
         {% endif %}
         {% endif %}
       </details>
@@ -214,42 +239,25 @@
       <p class="pred-note"><a href="{{ hide_windows_href }}">Ocultar las ventanas</a></p>
       {% endif %}
     </section>
-    </div>
-    <aside class="pred-panel pred-panel--side" aria-labelledby="contexto-sku">
-      <p class="pred-eyebrow">Contexto del SKU</p>
-      <h2 id="contexto-sku">Demanda y procedencia</h2>
-      <dl class="pred-summary-list">
-        <div><dt>Clase</dt><dd>{{ sku_class_label(selection.sku_class) }}</dd></div>
-        <div><dt>Perfil</dt><dd>{{ profile_label(selection.profile) }}</dd></div>
-      </dl>
-      {{ run_line(run, selection.run_id) }}
-      {% include "partials/results_m3.html" %}
-      {% include "partials/results_scope.html" %}
-      <nav class="pred-section-links pred-section-links--vertical" aria-label="Detalle del SKU">
-        <a href="#campeon">Decisión</a><a href="#familias">Comparación por familia</a><a href="#trazabilidad-sku">Trazabilidad</a>
-      </nav>
-    </aside>
-    </div>
-    <div class="pred-evidence-area">
-    <header class="pred-area-heading"><h2>Datos de referencia</h2><p>Identificadores y caracterización de este SKU.</p></header>
-    <section class="pred-evidence-panel" id="trazabilidad-sku" aria-labelledby="traza-sku">
-      <h3 id="traza-sku">Trazabilidad</h3>
-        <dl class="pred-kv">
-          <dt>Ejecución M2</dt><dd class="mono">{{ selection.run_id or "No informada" }}</dd>
-          <dt>Corrida M3</dt><dd class="mono">{{ m3.run.run_id if m3.run else "No informada" }}</dd>
-          <dt>Ingesta</dt><dd class="mono">{{ m3.run.ingesta_sha256 if m3.run else run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "No informada" }}</dd>
-          <dt>Política</dt><dd class="mono">{{ selection.policy_version or "No informada" }}</dd>
-        </dl>
-    {% if selection.topology %}
-    <h4>Topología de demanda</h4>
-    {{ metrics_row([
-      {"label": "Periodos", "value": format_count(selection.topology.n_periods), "tone": "data"},
-      {"label": "Periodos con demanda", "value": format_count(selection.topology.n_positive), "tone": "data"},
-      {"label": "ADI", "value": format_decimal(selection.topology.adi, 3), "tone": "data"},
-      {"label": "CV²", "value": format_decimal(selection.topology.cv2, 3), "tone": "data"}
-    ]) }}
-    {% endif %}
 
+    <section class="pred-section" id="trazabilidad-sku" aria-labelledby="traza-sku">
+      <h2 id="traza-sku">Trazabilidad</h2>
+      <p class="pred-meta">Los identificadores completos de lo que se muestra y la caracterización de la demanda de este SKU.</p>
+      <dl class="pred-kv">
+        <dt>Ejecución M2</dt><dd class="mono">{{ selection.run_id or "No informada" }}</dd>
+        <dt>Corrida M3</dt><dd class="mono">{{ m3.run.run_id if m3.run else "No informada" }}</dd>
+        <dt>Ingesta</dt><dd class="mono">{{ m3.run.ingesta_sha256 if m3.run else run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "No informada" }}</dd>
+        <dt>Política</dt><dd class="mono">{{ selection.policy_version or "No informada" }}</dd>
+      </dl>
+      {% if selection.topology %}
+      <h3>Topología de demanda</h3>
+      {{ metrics_row([
+        {"label": "Periodos", "value": format_count(selection.topology.n_periods), "tone": "data"},
+        {"label": "Periodos con demanda", "value": format_count(selection.topology.n_positive), "tone": "data"},
+        {"label": "ADI", "value": format_decimal(selection.topology.adi, 3), "tone": "data"},
+        {"label": "CV²", "value": format_decimal(selection.topology.cv2, 3), "tone": "data"}
+      ]) }}
+      {% endif %}
     </section>
     </div>
   {% endif %}
