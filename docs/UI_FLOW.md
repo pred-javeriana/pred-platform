@@ -65,8 +65,9 @@ en una pantalla aparte. El monitoreo también.
 y `list_ingests(...)` para elegir la ingesta. **Escritura:** `app.state.run_control`
 (`worker/control.py`), un servicio aparte de `DataRepository` (contrato §19): lanzar
 (`POST /ejecucion/lanzar`), detener (`/ejecucion/detener`) y reanudar (`/ejecucion/reanudar`).
-Con fixtures las acciones salen deshabilitadas con el motivo. El cuerpo se refresca con HTMX
-cada 2 s mientras la corrida está en curso (`/ejecucion/estado`, que responde 286 al terminar).
+Con fixtures o con una base sin permiso de escritura las acciones salen deshabilitadas con el
+motivo. El cuerpo se refresca con HTMX cada 2 s mientras la corrida está en curso
+(`/ejecucion/estado`, que responde 286 al terminar).
 Ver `docs/features/ejecucion/README.md`.
 
 **Estados de corrida:** `sin_ejecucion` (página; `ejecucion is None`), y los de
@@ -125,7 +126,7 @@ perfiles de error de la cartera en el bloque de prueba, una métrica a la vez. L
 selecciona ganadores ni recalcula métricas.
 
 **Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
-`get_m3_run_status(...)`, `get_m3_evidence(...)`, `get_m3_categories(...)`,
+`get_m3_run(...)`, `get_m3_evidence(...)`, `get_m3_categories(...)`,
 `get_m3_portfolio(...)`, `get_m3_metrics(...)`, `get_m3_observations(...)`,
 `get_m3_forecasts(...)`, `get_m3_reserve_blocks(...)` (los límites de los bloques que M3 fijó en
 el protocolo de la corrida) y `get_m3_confirmation(...)` (la confirmación del campeón y la

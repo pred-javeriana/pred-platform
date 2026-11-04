@@ -155,7 +155,8 @@ schema. The migration texts are owned by pred-engine and copied exactly into pla
 
 The views read it through `DataRepository` as contract v2 documents (M4, Notion 4.1):
 `list_m3_runs` resolves an M2 reference or an identity to its exact M3 runs and names the newest
-PUBLICADA one; `get_m3_run_status` gives state and durable progress without partial metrics; and
+PUBLICADA one; `get_m3_run` gives one run's metadata and `get_m3_run_status` adds its durable
+progress (a count of every unit) without partial metrics; and
 `get_m3_evidence`, `get_m3_metrics`, `get_m3_categories`, `get_m3_portfolio`, `get_m3_forecasts`,
 `get_m3_failures`, `get_m3_units`, `get_m3_observations` and `get_m3_champions` return one exact
 PUBLICADA run's rows, filtered and paged in SQLite within one read snapshot. Late launches and

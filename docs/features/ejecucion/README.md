@@ -48,8 +48,9 @@ fingerprint (`run.incompatible_config`).
   `list_ingests`); filters and paging of the tasks are delegated to the repository.
 - **Writes** go through `app.state.run_control` (`worker/control.py`), a command service separate
   from the read contract (section 19 of the data contract). `DalRunControl` writes the DAL for the
-  worker to follow; with fixtures `UnavailableRunControl` makes every action raise with the reason,
-  and the screen shows the buttons disabled and explained.
+  worker to follow; with fixtures or a database file without write permission
+  `UnavailableRunControl` makes every action raise with the reason, and the screen shows the
+  buttons disabled and explained.
 - **Stop** needs no migration: `dal.request_stop` turns a `pendiente` or `ejecutando` run into
   `detenida` with the error `platform.run_stopped`, only if it is still in progress. The worker,
   which looks at the run's state every 0.2 s, sees it, terminates the engine's process group and
@@ -65,7 +66,8 @@ fingerprint (`run.incompatible_config`).
   the run is in progress; the server answers 286 when it is not, so htmx stops. The task filter form
   is `hx-preserve`d so typing is not lost. The launch form folds away once there is a run to show.
 - **One worker, one run at a time.** A second launch waits in the queue and the screen says so; with
-  `PRED_WORKER=off` it also says the run waits for `make worker`.
+  `PRED_WORKER=off` and no other worker holding the database lock (`WorkerLock.held_elsewhere`) it
+  also says the run waits for `make worker`.
 
 ## Where
 

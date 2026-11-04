@@ -28,6 +28,7 @@ from pred_platform.data.m3_confirmation import (
     M3Comparison,
     M3Confirmation,
 )
+from pred_platform.data.m3_documents import NO_RUN
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository, M3ReserveBlocks
@@ -105,15 +106,15 @@ def _resolve(
 ) -> models_v2.M3Run | M3Problem:
     runs = repository.list_m3_runs(run_id_m2=m2_run_id)
     if wanted:
-        status = repository.get_m3_run_status(wanted)
-        mine = {run.run_id_m2 for run in runs.items}
-        if status.run is None or status.run.run_id_m2 not in mine:
+        run = repository.get_m3_run(wanted)
+        mine = {item.run_id_m2 for item in runs.items}
+        if run is None or run.run_id_m2 not in mine:
             return M3Problem(
                 "La corrida M3 pedida no corresponde a esta ejecución.",
                 f"La corrida M3 {wanted} no es una evaluación de la ejecución #{m2_run_id}.",
                 "no_data",
             )
-        return status.run
+        return run
     if runs.selected_run_id is None:
         if runs.availability.status != "available":
             # El listado dice que ninguna corrida coincide con su consulta; aquí se dice cuándo
@@ -130,9 +131,12 @@ def _resolve(
             f"La corrida M3 más reciente, {newest.run_id}, está {newest.estado}.",
             "not_published",
         )
-    # Resolved over every run of the execution, not only the first page of the list.
-    status = repository.get_m3_run_status(runs.selected_run_id)
-    return status.run or _problem("La corrida M3 ya no está disponible.", status.availability)
+    # Resolved over every run of the execution, not only the first page of the list. Only the
+    # run's metadata: its progress would count every unit of the run on each page.
+    run = repository.get_m3_run(runs.selected_run_id)
+    if run is None:
+        return M3Problem("La corrida M3 ya no está disponible.", NO_RUN, "no_data")
+    return run
 
 
 def decision(

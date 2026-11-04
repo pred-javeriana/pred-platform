@@ -42,6 +42,29 @@ class WorkerLock:
         self._fd = fd
         return True
 
+    def held_elsewhere(self) -> bool:
+        """Whether another worker holds the lock now, for example ``make worker`` beside the app.
+
+        It takes the lock and releases it at once, without creating the file. During that instant
+        a worker that starts fails to take it: ``make worker`` and the app's worker try again at
+        their next poll, and ``--once`` leaves the queue to the next worker that runs.
+        """
+        if self._fd is not None:
+            return False
+        try:
+            fd = os.open(self.path, os.O_RDONLY)
+        except OSError:  # no lock file (no worker ever ran here) or no access to it
+            return False
+        try:
+            _lock(fd)
+        except OSError:
+            return True
+        else:
+            _unlock(fd)
+            return False
+        finally:
+            os.close(fd)
+
     def release(self) -> None:
         if self._fd is None:
             return

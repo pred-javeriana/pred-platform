@@ -77,6 +77,7 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 | Operación | Documento | Fuente |
 |---|---|---|
 | `list_m3_runs` | `M3Runs` | `m3_corridas` y la política de `m3_protocolos` |
+| `get_m3_run` | `M3Run` o `None` | solo la fila de `m3_corridas`, sin contar unidades |
 | `get_m3_run_status` | `M3RunStatus` | corrida y avance durable de `m3_unidades` |
 | `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos`, `m3_cortes`, `m3_lanzamientos_tardios` y `m3_exclusiones` |
 | `get_m3_metrics` | `M3Metrics` | `m3_metricas` |

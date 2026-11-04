@@ -398,6 +398,15 @@ def confirmation(db_path: Path, run_id: str) -> dict[str, Any] | None:
     return {"run_id": run_id, "clases": classes, "significancia": significance}
 
 
+def run_metadata(db_path: Path, run_id: str) -> dict[str, Any] | None:
+    """One run's metadata only, without counting its units; ``None`` when it is unknown."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _snapshot(conn):
+            return None
+        row = _find_run(conn, run_id)
+        return None if row is None else _run(conn, row)
+
+
 def run_status(db_path: Path, run_id: str) -> StatusRead:
     """One run's metadata and durable progress (resolved units), never its metrics."""
     with _open_readonly(db_path) as conn:

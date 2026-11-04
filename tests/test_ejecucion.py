@@ -31,6 +31,7 @@ from pred_platform.contract import models
 from pred_platform.contract.errors import InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
 from tests.test_worker import Env, _escribir_progreso, _guardar_origen, _scenario, _wait
@@ -577,6 +578,54 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
     assert "El modelo no pudo ajustarse." in text
     assert "Pruebe con más ensayos o con otra familia" in text
     assert "Ver resultados" in text
+
+
+def test_on_a_read_only_database_the_actions_are_off_and_say_why_not_a_server_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "unit_fails")
+    _launch(_dal_client(env), env)
+    env.worker().run_next()
+    before = env.rows("SELECT estado, error_json FROM ejecuciones")
+    env.db.chmod(0o444)
+    try:
+        client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+        page = client.get("/ejecucion?ejecucion=1").text
+        response = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
+    finally:
+        env.db.chmod(0o644)
+
+    reason = (
+        "La base de datos es de solo lectura: se pueden consultar los resultados, pero no "
+        "lanzar, detener ni reanudar."
+    )
+    assert reason in _text(page)
+    assert re.search(r'id="accion-reanudar">.*?<button [^>]*disabled', page, re.S)
+    assert response.status_code == 200 and reason in _text(response.text)
+    assert env.rows("SELECT estado, error_json FROM ejecuciones") == before
+
+
+def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_worker_runs(
+    env: Env,
+) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    hint = "inícielo con make worker"
+
+    def page() -> str:
+        return _text(client.get("/ejecucion?ejecucion=1&lanzar=1").text)
+
+    assert "hasta que lo inicie con make worker" in page() and hint in page()
+    other = WorkerLock.for_database(env.db)  # a `make worker` beside the app
+    assert other.acquire()
+    try:
+        shown = page()
+    finally:
+        other.release()
+
+    assert "make worker" not in shown
+    assert "En cola: empezará en cuanto el worker termine la corrida anterior." in shown
+    assert hint in page()  # the lock is free again: nothing runs the queue
 
 
 def test_with_the_launch_form_open_launching_is_the_one_primary_action(

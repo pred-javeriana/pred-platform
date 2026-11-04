@@ -56,6 +56,7 @@ from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.data.deps import get_repository
 from pred_platform.data.query import LATEST
 from pred_platform.data.repository import DataRepository
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.control import ControlUnavailable, RunControl
 from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION
 
@@ -69,9 +70,14 @@ def _control(request: Request) -> RunControl:
 
 
 def _worker_active(request: Request) -> bool:
-    """Whether this app runs the worker (otherwise a launched run waits for ``make worker``)."""
+    """Whether a worker follows the queue: this app's, or another process that holds the database
+    (otherwise a launched run waits for ``make worker``)."""
     settings = request.app.state.settings
-    return bool(settings.data_source == "dal" and settings.worker == "embedded")
+    if settings.data_source != "dal":
+        return False
+    return bool(
+        settings.worker == "embedded" or WorkerLock.for_database(settings.db_path).held_elsewhere()
+    )
 
 
 def _accepted_ingests(repository: DataRepository) -> list[LaunchIngest]:

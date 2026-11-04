@@ -103,7 +103,7 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
 ## How
 
 Views call only `DataRepository` (`list_sku_selections`, `get_sku_selection`, `get_run_status` for the
-run header, `list_m3_runs`, `get_m3_run_status` and `get_m3_evidence` for M3's decision,
+run header, `list_m3_runs`, `get_m3_run` and `get_m3_evidence` for M3's decision,
 `get_m3_categories` and `get_m3_confirmation` for Por clase,
 `get_capabilities` for the action). Filters, sort and paging are **delegated** to the
 repository and the page shows whatever it returned. The views only order published rows to show
