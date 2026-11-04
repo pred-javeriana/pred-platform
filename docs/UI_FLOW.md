@@ -98,7 +98,10 @@ El formulario marca por defecto las cuatro familias, incluida Fundacional (Chron
 y permite desmarcar cualquiera; Fundacional necesita el extra foundation y los pesos
 disponibles en el entorno del motor. Si con las familias elegidas alguna clase de demanda de la
 ingesta queda sin familia admitida por la política del motor, el formulario no lanza y dice qué
-clase queda sin modelo y qué familias agregar. La plataforma trabaja solo con datos reales: el
+clase queda sin modelo y qué familias agregar. Si una clase queda con una sola familia admitida,
+el formulario avisa qué SKU quedarían fuera de la comparación, sin campeón, y qué familia
+agregar; «Lanzar de todos modos» encola la corrida así. Si se cambian las familias, el formulario
+vuelve a revisarlas. La plataforma trabaja solo con datos reales: el
 formulario no pregunta el origen y toda ejecución declara sus datos reales. Antes del encolado,
 el motor resuelve el origen de la ingesta (`pred-engine origen --datos-reales`); si la ingesta
 está declarada sintética, la plataforma muestra el conflicto sin crear la ejecución. El worker

@@ -1,5 +1,6 @@
-{# Botones. variant: primary | secondary | subtle | danger. Una acción primaria por vista. #}
-{% macro button(label, variant="primary", type="button", disabled=false, href=none, icon=none, extra="") %}
+{# Botones. variant: primary | secondary | subtle | danger. Una acción primaria por vista.
+   name y value: lo que envía un botón de formulario al pulsarlo. #}
+{% macro button(label, variant="primary", type="button", disabled=false, href=none, icon=none, extra="", name=none, value=none) %}
 {% set cls = "pred-btn pred-btn--" ~ variant ~ (" " ~ extra if extra else "") %}
 {% if href and not disabled %}
 <a class="{{ cls }}" href="{{ href }}">
@@ -12,7 +13,7 @@
   {{ label }}
 </a>
 {% else %}
-<button class="{{ cls }}" type="{{ type }}"{% if disabled %} disabled{% endif %}>
+<button class="{{ cls }}" type="{{ type }}"{% if name %} name="{{ name }}" value="{{ value }}"{% endif %}{% if disabled %} disabled{% endif %}>
   {% if icon %}<svg aria-hidden="true"><use href="#{{ icon }}"></use></svg>{% endif %}
   {{ label }}
 </button>

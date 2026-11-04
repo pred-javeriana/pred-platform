@@ -236,34 +236,79 @@ def _both(names: Sequence[str]) -> str:
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} y {names[-1]}"
 
 
-def uncovered_classes(by_class: Mapping[SkuClass, int], families: Sequence[str]) -> str | None:
-    """Qué clases de la ingesta quedan con menos de dos familias elegidas; ``None`` si ninguna.
+def classes_without_family(by_class: Mapping[SkuClass, int], families: Sequence[str]) -> str | None:
+    """Qué clases de la ingesta quedan sin ninguna familia que admitan; ``None`` si ninguna.
 
-    El motor compara al menos dos familias por SKU (ADR-023): si solo una entrega candidato, excluye
-    el SKU antes de L3 (``eligibility.fewer_than_two_families``), y sin ninguna la etapa L2 falla.
-    Por eso se avisa antes de lanzar, con las familias que la clase admite.
+    La política del motor no produce decisiones para esa clase y la etapa L2 falla para toda la
+    corrida, así que el formulario no lanza. Dice qué familias agregar para que cada SKU tenga dos.
     """
     parts = []
     for sku_class, count in by_class.items():
         admitted = FAMILIES_BY_SKU_CLASS.get(sku_class, ())
-        chosen = [f for f in admitted if f in families]
-        if not count or len(chosen) >= min(2, len(admitted)):
+        if not count or not admitted or any(f in families for f in admitted):
             continue
-        missing = [family_label(f) for f in admitted if f not in chosen]
+        names = [family_label(f) for f in admitted]
         verb = "queda" if count == 1 else "quedan"
-        who = f"{format_count(count)} SKU {sku_class_label(sku_class)}"
-        if chosen:
-            parts.append(
-                f"{who} {verb} con una sola familia ({family_label(chosen[0])}): "
-                f"agregue {_either(missing)}."
-            )
-        elif len(missing) == 2:
-            parts.append(f"{who} {verb} sin modelo: agregue {_both(missing)}.")
-        else:
-            parts.append(f"{who} {verb} sin modelo: agregue dos de {_either(missing)}.")
+        add = _both(names) if len(names) == 2 else f"dos de {_either(names)}"
+        parts.append(
+            f"{format_count(count)} SKU {sku_class_label(sku_class)} {verb} sin modelo: "
+            f"agregue {add}."
+        )
     if not parts:
         return None
-    return " ".join(parts) + " El motor compara al menos dos familias por SKU."
+    return " ".join(parts) + " Sin ninguna familia para una clase, el motor no puede ejecutar."
+
+
+def single_family_classes(
+    by_class: Mapping[SkuClass, int], families: Sequence[str]
+) -> dict[SkuClass, str]:
+    """Las clases de la ingesta con una sola familia elegida que admitan, con esa familia."""
+    single: dict[SkuClass, str] = {}
+    for sku_class, count in by_class.items():
+        chosen = [f for f in FAMILIES_BY_SKU_CLASS.get(sku_class, ()) if f in families]
+        if count and len(chosen) == 1:
+            single[sku_class] = chosen[0]
+    return single
+
+
+def exclusion_warning(
+    single: Mapping[SkuClass, str],
+    by_class: Mapping[SkuClass, int],
+    skus: Mapping[SkuClass, Sequence[str]],
+) -> str:
+    """El aviso antes de lanzar con clases de una sola familia: qué SKU quedan sin campeón.
+
+    El motor compara al menos dos familias por SKU (ADR-023). Si la única familia entrega
+    candidato, excluye el SKU antes de L3 (``eligibility.fewer_than_two_families``); si falla, M3
+    lo juzga ``FALLO_TECNICO``. En los dos casos el SKU no compite. ``skus`` nombra los SKU de cada
+    clase; si son menos que los de ``by_class``, el aviso dice cuántos faltan.
+    """
+    parts = []
+    for sku_class, family in single.items():
+        count = by_class.get(sku_class, 0)
+        named = list(skus.get(sku_class, ()))
+        if count > len(named):
+            named.append(f"{format_count(count - len(named))} más")
+        verb = "queda" if count == 1 else "quedan"
+        admitted = FAMILIES_BY_SKU_CLASS.get(sku_class, ())
+        missing = [family_label(f) for f in admitted if f != family]
+        parts.append(
+            f"{format_count(count)} SKU {sku_class_label(sku_class)} {verb} con una sola familia "
+            f"({family_label(family)}): {_both(named)}. "
+            f"Para evaluarlos, agregue {_either(missing)}."
+        )
+    return (
+        " ".join(parts) + " El motor compara al menos dos familias por SKU: si lanza así, esos SKU "
+        "quedan fuera de la comparación y sin campeón."
+    )
+
+
+def exclusion_confirmation(ingest_id: str, families: Sequence[str]) -> str:
+    """La clave con que el operador confirma lanzar con el aviso de :func:`exclusion_warning`.
+
+    Vale solo para esta ingesta y estas familias: si cambia alguna, el formulario vuelve a avisar.
+    """
+    return f"{ingest_id}:{','.join(sorted(families))}"
 
 
 def families_hint() -> str:
