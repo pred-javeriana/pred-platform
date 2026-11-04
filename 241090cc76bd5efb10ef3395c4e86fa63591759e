@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "summary": "Shows the published r confidence set beside each product's r without recomputing bounds.",
+  "files": [
+    {
+      "path": "src/pred_platform/dal/evidencia.py",
+      "summary": "Reads exact product bounds from one published run.",
+      "annotations": [
+        {
+          "newRange": [401, 420],
+          "summary": "intervals checks publication and reads bounds in the same read-only snapshot.",
+          "rationale": "A state change between statements must not expose unpublished rows. A JSON-bound SKU list also avoids the SQL variable limit for portfolio-sized requests. Tests cover publication, filters, duplicates, absent tables and bounds. Both published seed portfolios matched their stored rows exactly. No engine calculation changes are included.",
+          "author": "fm/pred-platform-m3-intervals"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/pages/results_sku.html",
+      "summary": "Keeps bounded, unbounded and disjoint sets beside the qualifying r.",
+      "annotations": [
+        {
+          "newRange": [7, 10],
+          "summary": "r_interval preserves a null upper bound as infinity and a separate upper tail as a second range.",
+          "rationale": "A null upper bound is not missing data, and joining disjoint ranges would falsely include rejected values. Route tests cover all three forms and exact tooltips. Desktop and mobile pages were inspected against published rows. Confidence levels and FCR-adjusted bounds are not part of this read.",
+          "author": "fm/pred-platform-m3-intervals"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/fixtures_m3.py",
+      "summary": "Implements the interval read without inventing fixture rows.",
+      "annotations": [
+        {
+          "newRange": [70, 73],
+          "summary": "The fixture source returns no intervals because its published contract examples have no interval rows.",
+          "rationale": "Derived or illustrative bounds would claim data absent from the source examples. Tests cover all fixture scenarios. Real interval rendering is covered through the DAL and the two published seed runs.",
+          "author": "fm/pred-platform-m3-intervals"
+        }
+      ]
+    }
+  ]
+}
