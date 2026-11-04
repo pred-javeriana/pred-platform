@@ -46,7 +46,7 @@
     <div class="pred-list-head">
       <p class="pred-query-count"><strong>{{ format_count(listing.page.total) }}</strong> SKU coinciden con la consulta.</p>
     </div>
-    <p class="pred-meta">Cada columna de familia muestra cómo terminó esa familia en el ajuste de modelos y el error de su configuración elegida: es evidencia de la familia, no un veredicto del producto. El modelo campeón y el veredicto son los de la evaluación final{% if m3.run %}<span title="Evaluación {{ m3.run.run_id }}"> publicada el {{ when(m3.run.creado_en) }}</span>{% endif %}.{% if m3.run and not m3.problem %} <a href="/resultados?{{ query.query_string(vista='resumen', lista='', sku_class='', family='', estado='', q='', sort='', descending='', page='', size='') }}">Ver distribución de campeones</a>.{% endif %}</p>
+    <p class="pred-meta">Cada columna de familia muestra cómo terminó esa familia en el ajuste de modelos y el error de su configuración elegida: es evidencia de la familia, no un veredicto del producto. El modelo campeón y el veredicto son los de la evaluación final{% if m3.run %}<span title="Evaluación {{ m3.run.run_id }}"> publicada el {{ when(m3.run.creado_en) }}</span>{% else %}.{% endif %}{% if m3.run and not m3.problem %} <a href="/resultados?{{ query.query_string(vista='resumen', lista='', sku_class='', family='', estado='', q='', sort='', descending='', page='', size='') }}">Ver distribución de campeones</a>.{% endif %}</p>
     {% if m3.problem %}<p class="pred-note"><strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}</p>{% endif %}
     {% if m3.verdicts %}{{ verdict_legend() }}{% endif %}
     {{ table_start(["SKU", "Clase", "Campeón y veredicto"] + FAMILY_HEADERS, "Resultados por familia de cada SKU", "families") }}

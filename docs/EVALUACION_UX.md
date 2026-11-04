@@ -417,10 +417,12 @@ evaluación y las familias junto a lo que admite cada clase; el detalle de cada 
 El texto largo conserva un ancho de lectura de 80 caracteres. A 390 px todo vuelve a una columna.
 
 **N7. Las fechas y horas se leen como datos crudos.** H2, severidad 2. Corrección: un instante se
-escribe «3 nov 2026, 02:02 UTC» y un día «11 sept 2016», también en los gráficos. El valor exacto
-queda en `title`, por ejemplo «2026-11-03 02:02:38 UTC (hora universal coordinada)». La zona
-sigue siendo UTC, como en T8, porque el motor y la plataforma guardan las horas en UTC. Los
-valores guardados y los CSV no cambian.
+escribe en la hora de Bogotá (America/Bogota), la de quienes usan PRED, por ejemplo «2 nov 2026,
+9:02 p. m.», y un día se escribe «11 sept 2016», también en los gráficos. El instante exacto en UTC
+queda en `title`, por ejemplo «2026-11-03 02:02:38 UTC (hora universal coordinada)». Esto reemplaza
+la corrección de T8: el motor y la plataforma siguen guardando las horas en UTC, pero la página las
+convierte a la hora local y ya no escribe «UTC». Una hora poco después de la medianoche UTC cae en
+el día anterior de Bogotá, como en el ejemplo. Los valores guardados y los CSV no cambian.
 
 **N8. Lo que admite cada clase de demanda es una frase larga.** H6 y H8, severidad 2. Corrección:
 junto a las casillas de familia, una lista con una clase por fila y sus familias como etiquetas.
@@ -446,7 +448,7 @@ estado en una celda pasa a otra línea entre palabras en vez de salirse.
 | `Seasonal Naive`, `r frente a Seasonal Naive` | Resultados y detalle de SKU | «línea base», «r frente a la línea base»; el modelo, «Ingenuo estacional» |
 | `M2`, `M3`, `Corrida M3`, `Decisión publicada por M3` | Resultados y detalle de SKU | «ajuste de modelos», «evaluación final», «Decisión de la evaluación final» |
 | `Veredictos de M3`, `Familias de M2` | Pestaña SKU | «Veredictos», «Resultados por familia» |
-| `m3-11767f31df7d616b` | Contexto de Resultados | «Evaluación final: Publicada · 3 nov 2026, 11:34 UTC»; el identificador en `title` y en Trazabilidad |
+| `m3-11767f31df7d616b` | Contexto de Resultados | «Evaluación final: Publicada · 3 nov 2026, 6:34 a. m.»; el identificador en `title` y en Trazabilidad |
 | `ab4d31bd5879…`, huella de la ingesta | Ejecución, Resultados y Datos | el nombre del archivo, por ejemplo «panel_m1_fraccion_97.8.csv»; la huella en `title` y en Diagnóstico |
 | `L1` a `L4`, `Etapa L2` | Ejecución y mensajes de error | «Preparación de los datos», «Ajuste de modelos», «Validación con ventanas», «Evaluación final» |
 | `Walk-Forward` | Ejecución y Resultados | «validación con ventanas» |
@@ -458,10 +460,10 @@ estado en una celda pasa a otra línea entre palabras en vez de salirse.
 | `mínimo n_min 30` | Lista de veredictos | «mínimo 30» |
 | `Terminó configuración con HPO, esperando evaluación retrospectiva` | Estados de tarea | «Por evaluar» |
 | `worker`, `PRED_WORKER=off` | Ejecución | «procesador de ejecuciones»; «Esta instalación no procesa ejecuciones por sí sola» |
-| `2026-11-03 02:02 UTC` | Toda hora visible | «3 nov 2026, 02:02 UTC»; el valor exacto en `title` |
+| `2026-11-03 02:02 UTC` | Toda hora visible | «2 nov 2026, 9:02 p. m.», en la hora de Bogotá; el instante exacto en UTC en `title` |
 | `2016-09-11` | Todo día visible, también en gráficos | «11 sept 2016»; la fecha ISO en `title` |
 | `selection.no_viable_trial` y otros códigos de error | Tareas y detalle de SKU | el título del catálogo de mensajes; el código en «Detalle técnico» |
-| `Se muestra m3-real-1.` y enlaces con identificadores | Aviso de varias evaluaciones publicadas | «Se muestra la publicada el 27 oct 2026, 10:00 UTC»; cada otra evaluación, «la publicada el …»; el identificador en `title` |
+| `Se muestra m3-real-1.` y enlaces con identificadores | Aviso de varias evaluaciones publicadas | «Se muestra la publicada el 27 oct 2026, 5:00 a. m.»; cada otra evaluación, «la publicada el …»; el identificador en `title` |
 | `veredicto:EVIDENCIA_INSUFICIENTE`, `datos_sinteticos`, `rmse_linea_base_cero` | Significancia, prueba HLN-DM y ventanas de la reserva | «el veredicto es «Evidencia insuficiente», que no lleva prueba», «datos sintéticos», «la línea base no tuvo error (RMSE 0)»; la causa publicada en `title` |
 | `eligibility.fewer_than_two_families`, `lanzado despues del corte` | Embudo, lista de SKU y detalle de SKU | el título del catálogo de mensajes o «Empezó a venderse después de la fecha de corte…»; la causa del motor en `title` o en «Detalle técnico» |
 | `Lectura del Parquet` | Motivos de una acción deshabilitada | «Lectura del panel de datos» |

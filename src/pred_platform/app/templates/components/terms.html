@@ -5,7 +5,8 @@
 {# Un término de la tesis que se conserva (RMSE, HLN-DM, BH…) con su explicación llana. #}
 {% macro gloss(word, shown=none) %}{% set hint = glossary_hint(word) %}{% if hint %}<abbr title="{{ hint }}">{{ shown or word }}</abbr>{% else %}{{ shown or word }}{% endif %}{% endmacro %}
 
-{# Un instante del contrato para leer de un vistazo; el valor exacto queda en el title. #}
+{# Un instante del contrato en la hora de Bogotá; el instante exacto en UTC queda en el title.
+   Termina en «a. m.» o «p. m.»: al final de una frase, ese punto es el punto final. #}
 {% macro when(value) %}{% if value %}<time datetime="{{ value.isoformat() }}" title="{{ exact_when(value) }}">{{ format_when(value) }}</time>{% else %}—{% endif %}{% endmacro %}
 
 {# Un día del calendario (texto ISO del contrato) para leer; la fecha ISO queda en el title. #}

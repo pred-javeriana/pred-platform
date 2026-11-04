@@ -10,7 +10,7 @@ el código; solo cambia lo que la persona lee. No calcula métricas ni decide ca
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Literal
 
 StatusKind = Literal["task", "family", "trial", "verdict", "run", "ingest", "severity"]
@@ -474,34 +474,54 @@ _MONTHS: tuple[str, ...] = (
 )
 
 
-def format_when(value: datetime | None) -> str:
-    """Fecha y hora para leer de un vistazo, con la zona escrita: «3 nov 2026, 02:02 UTC».
+# La hora que lee el usuario es la de Bogotá (America/Bogota). Colombia usa UTC−5 sin horario de
+# verano desde 1993, así que un desfase fijo da la misma hora que la base de zonas horarias sin
+# depender de que el sistema la traiga (Windows no la trae).
+LOCAL_TIMEZONE = timezone(timedelta(hours=-5), "America/Bogota")
 
-    El motor y la plataforma guardan las horas en UTC: sin la zona, «23:38» se leería como hora
-    local. Em dash si el contrato no trae fecha; la hora exacta va aparte (``exact_when``).
+
+def _local(value: datetime) -> datetime:
+    """El instante en la hora de Bogotá; uno sin zona se guardó en UTC, como todo en PRED."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(LOCAL_TIMEZONE)
+
+
+def format_when(value: datetime | None) -> str:
+    """Fecha y hora de Bogotá para leer de un vistazo: «4 nov 2026, 4:36 p. m.».
+
+    El motor y la plataforma guardan las horas en UTC; la página las muestra en la hora local y
+    deja el instante exacto en UTC para el title (``exact_when``). Em dash si no hay fecha.
     """
     if value is None:
         return "—"
-    if value.tzinfo is not None:
-        value = value.astimezone(UTC)
-    text = f"{value.day} {_MONTHS[value.month - 1]} {value.year}, {value:%H:%M}"
-    return text if value.tzinfo is None else f"{text} UTC"
+    local = _local(value)
+    hour = local.hour % 12 or 12
+    period = "a. m." if local.hour < 12 else "p. m."
+    return (
+        f"{local.day} {_MONTHS[local.month - 1]} {local.year}, {hour}:{local.minute:02d} {period}"
+    )
 
 
 def exact_when(value: datetime | None) -> str:
-    """El instante exacto que se guardó, para un title: «2026-11-03 02:02:38 UTC (hora universal
+    """El instante exacto que se guardó, para un title: «2026-11-04 21:36:38 UTC (hora universal
     coordinada)»."""
     if value is None:
         return ""
     if value.tzinfo is None:
-        return value.strftime("%Y-%m-%d %H:%M:%S")
+        value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC (hora universal coordinada)")
 
 
 def format_date(value: str | date | None) -> str:
-    """Un día del calendario para leer: «11 sept 2016»; el texto tal cual si no es una fecha ISO."""
+    """Un día del calendario para leer: «11 sept 2016»; el texto tal cual si no es una fecha ISO.
+
+    Un instante (``datetime``) se lee en el día de Bogotá, no en el de UTC.
+    """
     if value is None or value == "":
         return "—"
+    if isinstance(value, datetime):
+        value = _local(value).date()
     try:
         day = value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
     except ValueError:

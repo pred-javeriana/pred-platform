@@ -31,13 +31,14 @@
   </dl>
   {% if outcome %}<p class="pred-context__outcome" id="resultado-ejecucion">{{ outcome }}</p>{% endif %}
   {# El aviso del contrato v2 (sección 2) cuando varias evaluaciones publicadas comparten los datos
-     y los ajustes: cada una se nombra por su fecha; su identificador queda en el title. #}
+     y los ajustes: cada una se nombra por su fecha; su identificador queda en el title. Una hora
+     termina en «a. m.» o «p. m.», cuyo punto cierra la frase. #}
   {% if m3.run and m3.run.aviso %}
-    {% set notice %}Hay varias evaluaciones publicadas para los mismos datos y ajustes. Se muestra la publicada el <span class="pred-nowrap" title="Evaluación {{ m3.run.run_id }} · {{ exact_when(m3.run.creado_en) }}">{{ format_when(m3.run.creado_en) }}</span>.{% endset %}
+    {% set notice %}Hay varias evaluaciones publicadas para los mismos datos y ajustes. Se muestra la publicada el <span class="pred-nowrap" title="Evaluación {{ m3.run.run_id }} · {{ exact_when(m3.run.creado_en) }}">{{ format_when(m3.run.creado_en) }}</span>{% endset %}
     {{ alert(notice, variant="warning") }}
     {% if m3.others %}
     <p class="pred-meta">Otras evaluaciones publicadas para los mismos datos y ajustes:
-      {% for other in m3.others %}<a href="{{ m3_hrefs[other.run_id] }}" title="Evaluación {{ other.run_id }}">{% if other.creado_en %}la publicada el {{ format_when(other.creado_en) }}{% else %}una sin fecha informada{% endif %}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+      {% for other in m3.others %}<a href="{{ m3_hrefs[other.run_id] }}" title="Evaluación {{ other.run_id }}">{% if other.creado_en %}la publicada el {{ format_when(other.creado_en) }}{% else %}una sin fecha informada{% endif %}</a>{% if not loop.last %}, {% elif not other.creado_en %}.{% endif %}{% endfor %}
     </p>
     {% endif %}
   {% endif %}

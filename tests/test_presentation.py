@@ -2,11 +2,13 @@
 vocabularios ni tratar la poda como fallo."""
 
 from datetime import UTC, date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
 from pred_platform.app.presentation import (
     FAMILY_ORDER,
+    LOCAL_TIMEZONE,
     VERDICT_ORDER,
     UnknownStatus,
     abbreviate_id,
@@ -229,15 +231,48 @@ def test_an_unknown_code_falls_back_to_itself_instead_of_breaking_the_page() -> 
 
 
 # ---------------------------------------------------------------- fechas y duraciones
-def test_instants_read_in_spanish_with_their_zone_and_keep_the_exact_value() -> None:
-    instant = datetime(2026, 11, 3, 2, 2, 38, tzinfo=UTC)
-    assert format_when(instant) == "3 nov 2026, 02:02 UTC"
-    assert exact_when(instant) == "2026-11-03 02:02:38 UTC (hora universal coordinada)"
-    # Another offset is shown in UTC, the zone the engine and the platform store.
-    bogota = instant.astimezone(timezone(timedelta(hours=-5)))
-    assert format_when(bogota) == "3 nov 2026, 02:02 UTC"
-    assert format_when(datetime(2016, 9, 11, 7, 5)) == "11 sept 2016, 07:05"
+def test_instants_read_in_bogota_time_and_keep_the_exact_utc_value() -> None:
+    instant = datetime(2026, 11, 4, 21, 36, 38, tzinfo=UTC)
+    assert format_when(instant) == "4 nov 2026, 4:36 p. m."
+    assert exact_when(instant) == "2026-11-04 21:36:38 UTC (hora universal coordinada)"
+    # The same instant written with another offset reads the same.
+    assert format_when(instant.astimezone(timezone(timedelta(hours=2)))) == "4 nov 2026, 4:36 p. m."
+    # A time without a zone was stored in UTC, like every time in PRED.
+    assert format_when(datetime(2016, 9, 11, 7, 5)) == "11 sept 2016, 2:05 a. m."
+    assert exact_when(datetime(2016, 9, 11, 7, 5)) == (
+        "2016-09-11 07:05:00 UTC (hora universal coordinada)"
+    )
     assert exact_when(None) == ""
+
+
+@pytest.mark.parametrize(
+    ("utc", "shown"),
+    [
+        # Shortly after midnight UTC it is still the evening before in Bogotá.
+        (datetime(2026, 11, 5, 3, 30, tzinfo=UTC), "4 nov 2026, 10:30 p. m."),
+        (datetime(2026, 11, 5, 4, 59, tzinfo=UTC), "4 nov 2026, 11:59 p. m."),
+        (datetime(2026, 11, 5, 5, 0, tzinfo=UTC), "5 nov 2026, 12:00 a. m."),
+        (datetime(2026, 11, 5, 16, 59, tzinfo=UTC), "5 nov 2026, 11:59 a. m."),
+        (datetime(2026, 11, 5, 17, 0, tzinfo=UTC), "5 nov 2026, 12:00 p. m."),
+        (datetime(2027, 1, 1, 2, 0, tzinfo=UTC), "31 dic 2026, 9:00 p. m."),
+    ],
+)
+def test_an_instant_near_midnight_utc_reads_on_the_bogota_day(utc: datetime, shown: str) -> None:
+    assert format_when(utc) == shown
+    assert format_date(utc) == shown.split(",")[0]
+
+
+def test_the_bogota_offset_matches_the_time_zone_database() -> None:
+    try:
+        bogota = ZoneInfo("America/Bogota")
+    except ZoneInfoNotFoundError:
+        pytest.skip("the system has no time zone database")
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    for hours in range(0, 4 * 365 * 24, 7):
+        instant = start + timedelta(hours=hours)
+        assert (
+            instant.astimezone(LOCAL_TIMEZONE).utcoffset() == instant.astimezone(bogota).utcoffset()
+        )
 
 
 def test_days_read_in_spanish_and_unknown_text_passes_through() -> None:

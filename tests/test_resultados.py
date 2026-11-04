@@ -913,7 +913,7 @@ def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
     # Each publication reads by its date; its id stays in the title, for audit.
     assert _notice(html) == (
         "Hay varias evaluaciones publicadas para los mismos datos y ajustes. Se muestra la "
-        "publicada el 27 oct 2026, 10:00 UTC."
+        "publicada el 27 oct 2026, 5:00 a. m."
     )
     assert 'title="Evaluación m3-real-1 · 2026-10-27 10:00:00 UTC' in html
     other = re.search(
@@ -921,9 +921,14 @@ def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
         r'title="Evaluación m3-real-0">([^<]*)</a>',
         html,
     )
-    assert other is not None and other.group(1) == "la publicada el 26 oct 2026, 10:00 UTC"
+    assert other is not None and other.group(1) == "la publicada el 26 oct 2026, 5:00 a. m."
     older = client.get("/resultados?vista=sku&m3=m3-real-0").text
-    assert _notice(older).endswith("Se muestra la publicada el 26 oct 2026, 10:00 UTC.")
+    assert _notice(older).endswith("Se muestra la publicada el 26 oct 2026, 5:00 a. m.")
+    # The period of «a. m.» closes the sentence; no sentence ends in «m..».
+    families = client.get("/resultados?vista=sku&lista=familias&m3=m3-real-0").text
+    assert "publicada el 26 oct 2026, 5:00 a. m. Ver distribución de campeones" in _text(families)
+    assert re.search(r">la publicada el 27 oct 2026, 5:00 a\. m\.</a>\s*</p>", older)
+    assert all("m.." not in re.sub(r"<[^>]+>", "", page) for page in (html, older, families))
     assert "FIL-0001 Suave Clásica SARIMA Validado 0,800" in _text(older)
 
 
@@ -1322,8 +1327,10 @@ def test_the_context_bar_names_the_m3_run_and_the_data_origin(
     html = _dal_client(env).get(f"/resultados?vista={vista}").text
     text = _text(html)
 
-    # The evaluation reads by its state and date; its id stays in the title for traceability.
-    assert re.search(r"Evaluación final Publicada · \d+ \w+ \d{4}, \d\d:\d\d UTC", text)
+    # The evaluation reads by its state and its date in Bogotá time; its id and the exact UTC
+    # instant stay in titles, for traceability.
+    assert "Evaluación final Publicada · 27 oct 2026, 5:00 a. m." in text
+    assert "UTC" not in text
     assert 'title="Evaluación m3-real-1"' in html
     assert "Origen de los datos Reales (declarado)" in text
 
@@ -1339,7 +1346,7 @@ def test_the_context_bar_announces_duplicates_with_links_that_keep_the_tab(
 
     assert _notice(html) == (
         "Hay varias evaluaciones publicadas para los mismos datos y ajustes. Se muestra la "
-        "publicada el 27 oct 2026, 10:00 UTC."
+        "publicada el 27 oct 2026, 5:00 a. m."
     )
     assert f'href="/resultados?vista={vista}&amp;ejecucion=1&amp;m3=m3-real-0"' in html
 
