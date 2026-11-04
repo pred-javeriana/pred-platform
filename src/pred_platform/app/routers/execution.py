@@ -34,9 +34,12 @@ from pred_platform.app.ejecucion import (
     ExecutionQuery,
     FormResult,
     LaunchIngest,
+    classes_without_family,
     default_form_values,
     elapsed_text,
     error_action,
+    exclusion_confirmation,
+    exclusion_warning,
     families_hint,
     parse_execution_query,
     parse_launch_form,
@@ -44,17 +47,17 @@ from pred_platform.app.ejecucion import (
     run_error,
     settings_items,
     should_poll,
+    single_family_classes,
     stage_steps,
-    uncovered_classes,
 )
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import RunStatus
+from pred_platform.contract.models import RunStatus, SkuClass
 from pred_platform.dal import lectura
 from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.data.deps import get_repository
-from pred_platform.data.query import LATEST
+from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.control import ControlUnavailable, RunControl
@@ -123,10 +126,13 @@ def _context(
     import_error: str | None = None,
     action_error: str | None = None,
     imported: tuple[str, str] | None = None,
+    exclusion: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """``imported`` es el aviso (variante, texto) de una configuración importada: abre el formulario
     con sus valores y, si el archivo trae otra ingesta que esta plataforma no tiene, sin ingesta
-    elegida, para que nadie lance los ajustes importados sobre otros datos sin darse cuenta."""
+    elegida, para que nadie lance los ajustes importados sobre otros datos sin darse cuenta.
+    ``exclusion`` es el aviso de los SKU que quedarían sin campeón y la clave que confirma lanzar
+    así."""
     params = dict(request.query_params)
     control = _control(request)
     capabilities = repository.get_capabilities()
@@ -208,7 +214,10 @@ def _context(
         or bool(form and form.errors)
         or form_error is not None
         or import_error is not None
-        or imported is not None,
+        or imported is not None
+        or exclusion is not None,
+        "exclusion_warning": exclusion[0] if exclusion else None,
+        "exclusion_confirmation": exclusion[1] if exclusion else None,
         "family_choices": FAMILY_CHOICES,
         "families_hint": families_hint(),
         "metric_choices": METRIC_CHOICES,
@@ -246,6 +255,15 @@ def ejecucion_estado(
     )
 
 
+def _class_skus(repository: DataRepository, ingest_id: str, sku_class: str) -> list[str]:
+    """Los SKU de una clase de la ingesta, en orden, hasta una página de la topología."""
+    try:
+        report = repository.get_topology_report(ingest_id, sku_class=sku_class, size=MAX_SIZE)
+    except DataLayerError:
+        return []
+    return [item.sku_id for item in report.items]
+
+
 @router.post("/ejecucion/lanzar", response_model=None)
 def lanzar(
     request: Request,
@@ -260,7 +278,10 @@ def lanzar(
     trials: Annotated[str | None, Form()] = None,
     seed: Annotated[str | None, Form()] = None,
     workers: Annotated[str | None, Form()] = None,
+    confirmar: Annotated[str | None, Form()] = None,
 ) -> HTMLResponse | RedirectResponse:
+    """Encola la ejecución. Si alguna clase queda con una sola familia, primero avisa qué SKU
+    quedarían sin campeón; ``confirmar`` con la clave de ese aviso lanza igual."""
     form = parse_launch_form(
         families=families or [],
         metric=metric,
@@ -285,9 +306,22 @@ def lanzar(
             by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
         except DataLayerError:
             by_class = {}  # sin topología publicada, decide el motor
-        uncovered = uncovered_classes(by_class, form.values["families"])
-        if uncovered:
-            form.errors["families"] = uncovered
+        chosen = form.values["families"]
+        refusal = classes_without_family(by_class, chosen)
+        single = single_family_classes(by_class, chosen)
+        key = exclusion_confirmation(ingest_id, chosen)
+        if refusal:
+            form.errors["families"] = refusal
+        elif single and confirmar != key:
+            skus: dict[SkuClass, list[str]] = {
+                c: _class_skus(repository, ingest_id, c) for c in single
+            }
+            warning = exclusion_warning(single, by_class, skus)
+            return _render(
+                request,
+                "pages/execution.html",
+                _context(request, repository, form=form, exclusion=(warning, key)),
+            )
     if form.errors or form.settings is None or ingest_id is None:
         return _render(request, "pages/execution.html", _context(request, repository, form=form))
     try:

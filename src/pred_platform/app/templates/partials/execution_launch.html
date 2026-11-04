@@ -36,6 +36,7 @@
       </label>
       {% endfor %}
       {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
+      {% if exclusion_warning %}{{ alert(exclusion_warning, variant="warning") }}{% endif %}
     </fieldset>
 
     <div class="pred-launch__grid">
@@ -54,7 +55,12 @@
     </details>
 
     <div class="pred-launch__submit">
+      {% if exclusion_confirmation %}
+      {{ button("Lanzar de todos modos", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none, name="confirmar", value=exclusion_confirmation) }}
+      <p class="pred-meta">Lanza con estas familias y deja fuera de la comparación los SKU del aviso. Si cambia las familias, el formulario vuelve a revisarlas.</p>
+      {% else %}
       {{ button("Lanzar ejecución", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
+      {% endif %}
       {% if not worker_active and control_reason is none %}<p class="pred-meta">Esta aplicación no ejecuta el worker (PRED_WORKER=off): la corrida quedará en cola hasta que lo inicie con <span class="mono">make worker</span>.</p>{% endif %}
     </div>
     {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se puede lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}

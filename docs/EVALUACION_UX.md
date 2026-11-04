@@ -184,11 +184,15 @@ formularios de Stripe, el camino principal primero y lo secundario plegado. Corr
 «Nueva ejecución» con el formulario, «Lanzar ejecución» como única acción primaria de la página,
 e «Reproducir una ejecución anterior» plegado al final del panel.
 
-**E2. El formulario acepta familias que el motor siempre rechaza.** H5, severidad 3 (#82). El
-motor necesita dos familias admitidas por clase de demanda, y el formulario aceptaba una.
-Referente: H5. Corrección: la ayuda dice qué familias admite cada clase; si una clase queda sin
-dos, el formulario no lanza y dice qué clase y qué familias agregar. Reanudar no se ofrece cuando
-la corrida fallaría igual.
+**E2. El formulario no dice qué SKU pierden la comparación por las familias elegidas.** H5,
+severidad 3 (#82). El motor compara al menos dos familias por SKU. Si una clase queda con una
+sola familia admitida, el motor ejecuta la corrida y deja esos SKU fuera de la comparación, sin
+campeón. Si una clase queda sin ninguna, la etapa L2 falla para toda la corrida. El formulario
+aceptaba los dos casos sin avisar. Referente: H5. Corrección: la ayuda dice qué familias admite
+cada clase. Si una clase queda sin familia, el formulario no lanza y dice qué familias agregar.
+Si una clase queda con una sola, el formulario avisa qué SKU quedan sin campeón y qué familia
+agregar, y el operador puede lanzar de todos modos. Reanudar no se ofrece cuando la corrida
+fallaría igual.
 
 **E3. El estado de la corrida no muestra en qué etapa va ni cuánto lleva.** H1, severidad 3.
 «Ejecutando» era un título de 36 px, la etapa era una línea suelta bajo el anillo y no se veían

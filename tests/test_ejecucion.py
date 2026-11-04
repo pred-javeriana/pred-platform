@@ -414,30 +414,60 @@ def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
     env: Env,
 ) -> None:
     # The ingest has one smooth, one intermittent and one lumpy SKU; lumpy admits only
-    # the classical and foundation families, intermittent also ml.
+    # the classical and foundation families, intermittent also ml. Without any family for a
+    # class, the engine's L2 fails for the whole run, so the form does not launch.
     response = _launch(_dal_client(env), env, families=["ml", "dl"])
     text = _text(response.text)
 
     assert response.status_code == 200
     assert "1 SKU Lumpy (Grumosa) queda sin modelo: agregue Clásica y Fundacional." in text
-    assert (
-        "1 SKU Intermittent (Intermitente) queda con una sola familia (ML): "
-        "agregue Clásica o Fundacional." in text
-    )
+    assert "Sin ninguna familia para una clase, el motor no puede ejecutar." in text
+    assert "Lanzar de todos modos" not in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
-def test_one_family_for_a_class_is_refused_because_the_engine_needs_two(env: Env) -> None:
-    # Con Clásica y ML, el SKU lumpy tendría una sola familia y el motor lo excluiría antes de
-    # L3 (eligibility.fewer_than_two_families): el formulario lo dice antes de lanzar.
+def test_one_family_for_a_class_warns_which_skus_lose_the_comparison(env: Env) -> None:
+    # Con Clásica y ML, el SKU lumpy tiene una sola familia: el motor lo deja fuera de la
+    # comparación (eligibility.fewer_than_two_families). El formulario lo avisa antes de lanzar.
     response = _launch(_dal_client(env), env, families=["classical", "ml"])
     text = _text(response.text)
 
     assert response.status_code == 200
     assert (
-        "1 SKU Lumpy (Grumosa) queda con una sola familia (Clásica): agregue Fundacional." in text
+        "1 SKU Lumpy (Grumosa) queda con una sola familia (Clásica): FIL-0003. "
+        "Para evaluarlos, agregue Fundacional." in text
     )
-    assert "El motor compara al menos dos familias por SKU." in text
+    assert "si lanza así, esos SKU quedan fuera de la comparación y sin campeón." in text
+    assert "Lanzar de todos modos" in text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_the_operator_launches_anyway_after_the_warning(env: Env) -> None:
+    client = _dal_client(env)
+    warned = _launch(client, env, families=["classical", "ml"])
+    key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
+    assert key is not None
+
+    response = _launch(client, env, families=["classical", "ml"], confirmar=key.group(1))
+
+    assert response.status_code == 303
+    ((parametros,),) = env.rows(
+        "SELECT c.parametros FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id"
+    )
+    assert json.loads(parametros)["families"] == ["classical", "ml"]
+
+
+def test_a_confirmation_for_other_families_warns_again(env: Env) -> None:
+    client = _dal_client(env)
+    warned = _launch(client, env, families=["classical", "ml"])
+    key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
+    assert key is not None
+
+    response = _launch(client, env, families=["classical", "dl"], confirmar=key.group(1))
+    text = _text(response.text)
+
+    assert response.status_code == 200
+    assert "queda con una sola familia (Clásica): FIL-0003." in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
