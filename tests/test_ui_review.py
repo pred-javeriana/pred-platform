@@ -116,7 +116,7 @@ def test_trials_and_configuration_start_closed_and_windows_are_requested() -> No
     ]
     assert technical and all("open" not in d for d in technical)
     assert "Evidencia retrospectiva" in html
-    assert "Origen de los datos: no informado en esta vista" in html
+    assert "<dt>Origen de los datos</dt><dd>no informado en esta vista</dd>" in html
     assert "Entrenamiento" not in html
     full = client.get("/resultados/sku/FIL-0001?ventanas=1").text
     requested = [
@@ -165,7 +165,7 @@ def test_circular_progress_preserves_accessible_values_and_stopped_run_meaning()
     progress = [attrs for _, attrs in Markup(html).tags if attrs.get("role") == "progressbar"]
     assert len(progress) == 1
     assert progress[0]["aria-valuenow"] == "57.1"
-    assert progress[0]["aria-valuetext"] == "4 de 7 tareas · 57.1 %"
+    assert progress[0]["aria-valuetext"] == "4 de 7 tareas · 57,1 %"
     repo = FixtureRepository("normal")
     status = repo.get_run_status("latest")
     assert status.ejecucion and status.progress
@@ -210,12 +210,14 @@ class Portfolio(FixtureRepository):
         return base.model_copy(update={"items": items, "page": page})
 
 
-def test_three_thousand_skus_stay_server_paged_with_four_primary_columns() -> None:
+def test_three_thousand_skus_stay_server_paged_with_one_column_per_family() -> None:
     repo = Portfolio()
-    html = client_for(repo=repo).get("/resultados?ejecucion=1&page=2&size=20&q=SKU").text
+    path = "/resultados?vista=sku&lista=familias&ejecucion=1&page=2&size=20&q=SKU"
+    html = client_for(repo=repo).get(path).text
     assert repo.calls[-1]["page"] == 2 and repo.calls[-1]["size"] == 20
     page = Markup(html)
-    assert len([a for a in page.select("th") if a.get("scope") == "col"]) == 4
+    # SKU, clase y campeona, y una columna por familia para comparar una familia entre SKU.
+    assert len([a for a in page.select("th") if a.get("scope") == "col"]) == 3 + 4
     assert len([a for a in page.select("th") if a.get("scope") == "row"]) == 20
     assert "3.000 SKU" in html and "-0020" in html and "-0019" not in html
     hrefs = [unescape(a.get("href") or "") for a in page.select("a")]
@@ -246,17 +248,17 @@ def test_history_has_independent_server_paging_and_keeps_selected_ingest() -> No
     assert any("history_page=3" in h and f"ingest_id={ACCEPTED}" in h for h in hrefs)
 
 
-@pytest.mark.parametrize("page", ["abc", "-1", "0"])
+@pytest.mark.parametrize("page", ["abc", "-1", "0", "99999999999999999999"])
 def test_invalid_history_page_is_recoverable(page: str) -> None:
     repo = History()
     html = client_for(repo=repo).get(f"/datos?history_page={page}").text
     assert repo.calls == [(1, 20)]
-    assert "La página del historial debe ser un entero mayor que cero" in html
+    assert f"La página del historial «{page}» no existe; se muestra la primera." in unescape(html)
 
 
 def test_filter_form_keeps_page_size_after_submission() -> None:
     for path in (
-        "/resultados?size=20",
+        "/resultados?vista=sku&lista=familias&size=20",
         "/ejecucion?size=20",
         f"/datos?ingest_id={ACCEPTED}&size=20",
     ):
@@ -264,9 +266,11 @@ def test_filter_form_keeps_page_size_after_submission() -> None:
         assert any(
             a.get("name") == "size" and a.get("value") == "20" for a in Markup(html).select("input")
         )
-    # Ordenar o volver a todos los estados conserva la sección elegida al recargar.
+    # Ordenar o volver a todos los estados conserva la sección elegida al recargar; en
+    # Resultados los filtros están siempre a la vista, sobre la lista.
+    html = client_for().get("/resultados?vista=sku&lista=familias&sort=valor").text
+    assert 'id="filtros-seleccion"' in html and 'value="valor" selected' in html
     for path, disclosure in (
-        ("/resultados?sort=valor", "filtrar-resultados"),
         ("/ejecucion?estado=", "detalle-tareas"),
         (f"/datos?ingest_id={ACCEPTED}&sort=adi", "explorar-topologia"),
     ):

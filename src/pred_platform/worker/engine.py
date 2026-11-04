@@ -29,6 +29,16 @@ MODELO_POR_FAMILIA: dict[str, str] = {
     "dl": "mlp",
     "foundation": "chronos2",
 }
+# The families the engine routes to each demand class: a copy of the matrix of its policy
+# 2.2.0-initial (FAMILIES_BY_SKU_CLASS in pred-engine optimizacion/router/politica.py). The
+# platform does not import the engine: if the policy changes there, this copy changes too. The
+# launch form and the worker both read it from here.
+FAMILIES_BY_SKU_CLASS: dict[str, tuple[str, ...]] = {
+    "smooth": ("classical", "ml", "dl", "foundation"),
+    "erratic": ("classical", "ml", "dl", "foundation"),
+    "intermittent": ("classical", "ml", "foundation"),
+    "lumpy": ("classical", "foundation"),
+}
 
 
 def engine_origin(settings: Settings, ingest_id: str, declarada: bool | None) -> bool | None:

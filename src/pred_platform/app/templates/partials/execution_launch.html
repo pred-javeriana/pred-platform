@@ -2,79 +2,71 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 
-<section class="pred-detail-section pred-launch-section" id="lanzar">
-  {# Plegado cuando ya hay una corrida que mostrar, para que su avance quede a la vista. #}
-  <details class="pred-details pred-details--launch"{% if not run or request.query_params.get("ingest_id") or form_errors or form_error or imported %} open{% endif %}>
-  <summary><span><strong>Configurar nueva ejecución</strong><span class="pred-disclosure-hint">Elija los datos, modelos y horizonte de análisis</span></span></summary>
+{# Un formulario de una columna, en el orden en que se decide: datos, modelos, ventana y, plegado,
+   lo que casi nunca cambia. Importar una configuración es otra tarea y va aparte. #}
+<section class="pred-panel pred-launch-section" id="lanzar" aria-labelledby="titulo-lanzar">
+  <h2 id="titulo-lanzar">Nueva ejecución</h2>
+  <p class="pred-meta">Elija la ingesta, las familias de modelos y la ventana de evaluación. La corrida queda en cola y el worker la lanza.</p>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
 
   {% if not ingests %}
     <p class="pred-note pred-note--muted">Todavía no hay ninguna ingesta aceptada. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
   {% else %}
-  <form method="post" action="/ejecucion/configuracion" enctype="multipart/form-data" class="pred-import" id="importar-configuracion">
-    <p class="pred-eyebrow">Reproducir una ejecución</p>
-    <div class="pred-filters">
-      {{ field("archivo", "Importar configuración (.json)", input_type="file", accept=".json,application/json", hint="Rellena el formulario con los ajustes de otra ejecución; no lanza nada.") }}
-      {{ button("Importar", variant="secondary", type="submit", icon="i-upload") }}
-    </div>
-  </form>
-  <form method="post" action="/ejecucion/lanzar" class="pred-launch pred-workspace">
-    <div class="pred-panel pred-panel--main">
-    <p class="pred-eyebrow">Configuración</p>
-    <h2 class="pred-panel-title">Prepare su ejecución</h2>
-    <div class="pred-filters">
-      <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
-        <label class="pred-field__label" for="ingest_id">Ingesta</label>
-        <select class="pred-field__control" id="ingest_id" name="ingest_id"{% if form_errors.get('ingest_id') %} aria-invalid="true" aria-describedby="ingest_id-error"{% endif %}>
-          {% if not selected_ingest %}<option value="" selected disabled>Elija una ingesta</option>{% endif %}
-          {% for item in ingests %}
-          <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU · {{ abbreviate_id(item.ingest_id, 8) }}</option>
-          {% endfor %}
-        </select>
-        {% if form_errors.get('ingest_id') %}<p class="pred-field__error" id="ingest_id-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors['ingest_id'] }}</span></p>{% endif %}
-      </div>
-      {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
+  <form method="post" action="/ejecucion/lanzar" class="pred-launch">
+    <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
+      <label class="pred-field__label" for="ingest_id">Ingesta</label>
+      <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if form_errors.get('ingest_id') %} ingest_id-error{% endif %}"{% if form_errors.get('ingest_id') %} aria-invalid="true"{% endif %}>
+        {% if not selected_ingest %}<option value="" selected disabled>Elija una ingesta</option>{% endif %}
+        {% for choice in ingests %}
+        {% set item = choice.item %}
+        <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU · {{ abbreviate_id(item.ingest_id, 8) }}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>
+        {% endfor %}
+      </select>
+      <p class="pred-field__hint" id="ingest_id-hint">Solo se ofrecen ingestas aceptadas en Datos; una que declara datos sintéticos no se puede ejecutar.</p>
+      {% if form_errors.get('ingest_id') %}<p class="pred-field__error" id="ingest_id-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors['ingest_id'] }}</span></p>{% endif %}
     </div>
 
-    <fieldset class="pred-fieldset"{% if form_errors.get('families') %} aria-describedby="families-error"{% endif %}>
+    <fieldset class="pred-fieldset" aria-describedby="families-hint{% if form_errors.get('families') %} families-error{% endif %}">
       <legend>Familias de modelos</legend>
+      <p class="pred-field__hint" id="families-hint">{{ families_hint }}</p>
       {% for code, label in family_choices %}
       <label class="pred-field__check" for="fam-{{ code }}">
-        <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}{% if code in form.families %} checked{% endif %}>
-        <span>{{ label }}{% if code == "foundation" %} · requiere el extra foundation (torch, chronos-forecasting) y los pesos en el entorno del motor{% endif %}</span>
+        <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true"{% endif %}{% if code in form.families %} checked{% endif %}>
+        <span>{{ label }}{% if code == "foundation" %}<span class="pred-subvalue">Requiere el extra foundation (torch, chronos-forecasting) y los pesos en el entorno del motor.</span>{% endif %}</span>
       </label>
       {% endfor %}
       {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
     </fieldset>
 
-    <div class="pred-filters">
+    <div class="pred-launch__grid">
+      {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, error=form_errors.get("metric", "")) }}
       {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", error=form_errors.get("min_train", "")) }}
       {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", error=form_errors.get("horizon", "")) }}
     </div>
-    <details class="pred-details pred-launch__advanced"{% if form_errors %} open{% endif %}><summary>Ajustes de búsqueda y reproducibilidad</summary>
-    <div class="pred-filters">
+    <details class="pred-details pred-launch__advanced"{% if form_errors | select("in", ["step", "seasonality", "trials", "seed", "workers"]) | list %} open{% endif %}><summary>Ajustes de búsqueda y reproducibilidad</summary>
+    <div class="pred-launch__grid">
       {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
       {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
       {{ field("trials", "Ensayos por estudio", value=form.trials, input_type="number", placeholder="los del motor", hint="Vacío: el presupuesto de cada familia.", error=form_errors.get("trials", "")) }}
       {{ field("seed", "Semilla", value=form.seed, input_type="number", error=form_errors.get("seed", "")) }}
       {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
     </div>
-
     </details>
+
+    <div class="pred-launch__submit">
+      {{ button("Lanzar ejecución", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
+      {% if not worker_active and control_reason is none %}<p class="pred-meta">Esta aplicación no ejecuta el worker (PRED_WORKER=off): la corrida quedará en cola hasta que lo inicie con <span class="mono">make worker</span>.</p>{% endif %}
     </div>
-    <aside class="pred-panel pred-panel--side" aria-labelledby="revisar-lanzamiento">
-      <p class="pred-eyebrow">Antes de lanzar</p>
-      <h2 id="revisar-lanzamiento">Revise su configuración</h2>
-      <ol class="pred-guide"><li><strong>Datos de entrada</strong><span>Compruebe la ingesta seleccionada.</span></li><li><strong>Modelos y objetivo</strong><span>Elija las familias y la métrica de selección.</span></li><li><strong>Horizonte</strong><span>Defina los días de entrenamiento y evaluación.</span></li></ol>
-    <div class="pred-next-action">
-    <p class="pred-actions">
-      {{ button("Lanzar ejecución", variant="secondary" if finished else "primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
-    </p>
-    {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Disponibilidad del lanzamiento" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
-    {% if not worker_active and control_reason is none %}<p class="pred-meta">Esta aplicación no ejecuta el worker (PRED_WORKER=off): la corrida quedará en cola hasta que lo inicie con <span class="mono">make worker</span>.</p>{% endif %}
-    </div>
-    </aside>
+    {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se puede lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
   </form>
-  {% endif %}
+
+  <details class="pred-details pred-launch__import" id="importar"{% if import_error %} open{% endif %}>
+    <summary>Reproducir una ejecución anterior</summary>
+    {% if import_error %}{{ alert(import_error, variant="error") }}{% endif %}
+    <form method="post" action="/ejecucion/configuracion" enctype="multipart/form-data" class="pred-filters pred-filters--bar" id="importar-configuracion">
+      {{ field("archivo", "Configuración exportada (.json)", input_type="file", accept=".json,application/json", hint="Rellena este formulario con los ajustes de otra ejecución; no lanza nada.") }}
+      {{ button("Importar", variant="secondary", type="submit", icon="i-upload") }}
+    </form>
   </details>
+  {% endif %}
 </section>

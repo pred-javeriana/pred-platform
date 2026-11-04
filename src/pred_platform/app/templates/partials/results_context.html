@@ -1,0 +1,45 @@
+{% from "components/status.html" import status_indicator %}
+{% from "components/alerts.html" import alert %}
+{% from "components/buttons.html" import button %}
+{# Qué ejecución y qué corrida M3 muestra la página: arriba y a lo ancho, como el contexto de un
+   panel de control, en vez de un panel lateral que le quita ancho a las tablas. #}
+{% if run and run.ejecucion %}
+{% set shown = run.ejecucion %}
+<section class="pred-context" aria-label="Ejecución y evidencia mostradas">
+  {% set known = executions | map(attribute="ejecucion_id") | list %}
+  {% if executions and (known | length > 1 or shown.id not in known) %}
+  <form method="get" action="/resultados" class="pred-context__picker" id="elegir-ejecucion">
+    <input type="hidden" name="vista" value="{{ vista }}">
+    {% if lista == "familias" %}<input type="hidden" name="lista" value="familias">{% endif %}
+    <label class="pred-field__label" for="ejecucion-mostrada">Ejecución</label>
+    <select class="pred-field__control" id="ejecucion-mostrada" name="ejecucion">
+      {% if shown.id not in known %}<option value="{{ shown.id }}" selected>#{{ shown.id }} · sin evidencia M3 publicada</option>{% endif %}
+      {% for choice in executions %}
+      <option value="{{ choice.ejecucion_id }}"{% if choice.ejecucion_id == shown.id %} selected{% endif %}>#{{ choice.ejecucion_id }} · {{ describe_status("run", choice.estado).label }} · {{ format_when(choice.iniciada_en) }}</option>
+      {% endfor %}
+    </select>
+    {{ button("Mostrar", variant="subtle", type="submit") }}
+  </form>
+  {% endif %}
+  <dl class="pred-context__facts">
+    <div><dt>Ejecución</dt><dd><a class="mono" href="/ejecucion?ejecucion={{ shown.id }}">#{{ shown.id }}</a> {{ status_indicator(describe_status("run", shown.estado)) }}</dd></div>
+    {% if shown.ingest_id %}<div><dt>Ingesta</dt><dd><span class="mono" title="{{ shown.ingest_id }}">{{ abbreviate_id(shown.ingest_id) }}</span></dd></div>{% endif %}
+    <div><dt>Iniciada</dt><dd>{{ format_when(shown.iniciada_en) }}</dd></div>
+    <div><dt>Corrida M3</dt><dd>{% if m3.run %}<span class="mono">{{ m3.run.run_id }}</span> {{ m3.run.estado }} · creada {{ format_when(m3.run.creado_en) }}{% else %}Sin corrida M3 PUBLICADA{% endif %}</dd></div>
+    <div><dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) }}</dd></div>
+  </dl>
+  {% if m3.notice_parts %}
+    {% set before, run_id, after = m3.notice_parts %}
+    {% set notice %}{{ before }}<span class="mono pred-nowrap">{{ run_id }}</span>{{ after }}{% endset %}
+    {{ alert(notice, variant="warning") }}
+    {% if m3.others %}
+    <p class="pred-meta">Otras corridas PUBLICADA con la misma identidad:
+      {% for other in m3.others %}<a class="mono" href="{{ m3_hrefs[other] }}">{{ other }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  {% endif %}
+  <details class="pred-details pred-details--inline pred-context__scope"><summary>Evidencia retrospectiva: cómo leerla</summary>
+    <p class="pred-meta">Los resultados describen el historial evaluado y no garantizan el desempeño futuro.{% if source == "fixture" %} Se muestran ejemplos de prueba.{% endif %} La ausencia de una métrica, campeón o contraste no equivale a cero ni a un resultado desfavorable. VALIDADO es una conclusión descriptiva: la significancia estadística se informa aparte.</p>
+  </details>
+</section>
+{% endif %}

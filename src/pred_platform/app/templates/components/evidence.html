@@ -1,16 +1,11 @@
-{# Enlaces funcionales sin JS; el navegador los mejora como pestañas locales accesibles. #}
-{% macro evidence_nav(items, label, action=none) %}
-<div class="pred-evidence-menu">
-  <nav class="pred-evidence-nav" aria-label="{{ label }}" data-evidence-nav>
-    {% for item in items %}
-    <a href="#{{ item.id }}" id="{{ item.id }}-tab" data-evidence-target="{{ item.id }}">
-      <span class="pred-evidence-nav__label">{{ item.label }}</span>
-      <span class="pred-evidence-nav__hint">{{ item.hint }}</span>
-    </a>
-    {% endfor %}
-  </nav>
-  {% if action %}<a class="pred-evidence-menu__action" href="{{ action.href }}">{{ action.label }} <span aria-hidden="true">↗</span></a>{% endif %}
-</div>
+{# Pestañas de detalle: enlaces a anclas que funcionan sin JS; pred.js las convierte en pestañas
+   accesibles (tablist horizontal) y muestra un panel a la vez, a todo el ancho. #}
+{% macro evidence_nav(items, label) %}
+<nav class="pred-evidence-nav" aria-label="{{ label }}" data-evidence-nav>
+  {% for item in items %}
+  <a href="#{{ item.id }}" id="{{ item.id }}-tab" data-evidence-target="{{ item.id }}">{{ item.label }}</a>
+  {% endfor %}
+</nav>
 {% endmacro %}
 
 {% macro evidence_panel(panel_id, title, description, active=false, alias=none) %}

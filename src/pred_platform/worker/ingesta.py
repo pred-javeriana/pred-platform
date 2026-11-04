@@ -26,6 +26,10 @@ from pred_platform.dal.importacion import ReportImportError, import_reports
 
 MAX_BYTES = 256 * 1024 * 1024
 DEFAULT_TIMEOUT_S = 900.0
+# Under the data root: browser uploads wait here for the engine or for a confirmation.
+STAGING_DIR = "staging"
+# The headers of the CSV path that needs no LLM (`pred-engine classify`, guide 16.7).
+CANONICAL_HEADERS = ("sku_id", "timestamp", "demand_qty", "lead_time_days")
 
 Submitter = Callable[[str, bytes, bool], str]
 
@@ -73,7 +77,7 @@ def submit_csv(
         raise ValueError(f"El archivo supera el límite de {MAX_BYTES // (1024 * 1024)} MiB.")
     sha256 = hashlib.sha256(content).hexdigest()
     root = settings.data_root.resolve()
-    staging = root / "staging"
+    staging = root / STAGING_DIR
     staging.mkdir(parents=True, exist_ok=True)
     folder = Path(tempfile.mkdtemp(prefix="carga-", dir=staging))
     try:

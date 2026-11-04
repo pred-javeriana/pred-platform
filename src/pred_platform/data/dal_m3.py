@@ -22,7 +22,7 @@ from pydantic import BaseModel, ValidationError
 
 from pred_platform.config import DataSource
 from pred_platform.contract import models_v2
-from pred_platform.contract.errors import ContractInvalid
+from pred_platform.contract.errors import ContractInvalid, first_problem
 from pred_platform.dal import evidencia
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
@@ -36,12 +36,10 @@ def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        first = exc.errors()[0]
-        path = ".".join(str(part) for part in first["loc"])
+        problem = first_problem(exc)
         raise ContractInvalid(
-            f"{model.__name__}: la evidencia M3 guardada no cumple el contrato v2: "
-            f"{path or '(raíz)'}: {first['msg']}",
-            field=path or None,
+            f"{model.__name__}: la evidencia M3 guardada no cumple el contrato v2: {problem}",
+            field=problem.field,
         ) from exc
 
 
@@ -101,12 +99,10 @@ class M3DalSource:
         try:
             return M3Confirmation.model_validate(rows)
         except ValidationError as exc:
-            first = exc.errors()[0]
-            path = ".".join(str(part) for part in first["loc"])
+            problem = first_problem(exc)
             raise ContractInvalid(
-                f"M3Confirmation: la confirmación guardada de {run_id} no es válida: "
-                f"{path or '(raíz)'}: {first['msg']}",
-                field=path or None,
+                f"M3Confirmation: la confirmación guardada de {run_id} no es válida: {problem}",
+                field=problem.field,
             ) from exc
 
     # ------------------------------------------------------------------------ runs

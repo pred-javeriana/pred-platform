@@ -6,8 +6,13 @@ errores de interacción y se arma la consulta server-side del reporte.
 
 from __future__ import annotations
 
+import tempfile
+import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from pathlib import Path
+from typing import IO, Any, cast
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -17,13 +22,26 @@ from starlette.datastructures import UploadFile
 from pred_platform import mensajes
 from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_class_label
 from pred_platform.contract import models_v2
-from pred_platform.contract.errors import DataLayerError, InvalidQuery
+from pred_platform.contract.errors import DataLayerError
 from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
-from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.data.query import DEFAULT_SIZE, int_param
 from pred_platform.worker import ingesta
 
-_PENDING_ATTR = "pending_uploads"
 _SUBMITTED_ATTR = "submitted_reports"
+
+# Lo que el motor exige de cada columna canónica del CSV (barrera de formato de la ingesta).
+_COLUMN_RULES: dict[str, str] = {
+    "sku_id": "Identificador del producto.",
+    "timestamp": "Fecha ISO 8601 (AAAA-MM-DD); la hora se ignora.",
+    "demand_qty": "Demanda del día: un número mayor o igual que 0.",
+    "lead_time_days": "Tiempo de reposición: un entero de 1 día o más.",
+}
+CSV_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    (name, _COLUMN_RULES[name]) for name in ingesta.CANONICAL_HEADERS
+)
+CSV_HINT = (
+    f"Un archivo .csv de hasta {ingesta.MAX_BYTES // (1024 * 1024)} MiB, una fila por SKU y día."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +51,90 @@ class PendingUpload:
     file_name: str
     content: bytes
     report: IngestReport
+
+
+@dataclass(slots=True)
+class _Held:
+    file_name: str
+    report: IngestReport
+    data: IO[bytes]
+    stored_at: float
+
+
+class PendingUploads:
+    """Las cargas que esperan confirmación, en disco y por un tiempo acotado.
+
+    Los bytes van a un archivo temporal sin nombre que el sistema borra al cerrarlo, también si el
+    proceso se cae, así que la memoria no crece con cada carga sin confirmar. ``directory`` es
+    dónde se crea (el ``staging`` de la raíz de datos: un /tmp en memoria no ahorraría nada); sin
+    él, el temporal del sistema. Una carga vence a la hora y solo se conservan las ``limit`` más
+    recientes; cancelar la borra en el acto.
+    """
+
+    def __init__(
+        self,
+        *,
+        directory: Path | None = None,
+        ttl: float = 3600.0,
+        limit: int = 5,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._directory = directory
+        self._ttl = ttl
+        self._limit = limit
+        self._clock = clock
+        self._held: dict[str, _Held] = {}
+        self._lock = threading.Lock()
+
+    def put(self, pending: PendingUpload) -> str:
+        """Guarda la carga y devuelve el token que la confirma o la cancela."""
+        if self._directory is not None:
+            self._directory.mkdir(parents=True, exist_ok=True)
+        # Se cierra (y se borra) al confirmar, cancelar o vencer, no al salir de este bloque.
+        data = tempfile.TemporaryFile(dir=self._directory)  # noqa: SIM115
+        data.write(pending.content)
+        token = uuid4().hex
+        with self._lock:
+            self._held[token] = _Held(pending.file_name, pending.report, data, self._clock())
+            self._prune()
+        return token
+
+    def report(self, token: str) -> IngestReport | None:
+        """El informe de una carga pendiente, sin leer sus bytes; ``None`` si venció."""
+        with self._lock:
+            self._prune()
+            held = self._held.get(token)
+            return None if held is None else held.report
+
+    def pop(self, token: str) -> PendingUpload | None:
+        """Saca la carga para confirmarla; ``None`` si venció o ya se usó."""
+        with self._lock:
+            self._prune()
+            held = self._held.pop(token, None)
+        if held is None:
+            return None
+        with held.data:
+            held.data.seek(0)
+            return PendingUpload(held.file_name, held.data.read(), held.report)
+
+    def discard(self, token: str) -> None:
+        """Borra la carga (Cancelar); un token desconocido no hace nada."""
+        with self._lock:
+            held = self._held.pop(token, None)
+        if held is not None:
+            held.data.close()
+
+    def __len__(self) -> int:
+        with self._lock:
+            self._prune()
+            return len(self._held)
+
+    def _prune(self) -> None:
+        now = self._clock()
+        newest = sorted(self._held, key=lambda token: self._held[token].stored_at, reverse=True)
+        for position, token in enumerate(newest):
+            if position >= self._limit or now - self._held[token].stored_at > self._ttl:
+                self._held.pop(token).data.close()
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,23 +216,25 @@ def parse_topology_query(params: dict[str, str]) -> TopologyQuery:
         q=q,
         sort=sort,
         descending=descending,
-        page=_int_param(params.get("page"), 1, "page"),
-        size=_int_param(params.get("size"), DEFAULT_SIZE, "size"),
+        page=int_param(params.get("page"), 1, "page"),
+        size=int_param(params.get("size"), DEFAULT_SIZE, "size"),
     )
 
 
 def store_pending(request: Request, pending: PendingUpload) -> str:
-    token = uuid4().hex
-    _pending_map(request)[token] = pending
-    return token
+    return _pending(request).put(pending)
 
 
 def pop_pending(request: Request, token: str) -> PendingUpload | None:
-    return _pending_map(request).pop(token, None)
+    return _pending(request).pop(token)
 
 
-def peek_pending(request: Request, token: str) -> PendingUpload | None:
-    return _pending_map(request).get(token)
+def peek_pending(request: Request, token: str) -> IngestReport | None:
+    return _pending(request).report(token)
+
+
+def discard_pending(request: Request, token: str) -> None:
+    _pending(request).discard(token)
 
 
 def remember_report(request: Request, report: IngestReport) -> None:
@@ -193,12 +297,8 @@ def page_meta(page: Page | models_v2.Page) -> dict[str, object]:
     }
 
 
-def _pending_map(request: Request) -> dict[str, PendingUpload]:
-    store = getattr(request.app.state, _PENDING_ATTR, None)
-    if store is None:
-        store = {}
-        setattr(request.app.state, _PENDING_ATTR, store)
-    return store
+def _pending(request: Request) -> PendingUploads:
+    return cast(PendingUploads, request.app.state.pending_uploads)
 
 
 def _submitted_map(request: Request) -> dict[str, IngestReport]:
@@ -207,15 +307,6 @@ def _submitted_map(request: Request) -> dict[str, IngestReport]:
         store = {}
         setattr(request.app.state, _SUBMITTED_ATTR, store)
     return store
-
-
-def _int_param(raw: str | None, default: int, name: str) -> int:
-    if raw is None or raw == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError as exc:
-        raise InvalidQuery(f"{name} must be an integer, got {raw!r}") from exc
 
 
 def _error_title(code: str) -> str:

@@ -17,8 +17,9 @@ from typing import Any
 from pred_platform.contract.models import RunSettings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
-from pred_platform.worker.engine import MODELO_POR_FAMILIA, log_tail, model_id
+from pred_platform.worker.engine import log_tail, model_id
 from pred_platform.worker.errores import error_info, exclusion_info, platform_error
+from pred_platform.worker.progreso import exclude_sku
 from pred_platform.worker.seleccion import import_selection
 
 # El mensaje con que el motor rechaza un run_id cuya identidad guardada cambió (run_artifacts.py).
@@ -67,20 +68,24 @@ def finalize(
         == (previous_summary.st_ino, previous_summary.st_mtime_ns, previous_summary.st_size)
     )
     if current_summary is None or unchanged:
-        detail = log_tail(log_path) or (
-            f"El motor terminó con código {returncode} sin publicar corrida.json de este intento."
-        )
         # El motor rechaza reanudar una corrida cuya identidad guardada (entrada, ajustes o huella
         # del código) ya no coincide: no es un artefacto perdido y reintentarla no sirve.
-        incompatible = INCOMPATIBLE_RUN in detail
+        incompatible = INCOMPATIBLE_RUN in log_tail(log_path)
+        # La salida cruda del motor queda en motor.log; el detalle que ve la página es una frase.
+        code = "" if returncode is None else f" con código {returncode}"
+        detail = (
+            f"error: {INCOMPATIBLE_RUN}"
+            if incompatible
+            else f"El motor terminó{code} sin publicar corrida.json de este intento. "
+            f"Su salida está en {log_path.name}, en la carpeta de la corrida."
+        )
         dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
         dal.finish_run(
             conn,
             run.id,
             estado="detenida",
             error=platform_error(
-                "run.incompatible_config" if incompatible else "platform.artifact_missing",
-                f"error: {INCOMPATIBLE_RUN}" if incompatible else detail,
+                "run.incompatible_config" if incompatible else "platform.artifact_missing", detail
             ),
         )
         return "detenida"
@@ -168,16 +173,14 @@ def finalize(
                 error=None,
             )
     for exclusion in summary.get("exclusions", []):
-        for family in families:
-            dal.task_excluded(
-                conn,
-                run.id,
-                sku=str(exclusion["sku_id"]),
-                modelo=model_id(family, MODELO_POR_FAMILIA.get(family, family)),
-                corte=corte,
-                seed=run.seed,
-                error=exclusion_info(str(exclusion.get("cause", "")), exclusion.get("code")),
-            )
+        exclude_sku(
+            conn,
+            run,
+            sku=str(exclusion["sku_id"]),
+            corte=corte,
+            families=families,
+            error=exclusion_info(str(exclusion.get("cause", "")), exclusion.get("code")),
+        )
 
     dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
     # The selection per SKU (G4) links its families to the tasks settled just above. A bad line

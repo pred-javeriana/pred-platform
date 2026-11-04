@@ -1,4 +1,4 @@
-"""Superficie /resultados, vista «Por SKU» y detalle (C2): lo que se ve y lo que se delega."""
+"""Superficie /resultados: pestañas y detalle de un SKU (C2), lo que se ve y lo que se delega."""
 
 from __future__ import annotations
 
@@ -79,17 +79,17 @@ def _notice(html: str) -> str:
 
 
 # --------------------------------------------------------------------------- la tabla
-def test_the_table_shows_compact_decisions_and_family_evidence_on_demand() -> None:
+def test_without_m3_evidence_the_page_opens_on_the_family_list_one_column_per_family() -> None:
     client, _ = _client()
     response = client.get("/resultados")
     html = response.text
 
     assert response.status_code == 200
-    assert 'aria-current="page"' in html and "Por SKU" in html
+    assert 'aria-current="page">SKU</a>' in html
+    assert 'aria-current="page">Familias de M2</a>' in html
     for sku in ("FIL-0001", "FIL-0002", "FIL-0003", "FIL-0004"):
         assert f'href="/resultados/sku/{sku}?' in html
-        assert f"Ver familias de {sku}" in html
-    for header in ("SKU", "Clase", "Campeón", "Evidencia por familia"):
+    for header in ("SKU", "Clase", "Campeona (M3)", "Clásica", "ML", "DL", "Fundacional"):
         assert f'<th scope="col">{header}</th>' in html
     # The fixture's v1 run "1" has no M3 evaluation: no champion is invented from the legacy field.
     assert _text(html).count("Sin veredicto M3") == 4
@@ -101,11 +101,11 @@ def test_filters_sort_and_paging_are_delegated_not_applied_in_the_view() -> None
     client, repo = _client()
     client.get(
         "/resultados?sku_class=lumpy&family=classical&estado=exitosa&q=FIL&sort=valor"
-        "&descending=1&page=2&size=1&ejecucion=7"
+        "&descending=1&page=2&size=1&ejecucion=1"
     )
 
     assert repo.list_calls[-1] == (
-        "7",
+        "1",
         {
             "sku_class": "lumpy",
             "family": "classical",
@@ -152,34 +152,46 @@ def test_an_invalid_filter_is_a_warning_not_an_error_page() -> None:
 
 
 def test_without_any_run_the_page_says_so() -> None:
-    client, _ = _client("vacio")
+    client, repo = _client("vacio")
     html = client.get("/resultados").text
 
-    assert "Todavía no hay selección por SKU." in html
+    assert "Todavía no hay resultados." in html
+    assert '<a class="pred-btn pred-btn--primary" href="/ejecucion">' in html
     assert "<table" not in html
+    assert repo.list_calls == []
 
 
 # ------------------------------------------------------------------------- la acción
+def _launch_action(html: str) -> str:
+    """The «Nueva ejecución» link of the header: secondary, because Ejecución owns launching."""
+    found = re.search(
+        r'<a class="pred-btn pred-btn--secondary"[^>]*>\s*<svg[^>]*><use href="#i-play">', html
+    )
+    assert found is not None
+    return found.group(0)
+
+
 def test_the_action_is_enabled_when_all_three_capabilities_are_available() -> None:
     client, _ = _client("normal")
     html = client.get("/resultados").text
 
-    action = re.search(r'<a class="pred-btn pred-btn--primary"[^>]*>', html)
-    assert action is not None and 'href="/ejecucion"' in action.group(0)
-    assert "aria-disabled" not in action.group(0)
-    assert "La acción está deshabilitada" not in html
+    action = _launch_action(html)
+    # It opens the launch form of Ejecución with the ingest of the run shown.
+    assert re.search(r'href="/ejecucion\?ingest_id=[0-9a-f]+#lanzar"', action)
+    assert "aria-disabled" not in action
+    assert "Por qué no se puede lanzar" not in html
 
 
 def test_the_disabled_action_says_why() -> None:
     client, _ = _client("vacio")  # parquet_read yes; comparison and persisted results no
     html = client.get("/resultados").text
 
-    disabled = re.search(r'<a class="pred-btn pred-btn--primary"[^>]*aria-disabled="true"', html)
-    assert disabled is not None and "href=" not in disabled.group(0)
-    assert "La acción está deshabilitada" in html
-    assert "Comparación común entre familias: todavía no está implementada (G2, G3)" in html
-    assert "Resultados de selección guardados: todavía no está implementada (G4)" in html
-    assert "Lectura del Parquet" not in _text(html).split("Falta:")[1]
+    action = _launch_action(html)
+    assert 'aria-disabled="true"' in action and "href=" not in action.split(">", 1)[0]
+    reasons = _text(html).split("Por qué no se puede lanzar", 1)[1]
+    assert "Comparación común entre familias: todavía no está implementada (G2, G3)" in reasons
+    assert "Resultados de selección guardados: todavía no está implementada (G4)" in reasons
+    assert "Lectura del Parquet" not in reasons
 
 
 def test_run_action_lists_only_what_is_missing() -> None:
@@ -197,14 +209,26 @@ def test_run_action_lists_only_what_is_missing() -> None:
 
 
 # --------------------------------------------------------------------- las otras pestañas
-@pytest.mark.parametrize("vista", ["resumen", "clase"])
+class WithoutChampion(RecordingRepository):
+    """A run with its M2 selection, under capabilities whose champion stage does not exist."""
+
+    def get_capabilities(self) -> models.Capabilities:
+        return models.Capabilities.model_validate_json(read_example("capabilities.actual"))
+
+    def list_m3_runs(self, **kwargs: Any) -> Any:
+        raise AssertionError("no M3 evidence is read without the champion stage")
+
+
+@pytest.mark.parametrize("vista", ["resumen", "clase", "errores"])
 def test_summary_tabs_are_honestly_unavailable_until_the_champion_exists(vista: str) -> None:
-    client, repo = _client("vacio")  # its capabilities say the champion stage does not exist
+    client, repo = _client(repo=WithoutChampion("normal"))
     html = client.get(f"/resultados?vista={vista}").text
 
     assert "Todavía no hay campeón por SKU." in html
     assert "stage_not_implemented" in html
     assert repo.list_calls == []  # nothing is read, nothing is invented
+    # Only the SKU tab is offered, and it still opens the M2 selection.
+    assert ">Resumen</a>" not in html and ">SKU</a>" in html
 
 
 # ------------------------------------------------------------------------- el detalle
@@ -315,9 +339,12 @@ def test_the_detail_goes_back_to_the_same_list() -> None:
     assert href is not None
 
     detail = client.get(href.group(1).replace("&amp;", "&")).text
-    back = re.search(r'class="pred-back" href="([^"]*)"', detail)
+    crumbs = re.search(r'<nav class="pred-breadcrumb".*?</nav>', detail, re.S)
+    assert crumbs is not None
+    back = re.search(r'href="([^"]*)">SKU</a>', crumbs.group(0))
     assert back is not None
     assert "sku_class=lumpy" in back.group(1) and "sort=valor" in back.group(1)
+    assert 'aria-current="page"><span class="mono">FIL-0004</span>' in crumbs.group(0)
 
 
 def test_an_unknown_sku_is_a_clear_404_not_a_traceback() -> None:
@@ -447,17 +474,18 @@ def test_the_table_shows_the_champion_and_the_five_verdict_labels_m3_published(
     _publish_for_the_run(env)
     client = _dal_client(env)
 
-    html = client.get("/resultados").text
+    html = client.get("/resultados?vista=sku&lista=familias").text
     text = _text(html)
     assert "Corrida M3 m3-real-1 PUBLICADA" in text
-    assert "FIL-0001/classical/sarima" in text and "VALIDADO" in text
-    assert "FIL-0002/classical/sarima" in text and "EXPLORATORIO" in text
+    # The champion cell names the family and the model; SKU and family are not repeated.
+    assert "FIL-0001 Smooth (Suave) Clásica · sarima VALIDADO" in text
+    assert "FIL-0002 Intermittent (Intermitente) Clásica · sarima EXPLORATORIO" in text
     assert "Excluido antes de M3: lanzado despues del corte" in text
-    assert "Origen de los datos: reales (declarado)" in text
+    assert "Origen de los datos reales (declarado)" in text
     assert "se sostiene" not in text and "Sin veredicto M3" not in text
-    # Detail links, filters and pages keep the resolved M3 run, not «the newest».
+    # Detail links, filters and pages keep the shown run and the resolved M3 run, not «the newest».
     assert "/resultados/sku/FIL-0001?ejecucion=&amp;m3=m3-real-1" not in html
-    assert 'href="/resultados/sku/FIL-0001?m3=m3-real-1&amp;volver=' in html
+    assert 'href="/resultados/sku/FIL-0001?ejecucion=1&amp;m3=m3-real-1&amp;volver=' in html
     assert '<input type="hidden" name="m3" value="m3-real-1">' in html
 
 
@@ -474,7 +502,7 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     assert "Decisión publicada por M3 Clásica" in text
     assert "VALIDADO Evaluado · FIL-0001/classical/sarima" in text
     assert "VALIDADO: datos reales, ventanas suficientes y r &lt; 1 (descriptivo)" in text
-    assert "Ventanas válidas 40 (mínimo n_min 30)" in text
+    assert "Ventanas válidas 40 mínimo n_min 30" in text
     assert "r frente a Seasonal Naive 0,800" in text
     assert "p ajustado (BH) 0,080" in text and "Significativa no" in text
     assert "VALIDADO no equivale a significativo" in text
@@ -501,7 +529,7 @@ def test_a_product_m2_excluded_from_the_competition_shows_its_published_cause(
     )
     client = _dal_client(env)
 
-    text = _text(client.get("/resultados").text)
+    text = _text(client.get("/resultados?vista=sku&lista=familias").text)
     assert f"FIL-0003 Lumpy (Grumosa) Excluido antes de M3: {ONE_ROUTED_CAUSE}" in text
     assert "Excluido antes de M3: lanzado despues del corte" in text
     assert "Sin veredicto M3" not in text
@@ -522,7 +550,7 @@ def test_a_test_that_did_not_run_shows_its_cause_not_a_p_value(
     text = _text(_dal_client(env).get("/resultados/sku/FIL-0001").text)
     assert "Prueba HLN-DM sin prueba: datos_sinteticos" in text
     assert "p ajustado" not in text
-    assert "Origen de los datos: sintéticos o aumentados (declarado)" in text
+    assert "Origen de los datos sintéticos o aumentados (declarado)" in text
 
 
 def _ranking(text: str) -> str:
@@ -584,9 +612,10 @@ def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
         "Hay varias corridas PUBLICADA con esta identidad. Se muestra m3-real-1."
     )
     assert '<span class="mono pred-nowrap">m3-real-1</span>' in html
-    assert 'href="/resultados?vista=sku&amp;m3=m3-real-0"' in html
-    older = client.get("/resultados?m3=m3-real-0").text
-    assert _notice(older).endswith("Se muestra m3-real-0.") and "VALIDADO" in _text(older)
+    assert 'href="/resultados?vista=resumen&amp;ejecucion=1&amp;m3=m3-real-0"' in html
+    older = client.get("/resultados?vista=sku&m3=m3-real-0").text
+    assert _notice(older).endswith("Se muestra m3-real-0.")
+    assert "FIL-0001 Smooth (Suave) Clásica · sarima VALIDADO" in _text(older)
 
 
 def test_an_m3_run_of_another_execution_is_refused_and_an_unpublished_one_explained(
@@ -627,10 +656,15 @@ _SUMMARY_VERDICTS = {
 
 
 def _summary(env: Env) -> str:
-    """The run summary as the reader sees it, from its first heading on."""
+    """The run summary as the reader sees it, from the funnel on."""
     text = _text(_dal_client(env).get("/resultados?vista=resumen").text)
     assert "Embudo de la corrida" in text
     return text.split("Embudo de la corrida", 1)[1]
+
+
+def _funnel(env: Env) -> str:
+    """The funnel rows alone, from the products of the run to the last verdict."""
+    return _summary(env).split("Evaluados son VALIDADO y EXPLORATORIO", 1)[0]
 
 
 def test_the_summary_shows_the_funnel_m3_published(
@@ -638,21 +672,15 @@ def test_the_summary_shows_the_funnel_m3_published(
 ) -> None:
     _run(env, monkeypatch)
     _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS)  # FIL-0003 is launched after the cut
-    summary = _summary(env)
+    funnel = _funnel(env)
 
-    for expected in (
-        "Productos de la corrida 4",
-        "Lanzados después del corte 1",
-        "Con veredicto M3 3",
-        "Evaluados 2",
-        "No evaluados 1",
-        "Evaluados VALIDADO 1",
-        "Evaluados EXPLORATORIO 1",
-        "No evaluados FALLO_TECNICO 0",
-        "No evaluados NO_EVALUABLE 0",
-        "No evaluados EVIDENCIA_INSUFICIENTE 1",
-    ):
-        assert expected in summary
+    # Each row subtracts from or splits the one above it.
+    assert (
+        "Productos de la corrida 4 Lanzados después del corte − 1 "
+        "Excluidos por elegibilidad (M2) − 0 Con veredicto M3 3 "
+        "Evaluados 2 VALIDADO 1 EXPLORATORIO 1 "
+        "No evaluados 1 FALLO_TECNICO 0 NO_EVALUABLE 0 EVIDENCIA_INSUFICIENTE 1"
+    ) in funnel
 
 
 def test_the_summary_counts_the_products_m2_excluded_with_fewer_than_two_families(
@@ -666,16 +694,48 @@ def test_the_summary_counts_the_products_m2_excluded_with_fewer_than_two_familie
         verdicts={"FIL-0001": ("smooth", "VALIDADO")},
         eligibility=(("FIL-0004", "lumpy", TWO_FAMILIES_CAUSE),),
     )
-    summary = _summary(env).split("Grupo Veredicto SKU", 1)[0]
+    funnel = _funnel(env)
 
     # 3 products = 1 launched after the cut + 1 excluded by M2 + 1 with a verdict.
-    for expected in (
-        "Productos de la corrida 3",
-        "Lanzados después del corte 1",
-        "Excluidos por menos de dos familias evaluables (M2) 1",
-        "Con veredicto M3 1",
-    ):
-        assert expected in summary
+    assert (
+        "Productos de la corrida 3 Lanzados después del corte − 1 "
+        "Excluidos por elegibilidad (M2) − 1 "
+        "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables. "
+        "eligibility.fewer_than_two_families 1 "
+        "Con veredicto M3 1"
+    ) in funnel
+
+
+def test_the_summary_splits_the_m2_exclusions_by_their_published_code(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.m3_publicada import TWO_FAMILIES_CAUSE
+
+    _run(env, monkeypatch)
+    short = "historia admisible insuficiente: 40 dias, se requieren 85"
+    _publish_for_the_run(
+        env,
+        late=(),
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+        eligibility=(
+            ("FIL-0002", "intermittent", short, "eligibility.insufficient_history"),
+            ("FIL-0003", "lumpy", short, "eligibility.insufficient_history"),
+            ("FIL-0004", "lumpy", TWO_FAMILIES_CAUSE),
+        ),
+    )
+    funnel = _funnel(env)
+
+    # One label for every eligibility exclusion, and one row per code under it, the most
+    # frequent first.
+    assert (
+        "Excluidos por elegibilidad (M2) − 3 "
+        "La historia es demasiado corta para entrenar y evaluar. "
+        "eligibility.insufficient_history 2 "
+        "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables. "
+        "eligibility.fewer_than_two_families 1 "
+        "Con veredicto M3 1"
+    ) in funnel
+    assert "menos de dos familias evaluables (M2)" not in funnel
 
 
 def test_a_run_published_before_m3_listed_m2_exclusions_says_they_are_not_reported(
@@ -683,9 +743,9 @@ def test_a_run_published_before_m3_listed_m2_exclusions_says_they_are_not_report
 ) -> None:
     _run(env, monkeypatch)
     _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS, eligibility=None)
-    summary = _summary(env)
+    funnel = _funnel(env)
 
-    assert "Excluidos por menos de dos familias evaluables (M2) No informado" in summary
+    assert "Excluidos por elegibilidad (M2) No informado Con veredicto M3 3" in funnel
 
 
 def test_the_summary_counts_the_dm_test_over_the_run_and_its_causes(
@@ -939,9 +999,9 @@ def test_the_reserve_windows_are_only_read_on_demand(
     assert "m3=m3-real-1" in link
 
 
-# ---------------------------------------------------- el panel lateral de las otras pestañas
+# --------------------------------------------- la barra de contexto de las otras pestañas
 @pytest.mark.parametrize("vista", ["resumen", "errores"])
-def test_the_side_panel_names_the_m3_run_and_the_data_origin(
+def test_the_context_bar_names_the_m3_run_and_the_data_origin(
     env: Env, monkeypatch: pytest.MonkeyPatch, vista: str
 ) -> None:
     _run(env, monkeypatch)
@@ -949,11 +1009,11 @@ def test_the_side_panel_names_the_m3_run_and_the_data_origin(
     text = _text(_dal_client(env).get(f"/resultados?vista={vista}").text)
 
     assert "Corrida M3 m3-real-1 PUBLICADA" in text
-    assert "Origen de los datos: reales (declarado)" in text
+    assert "Origen de los datos reales (declarado)" in text
 
 
 @pytest.mark.parametrize("vista", ["resumen", "errores"])
-def test_the_side_panel_announces_duplicates_with_links_that_keep_the_tab(
+def test_the_context_bar_announces_duplicates_with_links_that_keep_the_tab(
     env: Env, monkeypatch: pytest.MonkeyPatch, vista: str
 ) -> None:
     _run(env, monkeypatch)
@@ -964,17 +1024,17 @@ def test_the_side_panel_announces_duplicates_with_links_that_keep_the_tab(
     assert _notice(html) == (
         "Hay varias corridas PUBLICADA con esta identidad. Se muestra m3-real-1."
     )
-    assert f'href="/resultados?vista={vista}&amp;m3=m3-real-0"' in html
+    assert f'href="/resultados?vista={vista}&amp;ejecucion=1&amp;m3=m3-real-0"' in html
 
 
 @pytest.mark.parametrize("vista", ["resumen", "errores"])
-def test_without_an_m3_run_the_side_panel_invents_no_origin_and_the_cause_shows_once(
+def test_without_an_m3_run_the_context_bar_invents_no_origin_and_the_cause_shows_once(
     env: Env, monkeypatch: pytest.MonkeyPatch, vista: str
 ) -> None:
     _run(env, monkeypatch)
     text = _text(_dal_client(env).get(f"/resultados?vista={vista}").text)
 
-    assert "Origen de los datos: no informado en esta vista" in text
+    assert "Origen de los datos no informado en esta vista" in text
     assert text.count("Esta ejecución todavía no tiene evaluación M3.") == 1
 
 
@@ -1052,7 +1112,7 @@ def test_by_class_shows_the_sku_counts_and_keeps_thousands_of_ids_inside_closed_
 
     section = html.split('id="detalle-por-clase"', 1)[1].split("<h3>", 2)[1]
     count = r'<dd><span class="mono">{}</span>\s*<details'
-    assert re.search(r"<dt>SKU comparados</dt>" + count.format(3000), section)
+    assert re.search(r"<dt>SKU comparados</dt>" + count.format(re.escape("3.000")), section)
     assert re.search(r"<dt>SKU excluidos de la selección</dt>" + count.format(40), section)
     tags = _DetailsTags()
     tags.feed(section)
@@ -1080,7 +1140,7 @@ _SIGNIFICANCE = [
 ]
 # fmt: off
 _CONFIRMATIONS = [
-    ("smooth", "classical", "confirmado", None, 0.00002, 0.00006, 0.05,
+    ("smooth", "classical", "confirmado", None, 0.0004, 0.0008, 0.05,
      412, 0.842, 0.801, 0.889, None, "classical"),
     ("intermittent", "classical", "no_confirmado", "p_holm>0.05; intervalo_no_bajo_1:ml",
      0.081, 0.162, 0.05, 96, 0.874, 0.812, 0.947, None, None),
@@ -1294,9 +1354,9 @@ def test_an_fcr_level_below_one_never_shows_as_100_percent(
     section = html.split('id="significancia-por-clase"', 1)[1].split("</section>", 1)[0]
     text = _text(section)
 
-    assert "Smooth (Suave) 2500 1 0 1 0 99,998 %" in text
+    assert "Smooth (Suave) 2.500 1 0 1 0 99,998 %" in text
     assert "Erratic (Errática) 999 1 0 0 0 99,99 %" in text
-    assert "Intermittent (Intermitente) 1001 1 0 0 0 99,995 %" in text
+    assert "Intermittent (Intermitente) 1.001 1 0 0 0 99,995 %" in text
     assert "100 %" not in text
     assert '<td class="num" title="0,99998">99,998 %</td>' in section
 
@@ -1316,7 +1376,7 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
             ("smooth", "ml", 412, 0.9996, 0.9992, 0.9999, 0.9997, 0.9993, 1.0001, 230, 0.51,
              0.605, 38000.0, 0.0496, 0.0496, 3, 1, None),
             ("smooth", "foundation", 410, 0.958, 0.921, 0.991, 0.951, 0.93, 0.972, 231, 0.515,
-             0.611, 33012.0, 0.0504, 0.0504, 12, 7, None),
+             0.611, 33012.0, 0.0494, 0.0494, 12, 7, None),
         ],
     )
     # fmt: on
@@ -1333,7 +1393,7 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
     ) in text
     # Values away from 1 and from α keep three decimals.
     assert (
-        "Fundacional 410 0,958 [0,921; 0,991] 0,951 231 (56,3 %) [51,5 %; 61,1 %] 0,0504 0,0504"
+        "Fundacional 410 0,958 [0,921; 0,991] 0,951 231 (56,3 %) [51,5 %; 61,1 %] 0,049 0,049"
     ) in text
     # Each rounded figure carries the exact stored value as its title.
     html = _dal_client(env).get("/resultados?vista=clase").text
@@ -1377,10 +1437,94 @@ def test_win_shares_at_the_edges_read_as_the_engine_stored_them(
     assert "16 (100,0 %) [80,6 %; 100,0 %]" in text
     assert "0 (0,0 %) [0,0 %; 15,5 %]" in text
     # Below 100 % never reads 100,0 %.
-    assert "1999 (99,95 %) [99,7 %; 99,99 %]" in text
+    assert "1.999 (99,95 %) [99,7 %; 99,99 %]" in text
     assert 'title="[0,8063923194655637; 1,0000000000000002]">[80,6 %; 100,0 %]</span>' in html
     assert 'title="[0,9971731374967338; 0,9999117322692944]">[99,7 %; 99,99 %]</span>' in html
     assert 'id="significancia-por-clase"' in html
+
+
+# The rows a real pred-engine run wrote for a 30-SKU real panel, copied as stored in its SQLite:
+# most classes have too few SKUs to test, and the two comparisons with a test carry their Wilson
+# bounds, Hodges-Lehmann and p-values exactly as the engine computed them.
+# fmt: off
+_ENGINE_SIGNIFICANCE = [
+    ("erratic", 3, 2, 0, 1, 0, 0.96666666666666667),
+    ("intermittent", 12, 11, 0, 9, 0, 0.95416666666666661),
+    ("lumpy", 3, 0, 0, 0, 0, None),
+    ("smooth", 12, 12, 0, 11, 0, 0.95),
+]
+_ENGINE_CONFIRMATIONS = [
+    ("erratic", "foundation", "sin_comparables", "pocos_skus:classical,dl,ml", None, None, 0.05,
+     3, 0.68940409402190339, 0.64256447304750242, 0.77453622435114089, None, "dl"),
+    ("intermittent", "foundation", "sin_comparables", "pocos_skus:classical", None, None, 0.05,
+     12, 0.77675056700061673, 0.71276016740413239, 0.81123271580353462, None, "ml"),
+    ("lumpy", "classical", "sin_comparables", "pocos_skus:foundation", None, None, 0.05,
+     3, 0.90076244944326556, 0.82470911799879143, 1.0498537904246341, None, "classical"),
+    ("smooth", "foundation", "sin_comparables", "pocos_skus:classical", None, None, 0.05,
+     12, 0.71841465158115903, 0.6879512377598076, 0.75778964218378597, None, "ml"),
+]
+_ENGINE_COMPARISONS = [
+    ("erratic", "classical", 2, 0.83049217639358242, None, None, None, None, None, 2,
+     None, None, None, None, None, None, None, "pocos_skus:2<10"),
+    ("erratic", "dl", 3, 0.67783734454997624, None, None, None, None, None, 3,
+     None, None, None, None, None, None, None, "pocos_skus:3<10"),
+    ("erratic", "ml", 3, 0.80464309794110644, None, None, None, None, None, 3,
+     None, None, None, None, None, None, None, "pocos_skus:3<10"),
+    ("intermittent", "classical", 9, 0.79190552284821714, None, None, None, None, None, 9,
+     None, None, None, None, None, None, None, "pocos_skus:9<10"),
+    ("intermittent", "ml", 12, 0.90155776219860939, 0.83313247684710801, 0.94309163941109031,
+     0.87183116883934941, 0.74118029718353629, 0.9327957734307285, 12,
+     0.75750599334475921, 1.0, 0.0, 0.00048828125, 0.00048828125, 6, 0, None),
+    ("lumpy", "foundation", 3, 1.1324642564328855, None, None, None, None, None, 0,
+     None, None, None, None, None, None, None, "pocos_skus:3<10"),
+    ("smooth", "classical", 9, 0.83512254145329135, None, None, None, None, None, 9,
+     None, None, None, None, None, None, None, "pocos_skus:9<10"),
+    ("smooth", "dl", 12, 0.80895842411212326, 0.77366387761875188, 0.84611383890919423,
+     0.81421126571762426, 0.74250001172403146, 0.86419194085698248, 11,
+     0.64612008885888295, 0.98513490559508288, 1.0, 0.0009765625, 0.0009765625, 10, 0, None),
+    ("smooth", "ml", 12, 0.86601461503938881, 0.81097304248752256, 0.88919161368325472,
+     0.81685184335370453, 0.72125159094510583, 0.9180458077361785, 12,
+     0.75750599334475921, 1.0, 0.0, 0.00048828125, 0.00048828125, 7, 0, None),
+]
+# fmt: on
+
+
+def test_by_class_reads_the_rows_a_real_engine_run_wrote(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_confirmed(
+        env,
+        significance=_ENGINE_SIGNIFICANCE,
+        confirmations=_ENGINE_CONFIRMATIONS,
+        comparisons=_ENGINE_COMPARISONS,
+    )
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _confirmation(env)
+    significance = _text(html.split('id="significancia-por-clase"', 1)[1].split("</section>")[0])
+
+    assert "No fue posible leer" not in _text(html)
+    assert (
+        "Smooth (Suave) Fundacional Sin comparables pocos SKU frente a Clásica — — "
+        "0,718 [0,688; 0,758] 12 "
+        "Erratic (Errática) Fundacional Sin comparables pocos SKU frente a Clásica, DL y ML — — "
+        "0,689 [0,643; 0,775] 3 "
+        "Intermittent (Intermitente) Fundacional Sin comparables pocos SKU frente a Clásica — — "
+        "0,777 [0,713; 0,811] 12 "
+        "Lumpy (Grumosa) Clásica Sin comparables pocos SKU frente a Fundacional — — "
+        "0,901 [0,825; 1,050] 3"
+    ) in text
+    assert (
+        "Clásica 9 SKU (mínimo 10) 9 0,835 — 9 (100,0 %) — — "
+        "ML 12 0,866 [0,811; 0,889] 0,817 12 (100,0 %) [75,8 %; 100,0 %] < 0,001 < 0,001 "
+        "DL 12 0,809 [0,774; 0,846] 0,814 11 (91,7 %) [64,6 %; 98,5 %] < 0,001 < 0,001"
+    ) in text
+    assert 'title="[0,7575059933447592; 1,0]">[75,8 %; 100,0 %]</span>' in html
+    assert 'title="[0,646120088858883; 0,9851349055950829]">[64,6 %; 98,5 %]</span>' in html
+    assert (
+        "Smooth (Suave) 12 12 0 11 0 95 % Erratic (Errática) 3 2 0 1 0 96,67 % "
+        "Intermittent (Intermitente) 12 11 0 9 0 95,42 % Lumpy (Grumosa) 3 0 0 0 0 —"
+    ) in significance
 
 
 def test_by_class_says_when_the_run_was_published_before_the_confirmation(
@@ -1403,7 +1547,7 @@ def test_an_invalid_confirmation_row_is_a_visible_problem_and_the_champions_stay
     _run(env, monkeypatch)
     smooth_ml = _COMPARISONS[0]
     inverted = (*smooth_ml[:4], smooth_ml[5], smooth_ml[4], *smooth_ml[6:])  # upper < lower
-    _publish_confirmed(env, comparisons=[inverted])
+    _publish_confirmed(env, comparisons=[inverted, *_COMPARISONS[1:]])
     html = _dal_client(env).get("/resultados?vista=clase").text
     text = _text(html)
 
@@ -1411,6 +1555,47 @@ def test_an_invalid_confirmation_row_is_a_visible_problem_and_the_champions_stay
     assert "No fue posible leer la evidencia M3." in text
     assert "ic_mediana: los extremos están invertidos" in text
     assert 'id="significancia-por-clase"' not in html
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    ("smooth", "reason"),
+    [
+        # Confirmed although its Holm p is above alfa.
+        (("smooth", "classical", "confirmado", None, 0.0004, 0.8, 0.05,
+          412, 0.842, 0.801, 0.889, None, "classical"),
+         "un campeón confirmado tiene un p de Holm mayor que alfa"),
+        # A class IUT p below the largest competitor p (0,0004).
+        (("smooth", "classical", "confirmado", None, 0.00002, 0.00006, 0.05,
+          412, 0.842, 0.801, 0.889, None, "classical"),
+         "el p IUT de la clase no es el mayor p IUT de sus competidoras, todas probadas"),
+    ],
+)
+# fmt: on
+def test_an_incoherent_confirmation_is_a_visible_problem_never_a_confirmed_row(
+    env: Env, monkeypatch: pytest.MonkeyPatch, smooth: tuple[object, ...], reason: str
+) -> None:
+    _run(env, monkeypatch)
+    _publish_confirmed(env, confirmations=[smooth, *_CONFIRMATIONS[1:]])
+    html = _dal_client(env).get("/resultados?vista=clase").text
+    text = _text(html)
+
+    assert "No fue posible leer la evidencia M3." in text
+    assert reason in text
+    assert "Confirmado" not in _confirmation(env)
+
+
+def test_a_value_out_of_its_range_is_explained_in_spanish(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    smooth_ml = list(_COMPARISONS[0])
+    smooth_ml[13] = 1.2  # p_wilcoxon
+    _publish_confirmed(env, comparisons=[tuple(smooth_ml), *_COMPARISONS[1:]])
+    text = _text(_dal_client(env).get("/resultados?vista=clase").text)
+
+    assert "p_wilcoxon: debe ser menor o igual que 1" in text
+    assert "Input should" not in text
 
 
 def test_by_class_without_a_published_run_or_with_a_rejected_one_shows_the_cause(

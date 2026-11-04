@@ -8,6 +8,7 @@ repositorio. Mientras la corrida está en curso el cuerpo se refresca con HTMX c
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from typing import Annotated, Any
 from urllib.parse import urlencode
@@ -24,19 +25,26 @@ from pred_platform.app.configuracion import (
 )
 from pred_platform.app.datos import error_view, page_meta
 from pred_platform.app.ejecucion import (
-    ACTIVE_STATES,
     FAMILY_CHOICES,
     FINISHED_STATES,
     METRIC_CHOICES,
     NOTICES,
+    STAGES,
+    SYNTHETIC_INGEST,
     ExecutionQuery,
     FormResult,
+    LaunchIngest,
     default_form_values,
+    elapsed_text,
     error_action,
+    families_hint,
     parse_execution_query,
     parse_launch_form,
     run_actions,
+    run_error,
     settings_items,
+    should_poll,
+    stage_steps,
     uncovered_classes,
 )
 from pred_platform.app.seleccion import error_title
@@ -66,12 +74,17 @@ def _worker_active(request: Request) -> bool:
     return bool(settings.data_source == "dal" and settings.worker == "embedded")
 
 
-def _accepted_ingests(repository: DataRepository) -> list[Any]:
+def _accepted_ingests(repository: DataRepository) -> list[LaunchIngest]:
+    """Las ingestas aceptadas, marcadas si su informe declara datos sintéticos."""
     try:
         listing = repository.list_ingests(size=200)
     except DataLayerError:
         return []
-    return [item for item in listing.items if item.status == "accepted"]
+    accepted = [item for item in listing.items if item.status == "accepted"]
+    synthetic = repository.synthetic_ingests(
+        [item.ingest_id for item in accepted if item.ingest_id]
+    )
+    return [LaunchIngest(item, item.ingest_id in synthetic) for item in accepted]
 
 
 def _task_rows(status: RunStatus) -> list[dict[str, Any]]:
@@ -101,6 +114,7 @@ def _context(
     *,
     form: FormResult | None = None,
     form_error: str | None = None,
+    import_error: str | None = None,
     action_error: str | None = None,
     imported: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -130,11 +144,13 @@ def _context(
     estado = run.estado if run is not None else None
     ingests = _accepted_ingests(repository)
     selected = (form.values.get("ingest_id") if form else None) or params.get("ingest_id")
-    if not selected and ingests and imported is None:
-        selected = ingests[0].ingest_id
-    poll = estado in ACTIVE_STATES and control.reason is None
-    notice = imported or NOTICES.get(params.get("aviso", ""))
+    if not selected and imported is None:
+        selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
     progress = status.progress if status is not None else None
+    counts = dict(progress.tareas_por_estado) if progress is not None else {}
+    poll = should_poll(estado, counts, reason=control.reason)
+    notice = imported or NOTICES.get(params.get("aviso", ""))
+    error = run_error(repository.get_run_error(run.id)) if run is not None else None
     return {
         "active_surface": "ejecucion",
         "page_title": "Ejecución",
@@ -158,7 +174,13 @@ def _context(
         else [],
         "rows": _task_rows(status) if status is not None else [],
         "pages": page_meta(status.page) if status and status.page else None,
-        "actions": run_actions(estado, reason=control.reason),
+        "run_error": error,
+        "steps": stage_steps(run.estado, progress.etapa_actual if progress else None)
+        if run is not None
+        else [],
+        "stage_label": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
+        "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
+        "actions": run_actions(estado, reason=control.reason, error=error),
         "control_reason": control.reason,
         "worker_active": _worker_active(request),
         "poll": poll,
@@ -172,7 +194,17 @@ def _context(
         "form": form.values if form else default_form_values(),
         "form_errors": form.errors if form else {},
         "form_error": form_error,
+        "import_error": import_error,
+        # El formulario se abre si no hay corrida que mostrar o si se lo pidió (Nueva ejecución,
+        # una ingesta elegida en Datos o Resultados, un error o una importación por revisar).
+        "launch_open": run is None
+        or bool(params.get("ingest_id") or params.get("lanzar"))
+        or bool(form and form.errors)
+        or form_error is not None
+        or import_error is not None
+        or imported is not None,
         "family_choices": FAMILY_CHOICES,
+        "families_hint": families_hint(),
         "metric_choices": METRIC_CHOICES,
     }
 
@@ -237,8 +269,11 @@ def lanzar(
         },
     )
     form.values["ingest_id"] = ingest_id or ""
+    synthetic = {i.item.ingest_id for i in _accepted_ingests(repository) if i.synthetic}
     if not ingest_id:
         form.errors["ingest_id"] = "Elija la ingesta que se va a ejecutar."
+    elif ingest_id in synthetic:
+        form.errors["ingest_id"] = SYNTHETIC_INGEST
     elif not form.errors:
         try:
             by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
@@ -314,14 +349,10 @@ def importar_configuracion(
     raw = b"" if archivo is None else archivo.file.read(MAX_BYTES + 1)
     imported = parse_config(raw if isinstance(raw, bytes) else raw.encode("utf-8"))
     if imported.values is None:
-        reasons = " ".join(imported.errors)
-        return _render(
-            request,
-            "pages/execution.html",
-            _context(request, repository, form_error=f"No se importó la configuración. {reasons}"),
-            400,
-        )
-    known = {item.ingest_id for item in _accepted_ingests(repository)}
+        problem = f"No se importó la configuración. {' '.join(imported.errors)}"
+        context = _context(request, repository, import_error=problem)
+        return _render(request, "pages/execution.html", context, 400)
+    known = {i.item.ingest_id for i in _accepted_ingests(repository) if not i.synthetic}
     form = FormResult(imported.values, None, {})
     origin = f" de la ejecución {imported.source_run_id}" if imported.source_run_id else ""
     if imported.ingest_sha256 in known:

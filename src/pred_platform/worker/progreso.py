@@ -19,10 +19,40 @@ from typing import Any
 
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
-from pred_platform.worker.engine import MODELO_POR_FAMILIA, model_id
+from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS, MODELO_POR_FAMILIA, model_id
 from pred_platform.worker.errores import error_info, exclusion_info
 
 SUPPORTED_MAJOR = 1
+
+
+def exclude_sku(
+    conn: sqlite3.Connection,
+    run: Ejecucion,
+    *,
+    sku: str,
+    corte: str,
+    families: list[str],
+    error: dict[str, Any],
+) -> None:
+    """Settle a SKU the engine excluded: one ``no_ejecutable`` task per family its class routes.
+
+    The engine plans only the families the policy routes to a product's demand class, so an
+    excluded lumpy product never had ML or DL units. The class is the one the ingestion published
+    (``series``); a product without it keeps a task per family of the run.
+    """
+    sku_class = dal.ingest_sku_class(conn, run.id, sku)
+    routed = FAMILIES_BY_SKU_CLASS.get(sku_class or "", tuple(families))
+    for family in families:
+        if family in routed:
+            dal.task_excluded(
+                conn,
+                run.id,
+                sku=sku,
+                modelo=model_id(family, MODELO_POR_FAMILIA.get(family, family)),
+                corte=corte,
+                seed=run.seed,
+                error=error,
+            )
 
 
 class ProgressFollower:
@@ -90,18 +120,14 @@ class ProgressFollower:
             ]
             dal.plan_tasks(self._conn, run.id, corte=corte, seed=run.seed, units=units)
         elif kind == "excluded":
-            sku, cause = str(event["sku_id"]), str(event.get("cause", ""))
-            code = event.get("code")
-            for family in self.families:
-                dal.task_excluded(
-                    self._conn,
-                    run.id,
-                    sku=sku,
-                    modelo=model_id(family, MODELO_POR_FAMILIA.get(family, family)),
-                    corte=corte,
-                    seed=run.seed,
-                    error=exclusion_info(cause, code),
-                )
+            exclude_sku(
+                self._conn,
+                run,
+                sku=str(event["sku_id"]),
+                corte=corte,
+                families=self.families,
+                error=exclusion_info(str(event.get("cause", "")), event.get("code")),
+            )
         elif kind == "unit_started":
             dal.task_started(
                 self._conn,

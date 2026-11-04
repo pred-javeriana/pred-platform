@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from pred_platform.app.datos import PendingUploads
 from pred_platform.app.routers import catalog, data, execution, exportar, results
 from pred_platform.app.templating import build_templates
 from pred_platform.config import Settings
@@ -18,6 +19,7 @@ from pred_platform.dal.migrate import migrate
 from pred_platform.data.factory import build_repository
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import build_run_control
+from pred_platform.worker.ingesta import STAGING_DIR
 
 _logger = logging.getLogger("pred_platform.app")
 _APP_DIR = Path(__file__).parent
@@ -71,13 +73,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = active
     application.state.repository = build_repository(active)
     application.state.run_control = build_run_control(active)
+    # Las cargas sin confirmar esperan en disco, junto a las demás cargas de la raíz de datos.
+    application.state.pending_uploads = PendingUploads(
+        directory=active.data_root / STAGING_DIR if active.data_source == "dal" else None
+    )
     application.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     application.state.templates = build_templates(
         _TEMPLATES_DIR,
         lambda path: application.url_path_for("static", path=path),
     )
 
-    @application.get("/health")
+    # HEAD también: las sondas de disponibilidad suelen preguntar sin cuerpo.
+    @application.api_route("/health", methods=["GET", "HEAD"])
     def health() -> dict[str, str]:
         return {"status": "ok"}
 

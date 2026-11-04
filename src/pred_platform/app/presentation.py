@@ -6,7 +6,7 @@ No calcula métricas ni decide campeones: solo nombra estados que el motor ya pr
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 StatusKind = Literal["task", "family", "trial", "verdict", "run", "ingest", "severity"]
@@ -145,7 +145,28 @@ def abbreviate_id(value: str, width: int = 12) -> str:
 
 
 def format_when(value: datetime | None) -> str:
-    """Marca temporal compacta; em dash si el contrato no trae fecha."""
+    """Marca temporal compacta en UTC, con la zona escrita; em dash si el contrato no trae fecha.
+
+    El motor y la plataforma guardan las horas en UTC: sin la zona, «23:38» se leería como hora
+    local.
+    """
     if value is None:
         return "—"
-    return value.strftime("%Y-%m-%d %H:%M")
+    if value.tzinfo is None:
+        return value.strftime("%Y-%m-%d %H:%M")
+    return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def format_duration(seconds: float) -> str:
+    """Una duración legible de un vistazo: 45 s, 12 min, 1 h 05 min, 2 d 3 h."""
+    total = max(int(seconds), 0)
+    if total < 60:
+        return f"{total} s"
+    minutes, _ = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes} min"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours} h {minutes:02d} min"
+    days, hours = divmod(hours, 24)
+    return f"{days} d {hours} h"

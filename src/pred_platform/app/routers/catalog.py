@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from pred_platform.app.presentation import describe_status, format_count
+from pred_platform.app.presentation import describe_status
 
 router = APIRouter()
 
@@ -35,8 +35,8 @@ def catalogo(request: Request) -> HTMLResponse:
                     "FALLO_TECNICO",
                 )
             ],
-            "progress_completed": format_count(821),
-            "progress_total": format_count(1284),
+            "progress_completed": 821,
+            "progress_total": 1284,
             "progress_percent": 64,
             "metric_items": [
                 {"label": "SKU", "value": "110", "tone": "data"},
@@ -47,7 +47,7 @@ def catalogo(request: Request) -> HTMLResponse:
             "tab_items": [
                 {"id": "resumen", "label": "Resumen", "href": "#resumen"},
                 {"id": "clase", "label": "Por clase", "href": "#clase"},
-                {"id": "sku", "label": "Por SKU", "href": "#sku"},
+                {"id": "sku", "label": "SKU", "href": "#sku"},
             ],
         },
     )

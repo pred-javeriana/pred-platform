@@ -1,10 +1,10 @@
 """Exportación a CSV de los resultados de M3 (RF-CON-06, tarea A2 de la sección 4.5).
 
 Dos descargas sobre ``DataRepository``: los veredictos de la consulta (``/resultados/exportar.csv``)
-y las exclusiones de la corrida (``/resultados/exclusiones.csv``). La consulta es la de la pestaña
-«Consulta» sin el límite de página, y la corrida es la M3 exacta que resolvió esa pestaña. Aquí solo
-se resuelve y se da formato: no se recalcula nada. Un error se responde con su código HTTP y su
-causa en texto, nunca con un archivo parcial.
+y las exclusiones de la corrida (``/resultados/exclusiones.csv``). La consulta es la de la lista
+«Veredictos de M3» sin el límite de página, y la corrida es la M3 exacta que resolvió esa lista.
+Aquí solo se resuelve y se da formato: no se recalcula nada. Un error se responde con su código
+HTTP y su causa en texto, nunca con un archivo parcial.
 """
 
 from __future__ import annotations

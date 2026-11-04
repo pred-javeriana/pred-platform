@@ -9,7 +9,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from pred_platform.contract import models, models_v2
-from pred_platform.contract.errors import ContractInvalid, SchemaVersionUnsupported
+from pred_platform.contract.errors import (
+    ContractInvalid,
+    SchemaVersionUnsupported,
+    first_problem,
+)
 
 # The major version each copied models module describes.
 _MAJORS: dict[str, int] = {models.__name__: 1, models_v2.__name__: 2}
@@ -60,8 +64,7 @@ def parse_as[T: BaseModel](model: type[T], raw: str | bytes | Mapping[str, Any])
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        first = exc.errors()[0]
-        path = ".".join(str(part) for part in first["loc"])
+        problem = first_problem(exc)
         raise ContractInvalid(
-            f"{name} no cumple el contrato: {path or '(raíz)'}: {first['msg']}", field=path or None
+            f"{name} no cumple el contrato: {problem}", field=problem.field
         ) from exc

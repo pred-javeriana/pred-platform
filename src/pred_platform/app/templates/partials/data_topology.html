@@ -6,10 +6,9 @@
 {% from "components/evidence.html" import evidence_panel %}
 
 {% if not topology_details %}
-<section class="pred-panel pred-panel--side" id="topologia" aria-labelledby="titulo-topologia">
-  <p class="pred-eyebrow">Composición del archivo</p>
-  <h2 id="titulo-topologia">Topología de demanda</h2>
-
+{# Dentro del resumen del archivo: cuántos SKU hay de cada clase y el paso siguiente. #}
+<div class="pred-topology" id="topologia" aria-labelledby="titulo-topologia">
+  <h3 id="titulo-topologia">Topología de demanda</h3>
   {% if topology_error %}
     {{ unavailable_state(
       topology_error.title,
@@ -18,20 +17,29 @@
       topology_error.blocked_by
     ) }}
   {% elif topology %}
-    <dl class="pred-summary-list pred-topology-summary">
-      {% for metric in topology_metrics %}
-      <div><dt>{{ metric.label }}</dt><dd class="mono">{{ metric.value }}</dd></div>
+    {% set summary = topology.summary %}
+    <p class="pred-meta">Los {{ format_count(summary.n_skus) }} SKU de la ingesta según su patrón de demanda (ADI y CV²). Cada clase admite familias de modelos distintas.</p>
+    <table class="pred-class-mix">
+      <caption class="pred-sr-only">SKU por clase de demanda</caption>
+      <tbody>
+      {% for code in SKU_CLASS_ORDER %}
+      {% set count = summary.by_class.get(code, 0) %}
+      <tr{% if not count %} class="is-zero"{% endif %}>
+        <th scope="row">{{ sku_class_label(code) }}</th>
+        <td class="num">{{ format_count(count) }}</td>
+        <td class="pred-class-mix__bar" aria-hidden="true"><span style="width: {{ (100 * count / summary.n_skus) | round(1) if summary.n_skus else 0 }}%"></span></td>
+      </tr>
       {% endfor %}
-    </dl>
-
+      </tbody>
+    </table>
     {% if can_continue %}
     <div class="pred-next-action">
-      <p>El archivo está listo para configurar una ejecución.</p>
       {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id, icon="i-play") }}
+      <p class="pred-meta">El archivo está listo: elija las familias de modelos y lance la corrida.</p>
     </div>
     {% endif %}
   {% endif %}
-</section>
+</div>
 {% elif topology and not topology_error %}
 {% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Explore la distribución ADI–CV² y consulte los SKU de la página filtrada.", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
     <dl class="pred-evidence-facts">
@@ -63,7 +71,7 @@
             ("lumpy", "Lumpy (Grumosa)")
           ]
         ) }}
-        {{ field("q", "Buscar SKU", value=topology_query.q or "", placeholder="FIL-0001") }}
+        {{ field("q", "Buscar SKU", value=topology_query.q or "") }}
         {{ field(
           "sort",
           "Ordenar por",

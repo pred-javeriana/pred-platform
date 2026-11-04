@@ -451,7 +451,7 @@ def test_a_failed_unit_does_not_stop_the_others(env: Env, monkeypatch: pytest.Mo
     assert error["source_exception"] == "AjusteModeloError"
 
 
-def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
+def test_a_skipped_sku_becomes_one_not_runnable_task_per_family_its_class_routes(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _scenario(monkeypatch, "excluded")
@@ -464,13 +464,30 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_family(
         "SELECT sku, modelo, detalle_error FROM tareas "
         "WHERE estado = 'no_ejecutable' ORDER BY modelo"
     )
+    # FIL-0003 is lumpy (the ingestion's topology): the policy never routes ML or DL to it.
     assert [(s[0], s[1]) for s in skipped] == [
         ("FIL-0003", "classical:sarima"),
-        ("FIL-0003", "dl:mlp"),
         ("FIL-0003", "foundation:chronos2"),
-        ("FIL-0003", "ml:lightgbm"),
     ]
     assert json.loads(skipped[0][2])["code"] == "eligibility.no_reserved_observations"
+
+
+def test_a_skipped_sku_without_a_published_class_keeps_a_task_per_run_family(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "excluded")
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute("DELETE FROM series WHERE sku = 'FIL-0003'")  # nothing names its class
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+
+    env.worker().run_next()
+
+    assert env.rows("SELECT modelo FROM tareas WHERE estado = 'no_ejecutable' ORDER BY modelo") == [
+        ("classical:sarima",),
+        ("dl:mlp",),
+        ("foundation:chronos2",),
+        ("ml:lightgbm",),
+    ]
 
 
 def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(

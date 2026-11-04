@@ -30,6 +30,12 @@ def test_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_health_answers_head_without_body(client: TestClient) -> None:
+    response = client.head("/health")
+    assert response.status_code == 200
+    assert response.content == b""
+
+
 def test_root_redirects_to_datos(client: TestClient) -> None:
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 307

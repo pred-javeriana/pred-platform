@@ -5,6 +5,7 @@ import pytest
 from pred_platform.contract.errors import InvalidQuery
 from pred_platform.data.query import (
     DEFAULT_SIZE,
+    MAX_PAGE,
     MAX_SIZE,
     PageRequest,
     check_choice,
@@ -20,11 +21,26 @@ def test_the_defaults_are_page_one_of_fifty() -> None:
 
 
 @pytest.mark.parametrize(
-    ("number", "size"), [(0, 50), (-1, 50), (1, 0), (1, MAX_SIZE + 1), (1.5, 50), (1, "10")]
+    ("number", "size"),
+    [(0, 50), (-1, 50), (1, 0), (1, MAX_SIZE + 1), (1.5, 50), (1, "10"), (MAX_PAGE + 1, 50)],
 )
 def test_a_bad_page_request_is_rejected(number: object, size: object) -> None:
     with pytest.raises(InvalidQuery):
         PageRequest(number, size)  # type: ignore[arg-type]  # deliberately wrong types
+
+
+def test_the_last_possible_page_is_accepted_and_its_offset_fits_sqlite() -> None:
+    page = PageRequest(MAX_PAGE, MAX_SIZE)
+    assert (page.number - 1) * page.size < 2**63
+
+
+def test_a_bad_page_request_reads_in_spanish() -> None:
+    page_text = "La página debe ser un número entero de 1 a 1.000.000.000"
+    with pytest.raises(InvalidQuery, match=page_text):
+        PageRequest(0, 50)
+    size_text = "El tamaño de página debe ser un número entero de 1 a 500"
+    with pytest.raises(InvalidQuery, match=size_text):
+        PageRequest(1, 501)
 
 
 def test_the_maximum_size_is_accepted() -> None:
@@ -57,7 +73,7 @@ def test_an_empty_list_has_a_valid_empty_page() -> None:
 
 def test_check_sort_accepts_an_allowed_key_and_names_the_options_otherwise() -> None:
     assert check_sort("adi", {"adi", "cv2"}) == "adi"
-    with pytest.raises(InvalidQuery, match=r"\['adi', 'cv2'\]"):
+    with pytest.raises(InvalidQuery, match="Orden desconocido «price»; use uno de: adi, cv2."):
         check_sort("price", {"adi", "cv2"})
 
 
@@ -65,8 +81,10 @@ def test_check_choice_accepts_empty_and_allowed_values_and_rejects_others() -> N
     assert check_choice("estado", None, {"a", "b"}) is None
     assert check_choice("estado", "", {"a", "b"}) is None
     assert check_choice("estado", "a", {"a", "b"}) == "a"
-    with pytest.raises(InvalidQuery, match="unknown estado 'z'"):
+    with pytest.raises(InvalidQuery, match="Valor desconocido para estado: «z»; use uno de: a, b."):
         check_choice("estado", "z", {"a", "b"})
+    with pytest.raises(InvalidQuery, match="Valor desconocido para clase de demanda: «x»"):
+        check_choice("sku_class", "x", {"smooth"})
 
 
 def test_sort_items_orders_in_both_directions() -> None:

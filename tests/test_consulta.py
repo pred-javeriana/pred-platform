@@ -55,7 +55,7 @@ def _row(html: str, sku: str) -> str:
 
 # ------------------------------------------------------------------------ la consulta HTTP
 def test_the_query_string_keeps_filters_and_leaves_out_the_defaults() -> None:
-    assert ConsultaQuery().query_string() == "vista=consulta"
+    assert ConsultaQuery().query_string() == "vista=sku"
     query = ConsultaQuery(
         m3="m3-1",
         sku_class="lumpy",
@@ -68,7 +68,7 @@ def test_the_query_string_keeps_filters_and_leaves_out_the_defaults() -> None:
         size=10,
     )
     assert query.query_string() == (
-        "vista=consulta&m3=m3-1&sku_class=lumpy&familia_campeona=classical&veredicto=VALIDADO"
+        "vista=sku&m3=m3-1&sku_class=lumpy&familia_campeona=classical&veredicto=VALIDADO"
         "&q=FIL&sort=razon_sn&descending=1&page=3&size=10"
     )
     # Cambiar un filtro no pierde la corrida M3 resuelta.
@@ -96,11 +96,11 @@ def test_the_tab_lists_the_published_verdicts_and_keeps_the_run_totals(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch, late=("FIL-0003",))
-    response = _client(env).get("/resultados?vista=consulta")
+    response = _client(env).get("/resultados?vista=sku")
     html, text = response.text, _text(response.text)
 
     assert response.status_code == 200
-    assert 'aria-current="page"' in html and ">Consulta<" in html
+    assert 'aria-current="page">Veredictos de M3<' in html
     for sku in VERDICTS:
         assert f'href="/resultados/sku/{sku}?' in html
     # FIL-0003 no tiene veredicto: no es una fila, solo cuenta en el embudo de la corrida.
@@ -126,7 +126,7 @@ def test_the_three_filters_sort_and_page_reach_the_repository_together(
 
     monkeypatch.setattr(repo, "get_m3_evidence", spy)
     response = _client(env, repo).get(
-        "/resultados?vista=consulta&sku_class=lumpy&familia_campeona=classical"
+        "/resultados?vista=sku&sku_class=lumpy&familia_campeona=classical"
         "&veredicto=EVIDENCIA_INSUFICIENTE&q=FIL&sort=razon_sn&descending=1"
     )
     text = _text(response.text)
@@ -172,7 +172,7 @@ def test_the_filters_combine_over_the_real_dal(
     env: Env, monkeypatch: pytest.MonkeyPatch, filters: str, skus: list[str]
 ) -> None:
     _published(env, monkeypatch)
-    html = _client(env).get(f"/resultados?vista=consulta&{filters}").text
+    html = _client(env).get(f"/resultados?vista=sku&{filters}").text
 
     assert re.findall(r'href="/resultados/sku/(FIL-\d+)\?', html) == skus
     assert f"{len(skus)} SKU coinciden con la consulta." in _text(html)
@@ -184,7 +184,7 @@ def test_an_unknown_filter_value_is_shown_not_ignored(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
-    response = _client(env).get("/resultados?vista=consulta&veredicto=mantiene")
+    response = _client(env).get("/resultados?vista=sku&veredicto=mantiene")
     html, text = response.text, _text(response.text)
 
     assert response.status_code == 200
@@ -199,26 +199,29 @@ def test_a_page_that_is_not_a_number_is_a_warning(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
-    html = _client(env).get("/resultados?vista=consulta&page=dos").text
-    assert "page must be an integer" in _notice(html)
+    html = _client(env).get("/resultados?vista=sku&page=dos").text
+    assert "El parámetro página debe ser un número entero; llegó «dos»." in _notice(html)
 
 
 def test_links_and_pages_keep_the_resolved_m3_run_not_the_newest(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
-    html = _client(env).get("/resultados?vista=consulta&sku_class=intermittent&size=1").text
+    html = _client(env).get("/resultados?vista=sku&sku_class=intermittent&size=1").text
 
     assert '<input type="hidden" name="m3" value="m3-real-1">' in html
-    # El detalle vuelve a la misma consulta: pestaña, corrida M3 y filtros.
+    # El detalle vuelve a la misma consulta: pestaña, ejecución, corrida M3 y filtros.
     assert (
-        'href="/resultados/sku/FIL-0002?m3=m3-real-1&amp;volver='
-        "vista%3Dconsulta%26m3%3Dm3-real-1%26sku_class%3Dintermittent%26size%3D1"
+        'href="/resultados/sku/FIL-0002?ejecucion=1&amp;m3=m3-real-1&amp;volver='
+        "vista%3Dsku%26ejecucion%3D1%26m3%3Dm3-real-1%26sku_class%3Dintermittent%26size%3D1"
     ) in html
 
-    paged = _client(env).get("/resultados?vista=consulta&size=1").text
+    paged = _client(env).get("/resultados?vista=sku&size=1").text
     assert "Página 1 de 3" in _text(paged)
-    assert 'href="/resultados?vista=consulta&amp;m3=m3-real-1&amp;page=2&amp;size=1"' in paged
+    paged_link = (
+        'href="/resultados?vista=sku&amp;ejecucion=1&amp;m3=m3-real-1&amp;page=2&amp;size=1"'
+    )
+    assert paged_link in paged
     assert "Anterior" not in paged
 
 
@@ -227,15 +230,19 @@ def test_the_detail_opened_from_the_query_goes_back_to_it(
 ) -> None:
     _published(env, monkeypatch)
     client = _client(env)
-    listing = client.get("/resultados?vista=consulta&sku_class=intermittent").text
+    listing = client.get("/resultados?vista=sku&sku_class=intermittent").text
     link = re.search(r'href="(/resultados/sku/FIL-0002\?[^"]+)"', listing)
     assert link is not None
 
     detail = client.get(link.group(1).replace("&amp;", "&"))
-    back = re.search(r'href="(/resultados\?vista=consulta[^"]*)"', detail.text)
+    # La ruta de migas: «SKU» vuelve a la lista con sus filtros; «Resultados», al resumen.
+    back = re.search(r'<li><a href="([^"]*)">SKU</a></li>', detail.text)
     assert detail.status_code == 200 and back is not None
     assert unquote(back.group(1)).replace("&amp;", "&") == (
-        "/resultados?vista=consulta&m3=m3-real-1&sku_class=intermittent"
+        "/resultados?vista=sku&ejecucion=1&m3=m3-real-1&sku_class=intermittent"
+    )
+    assert '<li><a href="/resultados?ejecucion=1&amp;m3=m3-real-1">Resultados</a></li>' in (
+        detail.text
     )
 
 
@@ -243,12 +250,12 @@ def test_a_verdict_is_not_called_significant_and_a_missing_test_shows_its_cause(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
-    html = _client(env).get("/resultados?vista=consulta").text
+    html = _client(env).get("/resultados?vista=sku").text
 
     # VALIDADO es descriptivo: puede no ser significativo, y se dice por separado.
     validated = _row(html, "FIL-0001")
     assert "VALIDADO" in validated and "p ajustado 0,080" in validated
-    assert "no significativa" in validated
+    assert "No significativa" in validated
     # Sin prueba, la causa literal de M3; nunca un p-valor inventado.
     missing = _row(html, "FIL-0004")
     assert "Sin prueba: veredicto:EVIDENCIA_INSUFICIENTE" in missing
@@ -259,10 +266,11 @@ def test_a_validated_verdict_whose_test_rejects_after_bh_is_called_significant(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch, significant=("FIL-0001",))
-    row = _row(_client(env).get("/resultados?vista=consulta").text, "FIL-0001")
+    row = _row(_client(env).get("/resultados?vista=sku").text, "FIL-0001")
 
-    assert "VALIDADO" in row and "p ajustado 0,020 significativa" in row
-    assert "no significativa" not in row.split("Ver prueba")[0]
+    # Significativa y a favor de la campeona: el estadístico HLN-DM es negativo.
+    assert "VALIDADO" in row and "Significativa, a favor de la campeona p ajustado 0,020" in row
+    assert "No significativa" not in row.split("Ver prueba")[0]
 
 
 def test_an_unpublished_run_explains_why_there_is_nothing_to_query(
@@ -270,19 +278,23 @@ def test_an_unpublished_run_explains_why_there_is_nothing_to_query(
 ) -> None:
     _run(env, monkeypatch)
     _publish_for_the_run(env, estado="EVALUADA")
-    html = _client(env).get("/resultados?vista=consulta").text
+    html = _client(env).get("/resultados?vista=sku&lista=veredictos").text
     text = _text(html)
 
     assert "Esta ejecución todavía no tiene una corrida M3 PUBLICADA." in text
     assert "La corrida M3 más reciente, m3-real-1, está EVALUADA." in text
     assert 'href="/resultados/sku/' not in html and 'id="filtros-consulta"' not in html
+    # Without a published run, the SKU tab opens on what M2 left, with the same explanation.
+    default = _client(env).get("/resultados?vista=sku").text
+    assert 'aria-current="page">Familias de M2</a>' in default
+    assert "La corrida M3 más reciente, m3-real-1, está EVALUADA." in _text(default)
 
 
 def test_an_m3_run_of_another_execution_is_refused(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
-    html = _client(env).get("/resultados?vista=consulta&m3=m3-ajena").text
+    html = _client(env).get("/resultados?vista=sku&m3=m3-ajena").text
 
     assert "La corrida M3 pedida no corresponde a esta ejecución." in _text(html)
     assert 'href="/resultados/sku/' not in html
@@ -292,7 +304,7 @@ def test_a_publication_without_its_metadata_gives_no_rows(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch, publish_m4=False)
-    html = _client(env).get("/resultados?vista=consulta").text
+    html = _client(env).get("/resultados?vista=sku").text
 
     # No significa cero exclusiones: la corrida se explica y no se inventa una lista.
     assert "La publicación M3 no tiene sus metadatos de exclusión." in _text(html)
@@ -303,7 +315,7 @@ def test_without_an_m3_evaluation_the_tab_says_so(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _run(env, monkeypatch)
-    text = _text(_client(env).get("/resultados?vista=consulta").text)
+    text = _text(_client(env).get("/resultados?vista=sku").text)
     assert "Esta ejecución todavía no tiene evaluación M3." in text
 
 
@@ -311,10 +323,19 @@ def test_the_selection_tab_is_untouched_by_the_query_tab(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
-    html = _client(env).get("/resultados?vista=sku").text
+    html = _client(env).get("/resultados?vista=sku&lista=familias").text
 
-    assert 'aria-current="page"' in html
-    # «Por SKU» sigue siendo la selección de M2: sus filtros no cambian.
+    assert 'aria-current="page">Familias de M2<' in html
+    # «Familias de M2» sigue siendo la selección de M2: sus filtros no cambian.
     assert 'name="estado"' in html and 'name="family"' in html
     assert 'name="familia_campeona"' not in html and 'name="veredicto"' not in html
-    assert 'href="/resultados?vista=consulta"' in html
+    assert 'href="/resultados?vista=sku&amp;ejecucion=1&amp;m3=m3-real-1"' in html
+
+
+def test_the_old_consulta_link_still_opens_the_verdict_list(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _published(env, monkeypatch)
+    html = _client(env).get("/resultados?vista=consulta").text
+
+    assert 'id="filtros-consulta"' in html and 'aria-current="page">Veredictos de M3<' in html

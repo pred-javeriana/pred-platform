@@ -32,7 +32,6 @@
   }
 
   const seccionesActivas = new Map();
-  const evidenciaCompacta = window.matchMedia("(max-width: 48rem)");
 
   function gruposEvidencia(raiz) {
     const grupos = Array.from(raiz.querySelectorAll("[data-evidence-tabs]"));
@@ -73,7 +72,7 @@
       if (!lista || grupo.classList.contains("is-ready")) return;
       const enlaces = Array.from(lista.querySelectorAll("[data-evidence-target]"));
       lista.setAttribute("role", "tablist");
-      lista.setAttribute("aria-orientation", evidenciaCompacta.matches ? "horizontal" : "vertical");
+      lista.setAttribute("aria-orientation", "horizontal");
       enlaces.forEach(function (enlace) {
         enlace.setAttribute("role", "tab");
         enlace.setAttribute("aria-controls", enlace.dataset.evidenceTarget);
@@ -113,22 +112,15 @@
     const lista = enlace.closest("[data-evidence-nav]");
     const enlaces = Array.from(lista.querySelectorAll("[data-evidence-target]"));
     const indice = enlaces.indexOf(enlace);
-    const vertical = lista.getAttribute("aria-orientation") === "vertical";
     let siguiente = indice;
-    if (evento.key === (vertical ? "ArrowDown" : "ArrowRight")) siguiente = (indice + 1) % enlaces.length;
-    else if (evento.key === (vertical ? "ArrowUp" : "ArrowLeft")) siguiente = (indice + enlaces.length - 1) % enlaces.length;
+    if (evento.key === "ArrowRight") siguiente = (indice + 1) % enlaces.length;
+    else if (evento.key === "ArrowLeft") siguiente = (indice + enlaces.length - 1) % enlaces.length;
     else if (evento.key === "Home") siguiente = 0;
     else if (evento.key === "End") siguiente = enlaces.length - 1;
     else if (evento.key !== "Enter" && evento.key !== " ") return;
     evento.preventDefault();
     enlaces[siguiente].focus();
     activarEvidencia(enlace.closest("[data-evidence-tabs]"), enlaces[siguiente].dataset.evidenceTarget, true);
-  });
-
-  evidenciaCompacta.addEventListener("change", function () {
-    document.querySelectorAll("[data-evidence-nav][role='tablist']").forEach(function (lista) {
-      lista.setAttribute("aria-orientation", evidenciaCompacta.matches ? "horizontal" : "vertical");
-    });
   });
 
   window.addEventListener("hashchange", function () {
@@ -160,16 +152,19 @@
   function actualizarSondeo() {
     const raiz = cuerpo();
     const estado = raiz && raiz.querySelector("[data-pred-run-state]");
+    const controles = document.getElementById("actualizacion");
     const boton = document.getElementById("pausar-actualizacion");
     const ayuda = document.getElementById("actualizacion-ayuda");
     if (!estado || !boton || !ayuda) return;
     const activo = estado.dataset.predPoll === "true";
+    // Sin nada que actualizar, el control sobra: una corrida terminada no se mueve.
+    if (controles) controles.hidden = !activo;
     boton.disabled = !activo;
     boton.setAttribute("aria-pressed", String(pausado));
     boton.textContent = pausado ? "Reanudar actualización" : "Pausar actualización";
     ayuda.textContent = !activo ? "Actualización automática no activa." :
       pausado ? "Actualización pausada. Puede seguir usando los filtros y las acciones." :
-      "Actualización automática cada 2 segundos. Se pausa mientras usa los controles o selecciona texto.";
+      "Se actualiza cada 2 segundos. Se pausa mientras usa los controles o selecciona texto.";
     if (estadoAnterior !== null && estadoAnterior !== estado.dataset.predRunState) {
       const anuncio = document.getElementById("ejecucion-anuncio");
       if (anuncio) anuncio.textContent = estado.dataset.predRunSummary;

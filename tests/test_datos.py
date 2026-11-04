@@ -1,11 +1,13 @@
 """Superficie /datos: carga C1, topología C3 y degradación honesta en DAL."""
 
+import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
 
+from pred_platform.app.datos import PendingUpload, PendingUploads
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract import models
@@ -77,16 +79,23 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
     assert "Administración" not in html
     assert "Iniciar sesión" not in html
     assert "Datos de prueba" in html
-    assert "Carga un archivo para comenzar." in html
+    # Sin ingesta elegida, cargar es la acción principal y dice qué columnas espera el motor.
+    assert 'id="titulo-carga">Cargar un archivo<' in html
+    for column in ("sku_id", "timestamp", "demand_qty", "lead_time_days"):
+        assert f'<span class="mono">{column}</span>' in html
 
 
 def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text
     assert "Todavía no hay ingestas registradas." in html
-    assert "Carga un archivo para comenzar." in html
+    assert 'id="titulo-carga">Cargar un archivo<' in html
     assert "No hay SKU que coincidan" not in html
     assert "La caracterización todavía no está disponible." not in html
+    # El historial no queda como subsección de «Cargar un archivo» en el esquema de títulos.
+    headings = re.findall(r"<h([1-4])[^>]*>([^<]*)<", html)
+    history = headings.index(("3", "Historial de ingestas"))
+    assert headings[history - 1] == ("2", "Archivos ya cargados")
 
 
 def test_accepted_upload_delegates_and_exposes_ingest_id(tmp_path: Path) -> None:
@@ -144,6 +153,41 @@ def test_needs_confirmation_then_confirm_overwrite(tmp_path: Path) -> None:
     assert "La fila 43 tiene un valor inválido en lead_time_days." in failed
     assert "Corríjalo en el archivo y vuelva a cargarlo." in failed
     assert "Topología de demanda" not in failed
+
+
+def test_cancel_drops_the_pending_upload_so_it_can_no_longer_be_confirmed(
+    tmp_path: Path,
+) -> None:
+    client, repo = _client(tmp_path, "errores")
+    first = client.post("/datos/cargar", files={"archivo": _CSV}, follow_redirects=False)
+    token = parse_qs(urlparse(first.headers["location"]).query)["pendiente"][0]
+    assert len(client.app.state.pending_uploads) == 1  # type: ignore[attr-defined]
+
+    cancelled = client.post("/datos/cancelar", data={"pendiente": token}, follow_redirects=False)
+    assert (cancelled.status_code, cancelled.headers["location"]) == (303, "/datos")
+    assert len(client.app.state.pending_uploads) == 0  # type: ignore[attr-defined]
+
+    late = client.post("/datos/cargar", data={"pendiente": token, "confirm_overwrite": "true"})
+    assert "La confirmación expiró. Vuelva a cargar el archivo." in late.text
+    assert [call["confirm_overwrite"] for call in repo.submit_calls] == [False]
+
+
+def test_pending_uploads_are_bounded_in_number_and_time() -> None:
+    now = [0.0]
+    store = PendingUploads(ttl=3600, limit=5, clock=lambda: now[0])
+    report = parse_as(models.IngestReport, read_example("ingest_report.accepted"))
+    tokens = []
+    for index in range(6):
+        now[0] = float(index)
+        tokens.append(store.put(PendingUpload(f"{index}.csv", b"x" * 10, report)))
+
+    assert len(store) == 5 and store.report(tokens[0]) is None  # the oldest one went first
+    held = store.pop(tokens[5])
+    assert held is not None and (held.file_name, held.content) == ("5.csv", b"x" * 10)
+    assert store.pop(tokens[5]) is None  # a confirmation is used once
+
+    now[0] = 5 + 3601.0
+    assert len(store) == 0 and store.report(tokens[1]) is None
 
 
 def test_local_validation_errors_stay_on_the_form(tmp_path: Path) -> None:
@@ -205,7 +249,7 @@ def test_filter_miss_has_specific_empty_message(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "normal")
     html = client.get(f"/datos?ingest_id={ACCEPTED}&q=NO-EXISTE").text
     assert "No hay SKU que coincidan con los filtros seleccionados." in html
-    assert "Carga un archivo para comenzar." not in html
+    assert 'id="titulo-carga"' not in html  # con una ingesta, cargar otra es una pestaña
 
 
 def test_vacio_accepted_upload_shows_topology_unavailable(tmp_path: Path) -> None:

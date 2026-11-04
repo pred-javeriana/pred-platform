@@ -30,6 +30,7 @@ from pred_platform.contract.errors import InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker.engine import build_command
+from pred_platform.worker.errores import run_stopped_error
 from tests.test_worker import Env, _escribir_progreso, _guardar_origen, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -70,7 +71,7 @@ def test_the_active_run_shows_its_state_progress_settings_and_tasks() -> None:
 
     assert response.status_code == 200 and repo.status_calls[-1][0] == "latest"
     assert "Ejecución #1" in text and "Ejecutando" in text
-    assert "4 / 7 tareas" in text and "57.1 %" in text
+    assert "4 / 7 tareas" in text and "57,1 %" in text
     assert "Mínimo de entrenamiento 60 días" in text and "Corte t* 2026-06-29" in text
     for state in ("Pendiente", "Ejecutando", "Exitosa"):
         assert state in text
@@ -196,8 +197,10 @@ def _dal_client(env: Env, **overrides: Any) -> TestClient:
     return TestClient(app)
 
 
+# Lumpy (Grumosa) admite solo Clásica y Fundacional: con las dos, cada SKU de la ingesta de
+# prueba (smooth, intermittent y lumpy) tiene al menos dos familias que comparar.
 FORM: dict[str, Any] = {
-    "families": ["classical", "ml"],
+    "families": ["classical", "ml", "foundation"],
     "metric": "mae",
     "min_train": "40",
     "horizon": "2",
@@ -232,7 +235,7 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     import json
 
     parsed = json.loads(parametros)
-    assert parsed["families"] == ["classical", "ml"] and parsed["trials"] == 1
+    assert parsed["families"] == ["classical", "ml", "foundation"] and parsed["trials"] == 1
     assert (parsed["min_train"], parsed["horizon"], parsed["step"], parsed["metric"]) == (
         40,
         2,
@@ -347,12 +350,12 @@ def test_foundation_is_selectable_and_reaches_the_worker_and_results(
     html = client.get(f"/ejecucion?ingest_id={env.ingest_id}").text
     control = re.search(r'<input[^>]*id="fam-foundation"[^>]*>', html)
     assert control is not None and "disabled" not in control.group(0)
-    response = _launch(client, env, families=["foundation"], data_origin="real")
+    response = _launch(client, env, families=["classical", "foundation"], data_origin="real")
     assert response.status_code == 303
     ((parameters,),) = env.rows("SELECT parametros FROM configuraciones")
-    assert json.loads(parameters)["families"] == ["foundation"]
+    assert json.loads(parameters)["families"] == ["classical", "foundation"]
     env.worker().run_next()
-    assert env.rows("SELECT DISTINCT modelo FROM tareas") == [("foundation:chronos2",)]
+    assert ("foundation:chronos2",) in env.rows("SELECT DISTINCT modelo FROM tareas")
     detail = client.get("/resultados/sku/FIL-0001?ejecucion=1").text
     assert "foundation:chronos2" in detail and "Fundacional" in detail
 
@@ -408,24 +411,41 @@ def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
     env: Env,
 ) -> None:
     # The ingest has one smooth, one intermittent and one lumpy SKU; lumpy admits only
-    # the classical and foundation families.
+    # the classical and foundation families, intermittent also ml.
     response = _launch(_dal_client(env), env, families=["ml", "dl"])
     text = _text(response.text)
 
     assert response.status_code == 200
-    assert "1 SKU Lumpy (Grumosa) queda sin modelo" in text
-    assert "Clásica o Fundacional" in text
+    assert "1 SKU Lumpy (Grumosa) queda sin modelo: agregue Clásica y Fundacional." in text
+    assert (
+        "1 SKU Intermittent (Intermitente) queda con una sola familia (ML): "
+        "agregue Clásica o Fundacional." in text
+    )
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
-def test_families_that_cover_every_class_launch_as_today(env: Env) -> None:
-    response = _launch(_dal_client(env), env, families=["ml", "dl", "foundation"])
+def test_one_family_for_a_class_is_refused_because_the_engine_needs_two(env: Env) -> None:
+    # Con Clásica y ML, el SKU lumpy tendría una sola familia y el motor lo excluiría antes de
+    # L3 (eligibility.fewer_than_two_families): el formulario lo dice antes de lanzar.
+    response = _launch(_dal_client(env), env, families=["classical", "ml"])
+    text = _text(response.text)
+
+    assert response.status_code == 200
+    assert (
+        "1 SKU Lumpy (Grumosa) queda con una sola familia (Clásica): agregue Fundacional." in text
+    )
+    assert "El motor compara al menos dos familias por SKU." in text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_families_that_give_every_class_two_launch_as_today(env: Env) -> None:
+    response = _launch(_dal_client(env), env, families=["classical", "dl", "foundation"])
 
     assert response.status_code == 303
     ((parametros,),) = env.rows(
         "SELECT c.parametros FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id"
     )
-    assert json.loads(parametros)["families"] == ["ml", "dl", "foundation"]
+    assert json.loads(parametros)["families"] == ["classical", "dl", "foundation"]
 
 
 def test_an_ingestion_that_is_not_accepted_cannot_be_launched(env: Env) -> None:
@@ -511,7 +531,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     env.worker().run_next()
     done = client.get("/ejecucion").text
     assert "Completada" in _text(done) and 'href="/resultados?ejecucion=1"' in done
-    assert env.rows("SELECT COUNT(*) FROM tareas") == [(6,)]  # the same rows, no duplicates
+    assert env.rows("SELECT COUNT(*) FROM tareas") == [(9,)]  # the same rows, no duplicates
 
 
 def test_resuming_a_legacy_run_lets_the_engine_report_its_evaluation(
@@ -519,7 +539,7 @@ def test_resuming_a_legacy_run_lets_the_engine_report_its_evaluation(
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
     client = _dal_client(env)
-    _launch(client, env, families=["classical", "ml"])
+    _launch(client, env)
     env.worker().run_next()
     legacy = env.rows("SELECT id FROM configuraciones")[0][0]
     with closing(sqlite3.connect(env.db)) as conn:
@@ -547,7 +567,7 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
 ) -> None:
     _scenario(monkeypatch, "unit_fails")
     client = _dal_client(env)
-    _launch(client, env, families=["classical", "ml"])
+    _launch(client, env)
     env.worker().run_next()
 
     text = _text(client.get("/ejecucion").text)
@@ -555,6 +575,25 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
     assert "El modelo no pudo ajustarse." in text
     assert "Pruebe con más ensayos o con otra familia" in text
     assert "Ver resultados" in text
+
+
+def test_with_the_launch_form_open_launching_is_the_one_primary_action(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    _launch(client, env)
+    env.worker().run_next()
+
+    def primary(html: str) -> list[str]:
+        pattern = r'class="pred-btn pred-btn--primary"[^>]*>(.*?)</(?:a|button)>'
+        return [_text(label).strip() for label in re.findall(pattern, html, re.S)]
+
+    assert primary(client.get("/ejecucion").text) == ["Ver resultados"]
+    page = client.get("/ejecucion?lanzar=1").text
+    assert primary(page) == ["Lanzar ejecución"]
+    assert 'hx-get="/ejecucion/estado?lanzar=1"' in page
+    assert primary(client.get("/ejecucion/estado?lanzar=1").text) == []
 
 
 def test_a_second_run_waits_in_the_queue_and_the_screen_says_so(
@@ -647,3 +686,98 @@ def test_every_eligibility_exclusion_tells_what_to_do() -> None:
         "eligibility.insufficient_history",
     ):
         assert error_action(code), code
+
+
+def _set_run(env: Env, estado: str, error: dict[str, Any] | None) -> None:
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = ?, error_json = ?",
+            (estado, json.dumps(error) if error else None),
+        )
+        conn.commit()
+
+
+def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    _set_run(
+        env,
+        "detenida",
+        {
+            "code": "platform.artifact_missing",
+            "stage": "platform",
+            "severity": "error",
+            "detail": "No existe processed/demo_canonico.parquet.",
+            "retryable": False,
+        },
+    )
+
+    html = client.get("/ejecucion").text
+    text = _text(html)
+
+    assert 'id="accion-reanudar"' not in html and "Reanudar" not in text.replace(
+        "Reanudar no se ofrece", ""
+    )
+    assert "No se encontró el resultado esperado." in text
+    assert "No existe processed/demo_canonico.parquet." in text
+    assert "Reanudar no se ofrece: la corrida fallaría igual." in text
+
+
+def test_a_run_stopped_by_the_operator_shows_why_and_offers_to_resume(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    _set_run(env, "detenida", run_stopped_error())
+
+    html = client.get("/ejecucion").text
+
+    assert 'id="accion-reanudar"' in html and 'id="error-ejecucion"' in html
+    assert "Reanude la ejecución cuando quiera." in _text(html)
+
+
+def test_after_stop_the_page_keeps_polling_until_the_open_tasks_are_closed(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    env.worker().run_next()
+    # Detenida, pero el worker todavía no cerró la tarea que corría: los conteos cambiarán.
+    _set_run(env, "detenida", run_stopped_error())
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE tareas SET estado = 'ejecutando', finalizada_en = NULL "
+            "WHERE id = (SELECT MIN(id) FROM tareas)"
+        )
+        conn.commit()
+
+    assert client.get("/ejecucion/estado").status_code == 200
+    assert "every 2s" in client.get("/ejecucion").text
+
+    with closing(sqlite3.connect(env.db)) as conn:  # lo que hace el worker al recoger el motor
+        dal.close_open_tasks(conn, 1, interrupted=run_stopped_error(), skipped=run_stopped_error())
+    assert client.get("/ejecucion/estado").status_code == 286
+
+
+def test_an_ingest_declared_synthetic_is_listed_but_cannot_be_launched(env: Env) -> None:
+    report = env.settings.data_root / "ingestas" / f"{env.ingest_id}.json"
+    document = json.loads(report.read_text())
+    document["source_file"]["datos_sinteticos"] = True
+    report.write_text(json.dumps(document))
+    client = _dal_client(env)
+
+    html = client.get("/ejecucion?lanzar=1").text
+    option = re.search(rf'<option value="{env.ingest_id}"[^>]*>[^<]*', html)
+    assert option is not None and " disabled" in option.group(0)
+    assert "no ejecutable: datos sintéticos" in option.group(0)
+
+    response = _launch(client, env)
+    assert response.status_code == 200
+    assert "La ingesta elegida declara datos sintéticos" in _text(response.text)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+    assert "Declara datos sintéticos: no ejecutable" in _text(client.get("/datos").text)

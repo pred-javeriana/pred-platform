@@ -176,7 +176,7 @@ def publish(
     extra_portfolio: list[tuple[object, ...]] | None = None,
     windows: dict[str, list[tuple[str, float, float, float | None, str | None]]] | None = None,
     excluded_from_class: dict[str, str] | None = None,
-    eligibility: tuple[tuple[str, str, str], ...] | None = (),
+    eligibility: tuple[tuple[str, ...], ...] | None = (),
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
 
@@ -188,10 +188,10 @@ def publish(
     the reserve windows (fecha, RMSE of the champion, RMSE of the baseline, r, cause of a null r).
     ``excluded_from_class`` leaves SKUs (SKU -> cause) out of their class's champion selection.
 
-    ``eligibility`` lists each product M2 excluded with the two-family rule, its class and the
-    published cause. ``None``
-    writes the run the way the engine did before it published those exclusions: a protocol
-    without reserve blocks and no ``m3_exclusiones`` rows.
+    ``eligibility`` lists each product M2 excluded (SKU, class, published cause and, optionally,
+    the code; the two-family rule by default). ``None`` writes the run the way the engine did
+    before it published those exclusions: a protocol without reserve blocks and no
+    ``m3_exclusiones`` rows.
     """
     synthetic, declared, untested = _ORIGINS[origin]
     with closing(sqlite3.connect(db)) as conn:
@@ -238,8 +238,8 @@ def publish(
             conn.executemany(
                 "INSERT INTO m3_exclusiones VALUES (?, ?, ?, ?, ?)",
                 [
-                    (run_id, sku, sku_class, TWO_FAMILIES, cause)
-                    for sku, sku_class, cause in eligibility or ()
+                    (run_id, sku, sku_class, code[0] if code else TWO_FAMILIES, cause)
+                    for sku, sku_class, cause, *code in eligibility or ()
                 ],
             )
         by_class: dict[str, Counter[str]] = {}

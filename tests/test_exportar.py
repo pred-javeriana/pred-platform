@@ -307,10 +307,11 @@ def test_the_query_tab_links_the_downloads_with_its_filters_and_the_resolved_run
 ) -> None:
     _published(env, monkeypatch, late=("FIL-0003",))
     client = _client(env)
-    html = client.get("/resultados?vista=consulta&sku_class=intermittent&size=1&page=1").text
+    html = client.get("/resultados?vista=sku&sku_class=intermittent&size=1&page=1").text
 
-    assert 'href="/resultados/exportar.csv?m3=m3-real-1&amp;sku_class=intermittent"' in html
-    assert 'href="/resultados/exclusiones.csv?m3=m3-real-1"' in html
+    export = "/resultados/exportar.csv?ejecucion=1&amp;m3=m3-real-1&amp;sku_class=intermittent"
+    assert f'href="{export}"' in html
+    assert 'href="/resultados/exclusiones.csv?ejecucion=1&amp;m3=m3-real-1"' in html
     # El enlace trae el conjunto de la consulta, no la página de una fila.
     followed = _rows(
         client.get("/resultados/exportar.csv?m3=m3-real-1&sku_class=intermittent").text

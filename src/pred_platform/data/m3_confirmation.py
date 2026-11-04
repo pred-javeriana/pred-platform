@@ -7,8 +7,10 @@ the engine's meaning of the columns:
 
 - A ratio is RMSE_champion / RMSE_other; 0 and infinity are valid edges, NaN is not.
 - Bootstrap and Wilson intervals are stored as two columns, both present or both absent.
-- ``p_iut`` is the largest p of the competitors and ``p_holm`` its Holm adjustment across classes;
-  ``sin_comparables`` and ``no_aplica`` have no Holm p, and only ``confirmado`` has no cause.
+- ``p_iut`` is the largest p of the competitors, present only when every competitor has one, and
+  ``p_holm`` its Holm adjustment across classes; ``sin_comparables`` and ``no_aplica`` have no
+  Holm p, only ``confirmado`` has no cause, and a ``confirmado`` Holm p is never above ``alfa``.
+  The platform checks these relations; it never recomputes a statistic.
 - One run uses one ``alfa`` for every class.
 """
 
@@ -103,7 +105,15 @@ class M3ClassConfirmation(_Row):
             raise ValueError("solo un campeón confirmado no tiene causa")
         if (self.p_holm is None) != (self.estado in ("sin_comparables", "no_aplica")):
             raise ValueError("el p de Holm no corresponde al estado")
+        if self.estado == "confirmado" and self.p_holm is not None and self.p_holm > self.alfa:
+            raise ValueError("un campeón confirmado tiene un p de Holm mayor que alfa")
         _interval(self.efecto_ic_inferior, self.efecto_ic_superior, "efecto_ic")
+        if self.p_iut is not None:
+            tested = [c.p_iut for c in self.comparaciones if c.p_iut is not None]
+            if len(tested) != len(self.comparaciones) or self.p_iut != max(tested, default=None):
+                raise ValueError(
+                    "el p IUT de la clase no es el mayor p IUT de sus competidoras, todas probadas"
+                )
         names = [c.competidora for c in self.comparaciones]
         if len(set(names)) != len(names):
             raise ValueError("una competidora aparece dos veces")

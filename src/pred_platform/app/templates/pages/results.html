@@ -1,59 +1,76 @@
 {% extends "base.html" %}
-{% from "components/states.html" import unavailable_state %}
+{% from "components/states.html" import empty_state, unavailable_state %}
 {% from "components/tabs.html" import tabs %}
-{% from "components/run_line.html" import run_line %}
+{% from "components/buttons.html" import button %}
 
-{% block title %}PRED — Resultados{% endblock %}
+{% block title %}Resultados · PRED{% endblock %}
 
 {% block content %}
   <header class="pred-page-header">
     <div>
       <h1>Resultados</h1>
-      <p>Consulte la selección disponible por SKU y abra su evidencia cuando necesite explicar el resultado.</p>
+      <p>Lo que M3 decidió para cada producto, de la vista general al detalle de un SKU.</p>
+    </div>
+    <div class="pred-page-header__actions">
+      {% if run and run.ejecucion %}{{ button("Ver la ejecución", variant="subtle", href="/ejecucion?ejecucion=" ~ run.ejecucion.id) }}{% endif %}
+      {% include "partials/results_action.html" %}
     </div>
   </header>
   {% if source == "fixture" %}
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
-  <div class="pred-workspace pred-workspace--results">
-  <div class="pred-panel pred-panel--main">
+
+  {% include "partials/results_context.html" %}
+
+  {% if missing_execution %}
+    {{ unavailable_state(
+      "No existe la ejecución «" ~ missing_execution ~ "».",
+      "Elija otra ejecución en la lista de arriba o abra Ejecución para ver las que existen.",
+      "no_data",
+      []
+    ) }}
+  {% elif not run %}
+    {{ empty_state(
+      "Todavía no hay resultados.",
+      "Cuando una ejecución termine y M3 publique su evaluación, sus resultados aparecerán aquí.",
+      "Ir a Ejecución",
+      "/ejecucion"
+    ) }}
+  {% else %}
   {{ tabs(
     [
       {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
       {"id": "clase", "label": "Por clase", "href": "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "errores", "label": "Perfiles de error", "href": "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "sku", "label": "Por SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "consulta", "label": "Consulta", "href": "/resultados?vista=consulta" ~ ("&" ~ tab_query if tab_query else "")}
+      {"id": "sku", "label": "SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "errores", "label": "Perfiles de error", "href": "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")}
+    ] if champion_capability.available else [
+      {"id": "sku", "label": "SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")}
     ],
     vista
   ) }}
 
+  <div class="pred-sheet pred-sheet--tabbed">
   {% if vista == "sku" %}
-    {% include "partials/results_sku_list.html" %}
+    {% if champion_capability.available %}
+    <nav class="pred-segmented" aria-label="Lectura de la lista de SKU">
+      <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}"{% if lista == "veredictos" %} aria-current="page"{% endif %}>Veredictos de M3</a>
+      <a href="/resultados?vista=sku&amp;lista=familias{{ '&' ~ tab_query if tab_query else '' }}"{% if lista == "familias" %} aria-current="page"{% endif %}>Familias de M2</a>
+    </nav>
+    {% endif %}
+    {% if lista == "familias" %}{% include "partials/results_sku_list.html" %}
+    {% else %}{% include "partials/results_consulta.html" %}{% endif %}
   {% elif champion_capability.available %}
     {% if vista == "resumen" %}{% include "partials/results_summary.html" %}
     {% elif vista == "errores" %}{% include "partials/results_profiles.html" %}
-    {% elif vista == "consulta" %}{% include "partials/results_consulta.html" %}
     {% else %}{% include "partials/results_classes.html" %}{% endif %}
   {% else %}
     {{ unavailable_state(
       "Todavía no hay campeón por SKU.",
-      "Esta vista todavía no dispone del resumen de cartera y de clase. Mientras tanto, «Por SKU» permite consultar la selección de cada familia.",
+      "Esta vista todavía no dispone del resumen de cartera y de clase. Mientras tanto, la pestaña SKU permite consultar la selección de cada familia.",
       champion_capability.reason_code or "not_implemented",
       champion_capability.blocked_by
     ) }}
   {% endif %}
   </div>
-  <aside class="pred-panel pred-panel--side" aria-labelledby="contexto-resultados">
-    <p class="pred-eyebrow">Contexto de la consulta</p>
-    <h2 id="contexto-resultados">Sobre estos resultados</h2>
-    {{ run_line(run, listing.run_id if listing else none) }}
-    {% include "partials/results_m3.html" %}
-    {% include "partials/results_scope.html" %}
-    <div class="pred-next-action">
-      <p>Prepare otra corrida desde Ejecución.</p>
-      {% include "partials/results_action.html" %}
-    </div>
-  </aside>
-  </div>
+  {% endif %}
 {% endblock %}
