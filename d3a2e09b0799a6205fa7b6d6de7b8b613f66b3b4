@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "summary": "The worker stops its engine on an interrupt, and one worker per database owns the queue, so --once resumes only runs whose worker is gone.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/candado.py",
+      "summary": "Owns the exclusive operating-system lock that lets one worker at a time run the queue of a database.",
+      "annotations": [
+        {
+          "newRange": [1, 73],
+          "summary": "WorkerLock takes a non-blocking flock (POSIX) or msvcrt lock (Windows) on <db>.worker.lock and keeps it until release or process exit.",
+          "rationale": "The database cannot tell a live owner from a dead one, because the engine pid is NULL after the claim and already reaped during finalize. The OS frees the lock when its holder dies, so a free lock proves no owner. os.open fds are non-inheritable, so the engine never keeps the lock. Verified: real-engine SIGKILL of the owner (p10) let --once take the lock while the orphan engine still ran. The Windows branch runs only in the windows-recovery CI job; it was not run locally.",
+          "author": "fm/pred-platform-worker-stop-resume"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/bucle.py",
+      "summary": "The worker entry points take the lock before they recover or claim, and the supervision loop stops the engine on any interrupt.",
+      "annotations": [
+        {
+          "newRange": [65, 110],
+          "summary": "run_forever waits for the lock without touching runs; drain() exits when another worker holds it, else calls recover() and runs the queue.",
+          "rationale": "Only the holder may requeue or claim, so --once next to a live owner in the claim-to-launch or finalize window leaves the run alone, and a second run_forever no longer kills a supervised engine. Verified by the new tests in tests/test_worker.py (fail on 103ee5b) and real-engine runs p7a, p7b, p2f, p2a. run_next and recover stay callable without the lock for tests; the docstrings state the caller contract.",
+          "author": "fm/pred-platform-worker-stop-resume"
+        },
+        {
+          "newRange": [113, 123],
+          "summary": "recover() stops a live engine of an interrupted run and logs 'retomada' only when requeue() returned True.",
+          "rationale": "Because the caller holds the lock, no worker owns those runs, so a live engine is an orphan. The earlier skip of live engines left an orphan run stuck. Verified by the real-engine p10 run: orphan engine stopped, intento 2, no confirmed unit restarted.",
+          "author": "fm/pred-platform-worker-stop-resume"
+        },
+        {
+          "newRange": [274, 279],
+          "summary": "The supervision loop catches BaseException, terminates and reaps the engine, and re-raises with the run left ejecutando.",
+          "rationale": "The engine runs in its own session, so a KeyboardInterrupt used to leave it running unwatched (issue 100). Verified by test_an_interrupt_stops_the_engine_and_leaves_the_run_running and the real-engine p1o run. SIGTERM and SIGHUP are issue 105 and stay out of scope.",
+          "author": "fm/pred-platform-worker-stop-resume"
+        }
+      ]
+    },
+    {
+      "path": "tests/test_worker.py",
+      "summary": "Tests drive drain() and run_forever against a live owner in each window, a gone owner, and the CLI next to a lock held by another process.",
+      "annotations": [
+        {
+          "newRange": [921, 1118],
+          "summary": "The old test that left a live engine untouched is replaced, because a live engine without a lock holder is now an orphan to resume.",
+          "rationale": "The removed test encoded the assumption S1 disproved: a live engine pid does not prove a live worker. Each new test failed on 103ee5b; see s1r2-tests-before-fix.txt in the task data directory.",
+          "author": "fm/pred-platform-worker-stop-resume"
+        }
+      ]
+    }
+  ]
+}
