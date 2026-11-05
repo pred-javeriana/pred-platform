@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "summary": "Computa y muestra la significancia del grupo final y las medianas lumpy en las poblaciones completa y común.",
+  "files": [
+    {
+      "path": "src/pred_platform/dal/grupo.py",
+      "summary": "Lee las publicaciones seleccionadas en una sola transacción de lectura.",
+      "annotations": [{
+        "newRange": [1, 192],
+        "summary": "El lector combina solo publicaciones reales compatibles y conserva sus claves de origen.",
+        "rationale": "El motor acepta hasta la versión 12, por lo que este cálculo no agrega tablas ni migraciones. La copia de dos semillas reprodujo los resultados esperados en 0,343 segundos. Las pruebas comprueban que la lectura no cambia filas ni esquema. La semilla 2 real aún no está publicada.",
+        "author": "fm/pred-platform-group-evidence"
+      }]
+    },
+    {
+      "path": "src/pred_platform/evidence/group.py",
+      "summary": "Aplica la regla del mayor p y una corrección BH por clase.",
+      "annotations": [{
+        "newRange": [1, 161],
+        "summary": "La dirección no filtra las pruebas antes de BH y solo limita la afirmación de mejora.",
+        "rationale": "Excluir direcciones positivas antes de BH cambiaría la familia de pruebas. Por eso entran todos los p válidos y la mejora exige tres direcciones negativas después del ajuste. La prueba manual cubre p máximos, clases separadas, direcciones mixtas, empates, cero y causas ausentes.",
+        "author": "fm/pred-platform-group-evidence"
+      }]
+    },
+    {
+      "path": "src/pred_platform/evidence/lumpy.py",
+      "summary": "Compara los efectos completos y comunes sin restar rangos.",
+      "annotations": [{
+        "newRange": [1, 252],
+        "summary": "La población común exige competencia y suficientes ventanas comunes de prueba en cada semilla.",
+        "rationale": "La confirmación calcula la mediana en logaritmos, por lo que una muestra par usa el centro geométrico. El cálculo conserva los límites de pérdida cero y reconcilia la población completa con la publicación. Las dos semillas reales y la muestra manual de tres semillas pasan. Los rangos son descriptivos y no reciben un umbral de estabilidad.",
+        "author": "fm/pred-platform-group-evidence"
+      }]
+    },
+    {
+      "path": "src/pred_platform/app/templates/pages/group_results.html",
+      "summary": "Muestra el grupo aparte de las vistas de una corrida y permite consultar sus fuentes.",
+      "annotations": [{
+        "newRange": [1, 100],
+        "summary": "La página requiere elecciones explícitas y no declara un grupo final cuando falta una publicación.",
+        "rationale": "Una publicación no identifica por sí sola una corrida final, por lo que la página no elige corridas de desarrollo automáticamente. La consulta por SKU muestra las tres fuentes y la descarga incluye todas las claves. La comprobación visual pasó en escritorio y a 390 píxeles, sin desbordamiento en las tablas del grupo.",
+        "author": "fm/pred-platform-group-evidence"
+      }]
+    }
+  ]
+}
