@@ -1,0 +1,43 @@
+<section class="wz-panel">
+  <h2>Llevarse los resultados</h2>
+  <p class="wz-lead">Los archivos tienen las mismas columnas y los mismos valores de siempre.</p>
+  <dl class="wz-check">
+    <div>
+      <dt>Veredictos</dt>
+      <dd>Un producto por fila: tipo, campeona, veredicto, razón de error, ventanas y significancia. Respeta los filtros de Productos.</dd>
+      <span>
+        <a class="pred-btn pred-btn--secondary" href="/resultados/exportar.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><span class="pred-icon i-download" aria-hidden="true"></span> CSV</a>
+      </span>
+    </div>
+    <div>
+      <dt>Exclusiones</dt>
+      <dd>Los {{ format_count(n_exclusiones) }} productos que no compitieron y su causa.</dd>
+      <span>
+        <a class="pred-btn pred-btn--secondary" href="/resultados/exclusiones.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><span class="pred-icon i-download" aria-hidden="true"></span> CSV</a>
+      </span>
+    </div>
+    <div>
+      <dt>Configuración</dt>
+      <dd>Los ajustes, la ingesta y las versiones de esta corrida, para repetirla.</dd>
+      <span>
+        <a class="pred-btn pred-btn--secondary" href="/ejecucion/configuracion.json?ejecucion={{ reference }}"><span class="pred-icon i-download" aria-hidden="true"></span> JSON</a>
+      </span>
+    </div>
+  </dl>
+</section>
+
+<section class="wz-panel wz-action">
+  <div>
+    <h2 class="wz-h2">Repetir con otra semilla</h2>
+    <p class="wz-lead">Empieza una corrida nueva en el paso 2 con estos ajustes y estos datos. Solo cambie la semilla: esta corrida usó la <b>{{ run_seed }}</b>.</p>
+  </div>
+  <div class="wz-action__do">
+    <a class="pred-btn pred-btn--primary wz-btn-lg" href="/corridas/nueva/ajustes?copiar_de={{ reference }}">Nueva corrida con estos ajustes <span class="pred-icon i-arrow-right" aria-hidden="true"></span></a>
+  </div>
+</section>
+
+<nav class="pred-footnav" aria-label="Navegación entre pasos">
+  <div class="pred-footnav__side">
+    <a class="pred-btn pred-btn--subtle wz-btn-lg" href="/corridas/{{ reference }}/resultados?vista=sku">Atrás: Productos</a>
+  </div>
+</nav>

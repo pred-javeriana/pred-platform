@@ -11,15 +11,25 @@ campeón y el veredicto de cada SKU son los que publicó M3 en una corrida exact
 
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import replace
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pred_platform.app.borrador import read_draft
-from pred_platform.app.charts import champion_forecast_svg, champion_share_svg
+from pred_platform.app.charts import (
+    FAMILY_COLORS,
+    champion_forecast_svg,
+    champion_share_svg,
+    product_forecast_key_svg,
+    product_models_key_svg,
+    product_models_legend_svg,
+    product_models_svg,
+)
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
 from pred_platform.app.corridas import draft_facts, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
@@ -32,7 +42,15 @@ from pred_platform.app.pasos import (
     run_wizard,
     step_href,
 )
-from pred_platform.app.presentation import FAMILY_ORDER, describe_run, family_label
+from pred_platform.app.presentation import (
+    FAMILY_ORDER,
+    describe_run,
+    describe_status,
+    family_label,
+    format_decimal,
+    sku_class_term,
+    verdict_label,
+)
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
@@ -54,7 +72,13 @@ from pred_platform.app.resultados_m3 import (
     run_outcome,
     summary,
 )
-from pred_platform.app.resultados_pronostico import champion_forecast
+from pred_platform.app.resultados_pronostico import (
+    best_other_model,
+    champion_forecast,
+    compute_demand_blocks,
+    product_outcome_sentence,
+    read_sku_r_interval,
+)
 from pred_platform.app.routers.corridas import (
     Locked,
     redirect_with_query,
@@ -70,6 +94,7 @@ from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing, DataLayerError, InvalidQuery
 from pred_platform.contract.models import RunStatus, SkuSelection, SkuSelectionList
 from pred_platform.data.deps import get_repository
+from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import LATEST
 from pred_platform.data.repository import DataRepository
 
@@ -79,7 +104,7 @@ _EXECUTION_CHOICES = 20
 
 # Las pestañas, en orden de lectura: primero la vista general (Shneiderman: «overview first»),
 # después el detalle. «consulta» es el nombre anterior de la lista de veredictos.
-VIEWS = ("resumen", "clase", "errores", "sku")
+VIEWS = ("resumen", "clase", "errores", "sku", "exportar")
 # Las dos lecturas de la pestaña SKU: lo que M3 decidió por SKU y lo que M2 dejó por familia.
 LISTS = ("veredictos", "familias")
 
@@ -109,7 +134,7 @@ def _vista(params: dict[str, str], evidence: bool) -> str:
     """La pestaña pedida; sin pedirla, el resumen si hay evidencia M3 publicada y, si no, la
     lista de SKU, que ya muestra lo que dejó M2."""
     wanted = params.get("vista") or ""
-    if wanted == "consulta":
+    if wanted in ("consulta", "productos"):
         return "sku"
     if wanted in VIEWS:
         return wanted
@@ -181,7 +206,36 @@ def paso_resultados(
     # Mientras la evaluación final no publica, el paso muestra lo que ya hay (la selección de cada
     # familia) y lo dice; no se bloquea.
     wizard = run_wizard("resultados", facts)
-    return _resultados_page(request, repository, facts.id, wizard, executions)
+    return _resultados_page(request, repository, facts.id, wizard, executions, seed=facts.seed)
+
+
+@router.get("/corridas/{corrida}/resultados/exportar", response_class=HTMLResponse)
+def paso_resultados_exportar(
+    request: Request,
+    corrida: str,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> HTMLResponse:
+    if corrida == NEW:
+        draft = draft_facts(repository, read_draft(request))
+        resume = draft_resume(draft)
+        return render_locked(
+            request,
+            Locked(
+                title="Resultados",
+                heading="Los resultados todavía no existen",
+                text="Se abren cuando la etapa 4, Evaluación final, publique.",
+                actions=((resume.label, resume.href, True),),
+            ),
+            draft_wizard("resultados", draft),
+        )
+    executions = published_executions(repository, limit=None)
+    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    if facts is None:
+        return render_missing_run(request, corrida)
+    wizard = run_wizard("resultados", facts)
+    return _resultados_page(
+        request, repository, facts.id, wizard, executions, forced_vista="exportar", seed=facts.seed
+    )
 
 
 def _resultados_page(
@@ -190,6 +244,9 @@ def _resultados_page(
     reference: str,
     wizard: Wizard,
     published: list[ExecutionChoice],
+    *,
+    forced_vista: str | None = None,
+    seed: int | None = None,
 ) -> HTMLResponse:
     """La página del paso para la corrida ``reference``; ``published`` son las corridas con
     evidencia M3 publicada, de la más nueva a la más vieja."""
@@ -200,7 +257,7 @@ def _resultados_page(
     # size inválido nunca hace perder qué ejecución se estaba mirando.
     executions = published[:_EXECUTION_CHOICES]
     evidence = champion and any(e.ejecucion_id == reference for e in executions)
-    vista = _vista(params, evidence)
+    vista = forced_vista or _vista(params, evidence)
     lista = _lista(params, champion, evidence) if vista == "sku" else None
     context = {**probe, "vista": vista, "lista": lista, "wizard": wizard}
     wanted_m3 = (params.get("m3") or "").strip() or None
@@ -244,6 +301,8 @@ def _resultados_page(
         _fill_list(repository, query, context)
     elif vista == "sku":
         _fill_consulta(repository, params, context)
+    elif vista == "exportar":
+        _fill_exportar(repository, run.ejecucion.id, query, context, seed=seed)
     elif champion:
         _fill_m3_view(repository, run.ejecucion.id, vista, params, context)
     resolved = context["m3"].run
@@ -330,6 +389,38 @@ def _fill_m3_view(
         }
 
 
+def _fill_exportar(
+    repository: DataRepository,
+    ejecucion_id: str,
+    query: SelectionQuery,
+    context: dict[str, Any],
+    *,
+    seed: int | None = None,
+) -> None:
+    """Exportar y reproducir: resuelve la corrida M3, exclusiones y semilla."""
+    context["m3_summary"] = found_summary = summary(repository, ejecucion_id, query.m3)
+    resolved = found_summary.run
+    if resolved is not None:
+        others = other_publications(repository, resolved)
+        context["m3"] = M3Decision(run=resolved, others=others)
+        context["m3_hrefs"] = {
+            other.run_id: "/corridas/"
+            + str(context["reference"])
+            + "/resultados?"
+            + urlencode({"vista": "exportar", "m3": other.run_id})
+            for other in others
+        }
+    funnel = found_summary.funnel
+    if funnel is not None and funnel.total_productos and funnel.tras_exclusiones:
+        n_excl = funnel.total_productos - funnel.tras_exclusiones
+    elif funnel is not None:
+        n_excl = funnel.excluded_count + (funnel.eligibility_excluded_count or 0)
+    else:
+        n_excl = 0
+    context["n_exclusiones"] = n_excl
+    context["run_seed"] = seed if seed is not None else 0
+
+
 def _fill_consulta(
     repository: DataRepository, params: dict[str, str], context: dict[str, Any]
 ) -> None:
@@ -386,23 +477,112 @@ def _fill_list(repository: DataRepository, query: SelectionQuery, context: dict[
     ]
 
 
-@router.get("/resultados/sku/{sku_id}", response_class=HTMLResponse)
+def _fmt_ci(lo: float | None, hi: float | None, cola: float | None = None) -> str:
+    if lo is None:
+        return "sin intervalo"
+    if hi is None or math.isinf(hi):
+        return f"desde {format_decimal(lo, 3)}, sin cota superior"
+    res = f"{format_decimal(lo, 3)} a {format_decimal(hi, 3)}"
+    if cola is not None:
+        res += f", o desde {format_decimal(cola, 3)}"
+    return res
+
+
+@router.get("/corridas/{corrida}/resultados/producto/{sku_id:path}", response_class=HTMLResponse)
+@router.get("/corridas/{corrida}/resultados/sku/{sku_id:path}", response_class=HTMLResponse)
+def producto_detalle(
+    request: Request,
+    corrida: str,
+    sku_id: str,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> HTMLResponse:
+    return _producto_detalle_page(request, repository, corrida, sku_id)
+
+
+def _resolve_sku_run(repository: DataRepository, sku_id: str) -> str | None:
+    published = published_executions(repository)
+    candidates = [e.ejecucion_id for e in published]
+    try:
+        for r in repository.list_runs():
+            if r.id not in candidates:
+                candidates.append(r.id)
+    except Exception:
+        pass
+    scenario = getattr(repository, "scenario", None)
+    if scenario and hasattr(scenario, "sku_selections"):
+        from pred_platform.contract.resources import read_example
+
+        for ex in scenario.sku_selections:
+            try:
+                data = json.loads(read_example(ex))
+                if data.get("sku_id") == sku_id:
+                    rid = str(data.get("run_id") or "")
+                    if rid and rid in candidates:
+                        return rid
+            except Exception:
+                continue
+    if candidates:
+        return candidates[0]
+    return _latest_run(repository)
+
+
+@router.get("/resultados/sku/{sku_id:path}")
 def sku_detalle(
     request: Request,
     sku_id: str,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> RedirectResponse:
+    params = request.query_params
+    wanted = (params.get("ejecucion") or "").strip()
+    target: str | None = wanted if wanted not in ("", LATEST) else None
+    if target is None:
+        target = _resolve_sku_run(repository, sku_id)
+    if target is None:
+        target = "1"
+    quoted_target = quote(target, safe="")
+    quoted_sku = quote(sku_id, safe="")
+    return redirect_with_query(
+        f"/corridas/{quoted_target}/resultados/producto/{quoted_sku}",
+        params.multi_items(),
+        drop=("ejecucion",),
+    )
+
+
+def _producto_detalle_page(
+    request: Request,
+    repository: DataRepository,
+    corrida: str,
+    sku_id: str,
 ) -> HTMLResponse:
+    if corrida == NEW:
+        draft = draft_facts(repository, read_draft(request))
+        resume = draft_resume(draft)
+        return render_locked(
+            request,
+            Locked(
+                title="Resultados",
+                heading="Los resultados todavía no existen",
+                text="Se abren cuando la etapa 4, Evaluación final, publique.",
+                actions=((resume.label, resume.href, True),),
+            ),
+            draft_wizard("resultados", draft),
+        )
+    executions = published_executions(repository, limit=None)
+    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    if facts is None:
+        return render_missing_run(request, corrida)
+    wizard = run_wizard("resultados", facts)
+
     params = dict(request.query_params)
-    reference = (params.get("ejecucion") or "").strip() or LATEST
     wanted_m3 = (params.get("m3") or "").strip() or None
-    with_windows = params.get("ventanas") == "1"
     back = params.get("volver", "")
+    with_windows = params.get("ventanas") == "1"
     context = _base_context(repository, "sku")
     status = 200
     selection: SkuSelection | None = None
     detail_error: dict[str, Any] | None = None
     try:
-        selection = repository.get_sku_selection(reference, sku_id, include_windows=with_windows)
+        selection = repository.get_sku_selection(corrida, sku_id, include_windows=with_windows)
     except ArtifactMissing as exc:
         detail_error, status = error_view(exc), 404
     except InvalidQuery as exc:
@@ -415,70 +595,182 @@ def sku_detalle(
         status = 400
     except DataLayerError as exc:
         detail_error = error_view(exc)
+
     m3 = (
-        decision(repository, selection.run_id, [sku_id], wanted_m3)
+        decision(repository, selection.run_id if selection else corrida, [sku_id], wanted_m3)
         if selection is not None
         else M3Decision()
     )
-    interval = None
+    interval_obj: M3Interval | None = None
     interval_error = False
     if m3.run is not None and sku_id in m3.verdicts:
         try:
             intervals = repository.get_m3_intervals(m3.run.run_id, [sku_id])
-            interval = next((row for row in intervals if row.sku == sku_id), None)
+            interval_obj = next((row for row in intervals if row.sku == sku_id), None)
         except DataLayerError:
             interval_error = True
-    # Los enlaces de esta página conservan la corrida M3 resuelta.
-    forecast = champion_forecast(repository, m3, sku_id)
+
     resolved_m3 = m3.run.run_id if m3.run is not None else wanted_m3
+    verdict = m3.verdicts.get(sku_id)
+    fetch_alt = bool(
+        verdict
+        and (
+            verdict.pierde_frente_a_linea_base
+            or (verdict.razon_sn is not None and verdict.razon_sn > 1.0)
+        )
+    )
+    forecast = champion_forecast(repository, m3, sku_id, include_alt=fetch_alt)
+
+    best_other = best_other_model(verdict) if verdict else None
+    outcome_sentence = product_outcome_sentence(verdict) if verdict else ""
+    demand_blocks = compute_demand_blocks(forecast) if (forecast and not forecast.problem) else None
+
+    interval_tuple: tuple[float, float | None, float | None] | None = None
+    if interval_obj:
+        interval_tuple = (interval_obj.inferior, interval_obj.superior, interval_obj.inferior_cola)
+    elif not interval_error and verdict and verdict.run_id:
+        db_path = getattr(request.app.state.settings, "db_path", None)
+        if db_path:
+            raw_interval = read_sku_r_interval(db_path, verdict.run_id, sku_id)
+            if raw_interval:
+                interval_tuple = raw_interval
+                interval_obj = M3Interval(
+                    sku=sku_id,
+                    inferior=raw_interval[0],
+                    superior=raw_interval[1],
+                    inferior_cola=raw_interval[2],
+                )
+
+    interval_text = (
+        _fmt_ci(interval_tuple[0], interval_tuple[1], interval_tuple[2])
+        if interval_tuple
+        else "sin intervalo"
+    )
+
+    sig_title = "Sin prueba"
+    p_adj_text = "—"
+    if verdict and verdict.dm_estadistico is not None and verdict.dm_p_ajustado is not None:
+        p_val = verdict.dm_p_ajustado
+        p_adj_text = "< 0,001" if p_val < 0.001 else format_decimal(p_val, 3)
+        if verdict.dm_significativa:
+            if verdict.razon_sn is not None and verdict.razon_sn < 1.0:
+                sig_title = "Significativa, a favor"
+            else:
+                sig_title = "Significativa, en contra"
+        else:
+            sig_title = "No significativa"
+    elif verdict and verdict.dm_p_ajustado is not None:
+        p_val = verdict.dm_p_ajustado
+        p_adj_text = "< 0,001" if p_val < 0.001 else format_decimal(p_val, 3)
+
+    verdict_desc = describe_status("verdict", verdict.veredicto) if verdict else None
+    verdict_hint = verdict_desc.hint if verdict_desc else ""
+
+    forecast_key = (
+        product_forecast_key_svg(
+            verdict.familia_campeona,
+            best_other.familia if best_other else None,
+        )
+        if verdict
+        else ""
+    )
+    forecast_svg = champion_forecast_svg(forecast) if (forecast and not forecast.problem) else ""
+
+    models_svg = (
+        product_models_svg(verdict, verdict.candidato_campeon, interval_tuple)
+        if verdict
+        else ""
+    )
+    models_legend = product_models_legend_svg() if verdict else ""
+    models_key = product_models_key_svg() if verdict else ""
+
+    sku_class = selection.sku_class if selection else (verdict.sku_class if verdict else "")
+    c_term = sku_class_term(sku_class)
+
+    run = _run_header(repository, corrida)
     scope = {
         k: v
         for k, v in (
-            ("ejecucion", reference if reference != LATEST else ""),
+            ("ejecucion", "" if corrida == LATEST else corrida),
             ("m3", resolved_m3 or ""),
         )
         if v
     }
+    results_href = "/resultados" + (f"?{urlencode(scope)}" if scope else "")
+    list_href = "/resultados?" + (back or urlencode({"vista": "sku", **scope}))
     base = {**scope, **({"volver": back} if back else {})}
-    context.update(
-        sku_id=sku_id,
-        selection=selection,
-        detail_error=detail_error,
-        not_found=status == 404,
-        with_windows=with_windows,
-        # La ruta de migas: Resultados (el resumen de la misma corrida) y la lista de la que se
-        # llegó, con sus filtros; sin «volver», la lista de veredictos de la misma corrida.
-        results_href="/resultados" + (f"?{urlencode(scope)}" if scope else ""),
-        list_href="/resultados?" + (back or urlencode({"vista": "sku", **scope})),
-        executions=[],
-        lista=None,
-        windows_href=f"/resultados/sku/{sku_id}?{urlencode({**base, 'ventanas': 1})}",
-        reserve_href=f"/resultados/sku/{sku_id}?{urlencode({**base, 'reserva': 1})}",
-        hide_windows_href=f"/resultados/sku/{sku_id}" + (f"?{urlencode(base)}" if base else ""),
-        family_order=FAMILY_ORDER,
-        run=None,
-        m3=m3,
-        m3_hrefs={
-            other.run_id: f"/resultados/sku/{sku_id}?{urlencode({**base, 'm3': other.run_id})}"
-            for other in m3.others
-        },
-        verdict=m3.verdicts.get(sku_id),
-        interval=interval,
-        interval_error=interval_error,
-        reserve=None,
-        forecast=forecast,
-        forecast_svg=champion_forecast_svg(forecast),
-    )
+
+    reserve = None
     if params.get("reserva") == "1" and m3.run is not None and sku_id in m3.verdicts:
-        context["reserve"] = reserve_windows(repository, m3.run.run_id, m3.verdicts[sku_id])
-    if selection is not None:
-        context["run"] = run = _run_header(repository, selection.run_id or reference)
-        if run is not None:
-            _describe_run(repository, run, m3.run, context)
-        context["entries"] = sorted(
+        reserve = reserve_windows(repository, m3.run.run_id, m3.verdicts[sku_id])
+
+    entries = (
+        sorted(
             selection.families,
             key=lambda f: FAMILY_ORDER.index(f.family) if f.family in FAMILY_ORDER else 99,
         )
+        if selection is not None
+        else []
+    )
+
+    context.update(
+        wizard=wizard,
+        reference=corrida,
+        sku_id=sku_id,
+        selection=selection,
+        entries=entries,
+        with_windows=with_windows,
+        reserve=reserve,
+        windows_href=(
+            f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
+            f"?{urlencode({**base, 'ventanas': 1})}"
+        ),
+        reserve_href=(
+            f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
+            f"?{urlencode({**base, 'reserva': 1})}"
+        ),
+        hide_windows_href=f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
+        + (f"?{urlencode(base)}" if base else ""),
+        topology=selection.topology if selection else None,
+        detail_error=detail_error,
+        not_found=status == 404,
+        results_href=results_href,
+        list_href=list_href,
+        run=run,
+        m3=m3,
+        verdict=verdict,
+        class_label=c_term.label,
+        class_hint=c_term.hint,
+        outcome_sentence=outcome_sentence,
+        interval_text=interval_text,
+        sig_title=sig_title,
+        p_adj_text=p_adj_text,
+        verdict_label=verdict_label,
+        verdict_hint=verdict_hint,
+        best_other=best_other,
+        alt_color=FAMILY_COLORS.get(best_other.familia, "#333") if best_other else "",
+        alt_family_label=family_label(best_other.familia) if best_other else "",
+        champion_family_label=family_label(verdict.familia_campeona) if verdict else "",
+        forecast=forecast,
+        forecast_chart_key=forecast_key,
+        forecast_svg=forecast_svg,
+        demand_blocks=demand_blocks,
+        models_svg=models_svg,
+        models_legend=models_legend,
+        models_chart_key=models_key,
+        interval=interval_obj,
+        interval_error=interval_error,
+        m3_hrefs={
+            other.run_id: (
+                f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
+                f"?{urlencode({**base, 'm3': other.run_id})}"
+            )
+            for other in m3.others
+        },
+    )
+    if run is not None:
+        _describe_run(repository, run, m3.run, context)
+
     return request.app.state.templates.TemplateResponse(
-        request, "pages/results_sku.html", context, status_code=status
+        request, "pages/results_producto.html", context, status_code=status
     )

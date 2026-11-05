@@ -532,6 +532,37 @@ def paso_ajustes(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
     if corrida == NEW:
+        copiar_de = (request.query_params.get("copiar_de") or "").strip()
+        if copiar_de:
+            settings = request.app.state.settings
+            if settings.data_source != "fixture":
+                detail = lectura.get_run(settings.db_path, copiar_de)
+                if detail is not None:
+                    versions = {
+                        "plataforma": package_version("pred-platform"),
+                        "contrato_v1": CONTRACT_VERSION,
+                        "contrato_v2": M3_CONTRACT_VERSION,
+                        "formato_parametros": PARAMETERS_SCHEMA_VERSION,
+                    }
+                    try:
+                        document = export_config(detail, versions)
+                        imported = parse_config(json.dumps(document).encode("utf-8"))
+                        if imported.values is not None:
+                            form = FormResult(imported.values, None, {})
+                            form.values["ingest_id"] = imported.ingest_sha256 or ""
+                            notice = (
+                                "info",
+                                f"Ajustes copiados de la corrida #{copiar_de}. "
+                                "Cambie la semilla y continúe.",
+                            )
+                            save = read_draft(request).with_values(
+                                form.values["ingest_id"] or None, form.values
+                            )
+                            return _render_ajustes(
+                                request, repository, form=form, imported=notice, save=save
+                            )
+                    except Exception:
+                        pass
         # ``?ingest_id=`` llega de un enlace que ya eligió el archivo (Resultados, rutas viejas):
         # si se puede ejecutar, el borrador lo guarda, para que Datos, la barra de pasos y Revisar
         # lean el mismo archivo que muestra la página.

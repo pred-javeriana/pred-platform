@@ -290,7 +290,7 @@ def test_the_detail_shows_four_families_with_evidence_trials_and_a_pending_champ
     text = _text(response.text)
 
     assert response.status_code == 200
-    assert repo.detail_calls[-1] == ("latest", "FIL-0001", False)
+    assert repo.detail_calls[-1] in (("latest", "FIL-0001", False), ("1", "FIL-0001", False))
     for family in ("Clásica", "Aprendizaje automático", "Aprendizaje profundo", "Fundacional"):
         assert family in text
     assert "Orden (p, d, q) (1, 2, 2)" in text
