@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "summary": "Corrige la presentación y validación del intervalo de r publicado en la página de SKU (#155-#159).",
+  "files": [
+    {
+      "path": "src/pred_platform/app/resultados_m3.py",
+      "summary": "Calcula decimales necesarios para separar tramos contiguos en intervalos de r.",
+      "annotations": [
+        {
+          "newRange": [894, 907],
+          "summary": "gap_digits incrementa los decimales mostrados hasta distinguir cotas superiores de colas inferiores cercanas.",
+          "rationale": "Porque separaciones menores que 0,001 se visualizaban como cotas idénticas cerrando falsamente el intervalo. Se verificó con la prueba parametrizada (0, 1.23441, 1.23449).",
+          "author": "fm/pred-platform-pr152-followups"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/pages/results_sku.html",
+      "summary": "Aplica formato con gap_digits y aísla el tooltip del valor exacto de r.",
+      "annotations": [
+        {
+          "newRange": [8, 9],
+          "summary": "r_interval formatea tramos con la cantidad de decimales devuelta por gap_digits.",
+          "rationale": "Porque el macro debe reflejar la separación real entre los tramos del intervalo en la interfaz visual.",
+          "author": "fm/pred-platform-pr152-followups"
+        },
+        {
+          "newRange": [66, 67],
+          "summary": "Mueve el atributo title con r exacto a un span sobre la cifra numérica.",
+          "rationale": "Porque el dd padre aplicaba el tooltip de r a todo el texto del intervalo al pasar el puntero.",
+          "author": "fm/pred-platform-pr152-followups"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/dal_m3.py",
+      "summary": "Maneja errores de esquema SQLite en la lectura de intervalos.",
+      "annotations": [
+        {
+          "newRange": [98, 105],
+          "summary": "get_m3_intervals captura sqlite3.DatabaseError y relanza ContractInvalid.",
+          "rationale": "Porque una consulta fallida por esquema corrupto o columnas faltantes provocaba un error HTTP 500 no capturado en vez de informar la falta de intervalo.",
+          "author": "fm/pred-platform-pr152-followups"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/m3_intervals.py",
+      "summary": "Invalida límites infinitos o no numéricos en cotas de intervalo.",
+      "annotations": [
+        {
+          "newRange": [17, 17],
+          "summary": "M3Interval desactiva allow_inf_nan en su configuración Pydantic.",
+          "rationale": "Porque valores como 9e999 o NaN no deben admitirse como cotas cerradas sino tratarse como datos no válidos.",
+          "author": "fm/pred-platform-pr152-followups"
+        }
+      ]
+    },
+    {
+      "path": "tests/test_resultados.py",
+      "summary": "Pruebas de regresión para las cinco correcciones de intervalos de r.",
+      "annotations": [
+        {
+          "newRange": [569, 647],
+          "summary": "Pruebas para error SQLite, cotas no finitas, filtro estricto por corrida y tabla ausente.",
+          "rationale": "Porque aseguran que el filtro por corrida no sea eludido, que fallos de DAL respondan 200 con el mensaje previsto y que cotas infinitas queden descartadas.",
+          "author": "fm/pred-platform-pr152-followups"
+        }
+      ]
+    }
+  ]
+}
