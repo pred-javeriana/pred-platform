@@ -95,6 +95,64 @@ def _conforms(document: Any, kind: str) -> None:
     assert [e.message for e in validator.iter_errors(data)] == []
 
 
+# ----------------------------------------------------------------------- intervals
+def test_intervals_keep_published_bounds_and_filter_exact_skus(root: Path) -> None:
+    _publish(root)
+    for sku, lower, upper, tail in (
+        ("SKU-A", 0.0, 0.93, None),
+        ("SKU-B", 0.7, None, None),
+        ("SKU-C", 0.2, 0.8, 1.4),
+    ):
+        _sql(
+            root,
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior, inferior_cola) "
+            "VALUES (?, ?, 0.95, ?, ?, ?)",
+            RUN,
+            sku,
+            lower,
+            upper,
+            tail,
+        )
+    rows = _repo(root).get_m3_intervals(RUN, ["SKU-C", "SKU-A", "SKU-B", "SKU-A", "missing"])
+    assert [row.model_dump() for row in rows] == [
+        {"sku": "SKU-A", "inferior": 0.0, "superior": 0.93, "inferior_cola": None},
+        {"sku": "SKU-B", "inferior": 0.7, "superior": None, "inferior_cola": None},
+        {"sku": "SKU-C", "inferior": 0.2, "superior": 0.8, "inferior_cola": 1.4},
+    ]
+    assert _repo(root).get_m3_intervals(RUN, ["SKU-B"])[0].superior is None
+    assert _repo(root).get_m3_intervals(RUN, []) == []
+    assert _repo(root).get_m3_intervals(RUN, ["SKU-D", "' OR 1=1 --"]) == []
+    assert _repo(root).get_m3_intervals("unknown", ["SKU-A"]) == []
+    _sql(root, "UPDATE m3_corridas SET estado = 'EN_CURSO' WHERE run_id = ?", RUN)
+    assert _repo(root).get_m3_intervals(RUN, ["SKU-A"]) == []
+
+
+def test_intervals_absent_in_old_publications_are_not_invented(root: Path) -> None:
+    _publish(root)
+    assert _repo(root).get_m3_intervals(RUN, ["SKU-A"]) == []
+    _sql(root, "DROP TABLE m3_intervalos_r")
+    assert _repo(root).get_m3_intervals(RUN, ["SKU-A"]) == []
+
+
+@pytest.mark.parametrize(
+    "bounds", [(-0.1, 0.8, None), (0.9, 0.8, None), (0.2, None, 1.4), (0.2, 0.8, 0.7)]
+)
+def test_invalid_interval_rows_fail_at_the_repository_boundary(
+    root: Path, bounds: tuple[float, float | None, float | None]
+) -> None:
+    _publish(root)
+    with closing(sqlite3.connect(_db(root))) as conn:
+        conn.execute("PRAGMA ignore_check_constraints = ON")
+        conn.execute(
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior, inferior_cola) "
+            "VALUES (?, 'SKU-A', 0.95, ?, ?, ?)",
+            (RUN, *bounds),
+        )
+        conn.commit()
+    with pytest.raises(ContractInvalid, match="M3Interval"):
+        _repo(root).get_m3_intervals(RUN, ["SKU-A"])
+
+
 # ----------------------------------------------------------------------- evidence
 def test_published_evidence_keeps_the_five_verdicts_their_numbers_and_identity(
     root: Path,

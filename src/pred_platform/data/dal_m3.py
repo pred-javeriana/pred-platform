@@ -27,6 +27,7 @@ from pred_platform.dal import evidencia
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
 from pred_platform.data.m3_confirmation import M3Confirmation
+from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.m3_query import VERDICTS, M3Query
 from pred_platform.data.query import DEFAULT_SIZE
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
@@ -90,6 +91,12 @@ class M3DalSource:
                 f"M3ReserveBlocks: los bloques del protocolo de {run_id} no son válidos: {exc}",
                 field="bloques",
             ) from exc
+
+    def get_m3_intervals(self, run_id: str, skus: Sequence[str]) -> list[M3Interval]:
+        """Published unadjusted r bounds for the requested products; absent rows stay absent."""
+        return [
+            _validated(M3Interval, row) for row in evidencia.intervals(self.db_path, run_id, skus)
+        ]
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """La confirmación del campeón y la significancia por clase de la corrida, o ``None``."""
