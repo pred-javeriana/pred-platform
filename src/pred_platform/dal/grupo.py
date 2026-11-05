@@ -7,7 +7,6 @@ import math
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,8 @@ from pred_platform.evidence.lumpy import LumpyEvidence, calculate_lumpy
 from pred_platform.evidence.models import (
     EvidenceInvalid,
     Exclusion,
+    GroupEvidence,
+    GroupRunOption,
     GroupSignificance,
     RunEvidence,
     Verdict,
@@ -34,12 +35,6 @@ def read_significance(
         raise EvidenceInvalid("Seleccione una corrida distinta por semilla.")
     with _snapshot(db_path) as conn:
         return calculate_significance(tuple(_run(conn, r) for r in run_ids), preview=preview)
-
-
-@dataclass(frozen=True)
-class GroupEvidence:
-    significance: GroupSignificance
-    lumpy: LumpyEvidence
 
 
 def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) -> GroupEvidence:
@@ -61,10 +56,42 @@ def _snapshot(db_path: Path) -> Iterator[sqlite3.Connection]:
         conn.execute("BEGIN")
         try:
             yield conn
-        except (sqlite3.Error, ValidationError, KeyError, TypeError, ValueError) as exc:
+        except (
+            sqlite3.Error,
+            ValidationError,
+            KeyError,
+            TypeError,
+            ValueError,
+            ArithmeticError,
+        ) as exc:
             if isinstance(exc, EvidenceInvalid):
                 raise
             raise EvidenceInvalid(f"La evidencia del grupo no es válida: {exc}") from exc
+
+
+def list_group_runs(db_path: Path) -> tuple[GroupRunOption, ...]:
+    """Published real-data choices only; incomplete or legacy protocols are not seed evidence."""
+    if not db_path.is_file():
+        return ()
+    with _snapshot(db_path) as conn:
+        rows = conn.execute(
+            "SELECT c.run_id,c.run_id_m2,c.ingesta_sha256,p.protocolo "
+            "FROM m3_corridas c JOIN m3_protocolos p ON p.run_id=c.run_id "
+            "WHERE c.estado='PUBLICADA' AND c.datos_sinteticos=0 AND c.origen_declarado=1 "
+            "ORDER BY c.creado_en DESC,c.run_id"
+        )
+        options = []
+        for row in rows:
+            protocol = _object(row["protocolo"])
+            config = protocol.get("configuracion_m2", {})
+            if not isinstance(config, dict):
+                raise EvidenceInvalid("La configuración M2 publicada no es un objeto.")
+            seed = config.get("seed")
+            if type(seed) is int and seed in (0, 1, 2) and "bloques" in protocol:
+                options.append(
+                    GroupRunOption(row["run_id"], seed, row["ingesta_sha256"], row["run_id_m2"])
+                )
+        return tuple(options)
 
 
 def _object(text: str) -> dict[str, Any]:

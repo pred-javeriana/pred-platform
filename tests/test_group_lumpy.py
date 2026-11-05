@@ -13,6 +13,8 @@ import pytest
 
 from pred_platform.dal.grupo import read_group
 from pred_platform.dal.schema import create_db
+from pred_platform.evidence.__main__ import main
+from pred_platform.evidence.export import document
 from pred_platform.evidence.models import EvidenceInvalid
 from tests.m3_publicada import publish
 from tests.test_group_evidence import RUNS, SHA, sql
@@ -204,3 +206,61 @@ def test_selection_not_test_data_chooses_the_family_representative(lumpy_db: Pat
     assert {p.champion_id for p in read_group(lumpy_db, RUNS).lumpy.products if p.sku == "X"} == {
         "X/foundation/chronos2"
     }
+
+
+def test_zero_loss_is_not_dropped_or_replaced_with_an_epsilon(lumpy_db: Path) -> None:
+    sql(
+        lumpy_db,
+        "UPDATE m3_metricas SET valor=0 WHERE sku IN ('X','Y') "
+        "AND candidato_id LIKE '%/foundation/%' AND ventana>='2026-04-14' "
+        "AND ventana<='2026-05-25'",
+    )
+    sql(lumpy_db, "UPDATE m3_confirmaciones SET efecto_mediana_r=0")
+    sql(lumpy_db, "UPDATE m3_comparaciones SET mediana_razon=0")
+    result = read_group(lumpy_db, RUNS)
+    assert {e.common_median for e in result.lumpy.effects} == {0.0}
+    assert all(r.common_range == 0 for r in result.lumpy.ranges)
+    data = document(result)
+    x = next(p for p in data["lumpy"]["products"] if p["sku"] == "X")
+    assert x["log_ratio"] == "-infinito"
+    json.dumps(data, allow_nan=False)
+
+
+def test_opposite_zero_loss_limits_keep_the_undefined_common_median(lumpy_db: Path) -> None:
+    sql(
+        lumpy_db,
+        "UPDATE m3_metricas SET valor=0 WHERE sku='X' "
+        "AND candidato_id LIKE '%/foundation/%' AND ventana>='2026-04-14' "
+        "AND ventana<='2026-05-25'",
+    )
+    sql(
+        lumpy_db,
+        "UPDATE m3_metricas SET valor=0 WHERE sku='Y' "
+        "AND (candidato_id LIKE '%/seasonal_naive/%' OR candidato_id LIKE '%/classical/%') "
+        "AND ventana>='2026-04-14' AND ventana<='2026-05-25'",
+    )
+    # Full sample: [0, 0.1, inf] vs SN, [0, 0.2, inf] vs SARIMA.
+    # The seed-1 full sample and every fixed common sample have just [0, inf].
+    sql(
+        lumpy_db,
+        "UPDATE m3_confirmaciones SET efecto_mediana_r="
+        "CASE WHEN run_id='seed-1' THEN NULL ELSE .1 END",
+    )
+    sql(
+        lumpy_db,
+        "UPDATE m3_comparaciones SET mediana_razon=CASE WHEN run_id='seed-1' THEN NULL ELSE .2 END",
+    )
+    result = read_group(lumpy_db, RUNS).lumpy
+    assert all(e.common_median is None for e in result.effects)
+    assert {e.common_cause for e in result.effects} == {"perdida_cero:mediana"}
+    assert all(r.common_range is None and r.cause == "rango_no_definido" for r in result.ranges)
+
+
+def test_cli_reads_the_group_and_labels_a_preview_without_writing(lumpy_db: Path, capsys) -> None:
+    args = ["--db", str(lumpy_db), "--run", "seed-0", "--run", "seed-1"]
+    assert main([*args, "--preview"]) == 0
+    assert json.loads(capsys.readouterr().out)["significance"]["complete"] is False
+    assert main(args) == 1
+    assert "Seleccione" in capsys.readouterr().err
+    assert main([*args, "--run", "seed-2"]) == 0
+    assert json.loads(capsys.readouterr().out)["significance"]["complete"] is True

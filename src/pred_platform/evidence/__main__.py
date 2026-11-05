@@ -4,30 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import sys
 from collections.abc import Sequence
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
-from pred_platform.dal.grupo import GroupEvidence, read_group
+from pred_platform.dal.grupo import read_group
+from pred_platform.evidence.export import document
 from pred_platform.evidence.models import EvidenceInvalid
-
-
-def document(result: GroupEvidence) -> dict[str, Any]:
-    """Strict JSON, retaining source row keys; infinite effect ratios are explicit strings."""
-
-    def clean(value: Any) -> Any:
-        if isinstance(value, float) and math.isinf(value):
-            return "infinito" if value > 0 else "-infinito"
-        if isinstance(value, dict):
-            return {k: clean(v) for k, v in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [clean(v) for v in value]
-        return value
-
-    return clean(asdict(result))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
 from pred_platform.contract.models_v2 import Family, SkuClass
 
+if TYPE_CHECKING:
+    from pred_platform.evidence.lumpy import LumpyEvidence
+
 
 class EvidenceInvalid(ValueError):
     """The requested publications do not form a comparable final seed group."""
+
+
+@dataclass(frozen=True)
+class GroupRunOption:
+    run_id: str
+    seed: int
+    ingesta_sha256: str
+    run_id_m2: str | None
 
 
 class Verdict(BaseModel):
@@ -110,3 +121,9 @@ class GroupSignificance:
     alpha: float
     products: tuple[GroupProduct, ...]
     classes: tuple[ClassSignificance, ...]
+
+
+@dataclass(frozen=True)
+class GroupEvidence:
+    significance: GroupSignificance
+    lumpy: LumpyEvidence

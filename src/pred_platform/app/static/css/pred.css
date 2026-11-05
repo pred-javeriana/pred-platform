@@ -2628,6 +2628,49 @@ button.pred-btn {
   }
 }
 
+@media (max-width: 600px) {
+  .pred-table--seed-group {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pred-table--seed-group thead {
+    display: none;
+  }
+
+  .pred-table--seed-group :is(tbody, tr, th, td) {
+    display: block;
+    max-width: none;
+  }
+
+  .pred-table--seed-group tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-block: var(--space-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .pred-table--seed-group tr > th,
+  .pred-table--seed-group tr > td:last-child:nth-child(even) {
+    grid-column: 1 / -1;
+  }
+
+  .pred-table--seed-group :is(th, td, .num) {
+    border: 0;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .pred-table--seed-group td::before {
+    display: block;
+    content: attr(data-label);
+    color: var(--muted-text);
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

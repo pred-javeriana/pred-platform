@@ -34,6 +34,7 @@ from pred_platform.contract.models import (
 from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.evidence.models import GroupEvidence, GroupRunOption
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +242,14 @@ class DataRepository(Protocol):
         Missing rows, unknown/unpublished runs and older databases return no intervals.
         ``superior=None`` means unbounded; ``inferior_cola`` adds a disjoint upper tail.
         """
+        ...
+
+    def list_m3_group_runs(self) -> tuple[GroupRunOption, ...]:
+        """Published seed 0/1/2 choices for the final group, never development defaults."""
+        ...
+
+    def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
+        """Compute the final three-seed evidence on read, without persisting derived rows."""
         ...
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:

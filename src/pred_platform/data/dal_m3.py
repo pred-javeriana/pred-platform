@@ -24,7 +24,7 @@ from pydantic import BaseModel, ValidationError
 from pred_platform.config import DataSource
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ContractInvalid, first_problem
-from pred_platform.dal import evidencia
+from pred_platform.dal import evidencia, grupo
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
 from pred_platform.data.m3_confirmation import M3Confirmation
@@ -32,6 +32,7 @@ from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.m3_query import VERDICTS, M3Query
 from pred_platform.data.query import DEFAULT_SIZE
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
+from pred_platform.evidence.models import GroupEvidence, GroupRunOption
 
 
 def _validated[T: BaseModel](model: type[T], data: dict[str, Any]) -> T:
@@ -103,6 +104,12 @@ class M3DalSource:
                 field="m3_intervalos_r",
             ) from exc
         return [_validated(M3Interval, row) for row in rows]
+
+    def list_m3_group_runs(self) -> tuple[GroupRunOption, ...]:
+        return grupo.list_group_runs(self.db_path)
+
+    def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
+        return grupo.read_group(self.db_path, run_ids)
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """La confirmación del campeón y la significancia por clase de la corrida, o ``None``."""
