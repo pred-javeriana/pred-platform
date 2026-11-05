@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "summary": "Clarifies that the displayed r interval is unadjusted while the significance result applies BH.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/templates/pages/results_sku.html",
+      "summary": "Names the statistical adjustment used by each displayed result.",
+      "annotations": [
+        {
+          "newRange": [82, 82],
+          "summary": "The interval explanation distinguishes raw HLN-DM from the BH-adjusted significance result above.",
+          "rationale": "An unadjusted interval can exclude 1 while the BH-adjusted result is not significant, so readers must not treat both as the same test. A page regression covers raw p below alpha and BH p above alpha. The real seed 0 SKU 1047709 page was inspected before and after. No bounds or verdicts change.",
+          "author": "fm/pred-platform-m3-intervals"
+        }
+      ]
+    },
+    {
+      "path": "tests/test_resultados.py",
+      "summary": "Protects the distinction when raw and BH-adjusted conclusions differ.",
+      "annotations": [
+        {
+          "newRange": [512, 539],
+          "summary": "The route test combines a below-one interval with raw p 0.048 and BH p 0.059.",
+          "rationale": "This combination reproduces the misleading reading found on published pages. The test asserts the exact explanation and retains the interval and non-significant result. The full suite passed 1232 tests, and the real-engine integration passed 11 tests without skips.",
+          "author": "fm/pred-platform-m3-intervals"
+        }
+      ]
+    }
+  ]
+}
