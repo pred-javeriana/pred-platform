@@ -218,6 +218,12 @@ def _context(
         "query_string": query.query_string(),
         "status": status,
         "status_error": status_error,
+        # Un número de ejecución que no existe se dice con ese número, no con el error genérico.
+        "missing_run": query.ejecucion
+        if status_error is not None
+        and status_error["code"] == "platform.artifact_missing"
+        and query.ejecucion != LATEST
+        else None,
         "run": run,
         "settings_rows": settings_items(status.settings) if status and status.settings else [],
         "reserve": status.reserve if status is not None else None,

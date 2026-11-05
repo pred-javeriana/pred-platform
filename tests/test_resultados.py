@@ -395,6 +395,23 @@ def _dal_client(env: Env) -> TestClient:
     return TestClient(app)
 
 
+def test_a_missing_run_is_named_and_offers_the_runs_with_results(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty = _dal_client(env).get("/resultados?ejecucion=99").text
+    assert "No existe la ejecución «99». Todavía no hay ejecuciones con resultados." in _text(empty)
+    assert 'href="/ejecucion"' in empty and 'id="elegir-ejecucion"' not in empty
+
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    html = _dal_client(env).get("/resultados?vista=clase&ejecucion=99").text
+    # The list it points to is right there, and it keeps the tab that was asked for.
+    assert "No existe la ejecución «99». Elija una ejecución con resultados." in _text(html)
+    picker = html.split('id="elegir-ejecucion"', 1)[1].split("</form>", 1)[0]
+    assert '<input type="hidden" name="vista" value="clase">' in picker
+    assert re.search(r'<option value="1">#1 · Completada · ', picker)
+
+
 def test_the_real_dal_feeds_the_table_and_the_detail(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -723,6 +740,12 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     assert "r frente a la línea base 0,800" in text
     assert "p ajustado (BH) 0,080" in text and "Significativa no" in text
     assert "«Validado» no equivale a significativo" in text
+    # The two yes/no facts sit in the row of decisive numbers, and the test figures in a row of
+    # facts, instead of narrow lists that left the right half of the sheet empty.
+    numbers = _text(page.text.split('id="numeros-decisivos"', 1)[1].split("</dl>", 1)[0])
+    assert "Pierde frente a la línea base no Comparación incompleta no" in numbers
+    test = page.text.split('id="significancia"', 1)[1].split("</dl>", 1)[0]
+    assert '<div><dt>p ajustado (BH)</dt><dd class="mono">0,080</dd></div>' in test
     assert "Identificador de la evaluación final m3-real-1" in text and env.ingest_id in text
     assert "ventanas=1" in page.text and "m3=m3-real-1&amp;ventanas=1" in page.text
 
@@ -1520,6 +1543,12 @@ def test_by_class_shows_each_class_confirmation_state_holm_p_and_effect(
     text = _confirmation(env)
 
     assert "α = 0,05; intervalos al 95 %." in text
+    # The method stays one click away, folded, so it does not push the table down.
+    assert re.search(
+        r'<details class="pred-details pred-details--inline" id="metodo-confirmacion">'
+        r"<summary>Cómo se decide la confirmación</summary>\s*<p[^>]*>La razón de un SKU es",
+        _dal_client(env).get("/resultados?vista=clase").text,
+    )
     assert (
         "Clase Campeona Estado p IUT p Holm Mediana de r frente a la línea base (IC) "
         "SKU comparados "

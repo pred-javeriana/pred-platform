@@ -1,5 +1,5 @@
 {% from "components/terms.html" import day, when %}
-{% from "components/states.html" import empty_state, unavailable_state %}
+{% from "components/states.html" import empty_state, missing_run_state, unavailable_state %}
 {% from "components/progress.html" import progress_bar %}
 {% from "components/status.html" import status_indicator %}
 {% from "components/buttons.html" import button %}
@@ -18,7 +18,9 @@
 {% endmacro %}
 
 <span hidden data-pred-poll="{{ 'true' if poll else 'false' }}" data-pred-run-state="{{ run.estado if run else 'sin_ejecucion' }}" data-pred-run-summary="{% if run %}Ejecución {{ run.id }}: {{ describe_status('run', run.estado).label }}{% else %}Sin ejecución{% endif %}"></span>
-{% if status_error %}
+{% if missing_run %}
+  {{ missing_run_state(missing_run, "Puede abrir la ejecución más reciente o lanzar una nueva.", "Ver la ejecución más reciente", "/ejecucion") }}
+{% elif status_error %}
   {{ unavailable_state(status_error.title, status_error.detail or "No fue posible leer la ejecución.", status_error.code, status_error.blocked_by) }}
 {% elif not run %}
   {{ empty_state(

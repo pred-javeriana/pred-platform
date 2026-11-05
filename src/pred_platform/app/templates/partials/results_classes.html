@@ -38,7 +38,12 @@
   {% else %}
   {% set confirmation = m3_classes.confirmation %}
   {% set by_class = m3_classes.confirmations %}
-  <p class="pred-meta">En el bloque de prueba, la evaluación final compara la campeona congelada de cada clase con cada familia competidora, en los SKU que tienen ambas. La razón de un SKU es RMSE de la campeona / RMSE de la competidora: menos de 1 favorece a la campeona. Hodges-Lehmann estima la razón típica y las victorias cuentan los SKU con razón menor que 1. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y p Holm lo ajusta entre clases. La campeona queda confirmada si p Holm ≤ α y el intervalo bootstrap de la mediana de razones queda bajo 1 frente a cada competidora. Una confirmación fallida nunca cambia a la campeona.{% if confirmation.alfa is not none %} α = {{ exact_text(confirmation.alfa) }}; intervalos al {{ level_text(1 - confirmation.alfa) }}.{% endif %}</p>
+  {# La frase que hace falta para leer la tabla queda a la vista; el método, plegado: diez líneas
+     de 80 caracteres dejaban vacía la mitad derecha de la tarjeta. #}
+  <p class="pred-meta">En el bloque de prueba, la evaluación final compara la campeona congelada de cada clase con cada familia competidora, en los SKU que tienen ambas. Una confirmación fallida nunca cambia a la campeona.{% if confirmation.alfa is not none %} α = {{ exact_text(confirmation.alfa) }}; intervalos al {{ level_text(1 - confirmation.alfa) }}.{% endif %}</p>
+  <details class="pred-details pred-details--inline" id="metodo-confirmacion"><summary>Cómo se decide la confirmación</summary>
+    <p class="pred-meta">La razón de un SKU es RMSE de la campeona / RMSE de la competidora: menos de 1 favorece a la campeona. Hodges-Lehmann estima la razón típica y las victorias cuentan los SKU con razón menor que 1. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y p Holm lo ajusta entre clases. La campeona queda confirmada si p Holm ≤ α y el intervalo bootstrap de la mediana de razones queda bajo 1 frente a cada competidora.</p>
+  </details>
   {{ table_start(["Clase", "Campeona", "Estado", "p IUT", "p Holm", "Mediana de r frente a la línea base (IC)", "SKU comparados"], "Confirmación del campeón por clase", "confirmation") }}
   {% for row in m3_classes.rows %}
   {% set found = by_class.get(row.sku_class) %}

@@ -83,18 +83,18 @@
         <div class="pred-kpis__item"><dt>Ventanas de prueba válidas</dt><dd>{{ format_count(verdict.n_ventanas) }} <span class="pred-kpis__note">mínimo {{ format_count(verdict.n_min) }}</span></dd></div>
         <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd><p class="pred-kpis__note">Parte del periodo de prueba con pronóstico.</p></div>
         <div class="pred-kpis__item"><dt>Significancia</dt><dd class="pred-kpis__text">{{ significance_text(verdict) }}</dd></div>
+        <div class="pred-kpis__item"><dt>Pierde frente a la línea base</dt><dd class="pred-kpis__text">{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd></div>
+        <div class="pred-kpis__item"><dt>Comparación incompleta</dt><dd class="pred-kpis__text">{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd></div>
       </dl>
       {% if interval %}<p class="pred-meta">La prueba HLN-DM sin el ajuste BH no descarta los valores de r de este intervalo; la significancia de arriba sí aplica el ajuste BH.</p>{% endif %}
-      <dl class="pred-kv">
-        <dt>Pierde frente a la línea base</dt><dd>{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd>
-        <dt>Comparación incompleta</dt><dd>{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd>
-      </dl>
 
       <h3>Significancia</h3>
       <p class="pred-meta">Prueba {{ gloss("HLN-DM") }} del campeón frente a la línea base, con el ajuste {{ gloss("BH") }} dentro de cada clase de demanda. Un estadístico negativo favorece a la campeona. Se informa aparte del veredicto: «{{ verdict_label("VALIDADO") }}» no equivale a significativo.</p>
-      <dl class="pred-kv" id="significancia">
+      {# Las cifras de la prueba en una fila a lo ancho, como los números de arriba, y no en una
+         lista angosta que dejaba vacía la mitad derecha. #}
+      <dl class="pred-facts pred-decision__test" id="significancia">
         {% for label, value in significance_items(verdict) %}
-        <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
+        <div><dt>{{ label }}</dt><dd class="mono">{{ value }}</dd></div>
         {% endfor %}
       </dl>
       {% elif m3.excluded.get(sku_id) %}

@@ -773,7 +773,7 @@ button.pred-btn {
 /* La barra de filtros sobre una lista: compacta, sobre lienzo, Aplicar al final de la fila. */
 .pred-filters--bar {
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-3) 12px;
   margin: 0 0 var(--space-3);
   padding: 12px var(--space-3);
   background: var(--canvas);
@@ -783,7 +783,7 @@ button.pred-btn {
 .pred-filters--bar .pred-field {
   flex: 1 1 9rem;
   max-width: 17rem;
-  min-width: 8rem;
+  min-width: 7.5rem;
 }
 
 .pred-filters--bar .pred-field__label {
@@ -851,6 +851,16 @@ button.pred-btn {
   border-left: 3px solid var(--info);
   background: var(--surface);
   font-size: 0.875rem;
+}
+
+/* En la tarjeta de la ejecución, el aviso llega a los mismos bordes que los hechos y las etapas;
+   su texto conserva el ancho de lectura. */
+.pred-run .pred-callout {
+  max-width: none;
+}
+
+.pred-run .pred-callout p {
+  max-width: 80ch;
 }
 
 .pred-callout--warn {
@@ -998,9 +1008,18 @@ button.pred-btn {
   color: var(--err);
 }
 
+/* Lo que no está disponible o no existe se lee como un estado vacío: centrado, con lo que se puede
+   hacer debajo, y no pegado a la izquierda de una página o una tarjeta vacía. */
 .pred-unavailable {
-  max-width: 80ch;
-  padding: var(--space-3) 0;
+  max-width: 36rem;
+  margin: var(--space-4) auto;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+.pred-unavailable .pred-context__picker {
+  justify-content: center;
+  margin: var(--space-3) 0 0;
 }
 
 .pred-unavailable h2 {
@@ -1138,13 +1157,21 @@ button.pred-btn {
   overflow-wrap: anywhere;
 }
 
-/* Hechos en fila (qué ejecución, desde cuándo, con qué ingesta): rótulo encima y valor. */
+/* Hechos en fila (qué ejecución, desde cuándo, con qué ingesta): rótulo encima y valor, en
+   columnas iguales que llenan el ancho para no dejar un hueco a la derecha. */
 .pred-facts,
 .pred-context__facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-2) var(--space-4);
   margin: 0;
+}
+
+/* Cifras de una prueba (estadístico, p, α…): en el color de dato, como en .pred-kv. */
+.pred-facts dd.mono {
+  color: var(--data-text);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
 }
 
 :is(.pred-facts, .pred-context__facts) > div {
@@ -1240,15 +1267,14 @@ button.pred-btn {
 
 /* Fila de métricas de la topología de un SKU (components/metrics.html). */
 .pred-metrics {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: var(--space-4);
   padding: var(--space-3) 0;
 }
 
 .pred-metrics__item {
-  min-width: 8rem;
-  max-width: 100%;
+  min-width: 0;
 }
 
 .pred-metrics__label {
@@ -1681,6 +1707,20 @@ button.pred-btn {
   border-color: var(--primary);
 }
 
+/* Los seis estados de tarea de una ejecución en dos filas de tres, del mismo ancho, en vez de
+   cinco y uno suelto. */
+@media (min-width: 48rem) {
+  .pred-run__states .pred-statelist {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pred-run__states .pred-statelist a {
+    display: flex;
+    justify-content: space-between;
+  }
+}
+
 /* Un rótulo largo pasa a otra línea en un teléfono. */
 .pred-statelist .pred-status {
   padding: 0;
@@ -1931,6 +1971,19 @@ button.pred-btn {
 .pred-class-mix__bar {
   width: 30%;
   padding-left: var(--space-1);
+}
+
+/* Desde una tableta, la clase y su explicación ocupan lo que mide su texto y la barra el resto:
+   sin un hueco entre la explicación y el conteo. */
+@media (min-width: 48rem) {
+  .pred-class-mix th {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  .pred-class-mix__bar {
+    width: auto;
+  }
 }
 
 .pred-class-mix__bar span {
@@ -2450,6 +2503,13 @@ button.pred-btn {
   gap: 0 var(--space-3);
 }
 
+/* La ventana de evaluación: métrica, mínimo y horizonte en una fila, con los controles alineados
+   aunque un rótulo ocupe dos líneas. */
+.pred-launch__window {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  align-items: end;
+}
+
 .pred-launch__advanced {
   margin: 0 0 var(--space-3);
 }
@@ -2720,6 +2780,10 @@ button.pred-btn {
   font-weight: 800;
 }
 
+.pred-decision__test {
+  margin: var(--space-3) 0 var(--space-2);
+}
+
 /* Familias de un SKU: cada una se abre aparte y su resumen se lee cerrado. */
 .pred-family {
   margin: 0;
@@ -2785,6 +2849,13 @@ button.pred-btn {
   background: var(--surface);
 }
 
+/* El mapa ADI–CV² ocupa el ancho de su tarjeta; en un teléfono se desplaza en vez de encoger su
+   texto. */
+.pred-topology__svg {
+  width: 100%;
+  min-width: 40rem;
+}
+
 /* En un teléfono el gráfico de campeones se desplaza en vez de encoger su texto. */
 .pred-champion__svg {
   min-width: 30rem;
@@ -2830,8 +2901,9 @@ button.pred-btn {
 }
 
 /* Evidencia temporal del campeón: trazo, forma y texto además del color. */
-/* La serie del campeón ocupa el ancho de la hoja, hasta un tamaño en que su texto sigue legible. */
-.pred-forecast__svg { width: 100%; min-width: 38rem; max-width: 60rem; }
+/* La serie del campeón ocupa el ancho de la hoja; en un teléfono se desplaza en vez de encoger su
+   texto. */
+.pred-forecast__svg { width: 100%; min-width: 48rem; }
 .pred-forecast__figure { margin: var(--space-3) 0; }
 .pred-forecast__selection { fill: var(--canvas); }
 .pred-forecast__test { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 2; }

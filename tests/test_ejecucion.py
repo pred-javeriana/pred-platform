@@ -151,6 +151,11 @@ def test_an_invalid_filter_is_a_warning_and_an_unknown_run_is_not_a_500() -> Non
         assert response.status_code == 200 and "pred-alert--warning" in response.text
     missing = client.get("/ejecucion?ejecucion=99")
     assert missing.status_code == 200 and "Traceback" not in missing.text
+    # The missing run is named by its number, with a way out, not with the generic error.
+    text = _text(missing.text)
+    assert "No existe la ejecución «99». Puede abrir la ejecución más reciente" in text
+    assert "No se encontró el resultado esperado" not in text and "'99'" not in text
+    assert '<a class="pred-btn pred-btn--secondary" href="/ejecucion"' in missing.text
 
 
 def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
@@ -1499,6 +1504,9 @@ def test_a_run_stopped_by_the_operator_shows_why_and_offers_to_resume(
 
     assert 'id="accion-reanudar"' in html and 'id="error-ejecucion"' in html
     assert "Reanude la ejecución cuando quiera." in _text(html)
+    # The stored detail repeats the catalog title: the reason reads once.
+    callout = _text(html.split('id="error-ejecucion"', 1)[1].split("</div>", 1)[0])
+    assert callout.count("La ejecución se detuvo a petición del operador.") == 1
 
 
 def test_after_stop_the_page_keeps_polling_until_the_open_tasks_are_closed(

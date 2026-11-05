@@ -2,6 +2,7 @@
 {% from "components/status.html" import status_indicator %}
 {% from "components/alerts.html" import alert %}
 {% from "components/buttons.html" import button %}
+{% from "components/run_picker.html" import run_picker %}
 {# Qué ejecución y qué evaluación muestra la página: arriba y a lo ancho, como el contexto de un
    panel de control, en vez de un panel lateral que le quita ancho a las tablas. #}
 {% if run and run.ejecucion %}
@@ -9,18 +10,7 @@
 <section class="pred-context" aria-label="Ejecución y evaluación mostradas">
   {% set known = executions | map(attribute="ejecucion_id") | list %}
   {% if executions and (known | length > 1 or shown.id not in known) %}
-  <form method="get" action="/resultados" class="pred-context__picker" id="elegir-ejecucion">
-    <input type="hidden" name="vista" value="{{ vista }}">
-    {% if lista == "familias" %}<input type="hidden" name="lista" value="familias">{% endif %}
-    <label class="pred-field__label" for="ejecucion-mostrada">Ejecución</label>
-    <select class="pred-field__control" id="ejecucion-mostrada" name="ejecucion">
-      {% if shown.id not in known %}<option value="{{ shown.id }}" selected>#{{ shown.id }} · sin evaluación publicada</option>{% endif %}
-      {% for choice in executions %}
-      <option value="{{ choice.ejecucion_id }}"{% if choice.ejecucion_id == shown.id %} selected{% endif %}>#{{ choice.ejecucion_id }} · {{ describe_status("run", choice.estado).label }} · {{ format_when(choice.iniciada_en) }}</option>
-      {% endfor %}
-    </select>
-    {{ button("Mostrar", variant="subtle", type="submit") }}
-  </form>
+  {{ run_picker(executions, vista, lista, shown.id) }}
   {% endif %}
   <dl class="pred-context__facts">
     <div><dt>Ejecución</dt><dd><a class="mono" href="/ejecucion?ejecucion={{ shown.id }}">#{{ shown.id }}</a> {{ status_indicator(run_status or describe_status("run", shown.estado)) }}</dd></div>

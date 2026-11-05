@@ -36,6 +36,18 @@ def test_health_answers_head_without_body(client: TestClient) -> None:
     assert response.content == b""
 
 
+def test_an_unknown_address_is_a_pred_page_in_a_browser_and_json_elsewhere(
+    client: TestClient,
+) -> None:
+    page = client.get("/no-existe", headers={"Accept": "text/html,application/xhtml+xml"})
+    assert page.status_code == 404
+    assert "<h1>Página no encontrada</h1>" in page.text
+    assert 'href="/datos"' in page.text and "Not Found" not in page.text
+    # A probe or a script that does not ask for HTML keeps the JSON answer.
+    probe = client.get("/no-existe")
+    assert probe.status_code == 404 and probe.json() == {"detail": "Not Found"}
+
+
 def test_root_redirects_to_datos(client: TestClient) -> None:
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 307

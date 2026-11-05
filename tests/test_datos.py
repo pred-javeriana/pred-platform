@@ -85,6 +85,19 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
         assert f'<span class="mono">{column}</span>' in html
 
 
+def test_the_expected_columns_are_open_both_as_first_upload_and_as_another_file(
+    tmp_path: Path,
+) -> None:
+    client, _ = _client(tmp_path)
+    first = client.get("/datos").text
+    another = client.get(f"/datos?ingest_id={ACCEPTED}#carga").text
+    assert 'id="titulo-carga">Cargar un archivo<' in first
+    assert "Cargar otro archivo" in another
+    # Folded, the list left the right half of the upload card empty.
+    for html in (first, another):
+        assert re.search(r'<details [^>]*id="columnas-csv" open>', html)
+
+
 def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text

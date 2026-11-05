@@ -215,7 +215,7 @@ Resultados comienza en Resumen cuando hay evidencia M3 publicada y en la lista d
 
 ## Composición espacial
 
-Las tres superficies usan una sola columna a todo el ancho: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación; y debajo, pestañas horizontales de detalle con un panel a la vez. No hay columna lateral: el contexto va arriba y a lo ancho, las tablas ocupan el ancho del panel y dos bloques cortos se reparten en dos columnas desde 64rem. La prosa larga conserva una línea legible de a lo sumo 80 caracteres (`max-width: 80ch`).
+Las tres superficies usan una sola columna a todo el ancho: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación; y debajo, pestañas horizontales de detalle con un panel a la vez. No hay columna lateral: el contexto va arriba y a lo ancho, las tablas ocupan el ancho del panel y dos bloques cortos se reparten en dos columnas desde 64rem. Dentro de cada tarjeta, los hechos y las cifras se reparten en columnas iguales que llenan el ancho, los gráficos ocupan el ancho de la tarjeta y los estados vacíos, de error o no disponibles se centran. La prosa larga conserva una línea legible de a lo sumo 80 caracteres (`max-width: 80ch`); una explicación de método larga se pliega bajo un enlace.
 
 Datos: el resumen del archivo (nombre, estado, conteos, mezcla de clases y continuar) en un panel; debajo, las pestañas Diagnóstico, Clases y SKU, Cargar otro archivo e Historial. Una consulta de topología o historial selecciona la pestaña correspondiente.
 

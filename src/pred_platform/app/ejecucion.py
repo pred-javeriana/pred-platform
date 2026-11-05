@@ -528,9 +528,11 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
     """El error que guardó la ejecución, con el título y el paso siguiente del catálogo."""
     if info is None:
         return None
+    title = error_title(info.code, info.stage, info.row_index, info.column)
     return RunError(
-        title=error_title(info.code, info.stage, info.row_index, info.column),
-        detail=info.detail,
+        title=title,
+        # Un detalle que repite el título no dice nada nuevo: se lee una sola vez.
+        detail=None if (info.detail or "").strip() == title else info.detail,
         action=error_action(info.code),
         code=info.code,
         retryable=info.retryable,

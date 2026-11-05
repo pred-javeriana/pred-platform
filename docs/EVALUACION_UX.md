@@ -358,8 +358,8 @@ estadísticos.
 
 Después de #107 se recorrió de nuevo cada pantalla con los datos publicados de una ejecución real
 de 3.622 SKU, y el seguimiento con una ejecución real corta en curso, a 1280, 1440 y 390 px. Los
-hallazgos usan las mismas heurísticas y la misma escala. Se encontraron 9: 5 de severidad 3, 3 de
-severidad 2 y 1 de severidad 1. Este cambio corrige los 9.
+hallazgos usan las mismas heurísticas y la misma escala. Se encontraron 10: 5 de severidad 3, 4
+de severidad 2 y 1 de severidad 1. Este cambio corrige los 10.
 
 **N1. Una ejecución con tareas fallidas se lee como un fallo aunque sus productos tengan
 veredicto.** H1 y H2, severidad 3. «Completada con fallos», con un ícono de advertencia, encabezaba
@@ -432,6 +432,43 @@ junto a las casillas de familia, una lista con una clase por fila y sus familias
 «Tiempo (s)». Corrección: el estado se llama «Por evaluar», con su explicación en `title`, y un
 estado en una celda pasa a otra línea entre palabras en vez de salirse.
 
+**N10. Quedan espacios en blanco grandes dentro de las tarjetas.** H8, severidad 2. Se revisó
+cada tarjeta de cada pantalla real a 1280 y 1440 px, con los estados de error y vacíos y una
+ejecución en curso: se midió el rectángulo vacío más grande dentro de cada tarjeta y se miró cada
+captura. Referente: Stripe Dashboard, cuadrículas equilibradas. Corrección, por tarjeta:
+
+- Datos, archivo seleccionado: la explicación de cada clase ocupa lo que mide su texto y la barra
+  el resto; antes quedaba un hueco entre la explicación y el conteo.
+- Datos, Clases y SKU: el mapa ADI–CV² ocupa el ancho de la tarjeta; antes medía 640 px y dejaba
+  vacía la mitad derecha. En un teléfono se desplaza en vez de encoger su texto.
+- Datos, Cargar otro archivo: las columnas que debe tener el archivo se ven abiertas, como en la
+  primera carga; plegadas dejaban vacía la mitad derecha.
+- Ejecución, la ejecución mostrada (terminada, en curso o detenida): la fecha, la duración, los
+  datos y la semilla son columnas iguales, alineadas con las etapas; los seis estados de tarea van
+  en dos filas de tres, en vez de cinco y uno suelto.
+- Ejecución, Nueva ejecución: la métrica, el mínimo de entrenamiento y el horizonte van en una
+  fila; el horizonte quedaba solo.
+- Resultados, barra de contexto: los hechos de la ejecución mostrada son columnas iguales.
+- Resultados, Por clase: la confirmación del campeón deja a la vista la frase que hace falta para
+  leer la tabla y pliega el método en «Cómo se decide la confirmación»; diez líneas de 80
+  caracteres dejaban vacía la mitad derecha.
+- Resultados, SKU: la barra de filtros cabe en una fila a 1280 px; «Limpiar filtros» pasaba solo a
+  una segunda fila.
+- Detalle de un SKU: «Pierde frente a la línea base» y «Comparación incompleta» van en la fila de
+  números decisivos, y las siete cifras de la significancia en una fila a lo ancho; las dos listas
+  angostas dejaban vacía la mitad derecha. El gráfico de demanda y pronóstico ocupa el ancho de la
+  hoja; a 1440 px dejaba vacío el borde derecho. El patrón de demanda reparte sus cuatro cifras en
+  columnas iguales.
+- Estados de error y vacíos: «no disponible» y «no existe» se centran como los estados vacíos, en
+  vez de quedar pegados a la izquierda de una página o tarjeta vacía. Una ejecución que no existe
+  se nombra por su número en Ejecución y en Resultados; Resultados ofrece la lista de ejecuciones
+  con resultados, que el aviso anterior mencionaba sin mostrar, y Ejecución un botón a la más
+  reciente. Una dirección que no existe muestra una página de PRED en lugar de un texto JSON.
+
+Se conserva el ancho de lectura de 80 caracteres (WCAG 2.2, 1.4.8), así que una introducción corta
+deja espacio a su derecha. En Resumen, los bloques de a dos ya terminaban a menos de 100 px uno del
+otro.
+
 ### Auditoría de textos
 
 | Texto anterior | Dónde | Texto nuevo |
@@ -462,6 +499,9 @@ estado en una celda pasa a otra línea entre palabras en vez de salirse.
 | `worker`, `PRED_WORKER=off` | Ejecución | «procesador de ejecuciones»; «Esta instalación no procesa ejecuciones por sí sola» |
 | `2026-11-03 02:02 UTC` | Toda hora visible | «2 nov 2026, 9:02 p. m.», en la hora de Bogotá; el instante exacto en UTC en `title` |
 | `2016-09-11` | Todo día visible, también en gráficos | «11 sept 2016»; la fecha ISO en `title` |
+| `No se encontró el resultado esperado.` y `No existe la ejecución '99'` | Ejecución con un número que no existe | «No existe la ejecución «99».» y «Puede abrir la ejecución más reciente o lanzar una nueva.» |
+| `Elija otra ejecución en la lista de arriba…`, sin lista | Resultados con un número que no existe | «Elija una ejecución con resultados.» y la lista debajo |
+| `{"detail":"Not Found"}` | Una dirección que no existe, en un navegador | «Página no encontrada» y «Ir a Datos» |
 | `selection.no_viable_trial` y otros códigos de error | Tareas y detalle de SKU | el título del catálogo de mensajes; el código en «Detalle técnico» |
 | `Se muestra m3-real-1.` y enlaces con identificadores | Aviso de varias evaluaciones publicadas | «Se muestra la publicada el 27 oct 2026, 5:00 a. m.»; cada otra evaluación, «la publicada el …»; el identificador en `title` |
 | `veredicto:EVIDENCIA_INSUFICIENTE`, `datos_sinteticos`, `rmse_linea_base_cero` | Significancia, prueba HLN-DM y ventanas de la reserva | «el veredicto es «Evidencia insuficiente», que no lleva prueba», «datos sintéticos», «la línea base no tuvo error (RMSE 0)»; la causa publicada en `title` |
@@ -494,7 +534,8 @@ plataforma no recalcula métricas, campeones ni pruebas.
   navegador con una corrida real pequeña, a 1280 px y a 390 px.
 - La segunda revisión se comprobó en un navegador a 1280, 1440 y 390 px sobre los datos
   publicados de la ejecución de 3.622 SKU, y con una ejecución real de 8 SKU en curso, con y sin
-  movimiento reducido.
+  movimiento reducido. La revisión de tarjetas (N10) capturó cada tarjeta de 36 pantallas, con
+  los estados de error, los vacíos y una ejecución en curso, a 1280 y 1440 px, antes y después.
 
 ## Referencias
 

@@ -21,7 +21,9 @@ from pred_platform.app.presentation import (
 from pred_platform.app.resultados_pronostico import ChampionForecastSeries, ForecastPoint
 from pred_platform.contract.models import TopologyMetrics, TopologyReport
 
-_WIDTH = 640
+# Tan ancho como una tarjeta a 1280 px: el texto de 11 px se lee a su tamaño y el mapa no deja
+# media tarjeta vacía.
+_WIDTH = 960
 _HEIGHT = 400
 _LEFT = 52
 _RIGHT = 18
@@ -67,7 +69,7 @@ def topology_scatter_svg(report: TopologyReport) -> str:
     )
     parts = [
         f'<svg role="img" viewBox="0 0 {_WIDTH} {_HEIGHT}" width="{_WIDTH}" height="{_HEIGHT}" '
-        'xmlns="http://www.w3.org/2000/svg" class="pred-chart__svg">',
+        'xmlns="http://www.w3.org/2000/svg" class="pred-chart__svg pred-topology__svg">',
         f"<title>{escape(title)}</title>",
         f"<desc>{escape(desc)}</desc>",
         _axes(x_max, y_max),
@@ -194,8 +196,9 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
     # El medio día de margen dibuja completos los extremos de las fechas inclusivas.
     first = date.fromisoformat(dates[0]).toordinal() - 0.5
     last = date.fromisoformat(dates[-1]).toordinal() + 0.5
-    # Una fecha en mono de 11 px mide 66 px: el margen derecho deja entera la última.
-    left, right, top, bottom = 68, 720, 42, 286
+    # Una fecha en mono de 11 px mide 66 px: el margen derecho deja entera la última. 960 de
+    # ancho, como una tarjeta a 1280 px, para que el texto se lea a su tamaño.
+    left, right, top, bottom = 68, 920, 42, 286
     values = [p.valor for p in points if p.valor is not None]
     low, high = min(0.0, *values), max(1.0, *values)
     high += (high - low) * 0.1
@@ -222,7 +225,7 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
         "Los valores ausentes interrumpen las líneas. " + regions
     )
     parts = [
-        '<svg role="img" viewBox="0 0 760 350" width="760" height="350" '
+        '<svg role="img" viewBox="0 0 960 350" width="960" height="350" '
         'xmlns="http://www.w3.org/2000/svg" class="pred-chart__svg pred-forecast__svg">',
         f"<title>{escape('Demanda y pronóstico del campeón · ' + series.sku)}</title>",
         f"<desc>{escape(description)}</desc>",
