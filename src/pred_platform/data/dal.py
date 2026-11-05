@@ -22,7 +22,7 @@ import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Never, get_args
+from typing import Never, get_args
 
 from pydantic import ValidationError
 
@@ -47,6 +47,7 @@ from pred_platform.data.query import (
     paginate,
 )
 from pred_platform.data.repository import ArtifactDownload
+from pred_platform.data.run_status import DisplayRunStatus, TaskCause, read_run_progress
 from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -57,47 +58,6 @@ _TASK_STATES = get_args(models.EstadoTarea)
 _FAMILY_STATES = get_args(models.EstadoFamilia)
 _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
-
-
-def _unidad(evento: dict[str, Any]) -> tuple[Any, Any, Any]:
-    return evento.get("sku_id"), evento.get("family"), evento.get("model")
-
-
-def _avance_en_curso(progreso: Path) -> tuple[str | None, int | None, int | None]:
-    """Etapa en curso y ``(total, terminados)`` de sus SKU según ``progreso.jsonl``.
-
-    El intento actual empieza en el último ``run_started``; cada etapa cuenta desde su último
-    ``planned``, así que lo que una reanudación vuelve a anunciar no se cuenta dos veces. Un SKU
-    termina la etapa cuando terminan, bien o mal, todas sus unidades de ese plan.
-    """
-    # shortcut: lee todo el archivo en cada consulta; leer solo la cola si a escala completa pesa.
-    try:
-        lineas = progreso.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return None, None, None
-    etapa, plan, terminadas = None, None, set()
-    for linea in lineas:
-        try:
-            evento = json.loads(linea)
-        except ValueError:
-            continue  # una línea rota por escrituras concurrentes no detiene la lectura
-        if not isinstance(evento, dict):
-            continue
-        tipo, de_la_etapa = evento.get("event"), evento.get("stage") == etapa
-        if tipo == "run_started":
-            etapa, plan, terminadas = None, None, set()
-        elif tipo == "stage_started" and not de_la_etapa:
-            etapa, plan, terminadas = evento.get("stage"), None, set()
-        elif tipo == "planned" and de_la_etapa:
-            # Cada etapa se anuncia por SKU x familia (o candidato); el avance cuenta SKU.
-            plan, terminadas = {_unidad(u) for u in evento.get("units", [])}, set()
-        elif tipo == "unit_finished" and de_la_etapa and plan is not None:
-            terminadas.add(_unidad(evento))
-    if plan is None:
-        return etapa, None, None
-    skus = {sku for sku, _, _ in plan}
-    pendientes = {sku for sku, _, _ in plan - terminadas}
-    return etapa, len(skus), len(skus - pendientes)
 
 
 def _now() -> datetime:
@@ -411,17 +371,22 @@ class DalRepository(M3DalSource):
             offset=(request.number - 1) * request.size,
             limit=request.size,
         )
-        counts = lectura.task_state_counts(self.db_path, run.id)
+        counts, causes = lectura.task_summary(self.db_path, run.id)
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
         etapa, skus_total, skus_terminados = None, None, None
-        if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
-            etapa, skus_total, skus_terminados = _avance_en_curso(
+        timings = []
+        if run.ruta_corrida and self.data_root is not None:
+            etapa, skus_total, skus_terminados, timings = read_run_progress(
                 self.data_root / run.ruta_corrida / "progreso.jsonl"
             )
         parametros = json.loads(run.parametros)
-        return models.RunStatus(
+        return DisplayRunStatus(
+            stage_timings=timings,
+            task_causes=[
+                TaskCause(code=code, family=family, count=n) for code, family, n in causes
+            ],
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ejecucion=_ejecucion(run),
             settings=models.RunSettings(

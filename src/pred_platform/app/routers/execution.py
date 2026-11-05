@@ -69,8 +69,8 @@ from pred_platform.app.ejecucion import (
     short_of_two,
     should_poll,
     single_family_classes,
-    stage_steps,
 )
+from pred_platform.app.execution_display import execution_display
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
     NEW,
@@ -213,7 +213,9 @@ def _context(
         error=error,
         nothing_to_compare=run_compares_nothing(repository, run, status),
     )
+    now = datetime.now(UTC)
     return {
+        **execution_display(status, now),
         "capabilities": capabilities,
         "orchestration": orchestration,
         "source": repository.source,
@@ -246,11 +248,8 @@ def _context(
         "outcome": run_outcome(repository, run, counts) if run is not None else None,
         "run_ingest": ingest_name(repository, run.ingest_id) if run is not None else None,
         "run_error": error,
-        "steps": stage_steps(run.estado, progress.etapa_actual if progress else None)
-        if run is not None
-        else [],
         "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
-        "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
+        "elapsed": elapsed_text(run, now) if run is not None else None,
         "actions": actions,
         "run_status": describe_run(run.estado, resumable=actions.offers_resume)
         if run is not None

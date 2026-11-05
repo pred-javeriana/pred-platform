@@ -4,7 +4,9 @@
 
 {# htmx copia por defecto las clases del cuerpo viejo al nuevo hasta asentarlo; eso deshace las
    pestañas que pred.js arma tras cada sondeo y la página salta cada 2 s. #}
-{% block head %}<meta name="htmx-config" content='{"attributesToSettle": []}'>{% endblock %}
+{% block head %}<meta name="htmx-config" content='{"attributesToSettle": []}'>
+<link rel="stylesheet" href="{{ static_url('css/live.css') }}?v=1">
+<script src="{{ static_url('js/live.js') }}?v=1" defer></script>{% endblock %}
 
 {# El paso Ejecución de una corrida lanzada: su avance, sus acciones y sus tareas. #}
 {% block content %}
@@ -17,6 +19,7 @@
   {% if query_error %}{{ alert(query_error, variant="warning") }}{% endif %}
 
   {% if run %}
+  <aside id="desde-ultima-visita" class="pred-since" aria-label="Desde su última visita" hidden></aside>
   <div class="pred-poll-controls" id="actualizacion"{% if not poll %} hidden{% endif %}>
     <button type="button" class="pred-btn pred-btn--subtle pred-btn--small" id="pausar-actualizacion" aria-controls="ejecucion-cuerpo" aria-pressed="false"{% if not poll %} disabled{% endif %}>Pausar actualización</button>
     <p class="pred-meta" id="actualizacion-ayuda">{% if poll %}Se actualiza cada 2 segundos. Se pausa mientras usa los controles o selecciona texto.{% else %}Actualización automática no activa.{% endif %}</p>

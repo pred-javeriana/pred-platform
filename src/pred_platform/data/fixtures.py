@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Callable, Sequence
 from functools import cache
 from typing import Any, get_args
@@ -39,6 +40,7 @@ from pred_platform.data.query import (
     sort_items,
 )
 from pred_platform.data.repository import ArtifactDownload
+from pred_platform.data.run_status import DisplayRunStatus, TaskCause
 from pred_platform.data.scenarios import DEFAULT_SCENARIO, Scenario, get_scenario
 
 _SKU_CLASSES = get_args(models.SkuClass)
@@ -196,8 +198,18 @@ class FixtureRepository(M3FixtureSource):
             and (wanted_family is None or task.family == wanted_family)
         ]
         items, paging = paginate(tasks, request)
-        # `progress` counts every task of the run, not only the filtered page.
-        return _with(doc, tasks=items, page=paging)
+        # Counts and causes cover the whole run, not only the filtered page.
+        causes = Counter(
+            (task.error.code if task.error else None, task.family or task.modelo.split(":")[0])
+            for task in doc.tasks
+            if task.estado in ("fallida", "no_ejecutable")
+        )
+        return DisplayRunStatus(
+            **(doc.model_dump() | {"tasks": items, "page": paging}),
+            task_causes=[
+                TaskCause(code=code, family=family, count=n) for (code, family), n in causes.items()
+            ],
+        )
 
     # ------------------------------------------------------------------ selections
     def list_sku_selections(
