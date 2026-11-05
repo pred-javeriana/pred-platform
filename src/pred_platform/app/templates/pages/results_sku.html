@@ -5,7 +5,8 @@
 {% from "components/tables.html" import table_start, table_end %}
 
 {% macro r_interval(row, exact=false) -%}
-[{{ exact_text(row.inferior) if exact else ratio_text(row.inferior) }}; {% if row.superior is none %}+∞){% else %}{{ exact_text(row.superior) if exact else ratio_text(row.superior) }}]{% endif %}{% if row.inferior_cola is not none %} o [{{ exact_text(row.inferior_cola) if exact else ratio_text(row.inferior_cola) }}; +∞){% endif %}
+{% set d = gap_digits(row.superior, row.inferior_cola) if (row.inferior_cola is not none and row.superior is not none) else 3 -%}
+[{{ exact_text(row.inferior) if exact else ratio_text(row.inferior) }}; {% if row.superior is none %}+∞){% else %}{{ exact_text(row.superior) if exact else (format_decimal(row.superior, d) if row.inferior_cola is not none else ratio_text(row.superior)) }}]{% endif %}{% if row.inferior_cola is not none %} o [{{ exact_text(row.inferior_cola) if exact else format_decimal(row.inferior_cola, d) }}; +∞){% endif %}
 {%- endmacro %}
 
 {% block title %}SKU {{ sku_id }} · Resultados · PRED{% endblock %}
@@ -62,8 +63,8 @@
       <dl class="pred-kpis pred-kpis--metrics" id="numeros-decisivos">
         <div class="pred-kpis__item">
           <dt>r frente a Seasonal Naive</dt>
-          <dd{% if verdict.razon_sn is not none %} title="{{ exact_text(verdict.razon_sn) }}"{% endif %}>
-            {% if verdict.razon_sn is not none %}{{ ratio_text(verdict.razon_sn) }}{% else %}no calculable{% endif %}
+          <dd>
+            {% if verdict.razon_sn is not none %}<span title="{{ exact_text(verdict.razon_sn) }}">{{ ratio_text(verdict.razon_sn) }}</span>{% else %}no calculable{% endif %}
             <span class="pred-kpis__note" id="intervalo-r">
               {% if interval %}
               Intervalo de r <span title="{{ r_interval(interval, exact=true) }}">{{ r_interval(interval) }}</span>

@@ -52,6 +52,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "champion_share_text",
         "exact_text",
         "funnel_rows",
+        "gap_digits",
         "interval_text",
         "level_text",
         "origin_label",

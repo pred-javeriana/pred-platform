@@ -13,6 +13,7 @@ the contract raise ``ContractInvalid``.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -94,9 +95,14 @@ class M3DalSource:
 
     def get_m3_intervals(self, run_id: str, skus: Sequence[str]) -> list[M3Interval]:
         """Published unadjusted r bounds for the requested products; absent rows stay absent."""
-        return [
-            _validated(M3Interval, row) for row in evidencia.intervals(self.db_path, run_id, skus)
-        ]
+        try:
+            rows = evidencia.intervals(self.db_path, run_id, skus)
+        except sqlite3.DatabaseError as exc:
+            raise ContractInvalid(
+                f"M3Interval: no se pudo leer m3_intervalos_r: {exc}",
+                field="m3_intervalos_r",
+            ) from exc
+        return [_validated(M3Interval, row) for row in rows]
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """La confirmación del campeón y la significancia por clase de la corrida, o ``None``."""

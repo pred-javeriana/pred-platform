@@ -891,6 +891,20 @@ def ratio_text(value: float | None) -> str:
     return _decimal(value, max(_side_digits(value, 1.0, 3), _side_digits(value, 0.0, 3)))
 
 
+def gap_digits(upper: float, tail: float, digits: int = 3) -> int:
+    """Los decimales necesarios para que los dos tramos de un intervalo se distingan."""
+    d = max(
+        digits,
+        _side_digits(upper, 1.0, digits),
+        _side_digits(upper, 0.0, digits),
+        _side_digits(tail, 1.0, digits),
+        _side_digits(tail, 0.0, digits),
+    )
+    while d < 17 and f"{upper:.{d}f}" == f"{tail:.{d}f}":
+        d += 1
+    return d
+
+
 def interval_text(lower: float | None, upper: float | None, *, percent: bool = False) -> str:
     """Un intervalo publicado, ``[inferior; superior]``; vacío si M3 no lo publicó."""
     if lower is None or upper is None:
