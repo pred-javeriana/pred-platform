@@ -500,10 +500,41 @@ def test_sku_shows_the_published_interval_beside_r(
     assert "r frente a Seasonal Naive" in kpis and "0,800" in kpis
     assert f"Intervalo de r {shown}" in _text(kpis)
     assert f'title="{exact}"' in kpis
-    assert "La prueba no descarta los valores de r de este intervalo." in _text(html)
+    assert (
+        "La prueba HLN-DM sin el ajuste BH no descarta los valores de r de este intervalo; "
+        "la significancia de arriba sí aplica el ajuste BH."
+    ) in _text(html)
     other = _dal_client(env).get("/resultados/sku/FIL-0002?m3=m3-real-1").text
     assert "Intervalo de r no publicado." in other
     assert shown not in other
+
+
+def test_sku_distinguishes_the_unadjusted_interval_from_bh_significance(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE m3_veredictos SET dm_p_valor = 0.048225135846995754, "
+            "dm_p_ajustado = 0.059122274889045062, dm_alfa = 0.05, dm_significativa = 0 "
+            "WHERE run_id = 'm3-real-1' AND sku = 'FIL-0001'"
+        )
+        conn.execute(
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior) "
+            "VALUES ('m3-real-1', 'FIL-0001', 0.95, 0.6216964707141519, 0.995087542992538)"
+        )
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    text = _text(response.text)
+    assert "Intervalo de r [0,622; 0,995]" in text
+    assert "Significancia HLN-DM No significativa" in text
+    assert "p-valor 0,048" in text and "p ajustado (BH) 0,059" in text
+    assert (
+        "La prueba HLN-DM sin el ajuste BH no descarta los valores de r de este intervalo; "
+        "la significancia de arriba sí aplica el ajuste BH."
+    ) in text
 
 
 def test_invalid_interval_does_not_hide_the_sku_decision(
