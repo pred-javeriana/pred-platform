@@ -13,6 +13,7 @@ corresponde con la misma consulta.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -27,6 +28,7 @@ from pred_platform.app.configuracion import (
     ConfigExportError,
     config_filename,
     export_config,
+    form_values,
     parse_config,
 )
 from pred_platform.app.corridas import (
@@ -71,6 +73,7 @@ from pred_platform.app.ejecucion import (
     single_family_classes,
     stage_steps,
 )
+from pred_platform.app.historial import earlier_runs, timestamp
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
     NEW,
@@ -101,7 +104,7 @@ from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.control import ControlUnavailable, RunControl
-from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION
+from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION, run_id_for
 
 router = APIRouter()
 
@@ -449,6 +452,18 @@ def _render_ajustes(
     if not selected and imported is None:
         selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
     control = _control(request)
+    warning = exclusion
+    if form is None:
+        form = _launch_form(
+            values.get("families"), values.get("metric"), {k: values.get(k) for k in _LAUNCH_FIELDS}
+        )
+    if selected and warning is None:
+        warning = _check_launch(repository, selected, form)
+    by_class = {}
+    if selected:
+        with suppress(DataLayerError, InvalidQuery):
+            by_class = repository.get_topology_report(selected, size=1).summary.by_class
+    details = _stored_runs(request)
     context = {
         "wizard": draft_wizard(
             "ajustes", draft_facts(repository, draft, chosen), can_continue=bool(ingests)
@@ -461,9 +476,14 @@ def _render_ajustes(
         "form_error": form_error,
         "import_error": import_error,
         "notice": imported,
-        "exclusion_warning": exclusion[0] if exclusion else None,
         "family_choices": FAMILY_CHOICES,
         "families_hint": families_hint(),
+        "class_counts": by_class,
+        "exclusion_warning": warning[0] if warning else None,
+        "copy_runs": [
+            {"id": r.id, "seed": r.seed, "iniciada_en": timestamp(r.iniciada_en)} for r in details
+        ],
+        "copy_run": request.query_params.get("copiar", ""),
         "metric_choices": METRIC_CHOICES,
         "control_reason": control.reason,
         "launch_form_id": AJUSTES_FORM,
@@ -472,6 +492,24 @@ def _render_ajustes(
     if save is not None:
         save_draft(response, save)
     return response
+
+
+def _stored_runs(request: Request) -> list[lectura.RunDetail]:
+    settings = request.app.state.settings
+    return lectura.list_runs(settings.db_path) if settings.data_source == "dal" else []
+
+
+def _duplicate(request: Request, ingest_id: str, form: FormResult) -> lectura.RunDetail | None:
+    settings = request.app.state.settings
+    if settings.data_source != "dal" or form.settings is None or form.errors:
+        return None
+    return lectura.get_run_for_identity(settings.db_path, run_id_for(ingest_id, form.settings))
+
+
+def _duration_context(request: Request, ingest_id: str) -> dict[str, Any]:
+    history = earlier_runs(_stored_runs(request), ingest_id, request.app.state.settings.data_root)
+    maximum = max((d.seconds for r in history for d in r.stages.values()), default=1) or 1
+    return {"earlier_runs": history, "duration_max": maximum, "stage_choices": STAGES}
 
 
 def _render_revisar(
@@ -499,6 +537,8 @@ def _render_revisar(
         "wizard": draft_wizard("revisar", draft_facts(repository, draft, ingest_id)),
         "source": repository.source,
         "record": False,
+        "duplicate": _duplicate(request, ingest_id, form),
+        **_duration_context(request, ingest_id),
         "ingest": ingest,
         "ingest_id": ingest_id,
         "review_rows": draft_items(form.values),
@@ -521,13 +561,33 @@ def _render_record(
         status = repository.get_run_status(facts.id, size=1)
     except (DataLayerError, InvalidQuery):
         return render_missing_run(request, facts.id)
+    detail = next((r for r in _stored_runs(request) if str(r.id) == facts.id), None)
+    values = None
+    record_error = None
+    if detail is not None:
+        try:
+            values = form_values(detail)
+        except ConfigExportError as exc:
+            record_error = str(exc)
+    by_class = {}
+    if facts.ingest_id:
+        with suppress(DataLayerError, InvalidQuery):
+            by_class = repository.get_topology_report(facts.ingest_id, size=1).summary.by_class
     context = {
         "wizard": run_wizard(step, facts),
         "source": repository.source,
         "record": True,
         "facts": facts,
         "run": status.ejecucion,
-        "review_rows": settings_items(status.settings) if status.settings else [],
+        "review_rows": draft_items(values)
+        if values is not None
+        else (settings_items(status.settings) if status.settings else []),
+        "form": values,
+        "record_error": record_error,
+        "family_choices": FAMILY_CHOICES,
+        "families_hint": families_hint(),
+        "class_counts": by_class,
+        **_duration_context(request, facts.ingest_id or ""),
         "reserve": status.reserve,
     }
     template = "pages/paso_ajustes.html" if step == "ajustes" else "pages/paso_revisar.html"
@@ -621,6 +681,45 @@ def paso_ajustes(
     return _render_record(request, repository, facts, "ajustes")
 
 
+@router.post("/corridas/nueva/copiar", response_class=HTMLResponse)
+def copiar_ajustes(
+    request: Request,
+    copiar: Annotated[str, Form()],
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> HTMLResponse:
+    """Copia todos los ajustes guardados al borrador; no crea ni reanuda una corrida."""
+    detail = next((r for r in _stored_runs(request) if str(r.id) == copiar), None)
+    if detail is None:
+        return _render_ajustes(
+            request, repository, form_error="No existe esa corrida para copiar.", status_code=404
+        )
+    try:
+        values = form_values(detail)
+    except ConfigExportError as exc:
+        return _render_ajustes(request, repository, form_error=str(exc), status_code=409)
+    known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
+    values["ingest_id"] = detail.ingest_sha256 if detail.ingest_sha256 in known else ""
+    response = _render_ajustes(
+        request,
+        repository,
+        form=FormResult(values, None, {}),
+        imported=(
+            "info" if values["ingest_id"] else "warning",
+            f"Ajustes copiados de la corrida #{copiar}. "
+            "Revise la semilla: una corrida nueva del grupo necesita otra. "
+            + (
+                ""
+                if values["ingest_id"]
+                else "El archivo de esa corrida no está disponible. "
+                "Elija otros datos antes de lanzar."
+            ),
+        ),
+    )
+    save_draft(response, read_draft(request).with_settings(values["ingest_id"], values))
+    return response
+
+
+@router.post("/corridas/nueva/ajustes/comprobar", response_model=None)
 @router.post("/corridas/nueva/ajustes", response_model=None)
 def guardar_ajustes(
     request: Request,
@@ -660,6 +759,8 @@ def guardar_ajustes(
         return response
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
+    if request.url.path.endswith("/comprobar"):
+        return _render_ajustes(request, repository, form=form, exclusion=warning)
     if form.errors or ingest_id is None:
         return _render_ajustes(request, repository, form=form, exclusion=warning)
     response = RedirectResponse(step_href(NEW, "revisar"), status_code=303)
@@ -725,6 +826,11 @@ def lanzar(
     warning = _check_launch(repository, ingest_id, form)
     if form.errors or form.settings is None or ingest_id is None:
         return _render_ajustes(request, repository, form=form, exclusion=warning)
+    duplicate = _duplicate(request, ingest_id, form)
+    if duplicate is not None:
+        return RedirectResponse(
+            f"{step_href(str(duplicate.id), 'ejecucion')}?aviso=existente", status_code=303
+        )
     if warning is not None and confirmar != warning[1]:
         return _render_revisar(request, repository, ingest_id=ingest_id, values=form.values)
     try:

@@ -3,6 +3,8 @@
 {% from "components/buttons.html" import button %}
 {% from "components/terms.html" import day %}
 
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1">{% endblock %}
+
 {# Ajustes: el formulario de una corrida nueva, o lo que se lanzó (record). #}
 {% block content %}
   {% if source == "fixture" %}
@@ -10,11 +12,13 @@
   {% endif %}
 
   {% if record %}
+  {% if form %}{% include "partials/families_matrix.html" %}{% endif %}
   <section class="pred-panel" aria-labelledby="titulo-ajustes">
     <h2 id="titulo-ajustes">Ajustes de esta corrida</h2>
+    {% if record_error %}{{ alert(record_error, variant="error") }}{% endif %}
     <dl class="pred-check">
       {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
-      <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
+      {% if not form %}<div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>{% endif %}
       {% if reserve %}
       <div><dt>Fecha de corte</dt><dd>{{ day(reserve.t_star) }}<span class="pred-subvalue">Después de esta fecha, {{ format_count(reserve.reserved_days) }} días quedan reservados para probar.</span></dd></div>
       {% endif %}

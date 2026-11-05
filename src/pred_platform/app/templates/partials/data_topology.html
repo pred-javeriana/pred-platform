@@ -20,19 +20,24 @@
   {% elif topology %}
     {% set summary = topology.summary %}
     <p class="pred-meta">Los {{ format_count(summary.n_skus) }} SKU del archivo según cada cuánto venden ({{ gloss("ADI") }}) y cuánto varían sus cantidades ({{ gloss("CV²") }}). Cada clase admite familias de modelos distintas.</p>
-    <table class="pred-class-mix">
+    <div class="pred-data-split">
+    {% if summary_chart_svg %}<div class="pred-chart" data-demand-map><p class="pred-meta" aria-label="Qué es cada marca">Cada punto es un producto. Las líneas punteadas marcan los umbrales de ADI y CV². CV² cero aparece en el borde inferior.</p>{{ summary_chart_svg | safe }}<p class="pred-scatter-readout" role="status" aria-live="polite" data-demand-readout>Pase el puntero por un producto, o use las flechas con el mapa enfocado.</p></div>{% endif %}
+    <table class="pred-class-mix pred-types-table">
       <caption class="pred-sr-only">SKU por clase de demanda</caption>
+      <thead><tr><th scope="col">Tipo de demanda</th><th scope="col">Familias que lo admiten</th><th scope="col" class="num">Productos</th></tr></thead>
       <tbody>
       {% for code in SKU_CLASS_ORDER %}
       {% set count = summary.by_class.get(code, 0) %}
       <tr{% if not count %} class="is-zero"{% endif %}>
         <th scope="row">{{ sku_class_label(code) }}<span class="pred-subvalue">{{ sku_class_term(code).hint }}</span></th>
-        <td class="num">{{ format_count(count) }}</td>
-        <td class="pred-class-mix__bar" aria-hidden="true"><span style="width: {{ (100 * count / summary.n_skus) | round(1) if summary.n_skus else 0 }}%"></span></td>
+        <td class="pred-types-table__families">{% for family in families_hint.get(code, ()) %}<span>{{ family_label(family) }}</span>{% endfor %}</td>
+        <td class="num">{{ format_count(count) }}<span class="pred-subvalue">{{ format_decimal(100 * count / summary.n_skus, 1) if summary.n_skus else 0 }} %</span></td>
       </tr>
       {% endfor %}
       </tbody>
+      <tfoot><tr><th scope="row">Total</th><td></td><td class="num">{{ format_count(summary.n_skus) }}</td></tr></tfoot>
     </table>
+    </div>
   {% endif %}
 </div>
 {% elif topology and not topology_error %}

@@ -66,19 +66,36 @@ def _launch_settings(parametros: Mapping[str, Any]) -> LaunchSettings:
         ) from exc
 
 
-def export_config(detail: RunDetail, versions: Mapping[str, object]) -> dict[str, Any]:
-    """El documento de una ejecución guardada: sus ajustes, su ingesta y las versiones que la leen.
-
-    ``identidad`` es la que la plataforma usa para reconocer la misma corrida; ``run_id`` es el
-    guardado, que puede llevar el sufijo de una generación posterior del motor.
-    """
+def stored_settings(detail: RunDetail) -> LaunchSettings:
+    """Lee los ajustes guardados sin perder semilla, presupuesto ni procesos en paralelo."""
     try:
         stored = json.loads(detail.parametros)
     except json.JSONDecodeError as exc:
         raise ConfigExportError("Los ajustes guardados de la ejecución no son JSON.") from exc
     if not isinstance(stored, dict):
         raise ConfigExportError("Los ajustes guardados de la ejecución no son un objeto.")
-    launch = _launch_settings(stored)
+    return _launch_settings(stored)
+
+
+def form_values(detail: RunDetail) -> dict[str, Any]:
+    """Los valores de una corrida anterior para copiar o mostrar su registro, sin lanzarla."""
+    params = stored_settings(detail).to_parametros()
+    return {
+        "ingest_id": detail.ingest_sha256,
+        "families": params["families"],
+        "metric": params["metric"],
+        **{key: str(params[key]) for key in _INT_PARAMS},
+        "trials": "" if params["trials"] is None else str(params["trials"]),
+    }
+
+
+def export_config(detail: RunDetail, versions: Mapping[str, object]) -> dict[str, Any]:
+    """El documento de una ejecución guardada: sus ajustes, su ingesta y las versiones que la leen.
+
+    ``identidad`` es la que la plataforma usa para reconocer la misma corrida; ``run_id`` es el
+    guardado, que puede llevar el sufijo de una generación posterior del motor.
+    """
+    launch = stored_settings(detail)
     parametros = launch.to_parametros()
     return {
         "formato": FORMAT,

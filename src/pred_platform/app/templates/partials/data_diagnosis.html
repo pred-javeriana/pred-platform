@@ -4,6 +4,7 @@
 {% from "components/metrics.html" import metrics_row %}
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/evidence.html" import evidence_panel %}
+{% from "components/terms.html" import day %}
 
 {% set ingest_status = describe_status("ingest", report.status) %}
 {% if not diagnosis_details %}
@@ -67,10 +68,11 @@
   {% endif %}
 
   {% if report.validation %}
-  <dl class="pred-kpis pred-kpis--compact">
+  <dl class="pred-kpis pred-kpis--compact pred-file-figures">
     <div class="pred-kpis__item"><dt>Filas validadas</dt><dd>{{ format_count(report.validation.rows_validated) }}</dd></div>
     <div class="pred-kpis__item"><dt>Panel diario</dt><dd>{{ format_count(report.validation.rows_daily_panel) }}</dd><dd class="pred-kpis__note">Filas publicadas: una por SKU y día del calendario.</dd></div>
     <div class="pred-kpis__item"><dt>SKU</dt><dd>{{ format_count(report.validation.n_skus) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Fecha de corte</dt><dd class="pred-kpis__text">{{ day(topology.t_star) if topology and topology.t_star else 'Sin fecha publicada' }}</dd><p class="pred-kpis__note">Después de esta fecha, los datos se reservan para probar.</p></div>
   </dl>
   {% endif %}
 

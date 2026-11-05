@@ -79,8 +79,9 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
     assert "Administración" not in html
     assert "Iniciar sesión" not in html
     assert "Datos de prueba" in html
-    # Sin ingesta elegida, cargar es la acción principal y dice qué columnas espera el motor.
-    assert 'id="titulo-carga">Cargar un archivo<' in html
+    # Sin elegir ingesta, el paso ofrece archivos validados y la carga con sus columnas.
+    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in html
+    assert "Cargar un archivo nuevo" in html
     for column in ("sku_id", "timestamp", "demand_qty", "lead_time_days"):
         assert f'<span class="mono">{column}</span>' in html
 
@@ -126,7 +127,8 @@ def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path)
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text
     assert "Todavía no hay archivos cargados." in html
-    assert 'id="titulo-carga">Cargar un archivo<' in html
+    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in html
+    assert 'id="carga" open' in html
     assert "No hay SKU que coincidan" not in html
     assert "La caracterización todavía no está disponible." not in html
     # El historial no queda como subsección de «Cargar un archivo» en el esquema de títulos.
@@ -273,7 +275,9 @@ def test_topology_filters_are_delegated(tmp_path: Path) -> None:
         f"/datos?ingest_id={ACCEPTED}&sku_class=smooth&q=FIL-0001&sort=adi&descending=1&page=1"
     ).text
     assert repo.topology_calls
-    call = repo.topology_calls[-1]
+    filtered = [call for call in repo.topology_calls if call.get("q") == "FIL-0001"]
+    assert len(filtered) == 1
+    call = filtered[0]
     assert call["ingest_id"] == ACCEPTED
     assert call["sku_class"] == "smooth"
     assert call["q"] == "FIL-0001"
@@ -290,7 +294,7 @@ def test_filter_miss_has_specific_empty_message(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "normal")
     html = client.get(f"/datos?ingest_id={ACCEPTED}&q=NO-EXISTE").text
     assert "No hay SKU que coincidan con los filtros seleccionados." in html
-    assert 'id="titulo-carga"' not in html  # con una ingesta, cargar otra es una pestaña
+    assert 'id="titulo-carga"' not in html  # la carga está en un desplegable del paso
 
 
 def test_vacio_accepted_upload_shows_topology_unavailable(tmp_path: Path) -> None:

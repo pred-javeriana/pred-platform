@@ -1,0 +1,29 @@
+{% from "components/alerts.html" import alert %}
+<section class="pred-panel" id="matriz-familias" aria-labelledby="titulo-familias">
+  <h2 id="titulo-familias">Familias de modelos</h2>
+  <p class="pred-lead" id="families-hint">Cada producto necesita al menos dos familias que admitan su tipo de demanda para competir. La tabla muestra qué familia sirve a qué tipo.</p>
+  <div class="pred-table-wrap" role="region" aria-label="Familias por tipo de demanda" tabindex="0">
+    <table class="pred-family-matrix">
+      <thead><tr><th scope="col">Familia</th>{% for code, admitted in families_hint %}<th scope="col" title="{{ sku_class_term(code).hint }}">{{ sku_class_label(code) }}{% if class_counts %}<small>{{ format_count(class_counts.get(code, 0)) }} productos</small>{% endif %}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for family, label in family_choices %}
+      <tr>
+        <th scope="row"><label for="fam-{{ family }}">{% if not record %}<input id="fam-{{ family }}" type="checkbox" name="families" value="{{ family }}"{% if family in form.families %} checked{% endif %}{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}>{% endif %}<span><strong class="pred-family-key" data-family="{{ family }}">{{ label }}</strong>{% if family == 'foundation' %}<small>Necesita Chronos-2 instalado en el equipo del motor.</small>{% endif %}</span></label></th>
+        {% for code, admitted in families_hint %}
+        {% set state = 'on' if family in admitted and family in form.families else 'off' if family in admitted else 'na' %}
+        <td><span class="pred-matrix-dot pred-matrix-dot--{{ state }}" title="{{ family_label(family) }}: {{ 'compite' if state == 'on' else 'admitida, sin elegir' if state == 'off' else 'la política no la usa en este tipo' }}"><span class="pred-sr-only">{{ 'Compite' if state == 'on' else 'Admitida, sin elegir' if state == 'off' else 'No admite este tipo' }}</span></span></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><th scope="row">Familias que compiten</th>{% for code, admitted in families_hint %}{% set count = form.families | select('in', admitted) | list | length %}<td class="{{ 'pred-coverage-ok' if count >= 2 else 'pred-coverage-warn' }}"><svg aria-hidden="true"><use href="#{{ 'i-check' if count >= 2 else 'i-warn' }}"></use></svg> {{ count }}</td>{% endfor %}</tr></tfoot>
+    </table>
+  </div>
+  <ul class="pred-matrix-legend" aria-label="Qué significa cada marca">
+    <li><span class="pred-matrix-dot pred-matrix-dot--on" aria-hidden="true"></span>compite</li>
+    <li><span class="pred-matrix-dot pred-matrix-dot--off" aria-hidden="true"></span>admitida, sin elegir</li>
+    <li><span class="pred-matrix-dot pred-matrix-dot--na" aria-hidden="true"></span>la política no la usa en este tipo</li>
+  </ul>
+  {% if not record and form_errors.get('families') %}<p class="pred-field__error" id="families-error">{{ form_errors['families'] }}</p>{% endif %}
+  {% if exclusion_warning %}{{ alert(exclusion_warning, variant="warning") }}{% endif %}
+</section>

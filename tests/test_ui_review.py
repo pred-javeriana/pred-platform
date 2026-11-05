@@ -363,20 +363,18 @@ def test_execution_live_region_is_small_and_pause_control_is_outside_fragment() 
 
 def test_accepted_file_keeps_the_next_action_outside_optional_evidence() -> None:
     html = client_for().get(f"/corridas/nueva/datos?ingest_id={ACCEPTED}").text
-    # Siguiente va al pie del paso, fuera de las pestañas de evidencia: ninguna pestaña lo oculta.
+    # Siguiente queda fuera de los desplegables del diagnóstico y los productos.
     footer = html.index('<nav class="pred-footnav"')
     assert html.index("Continuar a Ajustes", footer) > footer
     assert html.rindex("data-evidence-panel") < footer
     page = Markup(html)
     evidence = [attrs for _, attrs in page.tags if "data-evidence-panel" in attrs]
-    evidence_ids = {"diagnostico-completo", "explorar-topologia", "carga", "historial"}
+    evidence_ids = {"diagnostico-completo", "explorar-topologia", "historial"}
     assert {attrs["id"] for attrs in evidence} == evidence_ids
     assert all("hidden" not in attrs for attrs in evidence)  # Alternativa funcional sin JS.
-    assert {
-        attrs["data-evidence-target"]
-        for attrs in page.select("a")
-        if "data-evidence-target" in attrs
-    } == evidence_ids
+    disclosures = {attrs.get("id") for attrs in page.select("details")}
+    assert {"diagnostico-archivo", "productos-datos", "carga", "archivos-cargados"} <= disclosures
+    assert not any("data-evidence-tabs" in attrs for _, attrs in page.tags)
 
 
 def test_circular_progress_preserves_accessible_values_and_stopped_run_meaning() -> None:
