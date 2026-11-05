@@ -323,6 +323,15 @@ def run_number(reference: str) -> int | None:
     return None
 
 
+def list_runs(db_path: Path) -> list[RunDetail]:
+    """Every run, newest first (empty without a database or before migration 0003)."""
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_run_columns(conn):
+            return []
+        rows = conn.execute(f"SELECT {_RUN_COLUMNS} {_RUN_FROM} ORDER BY e.id DESC").fetchall()
+    return [RunDetail(*row) for row in rows]
+
+
 def get_run(db_path: Path, reference: str) -> RunDetail | None:
     """A run by its ``ejecuciones.id`` (digits), by the engine's ``run_id`` or ``latest``.
 

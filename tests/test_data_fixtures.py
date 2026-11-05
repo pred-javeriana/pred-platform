@@ -145,6 +145,12 @@ def test_topology_of_an_unknown_ingest_is_missing(repo: FixtureRepository) -> No
 
 
 # ---------------------------------------------------------------------- run status
+def test_list_runs_gives_every_run_of_the_scenario_newest_first() -> None:
+    assert [run.id for run in FixtureRepository("errores").list_runs()] == ["2", "1"]
+    assert [run.id for run in FixtureRepository("normal").list_runs()] == ["1"]
+    assert FixtureRepository("vacio").list_runs() == []
+
+
 def test_run_status_filters_tasks_but_keeps_the_whole_progress(repo: FixtureRepository) -> None:
     everything = repo.get_run_status(RUN)
     done = repo.get_run_status(RUN, estado="exitosa")

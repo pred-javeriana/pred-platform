@@ -199,11 +199,15 @@ def test_uploading_in_the_browser_leads_to_the_diagnosis_and_the_topology(env: E
 
     response = _upload(client, content)
     assert response.status_code == 303
-    assert response.headers["location"] == f"/datos?ingest_id={_sha(content)}"
+    assert response.headers["location"] == f"/corridas/nueva/datos?ingest_id={_sha(content)}"
 
     page = client.get(response.headers["location"]).text
     assert "Datos válidos" in page and "Clases de demanda" in page
-    assert "Continuar a Ejecución" in page
+    assert "Continuar a Ajustes" in page
+    # The accepted file stays chosen for the new run: Ajustes opens with it.
+    assert "pred_borrador=" in response.headers["set-cookie"]
+    ajustes = client.get("/corridas/nueva/ajustes").text
+    assert f'<option value="{_sha(content)}" selected>' in ajustes
 
 
 def test_a_conflicting_upload_goes_through_the_confirmation_step(env: Env) -> None:
@@ -221,7 +225,7 @@ def test_a_conflicting_upload_goes_through_the_confirmation_step(env: Env) -> No
         data={"pendiente": token.group(1), "confirm_overwrite": "1"},
         follow_redirects=False,
     )
-    assert confirmed.headers["location"] == f"/datos?ingest_id={_sha(content)}"
+    assert confirmed.headers["location"] == f"/corridas/nueva/datos?ingest_id={_sha(content)}"
     assert "Datos válidos" in client.get(confirmed.headers["location"]).text
 
 

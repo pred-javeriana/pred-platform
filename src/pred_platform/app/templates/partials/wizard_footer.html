@@ -1,0 +1,26 @@
+{# Atrás y Siguiente al pie de cada paso (pasos.NavLink y pasos.NavNext). Siguiente puede ser un
+   enlace, el envío del formulario del paso, un formulario propio o, si todavía no se puede
+   seguir, un botón deshabilitado con su motivo debajo. #}
+{% set next = wizard.next %}
+<nav class="pred-footnav" aria-label="Navegación entre pasos">
+  <div class="pred-footnav__side">
+    {% if wizard.back %}<a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ wizard.back.href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>{{ wizard.back.label }}</a>{% endif %}
+  </div>
+  {% if next %}
+  <div class="pred-footnav__side pred-footnav__side--end">
+    {% if next.href %}
+    <a class="pred-btn pred-btn--primary pred-btn--large" href="{{ next.href }}">{{ next.label }}<svg aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
+    {% elif next.submits %}
+    <button class="pred-btn pred-btn--primary pred-btn--large" type="submit" form="{{ next.submits }}">{{ next.label }}<svg aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+    {% elif next.post_to %}
+    <form method="post" action="{{ next.post_to }}" class="pred-footnav__form">
+      {% for name, value in next.fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      <button class="pred-btn pred-btn--primary pred-btn--large" type="submit">{{ next.label }}<svg aria-hidden="true"><use href="#i-arrow-right"></use></svg></button>
+    </form>
+    {% else %}
+    <button class="pred-btn pred-btn--secondary pred-btn--large" type="button" disabled aria-describedby="siguiente-motivo">{{ next.label }}<svg aria-hidden="true"><use href="#i-lock"></use></svg></button>
+    {% endif %}
+    {% if next.hint %}<span class="pred-footnav__hint"{% if not (next.href or next.submits or next.post_to) %} id="siguiente-motivo"{% endif %}>{{ next.hint }}</span>{% endif %}
+  </div>
+  {% endif %}
+</nav>

@@ -33,12 +33,6 @@
       {% endfor %}
       </tbody>
     </table>
-    {% if can_continue %}
-    <div class="pred-next-action">
-      {{ button("Continuar a Ejecución", variant="primary", href="/ejecucion?ingest_id=" ~ topology.ingest_id, icon="i-play") }}
-      <p class="pred-meta">El archivo está listo: elija las familias de modelos y lance la ejecución.</p>
-    </div>
-    {% endif %}
   {% endif %}
 </div>
 {% elif topology and not topology_error %}
@@ -57,7 +51,7 @@
         {{ chart_svg | safe }}
       </div>
 
-      <form method="get" action="/datos" class="pred-filters" id="filtros-topologia">
+      <form method="get" action="{{ datos_path }}" class="pred-filters" id="filtros-topologia">
         <input type="hidden" name="ingest_id" value="{{ topology.ingest_id }}">
         {{ field(
           "sku_class",
@@ -82,7 +76,7 @@
         {{ field("descending", "Descendente", value=topology_query.descending, input_type="checkbox") }}
         <input type="hidden" name="size" value="{{ topology_query.size }}">
         {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
-        <a href="/datos?ingest_id={{ topology.ingest_id }}#explorar-topologia">Limpiar filtros</a>
+        <a href="{{ datos_path }}?ingest_id={{ topology.ingest_id }}#explorar-topologia">Limpiar filtros</a>
       </form>
 
       {{ table_start(["SKU", "Clase", "ADI", "CV²", "Periodos", "Periodos con demanda"], "Topología por SKU de la página filtrada") }}
@@ -106,10 +100,10 @@
       <nav class="pred-pager" aria-label="Paginación de SKU">
         <span>Página {{ topology.page.number }} de {{ topology_pages.total_pages }}</span>
         {% if topology_pages.has_prev %}
-        <a href="/datos?{{ topology_query.query_string(topology.ingest_id, page=topology.page.number - 1) }}">Anterior</a>
+        <a href="{{ datos_path }}?{{ topology_query.query_string(topology.ingest_id, page=topology.page.number - 1) }}">Anterior</a>
         {% endif %}
         {% if topology_pages.has_next %}
-        <a href="/datos?{{ topology_query.query_string(topology.ingest_id, page=topology.page.number + 1) }}">Siguiente</a>
+        <a href="{{ datos_path }}?{{ topology_query.query_string(topology.ingest_id, page=topology.page.number + 1) }}">Siguiente</a>
         {% endif %}
       </nav>
       {% endif %}

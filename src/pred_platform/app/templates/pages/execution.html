@@ -2,25 +2,12 @@
 {% from "components/alerts.html" import alert %}
 {% from "components/buttons.html" import button %}
 
-{% block title %}Ejecución · PRED{% endblock %}
-
 {# htmx copia por defecto las clases del cuerpo viejo al nuevo hasta asentarlo; eso deshace las
    pestañas que pred.js arma tras cada sondeo y la página salta cada 2 s. #}
 {% block head %}<meta name="htmx-config" content='{"attributesToSettle": []}'>{% endblock %}
 
+{# El paso Ejecución de una corrida lanzada: su avance, sus acciones y sus tareas. #}
 {% block content %}
-  <header class="pred-page-header">
-    <div>
-      <h1>Ejecución</h1>
-      <p>Lance una ejecución sobre un archivo de datos válido, siga su avance y atienda las tareas que lo necesiten.</p>
-    </div>
-    {% if run and not launch_open %}
-    <div class="pred-page-header__actions">
-      {{ button("Nueva ejecución", variant="subtle", href="/ejecucion?lanzar=1#lanzar", icon="i-play") }}
-    </div>
-    {% endif %}
-  </header>
-
   {% if source == "fixture" %}
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
@@ -29,10 +16,6 @@
   {% if action_error %}{{ alert(action_error, variant="warning") }}{% endif %}
   {% if query_error %}{{ alert(query_error, variant="warning") }}{% endif %}
 
-  {% if launch_open %}
-  {% include "partials/execution_launch.html" %}
-  {% endif %}
-
   {% if run %}
   <div class="pred-poll-controls" id="actualizacion"{% if not poll %} hidden{% endif %}>
     <button type="button" class="pred-btn pred-btn--subtle pred-btn--small" id="pausar-actualizacion" aria-controls="ejecucion-cuerpo" aria-pressed="false"{% if not poll %} disabled{% endif %}>Pausar actualización</button>
@@ -40,9 +23,7 @@
   </div>
   {% endif %}
   <p class="pred-sr-only" id="ejecucion-anuncio" role="status" aria-live="polite" aria-atomic="true"></p>
-  {# El sondeo vuelve a pintar el cuerpo como esta página: con el formulario abierto o cerrado. #}
   {% set poll_query = query_string %}
-  {% if launch_open %}{% set poll_query = (query_string ~ "&" if query_string else "") ~ "lanzar=1" %}{% endif %}
   <noscript><p class="pred-meta">Recargue la página para consultar el avance actualizado.</p></noscript>
   <div id="ejecucion-cuerpo"
        hx-get="/ejecucion/estado{% if poll_query %}?{{ poll_query }}{% endif %}"

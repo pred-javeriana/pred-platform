@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{# Un paso al que todavía no se puede llegar (Revisar sin datos elegidos, o Ejecución y
+   Resultados de una corrida que aún no se lanzó) o una corrida que no existe: qué falta y adónde
+   ir. #}
+{# Un paso bloqueado no lleva Atrás ni Siguiente: su tarjeta dice adónde ir. #}
+{% block content %}
+  {% if not wizard %}
+  <header class="pred-stephead">
+    <div>
+      <p class="pred-stephead__eyebrow">Corridas</p>
+      <h1>{{ locked.title }}</h1>
+    </div>
+  </header>
+  {% endif %}
+  <section class="pred-locked" aria-labelledby="titulo-bloqueado">
+    <h2 id="titulo-bloqueado"><svg class="pred-status__icon" aria-hidden="true"><use href="#i-lock"></use></svg> {{ locked.heading }}</h2>
+    <p>{{ locked.text }}</p>
+    {% if locked.actions %}
+    <p class="pred-actions">{% for label, href, primary in locked.actions %}<a class="pred-btn pred-btn--{{ 'primary' if primary else 'secondary' }}" href="{{ href }}">{{ label }}</a>{% endfor %}</p>
+    {% endif %}
+  </section>
+{% endblock %}

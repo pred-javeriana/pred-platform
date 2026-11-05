@@ -19,7 +19,7 @@ its closed tasks as progress: its bar counts the successful ones.
 **Export and import the configuration** (RF-CON-07, task A3 of section 4.5). The Configuración tab
 of the shown run has an "Exportar configuración (JSON)" button
 (`GET /ejecucion/configuracion.json?ejecucion=<id>`, the latest run when omitted), and the
-"Nueva ejecución" panel has a "Reproducir una ejecución anterior" disclosure with the import form
+Ajustes step of a new run has a "Reproducir una ejecución anterior" disclosure with the import form
 (`POST /ejecucion/configuracion`, multipart field `archivo`). The file is JSON with its own format
 (`pred-platform.configuracion-ejecucion`, `schema_version` 1) and holds the stored `run_id`, the
 `identidad` (`run_id_for`, the id the platform uses to recognise the same run), the SHA-256 of the

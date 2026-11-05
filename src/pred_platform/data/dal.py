@@ -114,6 +114,18 @@ def _missing(capability: CapabilityId, what: str) -> Never:
     )
 
 
+def _ejecucion(run: lectura.RunDetail) -> models.Ejecucion:
+    return models.Ejecucion(
+        id=str(run.id),
+        ingest_id=run.ingest_sha256,
+        configuracion_id=str(run.configuracion_id),
+        seed=run.seed,
+        estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+        iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
+        finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
+    )
+
+
 class DalRepository(M3DalSource):
     """``DataRepository`` over the platform's SQLite database (read-only)."""
 
@@ -327,6 +339,9 @@ class DalRepository(M3DalSource):
         return frozenset(i for i in ingest_ids if declares_synthetic(self.data_root, i))
 
     # -------------------------------------------------------------------- run status
+    def list_runs(self) -> list[models.Ejecucion]:
+        return [_ejecucion(run) for run in lectura.list_runs(self.db_path)]
+
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         # Written by the worker (``worker/errores.py``); one that is not an ErrorInfo is not shown.
         detail = lectura.get_run(self.db_path, run_id)
@@ -388,15 +403,7 @@ class DalRepository(M3DalSource):
         parametros = json.loads(run.parametros)
         return models.RunStatus(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
-            ejecucion=models.Ejecucion(
-                id=str(run.id),
-                ingest_id=run.ingest_sha256,
-                configuracion_id=str(run.configuracion_id),
-                seed=run.seed,
-                estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
-                iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
-                finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
-            ),
+            ejecucion=_ejecucion(run),
             settings=models.RunSettings(
                 schema_version=parametros.get("schema_version", 1),
                 configuracion_version=run.configuracion_version,

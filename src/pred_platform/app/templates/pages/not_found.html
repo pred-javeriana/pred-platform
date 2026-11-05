@@ -1,19 +1,21 @@
 {% extends "base.html" %}
 {% from "components/states.html" import empty_state %}
 
+{# Una dirección que no existe, con el mismo encabezado que una corrida que no existe. #}
 {% block title %}Página no encontrada · PRED{% endblock %}
 
 {% block content %}
-  <header class="pred-page-header">
+  <header class="pred-stephead">
     <div>
+      <p class="pred-stephead__eyebrow">Corridas</p>
       <h1>Página no encontrada</h1>
-      <p>La dirección no corresponde a ninguna pantalla de PRED.</p>
+      <p class="pred-stephead__what">La dirección no corresponde a ninguna pantalla de PRED.</p>
     </div>
   </header>
   {{ empty_state(
     "No existe esta página.",
-    "Revise la dirección o siga por los datos, la ejecución o los resultados desde el menú.",
-    "Ir a Datos",
-    "/datos"
+    "Revise la dirección o siga desde Corridas, donde están todas las corridas.",
+    "Ir a Corridas",
+    "/"
   ) }}
 {% endblock %}

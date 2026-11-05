@@ -1,8 +1,10 @@
-"""Superficie Resultados: selección por SKU (C2). La interfaz no elige campeones.
+"""Paso 5, Resultados: selección por SKU (C2). La interfaz no elige campeones.
 
-Dos páginas sobre ``DataRepository``: las pestañas de ``/resultados`` y el detalle de un SKU
-(``/resultados/sku/{sku_id}``). Filtros, orden y paginación se delegan al repositorio; aquí solo se
-arma la consulta y se presentan los documentos tal como llegan. La selección es la de M2; el
+Dos páginas sobre ``DataRepository``: las pestañas del paso (``/corridas/<id>/resultados``) y el
+detalle de un SKU (``/resultados/sku/{sku_id}``). ``/resultados`` lleva al paso de la corrida
+pedida (``?ejecucion=``) o, sin pedirla, de la más nueva con evidencia publicada. Filtros, orden
+y paginación se delegan al repositorio; aquí solo se arma la consulta y se presentan los
+documentos tal como llegan. La selección es la de M2; el
 campeón y el veredicto de cada SKU son los que publicó M3 en una corrida exacta
 (``resultados_m3``), y los enlaces conservan esa corrida resuelta.
 """
@@ -14,17 +16,28 @@ from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pred_platform.app.borrador import read_draft
 from pred_platform.app.charts import champion_forecast_svg, champion_share_svg
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
+from pred_platform.app.corridas import draft_facts, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
-from pred_platform.app.ejecucion import offers_resume, run_compares_nothing, run_error
+from pred_platform.app.ejecucion import run_resumable
+from pred_platform.app.pasos import (
+    NEW,
+    Wizard,
+    draft_resume,
+    draft_wizard,
+    run_wizard,
+    step_href,
+)
 from pred_platform.app.presentation import FAMILY_ORDER, describe_run, family_label
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
     PROFILE_METRICS,
+    ExecutionChoice,
     M3Classes,
     M3Consulta,
     M3Decision,
@@ -42,6 +55,12 @@ from pred_platform.app.resultados_m3 import (
     summary,
 )
 from pred_platform.app.resultados_pronostico import champion_forecast
+from pred_platform.app.routers.corridas import (
+    Locked,
+    redirect_with_query,
+    render_locked,
+    render_missing_run,
+)
 from pred_platform.app.seleccion import (
     SelectionQuery,
     parse_selection_query,
@@ -49,12 +68,14 @@ from pred_platform.app.seleccion import (
 )
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing, DataLayerError, InvalidQuery
-from pred_platform.contract.models import Ejecucion, RunStatus, SkuSelection, SkuSelectionList
+from pred_platform.contract.models import RunStatus, SkuSelection, SkuSelectionList
 from pred_platform.data.deps import get_repository
 from pred_platform.data.query import LATEST
 from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
+# Cuántas corridas con evidencia publicada ofrece el selector de corrida.
+_EXECUTION_CHOICES = 20
 
 # Las pestañas, en orden de lectura: primero la vista general (Shneiderman: «overview first»),
 # después el detalle. «consulta» es el nombre anterior de la lista de veredictos.
@@ -67,8 +88,6 @@ def _base_context(repository: DataRepository, vista: str) -> dict[str, Any]:
     capabilities = repository.get_capabilities()
     champion = next(item for item in capabilities.items if item.id == "champion_selection")
     return {
-        "active_surface": "resultados",
-        "page_title": "Resultados",
         "capabilities": capabilities,
         "vista": vista,
         "action": run_action(capabilities),
@@ -107,24 +126,83 @@ def _lista(params: dict[str, str], champion: bool, evidence: bool) -> str:
     return "veredictos"
 
 
-@router.get("/resultados", response_class=HTMLResponse)
+@router.get("/resultados")
 def resultados(
     request: Request,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> RedirectResponse:
+    """La ruta anterior: el paso Resultados de la corrida pedida o, sin pedirla, de la más nueva
+    con evidencia publicada (si no hay, la más reciente)."""
+    params = request.query_params
+    wanted = (params.get("ejecucion") or "").strip()
+    target: str | None = wanted if wanted not in ("", LATEST) else None
+    if target is None:
+        published = published_executions(repository)
+        target = published[0].ejecucion_id if published else _latest_run(repository)
+    if target is None:
+        return redirect_with_query(step_href(NEW, "resultados"), [])
+    return redirect_with_query(
+        step_href(target, "resultados"), params.multi_items(), drop=("ejecucion",)
+    )
+
+
+def _latest_run(repository: DataRepository) -> str | None:
+    status = _run_header(repository, LATEST)
+    return status.ejecucion.id if status is not None and status.ejecucion is not None else None
+
+
+@router.get("/corridas/{corrida}/resultados", response_class=HTMLResponse)
+def paso_resultados(
+    request: Request,
+    corrida: str,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
+    if corrida == NEW:
+        draft = draft_facts(repository, read_draft(request))
+        resume = draft_resume(draft)
+        return render_locked(
+            request,
+            Locked(
+                title="Resultados",
+                heading="Los resultados todavía no existen",
+                text="Se abren cuando la etapa 4, Evaluación final, publique.",
+                # El grupo de semillas lee las evaluaciones publicadas, no este borrador.
+                actions=(
+                    (resume.label, resume.href, True),
+                    ("Grupo de semillas", "/resultados/grupo", False),
+                ),
+            ),
+            draft_wizard("resultados", draft),
+        )
+    executions = published_executions(repository, limit=None)
+    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    if facts is None:
+        return render_missing_run(request, corrida)
+    # Mientras la evaluación final no publica, el paso muestra lo que ya hay (la selección de cada
+    # familia) y lo dice; no se bloquea.
+    wizard = run_wizard("resultados", facts)
+    return _resultados_page(request, repository, facts.id, wizard, executions)
+
+
+def _resultados_page(
+    request: Request,
+    repository: DataRepository,
+    reference: str,
+    wizard: Wizard,
+    published: list[ExecutionChoice],
+) -> HTMLResponse:
+    """La página del paso para la corrida ``reference``; ``published`` son las corridas con
+    evidencia M3 publicada, de la más nueva a la más vieja."""
     params = dict(request.query_params)
     probe = _base_context(repository, "")
     champion = probe["champion_capability"].available
-    # La ejecución y la corrida M3 se leen aparte de los filtros: un page o un size inválido
-    # nunca hace perder qué ejecución se estaba mirando. Sin pedir una, la más nueva con
-    # evidencia M3 publicada.
-    executions = published_executions(repository) if champion else []
-    explicit = (params.get("ejecucion") or "").strip()
-    reference = explicit or (executions[0].ejecucion_id if executions else LATEST)
+    # La ejecución (la de la ruta) y la corrida M3 se leen aparte de los filtros: un page o un
+    # size inválido nunca hace perder qué ejecución se estaba mirando.
+    executions = published[:_EXECUTION_CHOICES]
     evidence = champion and any(e.ejecucion_id == reference for e in executions)
     vista = _vista(params, evidence)
     lista = _lista(params, champion, evidence) if vista == "sku" else None
-    context = {**probe, "vista": vista, "lista": lista}
+    context = {**probe, "vista": vista, "lista": lista, "wizard": wizard}
     wanted_m3 = (params.get("m3") or "").strip() or None
     query_error: str | None = None
     try:
@@ -142,7 +220,7 @@ def resultados(
         run=run,
         executions=executions,
         reference=reference,
-        missing_execution=explicit if run is None and explicit else None,
+        missing_execution=reference if run is None else None,
         m3=M3Decision(),
         m3_summary=M3Summary(),
         m3_profiles=M3Profiles(),
@@ -201,21 +279,7 @@ def _describe_run(
     )
     context["run_ingest"] = ingest_name(repository, run.ejecucion.ingest_id)
     context["run_status"] = describe_run(
-        run.ejecucion.estado, resumable=_resumable(repository, run, run.ejecucion)
-    )
-
-
-def _resumable(repository: DataRepository, status: RunStatus, run: Ejecucion) -> bool:
-    """Si la ejecución mostrada se puede reanudar, con la regla de Ejecución; el error guardado
-    y la topología solo se leen si se detuvo, el único estado cuyo tono depende de esto."""
-    if run.estado != "detenida":
-        return offers_resume(run.estado, None)
-    try:
-        error = run_error(repository.get_run_error(run.id))
-    except DataLayerError:
-        error = None
-    return offers_resume(
-        run.estado, error, nothing_to_compare=run_compares_nothing(repository, run, status)
+        run.ejecucion.estado, resumable=run_resumable(repository, run)
     )
 
 

@@ -1,4 +1,9 @@
-"""Superficie Datos: carga, diagnóstico y topología en una sola ruta de producto."""
+"""Paso 1, Datos: carga, diagnóstico y topología de demanda.
+
+Una corrida nueva elige aquí su archivo (``/corridas/nueva/datos``); una lanzada muestra el
+archivo que usó, como registro de solo lectura (``/corridas/<id>/datos``). ``/datos`` lleva al
+paso de la corrida nueva con la misma consulta.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,9 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pred_platform.app.borrador import read_draft, save_draft
 from pred_platform.app.charts import topology_scatter_svg
+from pred_platform.app.corridas import draft_facts, run_facts
 from pred_platform.app.datos import (
     CSV_COLUMNS,
     CSV_HINT,
@@ -28,6 +35,14 @@ from pred_platform.app.datos import (
     upload_blocked,
     validate_upload,
 )
+from pred_platform.app.ejecucion import accepted_ingests
+from pred_platform.app.pasos import NEW, Wizard, draft_wizard, run_wizard, step_href
+from pred_platform.app.routers.corridas import (
+    Locked,
+    redirect_with_query,
+    render_locked,
+    render_missing_run,
+)
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, TopologyReport
 from pred_platform.data.deps import get_repository
@@ -37,12 +52,71 @@ from pred_platform.data.repository import DataRepository
 router = APIRouter()
 
 
-@router.get("/datos", response_class=HTMLResponse)
-def datos(
+_DRAFT_PATH = step_href(NEW, "datos")
+
+
+@router.get("/datos")
+def datos(request: Request) -> RedirectResponse:
+    return redirect_with_query(_DRAFT_PATH, request.query_params.multi_items())
+
+
+@router.get("/corridas/{corrida}/datos", response_class=HTMLResponse)
+def paso_datos(
     request: Request,
+    corrida: str,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
-    return _render_page(request, repository)
+    if corrida != NEW:
+        facts = run_facts(repository, corrida)
+        if facts is None:
+            return render_missing_run(request, corrida)
+        if facts.ingest_id is None:
+            return render_locked(
+                request,
+                Locked(
+                    title="Datos",
+                    heading="Esta corrida no registró su archivo de datos",
+                    text="Los pasos siguientes muestran lo que sí quedó guardado.",
+                    actions=(("Ir a Ajustes", step_href(facts.id, "ajustes"), True),),
+                ),
+                run_wizard("datos", facts),
+            )
+        return _render_page(
+            request,
+            repository,
+            ingest_id=facts.ingest_id,
+            wizard=run_wizard("datos", facts),
+            record=True,
+        )
+    params = request.query_params
+    # Sin elegir otro archivo, el paso muestra el que ya eligió el borrador.
+    ingest_id = params.get("ingest_id") or (
+        None if params.get("pendiente") else read_draft(request).ingest_id
+    )
+    return _render_page(request, repository, ingest_id=ingest_id)
+
+
+def _runnable(repository: DataRepository, ingest_id: str) -> bool:
+    """Si la corrida nueva puede usar este archivo: aceptado y de datos reales."""
+    return any(
+        i.item.ingest_id == ingest_id and not i.synthetic for i in accepted_ingests(repository)
+    )
+
+
+@router.post("/corridas/nueva/datos")
+def elegir_datos(
+    request: Request,
+    ingest_id: Annotated[str | None, Form()] = None,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> RedirectResponse:
+    """«Continuar a Ajustes»: guarda el archivo elegido en el borrador. Solo un archivo aceptado
+    de datos reales se puede elegir; otro vuelve a Datos para mostrar por qué no."""
+    if ingest_id is None or not _runnable(repository, ingest_id):
+        query = f"?{urlencode({'ingest_id': ingest_id})}" if ingest_id else ""
+        return RedirectResponse(f"{_DRAFT_PATH}{query}", status_code=303)
+    response = RedirectResponse(step_href(NEW, "ajustes"), status_code=303)
+    save_draft(response, read_draft(request).with_ingest(ingest_id))
+    return response
 
 
 @router.post("/datos/cancelar")
@@ -50,7 +124,7 @@ def cancelar(request: Request, pendiente: Annotated[str | None, Form()] = None) 
     """Descarta la carga que esperaba confirmación; sus bytes se borran en el acto."""
     if pendiente:
         discard_pending(request, pendiente)
-    return RedirectResponse(url="/datos", status_code=303)
+    return RedirectResponse(url=_DRAFT_PATH, status_code=303)
 
 
 @router.post("/datos/cargar", response_model=None)
@@ -120,24 +194,34 @@ def _submit(
             request, PendingUpload(file_name=file_name, content=content, report=report)
         )
         return RedirectResponse(
-            url=f"/datos?{urlencode({'pendiente': token})}",
+            url=f"{_DRAFT_PATH}?{urlencode({'pendiente': token})}",
             status_code=303,
         )
     remember_report(request, report)
-    return RedirectResponse(
-        url=f"/datos?{urlencode({'ingest_id': report.ingest_id})}",
+    response = RedirectResponse(
+        url=f"{_DRAFT_PATH}?{urlencode({'ingest_id': report.ingest_id})}",
         status_code=303,
     )
+    # Un archivo cargado y aceptado queda elegido para la corrida nueva.
+    if report.ingest_id and _runnable(repository, report.ingest_id):
+        save_draft(response, read_draft(request).with_ingest(report.ingest_id))
+    return response
 
 
 def _render_page(
     request: Request,
     repository: DataRepository,
     *,
+    ingest_id: str | None = None,
+    wizard: Wizard | None = None,
+    record: bool = False,
     form_error: str | None = None,
     layer_error: dict[str, object] | None = None,
 ) -> HTMLResponse:
+    """El paso Datos. ``ingest_id`` es el archivo que se muestra; ``record``, el registro de una
+    corrida lanzada (sin cargar ni elegir otro archivo). Sin ``wizard``, el de la corrida nueva."""
     params = dict(request.query_params)
+    path = request.url.path if request.method == "GET" else _DRAFT_PATH
     listing = None
     list_error = None
     history_query_error = None
@@ -157,9 +241,7 @@ def _render_page(
     except DataLayerError as exc:
         list_error = error_view(exc)
 
-    params = {key: value for key, value in request.query_params.items()}
-    pending_token = params.get("pendiente")
-    ingest_id = params.get("ingest_id")
+    pending_token = None if record else params.get("pendiente")
     report: IngestReport | None = None
     report_error = layer_error
     topology: TopologyReport | None = None
@@ -229,21 +311,36 @@ def _render_page(
         else frozenset()
     )
 
+    can_continue = (
+        not record
+        and topology_ready(topology)
+        and report is not None
+        and report.status == "accepted"
+        and report.ingest_id not in repository.synthetic_ingests([report.ingest_id])
+    )
+    if wizard is None:
+        wizard = draft_wizard(
+            "datos",
+            draft_facts(repository, read_draft(request)),
+            can_continue=can_continue,
+            chosen=report.ingest_id if report is not None else None,
+        )
     context = {
-        "active_surface": "datos",
-        "page_title": "Datos",
+        "wizard": wizard,
+        "record": record,
+        "datos_path": path,
         "capabilities": repository.get_capabilities(),
         "listing": listing,
         "list_error": list_error,
         "synthetic_ids": synthetic_ids,
         "history_pages": page_meta(listing.page) if listing else None,
-        "history_reset_href": "/datos?"
+        "history_reset_href": f"{path}?"
         + urlencode({key: value for key, value in params.items() if key != "history_page"})
         + "#historial",
-        "history_prev_href": "/datos?"
+        "history_prev_href": f"{path}?"
         + urlencode({**params, "history_page": history_page - 1})
         + "#historial",
-        "history_next_href": "/datos?"
+        "history_next_href": f"{path}?"
         + urlencode({**params, "history_page": history_page + 1})
         + "#historial",
         "report": report,
@@ -259,9 +356,7 @@ def _render_page(
         "topology_metrics": topology_metrics,
         "topology_pages": topology_pages,
         "chart_svg": chart_svg,
-        "can_continue": topology_ready(topology)
-        and report is not None
-        and report.status == "accepted",
+        "can_continue": can_continue,
         "source": source,
         "csv_hint": CSV_HINT,
         "csv_columns": CSV_COLUMNS,

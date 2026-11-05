@@ -1,8 +1,13 @@
-"""Superficie Ejecución (C4): lanzar, seguir, detener y reanudar una corrida.
+"""Pasos 2 a 4 de una corrida: Ajustes, Revisar y lanzar, y Ejecución (C4).
 
 La lectura sale de ``DataRepository`` (``get_run_status``, ``list_ingests``); las escrituras, de
 ``app.state.run_control`` (``worker/control.py``). Filtros y paginación de las tareas se delegan al
 repositorio. Mientras la corrida está en curso el cuerpo se refresca con HTMX cada 2 s.
+
+Una corrida nueva guarda sus ajustes en el borrador (``borrador``) y se lanza desde Revisar con
+``POST /ejecucion/lanzar``, la misma ruta y la misma validación de siempre. Una corrida lanzada
+muestra en Ajustes y Revisar lo que se lanzó, como registro. ``/ejecucion`` lleva al paso que
+corresponde con la misma consulta.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 
+from pred_platform.app.borrador import clear_draft, read_draft, save_draft
 from pred_platform.app.configuracion import (
     MAX_BYTES,
     ConfigExportError,
@@ -23,6 +29,7 @@ from pred_platform.app.configuracion import (
     export_config,
     parse_config,
 )
+from pred_platform.app.corridas import draft_facts, ingests_by_id, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
     FAMILY_CHOICES,
@@ -35,9 +42,9 @@ from pred_platform.app.ejecucion import (
     ExclusionWarning,
     ExecutionQuery,
     FormResult,
-    LaunchIngest,
+    accepted_ingests,
     classes_without_family,
-    default_form_values,
+    draft_items,
     elapsed_text,
     error_action,
     exclusion_confirmation,
@@ -58,8 +65,24 @@ from pred_platform.app.ejecucion import (
     single_family_classes,
     stage_steps,
 )
+from pred_platform.app.pasos import (
+    AJUSTES_FORM,
+    NEW,
+    RunFacts,
+    StepKey,
+    draft_resume,
+    draft_wizard,
+    run_wizard,
+    step_href,
+)
 from pred_platform.app.presentation import describe_run
 from pred_platform.app.resultados_m3 import run_outcome
+from pred_platform.app.routers.corridas import (
+    Locked,
+    redirect_with_query,
+    render_locked,
+    render_missing_run,
+)
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
@@ -76,6 +99,7 @@ from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION
 router = APIRouter()
 
 _TASK_STATES = ("pendiente", "ejecutando", "finalizo_m2", "exitosa", "fallida", "no_ejecutable")
+_LAUNCH_FIELDS = ("min_train", "horizon", "step", "seasonality", "trials", "seed", "workers")
 
 
 def _control(request: Request) -> RunControl:
@@ -95,19 +119,6 @@ def _worker_state(request: Request) -> Literal["active", "off", "stopped"]:
     if WorkerLock.for_database(settings.db_path).held_elsewhere():
         return "active"
     return "stopped" if settings.worker == "embedded" else "off"
-
-
-def _accepted_ingests(repository: DataRepository) -> list[LaunchIngest]:
-    """Las ingestas aceptadas, marcadas si su informe declara datos sintéticos."""
-    try:
-        listing = repository.list_ingests(size=200)
-    except DataLayerError:
-        return []
-    accepted = [item for item in listing.items if item.status == "accepted"]
-    synthetic = repository.synthetic_ingests(
-        [item.ingest_id for item in accepted if item.ingest_id]
-    )
-    return [LaunchIngest(item, item.ingest_id in synthetic) for item in accepted]
 
 
 def _task_rows(status: RunStatus) -> list[dict[str, Any]]:
@@ -131,23 +142,30 @@ def _task_rows(status: RunStatus) -> list[dict[str, Any]]:
     return rows
 
 
+def _render(
+    request: Request,
+    template: str,
+    context: dict[str, Any],
+    status_code: int = 200,
+) -> HTMLResponse:
+    return request.app.state.templates.TemplateResponse(
+        request, template, context, status_code=status_code
+    )
+
+
+# ------------------------------------------------------------------------- Ejecución
 def _context(
     request: Request,
     repository: DataRepository,
     *,
-    form: FormResult | None = None,
-    form_error: str | None = None,
-    import_error: str | None = None,
+    ejecucion: str | None = None,
     action_error: str | None = None,
-    imported: tuple[str, str] | None = None,
-    exclusion: tuple[ExclusionWarning, str | None] | None = None,
 ) -> dict[str, Any]:
-    """``imported`` es el aviso (variante, texto) de una configuración importada: abre el formulario
-    con sus valores y, si el archivo trae otra ingesta que esta plataforma no tiene, sin ingesta
-    elegida, para que nadie lance los ajustes importados sobre otros datos sin darse cuenta.
-    ``exclusion`` es el aviso de los SKU que quedarían sin campeón y la clave que confirma lanzar
-    así (``None`` si el formulario no lanza de todos modos)."""
+    """El cuerpo de Ejecución. ``ejecucion`` es la corrida del paso (la ruta manda sobre
+    ``?ejecucion=``); sin ella, la de la consulta o la más reciente (el sondeo)."""
     params = dict(request.query_params)
+    if ejecucion is not None:
+        params["ejecucion"] = ejecucion
     control = _control(request)
     capabilities = repository.get_capabilities()
     orchestration = next(item for item in capabilities.items if item.id == "run_orchestration")
@@ -156,7 +174,7 @@ def _context(
     try:
         query = parse_execution_query(params)
     except InvalidQuery as exc:
-        query, query_error = ExecutionQuery(), str(exc)
+        query, query_error = ExecutionQuery(ejecucion=ejecucion or LATEST), str(exc)
     status: RunStatus | None = None
     status_error: dict[str, object] | None = None
     try:
@@ -180,12 +198,7 @@ def _context(
             tasks = repository.get_run_status(run.id, estado=focus_estado, size=FOCUS_SIZE)
         except (InvalidQuery, DataLayerError):
             tasks = status
-    ingests = _accepted_ingests(repository)
-    selected = (form.values.get("ingest_id") if form else None) or params.get("ingest_id")
-    if not selected and imported is None:
-        selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
     poll = should_poll(estado, counts, reason=control.reason)
-    notice = imported or NOTICES.get(params.get("aviso", ""))
     error = run_error(repository.get_run_error(run.id)) if run is not None else None
     actions = run_actions(
         estado,
@@ -194,8 +207,6 @@ def _context(
         nothing_to_compare=run_compares_nothing(repository, run, status),
     )
     return {
-        "active_surface": "ejecucion",
-        "page_title": "Ejecución",
         "capabilities": capabilities,
         "orchestration": orchestration,
         "source": repository.source,
@@ -241,50 +252,77 @@ def _context(
         "worker": _worker_state(request),
         "poll": poll,
         "finished": estado in FINISHED_STATES,
-        "results_href": f"/resultados?ejecucion={run.id}" if run is not None else None,
-        "notice": notice,
-        "imported": imported is not None,
+        "results_href": step_href(run.id, "resultados") if run is not None else None,
+        "notice": NOTICES.get(params.get("aviso", "")),
         "action_error": action_error,
-        "ingests": ingests,
-        "selected_ingest": selected,
-        "form": form.values if form else default_form_values(),
-        "form_errors": form.errors if form else {},
-        "form_error": form_error,
-        "import_error": import_error,
-        # El formulario se abre si no hay corrida que mostrar o si se lo pidió (Nueva ejecución,
-        # una ingesta elegida en Datos o Resultados, un error o una importación por revisar).
-        "launch_open": run is None
-        or bool(params.get("ingest_id") or params.get("lanzar"))
-        or bool(form and form.errors)
-        or form_error is not None
-        or import_error is not None
-        or imported is not None
-        or exclusion is not None,
-        "exclusion_warning": exclusion[0] if exclusion else None,
-        "exclusion_confirmation": exclusion[1] if exclusion else None,
-        "family_choices": FAMILY_CHOICES,
-        "families_hint": families_hint(),
-        "metric_choices": METRIC_CHOICES,
     }
 
 
-def _render(
+def _latest_run_id(repository: DataRepository) -> str | None:
+    try:
+        status = repository.get_run_status(LATEST, size=1)
+    except (DataLayerError, InvalidQuery):
+        return None
+    return status.ejecucion.id if status.ejecucion is not None else None
+
+
+def _render_execution(
     request: Request,
-    template: str,
-    context: dict[str, Any],
+    repository: DataRepository,
+    corrida: str,
+    *,
+    action_error: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
-    return request.app.state.templates.TemplateResponse(
-        request, template, context, status_code=status_code
-    )
+    facts = run_facts(repository, corrida)
+    if facts is None:
+        return render_missing_run(request, corrida)
+    context = _context(request, repository, ejecucion=facts.id, action_error=action_error)
+    context["wizard"] = run_wizard("ejecucion", facts)
+    return _render(request, "pages/execution.html", context, status_code)
 
 
-@router.get("/ejecucion", response_class=HTMLResponse)
+@router.get("/ejecucion")
 def ejecucion(
     request: Request,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> RedirectResponse:
+    """La ruta anterior: el formulario de lanzamiento va a la corrida nueva (con el archivo
+    elegido, en Ajustes) y el seguimiento, al paso Ejecución de la corrida pedida o la más
+    reciente."""
+    params = request.query_params
+    items = params.multi_items()
+    if params.get("ingest_id"):
+        return redirect_with_query(step_href(NEW, "ajustes"), items, drop=("lanzar", "ejecucion"))
+    if params.get("lanzar"):
+        return redirect_with_query(step_href(NEW, "datos"), [])
+    wanted = (params.get("ejecucion") or "").strip()
+    target = _latest_run_id(repository) if wanted in ("", LATEST) else wanted
+    if target is None:
+        return redirect_with_query(step_href(NEW, "datos"), [])
+    return redirect_with_query(step_href(target, "ejecucion"), items, drop=("ejecucion",))
+
+
+@router.get("/corridas/{corrida}/ejecucion", response_class=HTMLResponse)
+def paso_ejecucion(
+    request: Request,
+    corrida: str,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
-    return _render(request, "pages/execution.html", _context(request, repository))
+    if corrida == NEW:
+        draft = draft_facts(repository, read_draft(request))
+        resume = draft_resume(draft)
+        return render_locked(
+            request,
+            Locked(
+                title="Ejecución",
+                heading="Todavía no hay corrida",
+                text="Este paso se abre al lanzar. Antes, revise los datos y los ajustes.",
+                actions=((resume.label, resume.href, True),),
+            ),
+            draft_wizard("ejecucion", draft),
+        )
+    return _render_execution(request, repository, corrida)
 
 
 @router.get("/ejecucion/estado", response_class=HTMLResponse)
@@ -299,6 +337,7 @@ def ejecucion_estado(
     )
 
 
+# ---------------------------------------------------------------- Ajustes y Revisar
 def _class_skus(
     repository: DataRepository, ingest_id: str, sku_class: SkuClass
 ) -> list[TopologyMetrics]:
@@ -321,6 +360,244 @@ def _class_skus(
         page += 1
 
 
+def _check_launch(
+    repository: DataRepository, ingest_id: str | None, form: FormResult
+) -> tuple[ExclusionWarning, str | None] | None:
+    """La regla de lanzamiento sobre los datos y las familias: deja los errores en ``form`` y
+    devuelve el aviso de los SKU que quedarían sin campeón si alguna clase queda con una sola
+    familia, con la clave que confirma lanzar así (``None`` si un rechazo impide lanzar igual).
+    """
+    form.values["ingest_id"] = ingest_id or ""
+    synthetic = {i.item.ingest_id for i in accepted_ingests(repository) if i.synthetic}
+    if not ingest_id:
+        form.errors["ingest_id"] = "Elija el archivo de datos que se va a ejecutar."
+        return None
+    if ingest_id in synthetic:
+        form.errors["ingest_id"] = SYNTHETIC_INGEST
+        return None
+    if form.errors:
+        return None
+    try:
+        by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
+    except DataLayerError:
+        by_class = {}  # sin topología publicada, decide el motor
+    except InvalidQuery:  # no es el SHA-256 de una ingesta
+        by_class = {}
+        form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
+    chosen = form.values["families"]
+    needed = history_needed(form.settings) if form.settings is not None else 0
+    single = single_family_classes(by_class, chosen)
+    skus: dict[SkuClass, list[TopologyMetrics]] = {
+        c: _class_skus(repository, ingest_id, c) for c in short_of_two(by_class, chosen)
+    }
+    refusal = classes_without_family(by_class, chosen, skus, needed)
+    if refusal:
+        form.errors["families"] = refusal_text(refusal, by_class, skus, needed)
+    if not single:
+        return None
+    # Con un rechazo, el aviso dice además lo que quedaría por corregir, sin lanzar igual.
+    warning = exclusion_warning(chosen, by_class, skus, needed)
+    return warning, None if refusal else exclusion_confirmation(ingest_id, chosen)
+
+
+def _launch_form(
+    families: list[str] | None, metric: str | None, fields: dict[str, str | None]
+) -> FormResult:
+    return parse_launch_form(families=families or [], metric=metric, fields=fields)
+
+
+def _render_ajustes(
+    request: Request,
+    repository: DataRepository,
+    *,
+    form: FormResult | None = None,
+    ingest_id: str | None = None,
+    form_error: str | None = None,
+    import_error: str | None = None,
+    imported: tuple[str, str] | None = None,
+    exclusion: tuple[ExclusionWarning, str | None] | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Ajustes de la corrida nueva: el formulario con los valores del borrador (o los enviados).
+
+    ``imported`` es el aviso (variante, texto) de una configuración importada: rellena el
+    formulario y, si el archivo trae otra ingesta que esta plataforma no tiene, lo deja sin
+    ingesta elegida, para que nadie lance los ajustes importados sobre otros datos sin darse
+    cuenta. ``exclusion`` es el aviso de los SKU que quedarían sin campeón, junto al rechazo que
+    impide continuar.
+    """
+    draft = read_draft(request)
+    values = form.values if form is not None else dict(draft.values)
+    if form is None:
+        values["ingest_id"] = ingest_id or draft.ingest_id or ""
+    ingests = accepted_ingests(repository)
+    # El archivo que eligió la persona (el borrador, un enlace o el formulario enviado); sin
+    # elegir, el formulario ofrece el primero que se puede ejecutar, pero Datos sigue por hacer.
+    chosen = values.get("ingest_id") or None
+    selected = chosen
+    if not selected and imported is None:
+        selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
+    control = _control(request)
+    context = {
+        "wizard": draft_wizard(
+            "ajustes", draft_facts(repository, draft, chosen), can_continue=bool(ingests)
+        ),
+        "source": repository.source,
+        "ingests": ingests,
+        "selected_ingest": selected,
+        "form": values,
+        "form_errors": form.errors if form is not None else {},
+        "form_error": form_error,
+        "import_error": import_error,
+        "notice": imported,
+        "exclusion_warning": exclusion[0] if exclusion else None,
+        "family_choices": FAMILY_CHOICES,
+        "families_hint": families_hint(),
+        "metric_choices": METRIC_CHOICES,
+        "control_reason": control.reason,
+        "launch_form_id": AJUSTES_FORM,
+    }
+    return _render(request, "pages/paso_ajustes.html", context, status_code)
+
+
+def _render_revisar(
+    request: Request,
+    repository: DataRepository,
+    *,
+    ingest_id: str,
+    values: dict[str, Any],
+    form_error: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por fila, y el botón Lanzar.
+
+    El aviso de los SKU que quedarían sin campeón se muestra aquí; lanzar desde esta página lo
+    confirma (la misma clave que pide ``POST /ejecucion/lanzar``).
+    """
+    form = _launch_form(
+        values.get("families"), values.get("metric"), {k: values.get(k) for k in _LAUNCH_FIELDS}
+    )
+    warning = _check_launch(repository, ingest_id, form)
+    ingest = ingests_by_id(repository).get(ingest_id)
+    control = _control(request)
+    draft = read_draft(request)
+    context = {
+        "wizard": draft_wizard("revisar", draft_facts(repository, draft, ingest_id)),
+        "source": repository.source,
+        "record": False,
+        "ingest": ingest,
+        "ingest_id": ingest_id,
+        "review_rows": draft_items(form.values),
+        "form": form.values,
+        "form_errors": form.errors,
+        "form_error": form_error,
+        "exclusion_warning": warning[0] if warning else None,
+        "exclusion_confirmation": warning[1] if warning else None,
+        "control_reason": control.reason,
+        "worker": _worker_state(request),
+    }
+    return _render(request, "pages/paso_revisar.html", context, status_code)
+
+
+def _render_record(
+    request: Request, repository: DataRepository, facts: RunFacts, step: StepKey
+) -> HTMLResponse:
+    """Ajustes o Revisar de una corrida lanzada: lo que se eligió, sin poder cambiarlo."""
+    try:
+        status = repository.get_run_status(facts.id, size=1)
+    except (DataLayerError, InvalidQuery):
+        return render_missing_run(request, facts.id)
+    context = {
+        "wizard": run_wizard(step, facts),
+        "source": repository.source,
+        "record": True,
+        "facts": facts,
+        "run": status.ejecucion,
+        "review_rows": settings_items(status.settings) if status.settings else [],
+        "reserve": status.reserve,
+    }
+    template = "pages/paso_ajustes.html" if step == "ajustes" else "pages/paso_revisar.html"
+    return _render(request, template, context)
+
+
+@router.get("/corridas/{corrida}/ajustes", response_class=HTMLResponse)
+def paso_ajustes(
+    request: Request,
+    corrida: str,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> HTMLResponse:
+    if corrida == NEW:
+        # ``?ingest_id=`` llega de un enlace que ya eligió el archivo (Resultados, rutas viejas).
+        return _render_ajustes(
+            request, repository, ingest_id=request.query_params.get("ingest_id") or None
+        )
+    facts = run_facts(repository, corrida)
+    if facts is None:
+        return render_missing_run(request, corrida)
+    return _render_record(request, repository, facts, "ajustes")
+
+
+@router.post("/corridas/nueva/ajustes", response_model=None)
+def guardar_ajustes(
+    request: Request,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+    ingest_id: Annotated[str | None, Form()] = None,
+    families: Annotated[list[str] | None, Form()] = None,
+    metric: Annotated[str | None, Form()] = None,
+    min_train: Annotated[str | None, Form()] = None,
+    horizon: Annotated[str | None, Form()] = None,
+    step: Annotated[str | None, Form()] = None,
+    seasonality: Annotated[str | None, Form()] = None,
+    trials: Annotated[str | None, Form()] = None,
+    seed: Annotated[str | None, Form()] = None,
+    workers: Annotated[str | None, Form()] = None,
+) -> HTMLResponse | RedirectResponse:
+    """«Continuar a Revisar y lanzar»: valida como lo hará Lanzar y guarda el borrador. Nada se
+    lanza todavía; un error vuelve a Ajustes con su explicación."""
+    fields = {
+        "min_train": min_train,
+        "horizon": horizon,
+        "step": step,
+        "seasonality": seasonality,
+        "trials": trials,
+        "seed": seed,
+        "workers": workers,
+    }
+    form = _launch_form(families, metric, fields)
+    warning = _check_launch(repository, ingest_id, form)
+    if form.errors or ingest_id is None:
+        return _render_ajustes(request, repository, form=form, exclusion=warning)
+    response = RedirectResponse(step_href(NEW, "revisar"), status_code=303)
+    save_draft(response, read_draft(request).with_settings(ingest_id, form.values))
+    return response
+
+
+@router.get("/corridas/{corrida}/revisar", response_class=HTMLResponse)
+def paso_revisar(
+    request: Request,
+    corrida: str,
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> HTMLResponse:
+    if corrida != NEW:
+        facts = run_facts(repository, corrida)
+        if facts is None:
+            return render_missing_run(request, corrida)
+        return _render_record(request, repository, facts, "revisar")
+    draft = read_draft(request)
+    if draft.ingest_id is None:
+        return render_locked(
+            request,
+            Locked(
+                title="Revisar y lanzar",
+                heading="Primero elija los datos",
+                text="Para revisar y lanzar hace falta un archivo validado.",
+                actions=(("Ir a Datos", step_href(NEW, "datos"), True),),
+            ),
+            draft_wizard("revisar", draft_facts(repository, draft)),
+        )
+    return _render_revisar(request, repository, ingest_id=draft.ingest_id, values=draft.values)
+
+
 @router.post("/ejecucion/lanzar", response_model=None)
 def lanzar(
     request: Request,
@@ -337,76 +614,37 @@ def lanzar(
     workers: Annotated[str | None, Form()] = None,
     confirmar: Annotated[str | None, Form()] = None,
 ) -> HTMLResponse | RedirectResponse:
-    """Encola la ejecución. Si alguna clase queda con una sola familia, primero avisa qué SKU
-    quedarían sin campeón; ``confirmar`` con la clave de ese aviso lanza igual."""
-    form = parse_launch_form(
-        families=families or [],
-        metric=metric,
-        fields={
-            "min_train": min_train,
-            "horizon": horizon,
-            "step": step,
-            "seasonality": seasonality,
-            "trials": trials,
-            "seed": seed,
-            "workers": workers,
-        },
-    )
-    form.values["ingest_id"] = ingest_id or ""
-    synthetic = {i.item.ingest_id for i in _accepted_ingests(repository) if i.synthetic}
-    if not ingest_id:
-        form.errors["ingest_id"] = "Elija el archivo de datos que se va a ejecutar."
-    elif ingest_id in synthetic:
-        form.errors["ingest_id"] = SYNTHETIC_INGEST
-    elif not form.errors:
-        try:
-            by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
-        except DataLayerError:
-            by_class = {}  # sin topología publicada, decide el motor
-        except InvalidQuery:  # no es el SHA-256 de una ingesta
-            by_class = {}
-            form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
-        chosen = form.values["families"]
-        needed = history_needed(form.settings) if form.settings is not None else 0
-        single = single_family_classes(by_class, chosen)
-        skus: dict[SkuClass, list[TopologyMetrics]] = {
-            c: _class_skus(repository, ingest_id, c) for c in short_of_two(by_class, chosen)
-        }
-        refusal = classes_without_family(by_class, chosen, skus, needed)
-        key = exclusion_confirmation(ingest_id, chosen)
-        if refusal:
-            form.errors["families"] = refusal_text(refusal, by_class, skus, needed)
-        # Con un rechazo, el aviso dice además lo que quedaría por corregir, sin lanzar igual.
-        if single and (refusal or confirmar != key):
-            warning = exclusion_warning(chosen, by_class, skus, needed)
-            return _render(
-                request,
-                "pages/execution.html",
-                _context(
-                    request, repository, form=form, exclusion=(warning, None if refusal else key)
-                ),
-            )
+    """Encola la ejecución. Un formulario con errores vuelve a Ajustes; si alguna clase queda con
+    una sola familia, Revisar avisa qué SKU quedarían sin campeón, y ``confirmar`` con la clave de
+    ese aviso lanza igual. Al lanzar, el borrador se descarta."""
+    fields = {
+        "min_train": min_train,
+        "horizon": horizon,
+        "step": step,
+        "seasonality": seasonality,
+        "trials": trials,
+        "seed": seed,
+        "workers": workers,
+    }
+    form = _launch_form(families, metric, fields)
+    warning = _check_launch(repository, ingest_id, form)
     if form.errors or form.settings is None or ingest_id is None:
-        return _render(request, "pages/execution.html", _context(request, repository, form=form))
+        return _render_ajustes(request, repository, form=form, exclusion=warning)
+    if warning is not None and confirmar != warning[1]:
+        return _render_revisar(request, repository, ingest_id=ingest_id, values=form.values)
     try:
         result = _control(request).launch(ingest_id, form.settings)
-    except ControlUnavailable as exc:
-        return _render(
-            request,
-            "pages/execution.html",
-            _context(request, repository, form=form, form_error=str(exc)),
-        )
-    except RunRequestError as exc:
-        return _render(
-            request,
-            "pages/execution.html",
-            _context(request, repository, form=form, form_error=str(exc)),
+    except (ControlUnavailable, RunRequestError) as exc:
+        return _render_revisar(
+            request, repository, ingest_id=ingest_id, values=form.values, form_error=str(exc)
         )
     aviso = "en_cola" if result.queued else "existente"
-    return RedirectResponse(
-        f"/ejecucion?{urlencode({'ejecucion': result.ejecucion_id, 'aviso': aviso})}",
+    response = RedirectResponse(
+        f"{step_href(str(result.ejecucion_id), 'ejecucion')}?{urlencode({'aviso': aviso})}",
         status_code=303,
     )
+    clear_draft(response)
+    return response
 
 
 @router.get("/ejecucion/configuracion.json", response_model=None)
@@ -448,21 +686,20 @@ def importar_configuracion(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
     archivo: Annotated[UploadFile | None, File()] = None,
 ) -> HTMLResponse:
-    """Rellena el formulario de lanzamiento con un archivo exportado. No lanza ni guarda nada."""
+    """Rellena el formulario de Ajustes con un archivo exportado. No lanza ni guarda nada."""
     raw = b"" if archivo is None else archivo.file.read(MAX_BYTES + 1)
     imported = parse_config(raw if isinstance(raw, bytes) else raw.encode("utf-8"))
     if imported.values is None:
         problem = f"No se importó la configuración. {' '.join(imported.errors)}"
-        context = _context(request, repository, import_error=problem)
-        return _render(request, "pages/execution.html", context, 400)
-    known = {i.item.ingest_id for i in _accepted_ingests(repository) if not i.synthetic}
+        return _render_ajustes(request, repository, import_error=problem, status_code=400)
+    known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
     form = FormResult(imported.values, None, {})
     origin = f" de la ejecución {imported.source_run_id}" if imported.source_run_id else ""
     if imported.ingest_sha256 in known:
         form.values["ingest_id"] = imported.ingest_sha256
         notice = (
             "success",
-            f"Configuración importada{origin}. Revise los valores y lance la ejecución.",
+            f"Configuración importada{origin}. Revise los valores y continúe para lanzarla.",
         )
     else:
         form.values["ingest_id"] = ""
@@ -472,8 +709,27 @@ def importar_configuracion(
             f"plataforma (ingesta {(imported.ingest_sha256 or '')[:12]}…). Elija otro archivo "
             "antes de lanzar: los resultados solo son comparables sobre los mismos datos.",
         )
-    return _render(
-        request, "pages/execution.html", _context(request, repository, form=form, imported=notice)
+    return _render_ajustes(request, repository, form=form, imported=notice)
+
+
+def _render_action_error(
+    request: Request,
+    repository: DataRepository,
+    corrida: str | None,
+    message: str,
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Una acción que no se aplicó: el paso Ejecución de esa corrida con el motivo; si la corrida
+    no existe, el de la más reciente, y sin corridas, una página que lo dice."""
+    target = corrida if corrida and run_facts(repository, corrida) else _latest_run_id(repository)
+    if target is None:
+        return render_locked(
+            request,
+            Locked(title="Ejecución", heading=message, text="Todavía no hay corridas."),
+            status_code=status_code,
+        )
+    return _render_execution(
+        request, repository, target, action_error=message, status_code=status_code
     )
 
 
@@ -481,22 +737,15 @@ def _act(request: Request, repository: DataRepository, ejecucion: str, action: s
     control = _control(request)
     number = lectura.run_number(ejecucion.strip())
     if number is None:
-        return _render(
-            request,
-            "pages/execution.html",
-            _context(request, repository, action_error="La ejecución indicada no es válida."),
-            400,
-        )
+        message = "La ejecución indicada no es válida."
+        return _render_action_error(request, repository, None, message, status_code=400)
     try:
         done = control.stop(number) if action == "stop" else control.resume(number)
     except (ControlUnavailable, RunRequestError) as exc:
-        return _render(
-            request, "pages/execution.html", _context(request, repository, action_error=str(exc))
-        )
-    ok = "detenida" if action == "stop" else "reanudada"
+        return _render_action_error(request, repository, str(number), str(exc))
+    aviso = ("detenida" if action == "stop" else "reanudada") if done else "no_aplica"
     return RedirectResponse(
-        f"/ejecucion?{urlencode({'ejecucion': number, 'aviso': ok if done else 'no_aplica'})}",
-        status_code=303,
+        f"{step_href(str(number), 'ejecucion')}?{urlencode({'aviso': aviso})}", status_code=303
     )
 
 

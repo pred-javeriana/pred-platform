@@ -16,17 +16,37 @@ plataforma.
         → Monitorear y recuperar la ejecución
         → Consultar resultados
 
-La navegación de producto es `PRED · 1 Datos | 2 Ejecución | 3 Resultados`: el número de cada
-superficie dice su lugar en el flujo.
+La plataforma se recorre por corridas. El inicio (`/`, Corridas) lista cada corrida con su estado
+y su siguiente acción, la que está en cola o en curso primero, y el grupo de la tesis: las
+corridas con los mismos datos y ajustes y semillas 0, 1 y 2, con un enlace a su evidencia
+conjunta (`/resultados/grupo`). Cada corrida recorre cinco pasos:
+1 Datos, 2 Ajustes, 3 Revisar y lanzar, 4 Ejecución y 5 Resultados. La barra superior lleva al
+inicio, nombra la corrida que se ve y ofrece «Nueva corrida».
+
+Una corrida nueva vive en `/corridas/nueva/<paso>` hasta que se lanza. Su borrador (el archivo
+y los ajustes elegidos) se guarda en una cookie de sesión del navegador (`app/borrador.py`). El
+borrador se escribe solo con Siguiente en Datos o en Ajustes y se descarta al lanzar; lanzar
+vuelve a validar todo con la regla del worker. Una corrida lanzada vive en
+`/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
+se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
+«Después» de cada paso, su estado (hecho, por hacer, en curso o bloqueado) y adónde llevan Atrás
+y Siguiente.
 
 | Ruta | Superficie |
 | --- | --- |
-| `/` | Redirige a `/datos`. No hay landing. |
-| `/datos` | Datos |
-| `/ejecucion` | Ejecución |
+| `/` | Corridas: el inicio |
+| `/corridas/nueva/datos` | Paso 1 de una corrida nueva. `POST` elige el archivo y lleva a Ajustes |
+| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; `?ingest_id=` llega con el archivo ya elegido |
+| `/corridas/nueva/revisar` | Paso 3: lo que se va a lanzar, con «Cambiar» por fila, y Lanzar (`POST /ejecucion/lanzar`). Sin archivo elegido está bloqueado |
+| `/corridas/nueva/ejecucion`, `/corridas/nueva/resultados` | Bloqueados hasta lanzar: dicen qué falta y llevan al primer paso por hacer |
+| `/corridas/{id}/datos`, `/corridas/{id}/ajustes`, `/corridas/{id}/revisar` | Registro de lo que eligió la corrida lanzada |
+| `/corridas/{id}/ejecucion` | Paso 4: avance, acciones y tareas de la corrida |
+| `/corridas/{id}/resultados` | Paso 5: pestañas Resumen, Por clase, SKU y Perfiles de error (`?vista=resumen`, `clase`, `sku` o `errores`). Sin `?vista=` abre Resumen si la corrida tiene evidencia M3 publicada y, si no, SKU. La pestaña SKU tiene dos lecturas: «Veredictos» (`?vista=sku`; `?vista=consulta` es su nombre anterior) y «Resultados por familia» (`?vista=sku&lista=familias`). Mientras la evaluación final no publica, el paso muestra lo que ya hay y lo dice |
+| `/corridas/{id}/…` de una corrida que no existe | 404 con el enlace a Corridas |
+| `/datos`, `/ejecucion`, `/resultados` | Rutas anteriores: redirigen (307) al paso que corresponde con la misma consulta. `/datos` va a Datos de la corrida nueva. `/ejecucion?ingest_id=` va a Ajustes de la corrida nueva; `?lanzar=1`, a su Datos; `?ejecucion=<id>` o, sin ella, la corrida más reciente, al paso Ejecución. `/resultados?ejecucion=<id>` o, sin ella, la corrida más nueva con evidencia publicada (o la más reciente), al paso Resultados. Sin corridas, a la corrida nueva |
+| `/ejecucion/estado` | El cuerpo de Ejecución para el sondeo HTMX |
 | `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
-| `POST /ejecucion/configuracion` | Importa ese JSON y rellena el formulario de lanzamiento; no lanza ni guarda nada |
-| `/resultados` | Resultados: pestañas Resumen, Por clase, SKU y Perfiles de error (`?vista=resumen`, `clase`, `sku` o `errores`). Sin `?vista=` abre Resumen si la ejecución tiene evidencia M3 publicada y, si no, SKU. La pestaña SKU tiene dos lecturas: «Veredictos» (`?vista=sku`; `?vista=consulta` es su nombre anterior) y «Resultados por familia» (`?vista=sku&lista=familias`) |
+| `POST /ejecucion/configuracion` | Importa ese JSON y rellena Ajustes de la corrida nueva; no lanza ni guarda nada |
 | `/resultados/sku/{sku_id}` | Detalle de un SKU: ruta de migas, decisión, familias y evidencia bajo demanda |
 | `/resultados/exportar.csv` | Descarga CSV de los veredictos filtrados en «Veredictos», sin el límite de página |
 | `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la evaluación final (lanzamientos tardíos y elegibilidad) |
@@ -37,7 +57,7 @@ superficie dice su lugar en el flujo.
 
 **Responsabilidad:** cargar el archivo, mostrar diagnóstico y validación, indicar errores
 corregibles, confirmar ingesta aceptada, mostrar la caracterización/topología de demanda y
-permitir continuar al pipeline cuando los datos estén listos.
+elegir el archivo de la corrida nueva (Siguiente) cuando está listo.
 
 **Operaciones de `DataRepository`:**
 
@@ -56,13 +76,13 @@ Estos estados de flujo no son el `status` del contrato (`accepted`, `rejected`,
 
 ## 2. Ejecución
 
-**Responsabilidad:** iniciar el benchmark cuando los prerrequisitos existan, mostrar la
-corrida activa, el avance del pipeline, el progreso global, las tareas en curso, los
-errores recuperables, detener y reanudar. La configuración de lanzamiento vive aquí, no
-en una pantalla aparte. El monitoreo también.
+**Responsabilidad:** mostrar la corrida lanzada, el avance del pipeline, el progreso global,
+las tareas en curso, los errores recuperables, detener y reanudar. Los ajustes se eligen en el
+paso 2 (Ajustes) y se lanzan en el paso 3 (Revisar y lanzar), con los mismos campos y la misma
+validación de siempre.
 
-**Lectura:** `get_run_status(...)` (la última ejecución con el alias `latest`, o `?ejecucion=`)
-y `list_ingests(...)` para elegir la ingesta. **Escritura:** `app.state.run_control`
+**Lectura:** `get_run_status(...)` (la corrida de la ruta; el sondeo usa `?ejecucion=`) y
+`list_ingests(...)` para elegir la ingesta en Ajustes. **Escritura:** `app.state.run_control`
 (`worker/control.py`), un servicio aparte de `DataRepository` (contrato §19): lanzar
 (`POST /ejecucion/lanzar`), detener (`/ejecucion/detener`) y reanudar (`/ejecucion/reanudar`).
 Con fixtures o con una base de solo lectura las acciones salen deshabilitadas con el
@@ -105,16 +125,17 @@ dice lo mismo. Debajo se listan solo 5 tareas, las fallidas primero; un filtro o
 
 `podada` tiene representación propia. No reutiliza el tratamiento de `fallida`.
 
-El formulario marca por defecto las cuatro familias, incluida Fundacional (Chronos-2),
-y permite desmarcar cualquiera; Fundacional necesita el extra foundation y los pesos
+El formulario de Ajustes marca por defecto las cuatro familias, incluida Fundacional
+(Chronos-2), y permite desmarcar cualquiera; Fundacional necesita el extra foundation y los pesos
 disponibles en el entorno del motor. Si con las familias elegidas alguna clase de demanda de la
-ingesta queda sin familia admitida por la política del motor, el formulario no lanza y dice qué
-clase queda sin modelo y qué familias agregar. Si una clase queda con una sola familia admitida,
-el formulario avisa qué SKU quedarían fuera de la comparación, sin campeón, y qué familia
-agregar, y nombra aparte los SKU que la historia deja fuera con cualquier familia; si ninguna
-clase conserva dos familias, avisa que la corrida no elige campeón. «Lanzar de todos modos»
-encola la corrida así. Si se cambian las familias, el formulario vuelve a revisarlas. La plataforma trabaja solo con datos reales: el
-formulario no pregunta el origen y toda ejecución declara sus datos reales. Antes del encolado,
+ingesta queda sin familia admitida por la política del motor, Ajustes no deja continuar y dice
+qué clase queda sin modelo y qué familias agregar. Si una clase queda con una sola familia
+admitida, Revisar y lanzar avisa qué SKU quedarían fuera de la comparación, sin campeón, y qué
+familia agregar, y nombra aparte los SKU que la historia deja fuera con cualquier familia; si
+ninguna clase conserva dos familias, avisa que la corrida no elige campeón. «Lanzar de todos
+modos» encola la corrida así. Si se cambian las familias en Ajustes, Revisar vuelve a revisarlas.
+La plataforma trabaja solo con datos reales: el formulario no pregunta el origen y toda ejecución
+declara sus datos reales. Antes del encolado,
 el motor resuelve el origen de la ingesta (`pred-engine origen --datos-reales`); si la ingesta
 está declarada sintética, la plataforma muestra el conflicto sin crear la ejecución. El worker
 transmite siempre `--datos-reales` y no arranca el motor para una corrida que guardó otro
@@ -154,7 +175,7 @@ significancia por clase).
 español y una explicación de una línea, ambas de `app/presentation.py`: «Error técnico», «No
 evaluable», «Evidencia insuficiente», «Validado» y «Exploratorio». El código sigue en los
 filtros, en el CSV y en `title`. La significancia HLN-DM/BH, o su causa, se muestra aparte del
-veredicto. Sin `?ejecucion=`, la página muestra la ejecución más nueva con una corrida M3
+veredicto. `/resultados` sin `?ejecucion=` lleva a la corrida más nueva con una corrida M3
 PUBLICADA. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
 cuando varias corridas PUBLICADA comparten identidad.
 
@@ -171,8 +192,8 @@ campeón frente a la demanda observada, con los bloques de selección y prueba.
 
 Una barra de contexto, arriba y a lo ancho, muestra la ejecución, el archivo de datos, la
 evaluación final, el origen de los datos y una frase con lo que pasó en la ejecución, y permite elegir otra ejecución con evidencia publicada. La acción secundaria
-«Nueva ejecución» del encabezado abre el formulario de lanzamiento de Ejecución con la misma
-ingesta (`/ejecucion?ingest_id=…#lanzar`). Se habilita solo con `parquet_read`,
+«Nueva corrida con estos datos» del encabezado del paso abre Ajustes de una corrida nueva con la
+misma ingesta (`/corridas/nueva/ajustes?ingest_id=…`). Se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.
 
@@ -210,19 +231,19 @@ Los agregados de cartera/clase y los exportables se construyen en las vistas de 
 
 ## Exploración progresiva
 
-Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con el resumen del archivo: nombre, estado, conteos, mezcla de clases de demanda y la acción de continuar; diagnóstico, gráfico/tabla de clases y SKU, cargar otro archivo e historial se consultan en las pestañas de detalle. Un filtro o página explícitos activan la pestaña correspondiente.
+Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con el resumen del archivo: nombre, estado, conteos y mezcla de clases de demanda, y Siguiente, al pie del paso, la elige; diagnóstico, gráfico/tabla de clases y SKU, cargar otro archivo e historial se consultan en las pestañas de detalle. Un filtro o página explícitos activan la pestaña correspondiente.
 
-Ejecución sin contexto comienza con la corrida actual: estado, acciones, etapas del motor, progreso circular y conteos por estado. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad y nueva corrida se exploran bajo demanda. Al llegar desde Datos con ingest_id, o después de un envío inválido, la configuración de lanzamiento se presenta primero y abierta. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
+Ejecución sin contexto comienza con la corrida actual: estado, acciones, etapas del motor, progreso circular y conteos por estado. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad se explora bajo demanda. La configuración de lanzamiento es el paso Ajustes; un envío inválido vuelve a Ajustes con cada error junto a su campo. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
 
 Resultados comienza en Resumen cuando hay evidencia M3 publicada y en la lista de SKU cuando no la hay: filtros en una barra, una fila por SKU y detalle por SKU. Cada familia del detalle ofrece estado/modelo/valor ya informado en el resumen y permite abrir su evidencia. Solicitar ventanas abre la familia correspondiente; ensayos/configuración siguen siendo opcionales. El origen de los datos y el alcance retrospectivo permanecen visibles; su explicación ampliada es desplegable. Ninguna interacción produce cálculos, campeones o etapas analíticas nuevas.
 
 ## Composición espacial
 
-Las tres superficies usan una sola columna a todo el ancho: el encabezado con título, propósito y a lo sumo una acción primaria; el resumen de la situación; y debajo, pestañas horizontales de detalle con un panel a la vez. No hay columna lateral: el contexto va arriba y a lo ancho, las tablas ocupan el ancho del panel y dos bloques cortos se reparten en dos columnas desde 64rem. Dentro de cada tarjeta, los hechos y las cifras se reparten en columnas iguales que llenan el ancho, los gráficos ocupan el ancho de la tarjeta y los estados vacíos, de error o no disponibles se centran. La prosa larga conserva una línea legible de a lo sumo 80 caracteres (`max-width: 80ch`); una explicación de método larga se pliega bajo un enlace.
+Cada paso tiene, a su izquierda, la barra de pasos: una columna fija de 88 px con la marca y el nombre corto de cada paso. Al pasar el puntero o al enfocarla se abre a 340 px sobre la página, con el nombre completo y la línea de estado de cada paso, sin mover la página; un paso bloqueado no es un enlace. Con movimiento reducido se abre sin animación. Bajo 900 px la barra se oculta y un resumen compacto («Paso N de 5» con una barra de cinco segmentos) va arriba del encabezado. El paso usa una sola columna a todo el ancho: el encabezado («Paso N de 5», el nombre, el propósito, «Después: …» y a lo sumo una acción); el resumen de la situación; debajo, pestañas horizontales de detalle con un panel a la vez; y al pie, Atrás y Siguiente. Siguiente deshabilitado lleva un candado y dice por qué. El contexto va arriba y a lo ancho, las tablas ocupan el ancho del panel y dos bloques cortos se reparten en dos columnas desde 64rem. Dentro de cada tarjeta, los hechos y las cifras se reparten en columnas iguales que llenan el ancho, los gráficos ocupan el ancho de la tarjeta y los estados vacíos, de error o no disponibles se centran. La prosa larga conserva una línea legible de a lo sumo 80 caracteres (`max-width: 80ch`); una explicación de método larga se pliega bajo un enlace. Cada fecha y hora se lee en la hora de Bogotá («4 nov 2026, 4:36 p. m.»), con el instante exacto en UTC en el `title`.
 
-Datos: el resumen del archivo (nombre, estado, conteos, mezcla de clases y continuar) en un panel; debajo, las pestañas Diagnóstico, Clases y SKU, Cargar otro archivo e Historial. Una consulta de topología o historial selecciona la pestaña correspondiente.
+Datos: el resumen del archivo (nombre, estado, conteos y mezcla de clases) en un panel; debajo, las pestañas Diagnóstico, Clases y SKU, Cargar otro archivo e Historial. Una consulta de topología o historial selecciona la pestaña correspondiente.
 
-Ejecución: un panel de la corrida con su estado y sus acciones (detener, reanudar, ver resultados), los hechos de la corrida, las etapas del motor, el progreso circular y los conteos por estado; debajo, las pestañas Tareas y Configuración. Panel y pestañas están dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él. «Nueva ejecución» es una acción secundaria del encabezado y abre el formulario de lanzamiento encima de la corrida.
+Ejecución: un panel de la corrida con su estado y sus acciones (detener, reanudar, ver resultados), los hechos de la corrida, las etapas del motor, el progreso circular y los conteos por estado; debajo, las pestañas Tareas y Configuración. Panel y pestañas están dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él.
 
 Resultados: la barra de contexto, las pestañas y una hoja blanca con la vista elegida. Detalle SKU: ruta de migas, decisión con sus cifras en una fila, familias, y la trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
 
@@ -230,4 +251,4 @@ Resultados: la barra de contexto, las pestañas y una hoja blanca con la vista e
 
 Datos ofrece pestañas horizontales: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cargar otro archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
 
-Ejecución presenta Tareas y Configuración con el mismo patrón dentro del fragmento que se sondea; la pestaña elegida se conserva al actualizar. La acción Nueva ejecución abre la configuración de lanzamiento; desde Datos y Resultados llega con `ingest_id`. La configuración de lanzamiento está fuera del fragmento de polling. Detener/reanudar dependen de las capacidades declaradas. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.
+Ejecución presenta Tareas y Configuración con el mismo patrón dentro del fragmento que se sondea; la pestaña elegida se conserva al actualizar. La configuración de lanzamiento es el paso Ajustes, fuera del fragmento de polling; Resultados llega a él con `ingest_id`. Detener/reanudar dependen de las capacidades declaradas. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.

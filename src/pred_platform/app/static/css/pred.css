@@ -168,18 +168,20 @@ samp,
   border: 0;
 }
 
+/* Dentro de la pantalla y recortado hasta que recibe el foco, sobre la barra de pasos. */
 .pred-skip {
   position: absolute;
-  top: -10rem;
+  top: var(--space-2);
   left: var(--space-3);
-  z-index: 10;
+  z-index: 50;
   padding: var(--space-2) var(--space-3);
   background: var(--surface);
   color: var(--primary-dark);
+  clip-path: inset(50%);
 }
 
 .pred-skip:focus {
-  top: var(--space-2);
+  clip-path: none;
 }
 
 .pred-inline-icon {
@@ -204,67 +206,491 @@ samp,
   background: var(--canvas);
 }
 
-/* La navegación numera el recorrido: cargar, ejecutar y leer los resultados. */
-.pred-nav {
+/* Barra superior: el inicio (Corridas), la corrida que se ve y «Nueva corrida». */
+.pred-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 52px;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+nav.pred-topbar__nav {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
   align-items: center;
-  gap: var(--space-1);
-  min-height: 52px;
-  padding: 0 var(--space-4);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border-strong);
+  gap: var(--space-4);
+  min-width: 0;
 }
 
-.pred-nav__brand {
-  margin-right: var(--space-3);
+.pred-topbar__brand {
   color: var(--primary-dark);
   font-size: 15px;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
   text-decoration: none;
 }
 
-.pred-nav__link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 36px;
+.pred-topbar__link {
   padding: 6px 10px;
   border-radius: var(--radius);
-  color: var(--muted-text);
-  font-size: 0.875rem;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.pred-nav__link:hover {
   color: var(--ink-soft);
+  font-size: 14px;
+  text-decoration: none;
 }
 
-.pred-nav__link[aria-current="page"] {
+.pred-topbar__link:hover {
+  background: var(--canvas);
+}
+
+.pred-topbar__link[aria-current="page"] {
   background: var(--primary-soft);
   color: var(--primary-dark);
   font-weight: 600;
 }
 
-.pred-nav__step {
-  display: inline-flex;
+.pred-topbar__crumb {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--muted-text);
+  font-size: 14px;
+}
+
+.pred-topbar__crumb strong {
+  color: var(--ink-soft);
   font-weight: 600;
-  line-height: 1;
+}
+
+/* Barra de pasos: una columna fija a la izquierda con la marca y el nombre corto de cada paso. Al
+   pasar el puntero o al enfocarla se abre sobre la página con el detalle de cada paso; la página
+   no se mueve. Bajo 900 px la reemplaza el resumen compacto del encabezado del paso. */
+.pred-shell {
+  --rail: 88px;
+}
+
+.pred-shell.has-rail {
+  padding-left: var(--rail);
+}
+
+nav.pred-rail {
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: var(--rail);
+  overflow: hidden auto;
+  padding: 64px 0 var(--space-3);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transition:
+    width 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+nav.pred-rail:hover,
+nav.pred-rail:focus-within {
+  width: 340px;
+  box-shadow: 10px 0 28px rgb(20 22 26 / 12%);
+}
+
+.pred-rail__head {
+  width: var(--rail);
+  margin: 0 0 10px;
+  color: var(--muted-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+nav.pred-rail ol {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+nav.pred-rail li {
+  position: relative;
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* La línea que une un paso con el siguiente empieza bajo el nombre corto y llega a la marca de
+   abajo, sin cruzar el texto. */
+nav.pred-rail li::before {
+  content: "";
+  position: absolute;
+  top: 64px;
+  bottom: -6px;
+  left: calc(var(--rail) / 2 - 1px);
+  width: 2px;
+  background: var(--border-strong);
+  transition: top 0.15s ease;
+}
+
+/* Abierta, el nombre corto se oculta: la línea sale justo bajo la marca. */
+nav.pred-rail:hover li::before,
+nav.pred-rail:focus-within li::before {
+  top: 46px;
+}
+
+nav.pred-rail li:last-child::before {
+  display: none;
+}
+
+nav.pred-rail li.is-done::before {
+  background: var(--ok);
+}
+
+nav.pred-rail .pred-rail__item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  min-height: 84px;
+  margin: 0;
+  padding: 6px 0;
+  border-radius: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+nav.pred-rail a.pred-rail__item:hover {
+  background: var(--primary-soft);
+}
+
+nav.pred-rail a.pred-rail__item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -3px;
+}
+
+nav.pred-rail li.is-current .pred-rail__item {
+  box-shadow: inset 4px 0 0 var(--primary);
+}
+
+.pred-rail__col {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: var(--rail);
+}
+
+.pred-rail__mark {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted-text);
+  font: 700 14px/1 var(--font-body);
+}
+
+.pred-rail__mark svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pred-rail__mini {
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  transition: opacity 0.15s ease;
+}
+
+.pred-rail__text {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 236px;
+  padding: 2px var(--space-3) 0 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+nav.pred-rail:hover .pred-rail__text,
+nav.pred-rail:focus-within .pred-rail__text {
+  opacity: 1;
+  transition-delay: 0.06s;
+}
+
+nav.pred-rail:hover .pred-rail__mini,
+nav.pred-rail:focus-within .pred-rail__mini {
+  opacity: 0;
+}
+
+.pred-rail__num {
+  color: var(--muted-text);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.pred-rail__label {
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.pred-rail__sub {
+  margin-top: 2px;
+  color: var(--muted-text);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pred-rail__now {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+
+nav.pred-rail li.is-done .pred-rail__mark {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--surface);
+}
+
+nav.pred-rail li.is-current .pred-rail__mark {
+  border: 3px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+nav.pred-rail li.is-done.is-current .pred-rail__mark {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--surface);
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--primary);
+}
+
+nav.pred-rail li.is-current .pred-rail__label,
+nav.pred-rail li.is-current .pred-rail__mini {
+  color: var(--ink);
+  font-weight: 750;
+}
+
+nav.pred-rail li.is-live .pred-rail__mark {
+  border-color: var(--info);
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+nav.pred-rail li.is-live .pred-rail__now {
+  color: var(--info);
+}
+
+nav.pred-rail li.is-locked .pred-rail__mark {
+  border-style: dashed;
+}
+
+nav.pred-rail li.is-locked .pred-rail__label,
+nav.pred-rail li.is-locked .pred-rail__mini {
+  color: var(--muted-text);
+}
+
+/* El resumen del paso que reemplaza a la barra lateral en pantallas angostas. */
+.pred-rail-compact {
+  display: none;
+  margin: 0 0 var(--space-3);
+}
+
+.pred-rail-compact p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.pred-rail-compact__bar {
+  display: flex;
+  gap: var(--space-1);
+  margin: 6px 0 var(--space-1);
+}
+
+.pred-rail-compact__bar i {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+}
+
+.pred-rail-compact__bar i.is-done {
+  background: var(--ok);
+}
+
+.pred-rail-compact__bar i.is-current {
+  background: var(--primary);
+}
+
+@media (max-width: 900px) {
+  nav.pred-rail {
+    display: none;
+  }
+
+  .pred-shell.has-rail {
+    padding-left: 0;
+  }
+
+  .pred-rail-compact {
+    display: block;
+  }
+
+  .pred-topbar__crumb {
+    display: none;
+  }
+}
+
+/* Encabezado de un paso: dónde está, qué es y qué viene después. */
+.pred-stephead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.pred-stephead__eyebrow {
+  margin: 0 0 6px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pred-stephead h1 {
+  margin: 0 0 var(--space-2);
+  color: var(--ink);
+  font-size: clamp(30px, 3.2vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.pred-stephead__what {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+}
+
+.pred-stephead__next {
+  margin: var(--space-2) 0 0;
+  color: var(--muted-text);
+  font-size: 14px;
+}
+
+.pred-stephead__next strong {
+  color: var(--ink-soft);
+}
+
+.pred-stephead__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pred-stephead__actions .pred-actions {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .pred-stephead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pred-stephead__actions {
+    justify-content: flex-start;
+  }
+}
+
+/* Atrás y Siguiente al pie de cada paso. */
+nav.pred-footnav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0 var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.pred-footnav__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.pred-footnav__side--end {
+  align-items: flex-end;
+  margin-left: auto;
+  text-align: right;
+}
+
+.pred-footnav__form {
+  margin: 0;
+}
+
+.pred-footnav__hint {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+/* Un paso al que todavía no se llega: qué falta y adónde ir. */
+.pred-locked {
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+}
+
+.pred-locked h2 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.pred-locked p {
+  margin: 0;
+}
+
+.pred-locked .pred-actions {
+  margin-top: var(--space-3);
 }
 
 .pred-main {
-  max-width: 1360px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: var(--space-5);
 }
@@ -377,7 +803,7 @@ nav.pred-breadcrumb li a {
 .pred-panel {
   min-width: 0;
   margin: 0 0 var(--space-5);
-  padding: var(--space-4) var(--space-5) var(--space-5);
+  padding: var(--space-4) var(--space-5);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -388,10 +814,11 @@ nav.pred-breadcrumb li a {
 }
 
 .pred-panel h2 {
-  margin: 0 0 var(--space-2);
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
 .pred-section {
@@ -457,6 +884,231 @@ nav.pred-breadcrumb li a {
   font-size: 0.875rem;
 }
 
+/* ------------------------------------------------------------------- Corridas */
+.pred-lead {
+  margin: 0 0 var(--space-3);
+  color: var(--ink-soft);
+  font-size: 16px;
+}
+
+.pred-home-group .pred-lead {
+  margin: 0;
+}
+
+.pred-home-group__more {
+  margin: var(--space-3) 0 0;
+}
+
+/* El grupo de la tesis: una casilla por semilla. */
+ul.pred-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  list-style: none;
+}
+
+ul.pred-group li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 0;
+  padding: 12px var(--space-3);
+  border-right: 1px solid var(--border);
+  list-style: none;
+}
+
+ul.pred-group li:last-child {
+  border-right: 0;
+}
+
+ul.pred-group strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+/* Todas las corridas: quién es, en qué estado está y la acción para seguir. */
+ul.pred-runs {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+ul.pred-runs > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+
+.pred-runs p {
+  margin: 0;
+}
+
+.pred-runs__name {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.pred-runs__meta {
+  margin-top: 3px;
+  color: var(--muted-text);
+  font-size: 13.5px;
+}
+
+p.pred-runs__meta {
+  margin-top: 3px;
+}
+
+.pred-runs__action {
+  justify-self: end;
+}
+
+/* Los cinco pasos de una corrida en miniatura. */
+.pred-minirail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: 6px;
+}
+
+.pred-minirail i {
+  display: block;
+  width: 26px;
+  height: 6px;
+  background: var(--border);
+}
+
+.pred-minirail i.is-done {
+  background: var(--ok);
+}
+
+.pred-minirail i.is-current {
+  background: var(--info);
+}
+
+/* El paso en curso de una corrida que trabaja: un brillo que lo recorre (quieto con movimiento
+   reducido). */
+.pred-minirail i.is-live {
+  position: relative;
+  overflow: hidden;
+}
+
+.pred-minirail i.is-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0, rgb(255 255 255 / 55%) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: pred-sheen 2.2s ease-in-out infinite;
+}
+
+@keyframes pred-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 900px) {
+  .pred-panel {
+    padding: var(--space-3);
+  }
+
+  ul.pred-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  ul.pred-group li {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  ul.pred-group li:last-child {
+    border-bottom: 0;
+  }
+
+  ul.pred-runs > li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pred-runs__action {
+    justify-self: start;
+  }
+}
+
+/* Lista para revisar antes de lanzar: etiqueta, valor y «Cambiar» en cada fila. */
+dl.pred-check {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+dl.pred-check > div {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+dl.pred-check dt {
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+dl.pred-check dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+dl.pred-check a {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Tarjeta de acción: el texto a la izquierda y la acción a la derecha, centrados entre sí. */
+.pred-action-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  border-left: 4px solid var(--primary);
+}
+
+.pred-action-card .pred-lead {
+  margin: 0;
+}
+
+/* Una nota bajo el texto (sin procesador, confirmación) no agranda el borde inferior. */
+.pred-action-card .pred-meta {
+  margin: var(--space-2) 0 0;
+}
+
+.pred-action-card__do {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  dl.pred-check > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .pred-action-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ---------------------------------------------------------------- Botones */
 .pred-btn,
 button.pred-btn {
@@ -515,10 +1167,19 @@ button.pred-btn {
   color: var(--primary-on);
 }
 
-.pred-btn--small {
+/* Con «button» delante, para ganarle a «button.pred-btn». */
+.pred-btn--small,
+button.pred-btn--small {
   min-height: 28px;
   padding: 3px 10px;
   font-size: 0.8125rem;
+}
+
+.pred-btn--large,
+button.pred-btn--large {
+  min-height: 44px;
+  padding: 10px 20px;
+  font-size: 15px;
 }
 
 .pred-btn:disabled,
@@ -2416,7 +3077,7 @@ button.pred-btn {
   font-size: 1rem;
 }
 
-/* Nueva ejecución: filas de dos columnas en pantalla ancha (los datos junto a la ventana, las
+/* Ajustes de una corrida nueva: filas de dos columnas en pantalla ancha (los datos junto a la ventana, las
    familias junto a las que admite cada clase); una columna en un teléfono. */
 .pred-launch-section {
   margin-bottom: var(--space-5);
@@ -2927,7 +3588,6 @@ button.pred-btn {
   }
 
   .pred-sheet,
-  .pred-panel,
   .pred-run,
   .pred-evidence-panel {
     padding: var(--space-4) 20px;
@@ -2957,25 +3617,11 @@ button.pred-btn {
 }
 
 @media (max-width: 600px) {
-  .pred-nav {
-    gap: 0;
-    padding-inline: var(--space-2);
-  }
-
-  .pred-nav__brand {
-    margin-right: var(--space-2);
-  }
-
-  .pred-nav__link {
-    padding-inline: var(--space-2);
-  }
-
   .pred-main {
     padding-inline: var(--space-2);
   }
 
   .pred-sheet,
-  .pred-panel,
   .pred-run,
   .pred-evidence-panel {
     padding: 20px var(--space-3);

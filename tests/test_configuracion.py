@@ -170,7 +170,7 @@ def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
 
     assert page.status_code == 200
     text = _text(page.text)
-    assert "Configuración importada" in text and "Revise los valores y lance" in text
+    assert "Configuración importada" in text and "Revise los valores y continúe" in text
     # El formulario trae exactamente los ajustes de la corrida exportada.
     for field, value in (("horizon", "2"), ("step", "14"), ("trials", "1"), ("seed", "17")):
         assert re.search(rf'name="{field}"[^>]*value="{value}"', page.text), field
@@ -194,7 +194,7 @@ def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
         data={**{k: v for k, v in imported.values.items()}, "ingest_id": env.ingest_id},
         follow_redirects=False,
     )
-    assert again.headers["location"] == "/ejecucion?ejecucion=1&aviso=existente"
+    assert again.headers["location"] == "/corridas/1/ejecucion?aviso=existente"
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
 
 
@@ -215,7 +215,7 @@ def test_the_identity_does_not_count_the_parallel_processes(env: Env) -> None:
         follow_redirects=False,
     )
     # Con otros procesos en paralelo sigue siendo la misma corrida.
-    assert again.headers["location"] == "/ejecucion?ejecucion=1&aviso=existente"
+    assert again.headers["location"] == "/corridas/1/ejecucion?aviso=existente"
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
 
 
@@ -234,7 +234,7 @@ def test_a_changed_setting_is_another_run_so_the_file_pins_the_settings(env: Env
         data={**imported.values, "ingest_id": env.ingest_id},
         follow_redirects=False,
     )
-    assert again.headers["location"] == "/ejecucion?ejecucion=2&aviso=en_cola"
+    assert again.headers["location"] == "/corridas/2/ejecucion?aviso=en_cola"
 
 
 # ----------------------------------------------------------------------------- la ingesta

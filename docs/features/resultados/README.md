@@ -104,7 +104,8 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
   to 0.2 s (in-process, three runs each; the formal measurement is task B1).
 
 **Grupo de semillas** is a separate compact view at `/resultados/grupo`, linked from the
-Resultados header. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2.
+header of the Resultados step (also while it is locked) and from the thesis group on the
+Corridas home. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2.
 Each option reads «Publicada el …» from `GroupRunOption.creado_en` in Bogotá time, with the run id
 and the data fingerprint in `title`. A source without a test reads its cause through
 `resultados_m3.source_cause`: the message catalog title for an exclusion, plain Spanish for a test
@@ -130,8 +131,8 @@ browser runs no inline script. `include_windows` is only requested with `?ventan
   run id; it resolves to the run with the highest id. Resultados uses it only when no execution has
   a PUBLICADA M3 run; otherwise it opens the newest one that has. `?ejecucion=3` shows another one,
   and an execution that does not exist says so instead of showing an empty panel.
-- **"Nueva ejecución".** Secondary action in the page header that opens the launch form of
-  `/ejecucion` with the ingest of the execution shown (launching is C4). It is enabled only when
+- **"Nueva corrida con estos datos".** Secondary action in the step header that opens Ajustes of a
+  new run (`/corridas/nueva/ajustes?ingest_id=…`) with the ingest of the execution shown. It is enabled only when
   `parquet_read`, `family_comparison` and `selection_results_persisted` are available
   (contract 7.8); otherwise it is disabled and "Por qué no se puede lanzar" lists what is missing.
 - **States.** Families use the task vocabulary plus `excluida` (neutral, not a failure); trials use

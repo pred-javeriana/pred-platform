@@ -58,7 +58,7 @@
       </form>
       {% endif %}
       {# Con el formulario abierto, Lanzar es la acción primaria de la página. #}
-      {% if finished and results_href %}{{ button("Ver resultados", variant="secondary" if launch_open else "primary", href=results_href) }}{% endif %}
+      {% if finished and results_href %}{{ button("Ver resultados", variant="primary", href=results_href) }}{% endif %}
     </div>
   </header>
   {% if outcome %}<p class="pred-run__outcome" id="resultado-ejecucion">{{ outcome }}</p>{% endif %}
@@ -66,7 +66,7 @@
     <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
     {# Mientras trabaja, el pulso de abajo cuenta el tiempo transcurrido. #}
     {% if elapsed and run.estado != "ejecutando" %}<div><dt>{{ "Duración" if run.finalizada_en else "Tiempo transcurrido" }}</dt><dd>{{ elapsed }}</dd></div>{% endif %}
-    {% if run.ingest_id %}<div><dt>Datos</dt><dd><a href="/datos?ingest_id={{ run.ingest_id }}" title="Ingesta {{ run.ingest_id }}">{% if run_ingest and run_ingest.file_name %}{{ run_ingest.file_name }}{% else %}<span class="mono">{{ abbreviate_id(run.ingest_id) }}</span>{% endif %}</a></dd></div>{% endif %}
+    {% if run.ingest_id %}<div><dt>Datos</dt><dd><a href="/corridas/{{ run.id }}/datos" title="Ingesta {{ run.ingest_id }}">{% if run_ingest and run_ingest.file_name %}{{ run_ingest.file_name }}{% else %}<span class="mono">{{ abbreviate_id(run.ingest_id) }}</span>{% endif %}</a></dd></div>{% endif %}
     <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
   </dl>
   {% if actions.disabled_reason %}<details class="pred-details pred-details--inline"><summary>{{ "Acciones no disponibles en modo de prueba" if source == "fixture" else "Por qué no se puede detener ni reanudar" }}</summary><p class="pred-meta">Detener y reanudar están deshabilitados. {{ actions.disabled_reason }}</p></details>{% endif %}
@@ -151,7 +151,7 @@
     </dl>
     {% if source != "fixture" %}
     <p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>
-    <p class="pred-meta">El archivo reproduce esta ejecución: impórtelo en «Nueva ejecución» para lanzar los mismos ajustes.</p>
+    <p class="pred-meta">El archivo reproduce esta ejecución: impórtelo en Ajustes de una corrida nueva para lanzar los mismos ajustes.</p>
     {% endif %}
 {% endcall %}
 

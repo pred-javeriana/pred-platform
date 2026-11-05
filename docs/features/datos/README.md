@@ -56,4 +56,5 @@ already has a file with that name and other content (G5): confirming repeats the
   the uploaded file is used.
 - Aligning free-form headers with an LLM (`pred-engine ingest`) is out of scope: it needs a
   provider and a key the platform does not store.
-- "Continuar a Ejecución" now carries the ingestion (`/ejecucion?ingest_id=<sha256>`).
+- "Continuar a Ajustes", at the foot of the step, chooses the ingestion for the new run
+  (`POST /corridas/nueva/datos`) and opens Ajustes.

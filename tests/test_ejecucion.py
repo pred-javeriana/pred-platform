@@ -149,33 +149,47 @@ def test_an_invalid_filter_is_a_warning_and_an_unknown_run_is_not_a_500() -> Non
     for url in ("/ejecucion?estado=lenta", "/ejecucion?page=abc"):
         response = client.get(url)
         assert response.status_code == 200 and "pred-alert--warning" in response.text
+    # An unknown run is a page that says so: the old link leads to its step, which answers 404.
     missing = client.get("/ejecucion?ejecucion=99")
-    assert missing.status_code == 200 and "Traceback" not in missing.text
-    # The missing run is named by its number, with a way out, not with the generic error.
-    text = _text(missing.text)
-    assert "No existe la ejecución «99». Puede abrir la ejecución más reciente" in text
-    assert "No se encontró el resultado esperado" not in text and "'99'" not in text
-    assert '<a class="pred-btn pred-btn--secondary" href="/ejecucion"' in missing.text
+    assert missing.url.path == "/corridas/99/ejecucion"
+    assert missing.status_code == 404 and "Traceback" not in missing.text
+    assert "No existe la corrida «99»." in missing.text
 
 
 def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
     client, _ = _fixture_client("vacio")
-    text = _text(client.get("/ejecucion").text)
-
-    assert "No existe una ejecución activa." in text
-    assert "Todavía no hay ningún archivo de datos aceptado" in text
+    # Without runs, the old Ejecución link starts a new run at Datos, with the upload first.
+    first = client.get("/ejecucion")
+    assert first.url.path == "/corridas/nueva/datos"
+    assert 'id="titulo-carga">Cargar un archivo<' in first.text
+    # Ajustes says what is missing and cannot continue.
+    ajustes = client.get("/corridas/nueva/ajustes").text
+    assert "Todavía no hay ningún archivo de datos aceptado" in _text(ajustes)
+    assert "Primero cargue un archivo válido en Datos." in ajustes
+    assert re.search(r'<button class="pred-btn pred-btn--secondary[^"]*"[^>]*disabled', ajustes)
 
 
 def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
     client, repo = _fixture_client("normal")
     html = client.get("/ejecucion").text
 
-    assert "Nueva ejecución" in html
+    assert 'href="/corridas/nueva/datos"' in html and "Nueva corrida" in html
     ingest_id = next(
-        item.ingest_id for item in repo.list_ingests().items if item.status == "accepted"
+        item.ingest_id
+        for item in repo.list_ingests().items
+        if item.status == "accepted" and item.ingest_id
     )
-    launch_html = client.get(f"/ejecucion?ingest_id={ingest_id}").text
-    assert re.search(r'<button class="pred-btn pred-btn--primary"[^>]*disabled', launch_html)
+    settings_html = client.get(f"/ejecucion?ingest_id={ingest_id}").text
+    assert "Lanzar está deshabilitado. Está viendo datos de prueba" in settings_html
+    # Ajustes still saves the draft (nothing is written); Lanzar, in Revisar, stays off.
+    saved = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": ingest_id, **default_form_values()},
+        follow_redirects=False,
+    )
+    assert saved.headers["location"] == "/corridas/nueva/revisar"
+    launch_html = client.get("/corridas/nueva/revisar").text
+    assert re.search(r'<button class="pred-btn pred-btn--primary[^"]*"[^>]*disabled', launch_html)
     assert "Lanzar está deshabilitado. Está viendo datos de prueba" in launch_html
     assert re.search(
         r'<button class="pred-btn pred-btn--secondary"[^>]*disabled[^>]*>\s*<svg[^>]*>'
@@ -210,7 +224,7 @@ def test_polling_is_off_with_fixtures_and_the_fragment_stops_it() -> None:
     fragment = client.get("/ejecucion/estado")
 
     assert 'hx-trigger="none"' in page and "every 2s" not in page
-    assert fragment.status_code == 286 and "pred-nav" not in fragment.text
+    assert fragment.status_code == 286 and "pred-topbar" not in fragment.text
 
 
 def _task_table(html: str) -> str:
@@ -347,13 +361,24 @@ def _launch(client: TestClient, env: Env, **overrides: Any):
     )
 
 
+def _review(client: TestClient, env: Env, **overrides: Any) -> str:
+    """Saves the settings of a new run as a person does (Ajustes, Continuar) and opens Revisar."""
+    saved = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, **overrides},
+        follow_redirects=False,
+    )
+    assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/revisar")
+    return client.get("/corridas/nueva/revisar").text
+
+
 def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) -> None:
     client = _dal_client(env)
 
     response = _launch(client, env)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/ejecucion?ejecucion=1&aviso=en_cola"
+    assert response.headers["location"] == "/corridas/1/ejecucion?aviso=en_cola"
     ((estado, seed, parametros),) = env.rows(
         "SELECT e.estado, e.seed, c.parametros FROM ejecuciones e "
         "JOIN configuraciones c ON c.id = e.configuracion_id"
@@ -377,10 +402,14 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
 
 
 def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
-    html = _dal_client(env).get(f"/ejecucion?ingest_id={env.ingest_id}").text
-    assert 'action="/ejecucion/lanzar"' in html  # the form is there
-    assert "data_origin" not in html and "Origen de los datos" not in html
-    assert "Sintéticos" not in html
+    client = _dal_client(env)
+    html = client.get(f"/ejecucion?ingest_id={env.ingest_id}").text
+    assert 'action="/corridas/nueva/ajustes"' in html  # the form is there
+    review = _review(client, env)
+    assert 'action="/ejecucion/lanzar"' in review
+    for page in (html, review):
+        assert "data_origin" not in page and "Origen de los datos" not in page
+        assert "Sintéticos" not in page
 
 
 def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
@@ -505,7 +534,7 @@ def test_launching_the_same_run_again_says_it_already_exists(env: Env) -> None:
 
     again = _launch(client, env)
 
-    assert again.headers["location"] == "/ejecucion?ejecucion=1&aviso=existente"
+    assert again.headers["location"] == "/corridas/1/ejecucion?aviso=existente"
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
     assert "Ya existía una ejecución" in client.get(again.headers["location"]).text
 
@@ -837,7 +866,7 @@ def test_reanudar_una_corrida_con_origen_no_real_lo_rechaza_y_lanzar_abre_otra(
     client = _dal_client(env)
     assert _launch(client, env).status_code == 303
     stopped = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
-    assert stopped.headers["location"] == "/ejecucion?ejecucion=1&aviso=detenida"
+    assert stopped.headers["location"] == "/corridas/1/ejecucion?aviso=detenida"
     _guardar_origen(env, origin)
 
     response = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
@@ -849,7 +878,7 @@ def test_reanudar_una_corrida_con_origen_no_real_lo_rechaza_y_lanzar_abre_otra(
     ((raw,),) = env.rows("SELECT parametros FROM configuraciones")
     assert json.loads(raw)["datos_sinteticos"] is origin
     relaunched = _launch(client, env)
-    assert relaunched.headers["location"] == "/ejecucion?ejecucion=2&aviso=en_cola"
+    assert relaunched.headers["location"] == "/corridas/2/ejecucion?aviso=en_cola"
 
 
 def test_a_run_followed_stopped_and_resumed_from_the_screen(
@@ -876,7 +905,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
 
     stopped = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
     thread.join(timeout=20)
-    assert stopped.headers["location"] == "/ejecucion?ejecucion=1&aviso=detenida"
+    assert stopped.headers["location"] == "/corridas/1/ejecucion?aviso=detenida"
 
     after = client.get(stopped.headers["location"])
     text = _text(after.text)
@@ -887,10 +916,10 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
 
     _scenario(monkeypatch, "ok")
     resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
-    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=reanudada"
+    assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
     env.worker().run_next()
     done = client.get("/ejecucion").text
-    assert "Completada" in _text(done) and 'href="/resultados?ejecucion=1"' in done
+    assert "Completada" in _text(done) and 'href="/corridas/1/resultados"' in done
     assert env.rows("SELECT COUNT(*) FROM tareas") == [(9,)]  # the same rows, no duplicates
 
 
@@ -914,7 +943,7 @@ def test_resuming_a_legacy_run_lets_the_engine_report_its_evaluation(
 
     resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
 
-    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=reanudada"
+    assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
     assert env.rows("SELECT parametros FROM configuraciones") == before
     monkeypatch.setenv("FAKE_ENGINE_EVALUATION", '{"aggregation":"mediana","trim":0.0}')
     env.worker().run_next()
@@ -1104,11 +1133,13 @@ def test_an_edited_run_number_is_never_a_server_error(
     env.worker().run_next()
     query = {"ejecucion": reference}
 
-    page = client.get("/ejecucion", params=query)
-    assert page.status_code == 200 and "Ejecución #1" not in page.text
+    # The old links lead to the steps of a run that does not exist: a page that says so.
+    for old in ("/ejecucion", "/resultados"):
+        page = client.get(old, params=query)
+        assert page.status_code == 404 and "Ejecución #1" not in page.text
+        assert "No existe la corrida" in page.text
     assert client.get("/ejecucion/estado", params=query).status_code in (200, 286)
     assert client.get("/ejecucion/configuracion.json", params=query).status_code == 404
-    assert client.get("/resultados", params=query).status_code == 200
     assert client.get("/resultados/exportar.csv", params=query).status_code == 404
     for action in ("reanudar", "detener"):
         response = client.post(f"/ejecucion/{action}", data=query)
@@ -1219,21 +1250,23 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
     _launch(client, env)
     hint = "hasta que se inicie el procesador de ejecuciones con make worker"
 
-    def page() -> str:
-        return _text(client.get("/ejecucion?ejecucion=1&lanzar=1").text)
+    def pages() -> tuple[str, str]:
+        run = _text(client.get("/corridas/1/ejecucion").text)
+        return run, _text(_review(client, env, seed="18"))
 
-    assert "debe iniciar el procesador de ejecuciones con make worker" in page()
-    assert hint in page()
+    run, review = pages()
+    assert "debe iniciar el procesador de ejecuciones con make worker" in run
+    assert hint in review
     other = WorkerLock.for_database(env.db)  # a `make worker` beside the app
     assert other.acquire()
     try:
-        shown = page()
+        run, review = pages()
     finally:
         other.release()
 
-    assert "make worker" not in shown
-    assert "En cola: empezará cuando termine la ejecución anterior." in shown
-    assert hint in page()  # the lock is free again: nothing runs the queue
+    assert "make worker" not in run and "make worker" not in review
+    assert "En cola: empezará cuando termine la ejecución anterior." in run
+    assert hint in pages()[1]  # the lock is free again: nothing runs the queue
 
 
 def test_with_the_launch_form_open_launching_is_the_one_primary_action(
@@ -1245,14 +1278,15 @@ def test_with_the_launch_form_open_launching_is_the_one_primary_action(
     env.worker().run_next()
 
     def primary(html: str) -> list[str]:
-        pattern = r'class="pred-btn pred-btn--primary"[^>]*>(.*?)</(?:a|button)>'
-        return [_text(label).strip() for label in re.findall(pattern, html, re.S)]
+        """The primary actions of the step body; the step footer (Siguiente) is apart."""
+        body = html.split('<nav class="pred-footnav"', 1)[0]
+        pattern = r'class="pred-btn pred-btn--primary[^"]*"[^>]*>(.*?)</(?:a|button)>'
+        return [_text(label).strip() for label in re.findall(pattern, body, re.S)]
 
     assert primary(client.get("/ejecucion").text) == ["Ver resultados"]
-    page = client.get("/ejecucion?lanzar=1").text
-    assert primary(page) == ["Lanzar ejecución"]
-    assert 'hx-get="/ejecucion/estado?lanzar=1"' in page
-    assert primary(client.get("/ejecucion/estado?lanzar=1").text) == []
+    assert primary(client.get("/ejecucion/estado").text) == ["Ver resultados"]
+    # A new run is launched from Revisar, where Lanzar is the one primary action.
+    assert primary(_review(client, env, seed="18")) == ["Lanzar la corrida"]
 
 
 def test_a_second_run_waits_in_the_queue_and_the_screen_says_so(
@@ -1299,7 +1333,7 @@ def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
             thread = app.state.worker_thread
             _wait(lambda: not thread.is_alive(), timeout=10, what="the worker thread to stop")
             run_page = _text(served.get("/ejecucion?ejecucion=1").text)
-            form = _text(served.get("/ejecucion?lanzar=1").text)
+            form = _text(_review(served, env, seed="5"))
     finally:
         env.db.parent.chmod(0o755)
         reader.close()
@@ -1343,11 +1377,17 @@ def test_actions_on_a_bad_or_finished_run_are_explained_not_applied(
     assert client.post("/ejecucion/detener", data={"ejecucion": "xx"}).status_code == 400
 
 
-def test_the_data_surface_continues_to_the_execution_of_that_ingestion(env: Env) -> None:
+def test_the_data_surface_continues_to_the_settings_of_that_ingestion(env: Env) -> None:
     client = _dal_client(env)
     html = client.get(f"/datos?ingest_id={env.ingest_id}").text
+    assert f'<input type="hidden" name="ingest_id" value="{env.ingest_id}">' in html
 
-    assert f'href="/ejecucion?ingest_id={env.ingest_id}"' in html
+    chosen = client.post(
+        "/corridas/nueva/datos", data={"ingest_id": env.ingest_id}, follow_redirects=False
+    )
+    assert (chosen.status_code, chosen.headers["location"]) == (303, "/corridas/nueva/ajustes")
+    settings = client.get("/corridas/nueva/ajustes").text
+    assert f'<option value="{env.ingest_id}" selected>' in settings
 
 
 # ------------------------------------------------------------------------------ las ayudas
@@ -1510,7 +1550,7 @@ def test_a_run_whose_engine_is_killed_offers_to_resume_and_resumes(
 
     _scenario(monkeypatch, "ok")
     resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
-    assert resumed.headers["location"] == "/ejecucion?ejecucion=1&aviso=reanudada"
+    assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
     env.worker().run_next()
     assert env.rows("SELECT estado FROM ejecuciones") == [("completada",)]
     assert "Completada" in _text(client.get("/ejecucion").text)
@@ -1564,7 +1604,7 @@ def test_an_ingest_declared_synthetic_is_listed_but_cannot_be_launched(env: Env)
     report.write_text(json.dumps(document))
     client = _dal_client(env)
 
-    html = client.get("/ejecucion?lanzar=1").text
+    html = client.get("/corridas/nueva/ajustes").text
     option = re.search(rf'<option value="{env.ingest_id}"[^>]*>[^<]*', html)
     assert option is not None and " disabled" in option.group(0)
     assert "no ejecutable: datos sintéticos" in option.group(0)

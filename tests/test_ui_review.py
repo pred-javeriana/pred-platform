@@ -178,9 +178,12 @@ def test_execution_live_region_is_small_and_pause_control_is_outside_fragment() 
     assert any("estado=no_ejecutable" in (a.get("href") or "") for a in links)
 
 
-def test_accepted_file_keeps_the_next_action_before_optional_evidence() -> None:
-    html = client_for().get(f"/datos?ingest_id={ACCEPTED}").text
-    assert html.index("Continuar a Ejecución") < html.index('id="diagnostico-completo"')
+def test_accepted_file_keeps_the_next_action_outside_optional_evidence() -> None:
+    html = client_for().get(f"/corridas/nueva/datos?ingest_id={ACCEPTED}").text
+    # Siguiente va al pie del paso, fuera de las pestañas de evidencia: ninguna pestaña lo oculta.
+    footer = html.index('<nav class="pred-footnav"')
+    assert html.index("Continuar a Ajustes", footer) > footer
+    assert html.rindex("data-evidence-panel") < footer
     page = Markup(html)
     evidence = [attrs for _, attrs in page.tags if "data-evidence-panel" in attrs]
     evidence_ids = {"diagnostico-completo", "explorar-topologia", "carga", "historial"}

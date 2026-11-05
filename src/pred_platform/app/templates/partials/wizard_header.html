@@ -1,0 +1,16 @@
+{# Encabezado de un paso: en qué paso está, qué es y qué viene después. En pantallas angostas lo
+   precede el resumen compacto que reemplaza a la barra lateral. #}
+{% set here = wizard.current %}
+<nav class="pred-rail-compact" aria-label="Paso actual de la corrida">
+  <p><strong>Paso {{ here.number }} de {{ wizard.steps | length }} · {{ here.label }}</strong> · {{ here.sub }}{% if here.sub_when %} {{ format_date(here.sub_when) }}{% endif %}</p>
+  <div class="pred-rail-compact__bar" aria-hidden="true">{% for step in wizard.steps %}<i class="{{ 'is-done' if step.state == 'done' else ('is-current' if step.current else '') }}"></i>{% endfor %}</div>
+</nav>
+<header class="pred-stephead">
+  <div>
+    <p class="pred-stephead__eyebrow">Paso {{ here.number }} de {{ wizard.steps | length }}</p>
+    <h1>{{ wizard.step.label }}</h1>
+    <p class="pred-stephead__what">{{ wizard.purpose }}</p>
+    <p class="pred-stephead__next">{% if wizard.after_lead %}<strong>{{ wizard.after_lead }}</strong> {% endif %}{{ wizard.after_text }}</p>
+  </div>
+  {% if step_actions is defined and step_actions %}<div class="pred-stephead__actions">{{ step_actions }}</div>{% endif %}
+</header>

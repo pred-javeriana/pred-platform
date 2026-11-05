@@ -326,7 +326,7 @@ make format      # apply ruff fixes and formatting
 
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
-runtime dependencies only and requests `/health` and `/` (which redirects to `/datos`).
+runtime dependencies only and requests `/health` and `/` (the Corridas home).
 Run the tests as a regular user, as CI does: root may write a file without write permission, so
 the read-only database tests fail under root.
 CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches

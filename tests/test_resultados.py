@@ -95,6 +95,11 @@ _INTERVAL_NOTE = (
 )
 
 
+def _body(html: str) -> str:
+    """The step body, without the step header that says what the step is for."""
+    return re.sub(r'<header class="pred-stephead">.*?</header>', "", html, count=1, flags=re.S)
+
+
 def _notice(html: str) -> str:
     """The text of the warning alert, as the reader sees it (inline markup adds no space)."""
     found = re.search(r'pred-alert--warning".*?<div>(.*?)</div>', html, re.S)
@@ -185,17 +190,22 @@ def test_an_invalid_filter_is_a_warning_not_an_error_page() -> None:
 
 def test_without_any_run_the_page_says_so() -> None:
     client, repo = _client("vacio")
-    html = client.get("/resultados").text
+    response = client.get("/resultados")
+    html = response.text
 
-    assert "Todavía no hay resultados." in html
-    assert '<a class="pred-btn pred-btn--primary" href="/ejecucion">' in html
+    assert response.url.path == "/corridas/nueva/resultados"
+    assert "Los resultados todavía no existen" in html
+    # Nothing is chosen yet, so the way forward is the first step.
+    first_step = '<a class="pred-btn pred-btn--primary" href="/corridas/nueva/datos">Ir a Datos</a>'
+    assert first_step in html
     assert "<table" not in html
     assert repo.list_calls == []
 
 
 # ------------------------------------------------------------------------- la acción
 def _launch_action(html: str) -> str:
-    """The «Nueva ejecución» link of the header: secondary, because Ejecución owns launching."""
+    """The «Nueva corrida con estos datos» link of the step header: secondary, because
+    Revisar y lanzar owns launching."""
     found = re.search(
         r'<a class="pred-btn pred-btn--secondary"[^>]*>\s*<svg[^>]*><use href="#i-play">', html
     )
@@ -208,14 +218,23 @@ def test_the_action_is_enabled_when_all_three_capabilities_are_available() -> No
     html = client.get("/resultados").text
 
     action = _launch_action(html)
-    # It opens the launch form of Ejecución with the ingest of the run shown.
-    assert re.search(r'href="/ejecucion\?ingest_id=[0-9a-f]+#lanzar"', action)
+    # It opens Ajustes of a new run with the ingest of the run shown.
+    assert re.search(r'href="/corridas/nueva/ajustes\?ingest_id=[0-9a-f]+"', action)
+    assert "Nueva corrida con estos datos" in html
     assert "aria-disabled" not in action
     assert "Por qué no se puede lanzar" not in html
 
 
+class WithEmptyCapabilities(RecordingRepository):
+    """A run under the capabilities of the empty scenario: parquet_read yes; comparison and
+    persisted results no."""
+
+    def get_capabilities(self) -> models.Capabilities:
+        return FixtureRepository("vacio").get_capabilities()
+
+
 def test_the_disabled_action_says_why() -> None:
-    client, _ = _client("vacio")  # parquet_read yes; comparison and persisted results no
+    client, _ = _client(repo=WithEmptyCapabilities("normal"))
     html = client.get("/resultados").text
 
     action = _launch_action(html)
@@ -411,18 +430,18 @@ def _dal_client(env: Env) -> TestClient:
 def test_a_missing_run_is_named_and_offers_the_runs_with_results(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    empty = _dal_client(env).get("/resultados?ejecucion=99").text
-    assert "No existe la ejecución «99». Todavía no hay ejecuciones con resultados." in _text(empty)
-    assert 'href="/ejecucion"' in empty and 'id="elegir-ejecucion"' not in empty
+    empty = _dal_client(env).get("/resultados?ejecucion=99")
+    assert empty.url.path == "/corridas/99/resultados" and empty.status_code == 404
+    assert "No existe la corrida «99»." in _text(empty.text)
+    assert '<a class="pred-btn pred-btn--primary" href="/">Ir a Corridas</a>' in empty.text
 
     _run(env, monkeypatch)
     _publish_for_the_run(env)
-    html = _dal_client(env).get("/resultados?vista=clase&ejecucion=99").text
-    # The list it points to is right there, and it keeps the tab that was asked for.
-    assert "No existe la ejecución «99». Elija una ejecución con resultados." in _text(html)
-    picker = html.split('id="elegir-ejecucion"', 1)[1].split("</form>", 1)[0]
-    assert '<input type="hidden" name="vista" value="clase">' in picker
-    assert re.search(r'<option value="1">#1 · Completada · ', picker)
+    client = _dal_client(env)
+    html = client.get("/resultados?vista=clase&ejecucion=99").text
+    # Corridas, where it points, lists the run with results and opens them.
+    assert "No existe la corrida «99»." in _text(html)
+    assert 'href="/corridas/1/resultados"' in client.get("/").text
 
 
 def test_the_real_dal_feeds_the_table_and_the_detail(
@@ -716,7 +735,8 @@ def test_the_table_shows_the_champion_and_the_five_verdict_labels_m3_published(
     assert f"Excluido antes de evaluar: {LATE_LAUNCH}" in text
     assert f'title="Causa publicada: {LATE}"' in html
     assert "Origen de los datos Reales (declarado)" in text
-    assert "se sostiene" not in text and "Sin veredicto" not in text
+    body = _text(_body(html))
+    assert "se sostiene" not in body and "Sin veredicto" not in body
     # Detail links, filters and pages keep the shown run and the resolved M3 run, not «the newest».
     assert "/resultados/sku/FIL-0001?ejecucion=&amp;m3=m3-real-1" not in html
     assert 'href="/resultados/sku/FIL-0001?ejecucion=1&amp;m3=m3-real-1&amp;volver=' in html
