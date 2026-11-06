@@ -1,0 +1,36 @@
+{% from "components/tables.html" import table_start, table_end %}
+{% from "partials/results_macros.html" import answer, claim, family, key, problem %}
+{{ problem(m3_classes) }}
+{% set published = published_seed_count %}
+{% set stable = stability_rows and stability_rows | rejectattr('stable') | list | length == 0 %}
+{% call answer('Pregunta 3 · ¿Se sostiene si se repite la corrida con otra semilla?', 'La misma campeona gana y se confirma en las tres semillas.' if stable else 'La estabilidad exige la misma campeona confirmada en las tres semillas.', 'Respaldada' if stable else 'Sin responder: faltan corridas publicadas' if published < 3 else 'No concluyente', 'ok' if stable else 'neutral' if published < 3 else 'warn') %}
+<dl class="pred-results-kpis pred-results-kpis--three">
+  {% for seed in seeds %}<div><dt>Semilla {{ seed.seed }}{% if seed.run_id %} · #{{ seed.run_id }}{% endif %}</dt><dd class="pred-kpi-text">{% if seed.evidence and seed.evidence.run and not seed.evidence.problem %}Publicada<small>{{ seed.evidence.confirmations.values() | selectattr('estado', 'equalto', 'confirmado') | list | length }} tipos con campeona confirmada</small>{% elif seed.evidence and seed.evidence.problem %}Sin resultados<small>{{ seed.evidence.problem.detail }}</small>{% else %}Pendiente<small>La regla exige las tres corridas</small>{% endif %}</dd></div>{% endfor %}
+</dl>
+{% endcall %}
+<section class="pred-panel">
+  <h2>Campeona por semilla</h2>
+  <p class="pred-meta">Estable: la misma familia gana la selección y se confirma en la prueba en las tres semillas. Las corridas comparten datos y ajustes, y solo cambia la semilla.</p>
+  <div class="pred-table-wrap" role="region" aria-label="Campeona por semilla" tabindex="0"><table class="pred-table"><thead><tr><th scope="col">Tipo de demanda</th>{% for seed in seeds %}<th scope="col">Semilla {{ seed.seed }}{% if seed.run_id %} · #{{ seed.run_id }}{% endif %}</th>{% endfor %}<th scope="col">Estable</th></tr></thead><tbody>
+    {% for row in stability_rows %}<tr><th scope="row">{{ row.label }}</th>{% for cell in row.cells %}<td>{% if cell.category %}{{ family(cell.category.familia_campeona, family_colors) }}<span class="pred-subvalue">{{ claim(CONFIRMATION_STATES[cell.confirmation.estado], 'ok' if cell.confirmation.estado == 'confirmado' else 'warn') if cell.confirmation else 'Sin confirmación publicada' }}</span>{% else %}{{ claim('Pendiente') }}{% endif %}</td>{% endfor %}<td>{{ claim('Estable', 'ok') if row.stable else claim('Faltan corridas' if row.published < 3 else 'No confirmada en las tres', 'neutral' if row.published < 3 else 'warn') }}<span class="pred-subvalue">{{ row.confirmed }} de 3 confirmadas</span></td></tr>{% endfor %}
+  </tbody></table></div>
+  <p class="pred-meta">La confirmación por semilla no sustituye la significancia conjunta. Elija las tres publicaciones en el grupo final de abajo.</p>
+</section>
+<section class="pred-panel">
+  <h2>Cuánto se mueve el efecto entre semillas</h2>
+  <p class="pred-results-lead">Razón mediana de la campeona en cada semilla; la distancia entre las marcas es el rango. La regla no fija un umbral para ese rango.</p>
+  {{ key([('dot', 'semilla 0'), ('square', 'semilla 1'), ('diamond', 'semilla 2'), ('interval', 'rango entre semillas')]) }}
+  {% for title, svg, rows in stability_svgs %}<figure class="pred-results-figure"><figcaption><strong>{{ title }}</strong></figcaption>{{ svg | safe }}</figure>{% endfor %}
+  <details class="pred-details"><summary>Ver las cifras entre semillas</summary>
+    {{ table_start(['Comparación', 'Tipo', 'Semilla', 'Mediana de la razón'], 'Efecto por semilla') }}{% for title, svg, rows in stability_svgs %}{% for label, values in rows %}{% for seed, value, family in values %}<tr><th scope="row">{{ title }}</th><td>{{ label }}{% if family %}<span class="pred-subvalue">{{ family_label(family) }}</span>{% endif %}</td><td class="num">{{ seed }}</td><td class="num"{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}>{{ ratio_text(value) }}</td></tr>{% endfor %}{% endfor %}{% endfor %}{{ table_end() }}
+  </details>
+</section>
+{% if m3_classes.run %}
+<section class="pred-panel" id="grupo-final">
+  <h2>Grupo final de semillas</h2>
+  <p class="pred-results-lead">El grupo final exige una selección explícita de tres publicaciones e incluir la evaluación de la corrida mostrada. Sus cifras se leen de esas publicaciones, sin sumar descubrimientos de semillas distintas.</p>
+  {% with options=seed_group.options, selected=seed_group.selected, group=seed_group.group, problem=seed_group.problem, product=seed_group.product, sku=seed_group.sku, download_url=seed_group.download_url, group_action=results_base ~ '/estabilidad', group_m3=m3_classes.run.run_id, group_sheet_class='pred-section' %}
+  {% include "partials/results_group.html" %}
+  {% endwith %}
+</section>
+{% endif %}

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -20,17 +21,22 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from pred_platform.app import charts
 from pred_platform.app.borrador import read_draft
 from pred_platform.app.charts import (
     FAMILY_COLORS,
     champion_forecast_svg,
-    champion_share_svg,
     product_forecast_key_svg,
     product_models_key_svg,
     product_models_legend_svg,
     product_models_svg,
 )
-from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
+from pred_platform.app.consulta import (
+    PRODUCT_PAGE_SIZE,
+    TEST_RESULTS,
+    ConsultaQuery,
+    parse_consulta_query,
+)
 from pred_platform.app.corridas import draft_facts, resolve_run_id, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import run_resumable
@@ -44,13 +50,24 @@ from pred_platform.app.pasos import (
 )
 from pred_platform.app.presentation import (
     FAMILY_ORDER,
+    SKU_CLASS_ORDER,
     describe_run,
     describe_status,
     family_label,
     format_decimal,
+    sku_class_label,
     sku_class_term,
     verdict_label,
 )
+from pred_platform.app.resultados_capitulos import (
+    CHAPTER_VIEWS,
+    CHAPTERS,
+    LEGACY_CHAPTERS,
+    answers,
+    seed_evidence,
+    stability_rows,
+)
+from pred_platform.app.resultados_grupo import group_context
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
@@ -61,17 +78,19 @@ from pred_platform.app.resultados_m3 import (
     M3Decision,
     M3Profiles,
     M3Summary,
-    champion_bars,
+    champion_available,
     classes,
     consulta,
     decision,
     default_execution,
     other_publications,
     profiles,
+    publication_time,
     published_executions,
     reserve_windows,
     run_outcome,
     summary,
+    test_result,
 )
 from pred_platform.app.resultados_pronostico import (
     best_other_model,
@@ -103,9 +122,6 @@ router = APIRouter()
 # Cuántas corridas con evidencia publicada ofrece el selector de corrida.
 _EXECUTION_CHOICES = 20
 
-# Las pestañas, en orden de lectura: primero la vista general (Shneiderman: «overview first»),
-# después el detalle. «consulta» es el nombre anterior de la lista de veredictos.
-VIEWS = ("resumen", "clase", "errores", "sku", "exportar")
 # Las dos lecturas de la pestaña SKU: lo que M3 decidió por SKU y lo que M2 dejó por familia.
 LISTS = ("veredictos", "familias")
 
@@ -119,6 +135,7 @@ def _base_context(repository: DataRepository, vista: str) -> dict[str, Any]:
         "action": run_action(capabilities),
         "champion_capability": champion,
         "source": repository.source,
+        "m3_published_at": None,
     }
 
 
@@ -129,17 +146,6 @@ def _run_header(repository: DataRepository, reference: str) -> RunStatus | None:
     except (DataLayerError, InvalidQuery):
         return None
     return status if status.ejecucion is not None else None
-
-
-def _vista(params: dict[str, str], evidence: bool) -> str:
-    """La pestaña pedida; sin pedirla, el resumen si hay evidencia M3 publicada y, si no, la
-    lista de SKU, que ya muestra lo que dejó M2."""
-    wanted = params.get("vista") or ""
-    if wanted in ("consulta", "productos"):
-        return "sku"
-    if wanted in VIEWS:
-        return wanted
-    return "resumen" if evidence else "sku"
 
 
 def _lista(params: dict[str, str], champion: bool, evidence: bool) -> str:
@@ -169,22 +175,38 @@ def resultados(
         published = published_executions(repository)
         target = published[0].ejecucion_id if published else _latest_run(repository)
     if target is None:
-        return redirect_with_query(step_href(NEW, "resultados"), [])
-    return redirect_with_query(
-        step_href(target, "resultados"), params.multi_items(), drop=("ejecucion",)
-    )
+        return redirect_with_query(step_href(NEW, "resultados"), params.multi_items())
+    chapter = _legacy_chapter(dict(params))
+    if not params.get("vista") and target not in {
+        run.ejecucion_id for run in published_executions(repository)
+    }:
+        chapter = "productos"
+    path = step_href(target, "resultados") + "/" + chapter
+    response = redirect_with_query(path, params.multi_items(), drop=("ejecucion",))
+    if params.get("vista") == "errores":
+        response.headers["location"] += "#perfiles-error"
+    return response
+
+
+def _legacy_chapter(params: dict[str, str]) -> str:
+    wanted = params.get("vista", "")
+    return LEGACY_CHAPTERS.get(wanted, wanted if wanted in CHAPTER_VIEWS else "resumen")
 
 
 def _latest_run(repository: DataRepository) -> str | None:
     return resolve_run_id(repository, LATEST)
 
 
-@router.get("/corridas/{corrida}/resultados", response_class=HTMLResponse)
+@router.get("/corridas/{corrida}/resultados", response_class=HTMLResponse, response_model=None)
+@router.get(
+    "/corridas/{corrida}/resultados/{capitulo}", response_class=HTMLResponse, response_model=None
+)
 def paso_resultados(
     request: Request,
     corrida: str,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
-) -> HTMLResponse:
+    capitulo: str | None = None,
+) -> HTMLResponse | RedirectResponse:
     if corrida == NEW:
         draft = draft_facts(repository, read_draft(request))
         resume = draft_resume(draft)
@@ -206,39 +228,45 @@ def paso_resultados(
     facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
     if facts is None:
         return render_missing_run(request, corrida)
-    # Mientras la evaluación final no publica, el paso muestra lo que ya hay (la selección de cada
-    # familia) y lo dice; no se bloquea.
     wizard = run_wizard("resultados", facts)
-    return _resultados_page(request, repository, facts.id, wizard, executions, seed=facts.seed)
-
-
-@router.get("/corridas/{corrida}/resultados/exportar", response_class=HTMLResponse)
-def paso_resultados_exportar(
-    request: Request,
-    corrida: str,
-    repository: DataRepository = Depends(get_repository),  # noqa: B008
-) -> HTMLResponse:
-    if corrida == NEW:
-        draft = draft_facts(repository, read_draft(request))
-        resume = draft_resume(draft)
+    # Una dirección anterior con ?vista= va a su capítulo, que decide si está cerrado.
+    if capitulo is None and "vista" in request.query_params:
+        return _chapter_redirect(request, corrida, _legacy_chapter(dict(request.query_params)))
+    # La entrada del paso queda cerrada hasta publicar. Productos conserva la consulta M2
+    # de las direcciones anteriores: no presenta esa selección parcial como resultados finales.
+    if (
+        not facts.published
+        and not facts.finished
+        and capitulo != "productos"
+        and champion_available(repository)
+    ):
         return render_locked(
             request,
             Locked(
                 title="Resultados",
                 heading="Los resultados todavía no existen",
                 text="Se abren cuando la etapa 4, Evaluación final, publique.",
-                actions=((resume.label, resume.href, True),),
+                actions=(("Volver a la ejecución", step_href(facts.id, "ejecucion"), True),),
             ),
-            draft_wizard("resultados", draft),
+            wizard,
         )
-    executions = published_executions(repository, limit=None)
-    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
-    if facts is None:
+    if capitulo is None:
+        return _chapter_redirect(request, corrida, "resumen" if facts.published else "productos")
+    if capitulo not in CHAPTER_VIEWS:
         return render_missing_run(request, corrida)
-    wizard = run_wizard("resultados", facts)
     return _resultados_page(
-        request, repository, facts.id, wizard, executions, forced_vista="exportar", seed=facts.seed
+        request, repository, facts.id, wizard, executions, capitulo, seed=facts.seed
     )
+
+
+def _chapter_redirect(request: Request, corrida: str, chapter: str) -> RedirectResponse:
+    """El capítulo con la misma consulta; el panel de perfiles conserva su ancla."""
+    response = redirect_with_query(
+        step_href(corrida, "resultados") + "/" + chapter, request.query_params.multi_items()
+    )
+    if request.query_params.get("vista") == "errores":
+        response.headers["location"] += "#perfiles-error"
+    return response
 
 
 def _resultados_page(
@@ -247,8 +275,8 @@ def _resultados_page(
     reference: str,
     wizard: Wizard,
     published: list[ExecutionChoice],
+    chapter: str,
     *,
-    forced_vista: str | None = None,
     seed: int | None = None,
 ) -> HTMLResponse:
     """La página del paso para la corrida ``reference``; ``published`` son las corridas con
@@ -259,18 +287,21 @@ def _resultados_page(
     # La ejecución (la de la ruta) y la corrida M3 se leen aparte de los filtros: un page o un
     # size inválido nunca hace perder qué ejecución se estaba mirando.
     executions = published[:_EXECUTION_CHOICES]
-    run = _run_header(repository, reference)
-    run_id = run.ejecucion.id if run is not None and run.ejecucion is not None else reference
-    evidence = champion and any(e.ejecucion_id == run_id for e in executions)
-    vista = forced_vista or _vista(params, evidence)
+    evidence = champion and any(e.ejecucion_id == reference for e in published)
+    vista = CHAPTER_VIEWS[chapter]
     lista = _lista(params, champion, evidence) if vista == "sku" else None
     context = {**probe, "vista": vista, "lista": lista, "wizard": wizard}
     wanted_m3 = (params.get("m3") or "").strip() or None
     query_error: str | None = None
     try:
-        query = replace(parse_selection_query(params), ejecucion=reference, m3=wanted_m3)
+        selection_params = {"size": str(PRODUCT_PAGE_SIZE), **params} if vista == "sku" else params
+        query = replace(parse_selection_query(selection_params), ejecucion=reference, m3=wanted_m3)
     except InvalidQuery as exc:
-        query, query_error = SelectionQuery(ejecucion=reference, m3=wanted_m3), str(exc)
+        query, query_error = (
+            SelectionQuery(ejecucion=reference, m3=wanted_m3, size=PRODUCT_PAGE_SIZE),
+            str(exc),
+        )
+    run = _run_header(repository, reference)
     context.update(
         query=query,
         query_error=query_error,
@@ -287,6 +318,28 @@ def _resultados_page(
         m3_profiles=M3Profiles(),
         m3_classes=M3Classes(),
         champion_svg="",
+        chapter=chapter,
+        chapters=CHAPTERS,
+        results_base=step_href(reference, "resultados"),
+        answers=answers(M3Classes()),
+        seeds=(),
+        published_seed_count=0,
+        stability_rows=[],
+        blocks=None,
+        family_colors=charts.FAMILY_COLORS,
+        family_chart_order=charts.FAMILY_CHART_ORDER,
+        selection_svg="",
+        confirmation_svgs={},
+        profile_svgs={},
+        significance_svg="",
+        histograms={},
+        reserve_svg="",
+        stability_svgs=[],
+        ratio_svgs={},
+        product_intervals={},
+        product_intervals_error=None,
+        test_results=TEST_RESULTS,
+        test_result=test_result,
         m3_consulta=M3Consulta(),
         cq=ConsultaQuery(ejecucion=reference, m3=wanted_m3),
         consulta_error=None,
@@ -319,6 +372,10 @@ def _resultados_page(
                 "m3": resolved.run_id,
             }
         )
+    context["chapter_query"] = urlencode({"m3": resolved.run_id}) if resolved else ""
+    index = next(i for i, item in enumerate(CHAPTERS) if item[0] == chapter)
+    context["previous_chapter"] = CHAPTERS[index - 1] if index else None
+    context["next_chapter"] = CHAPTERS[index + 1] if index + 1 < len(CHAPTERS) else None
     return _render(request, context)
 
 
@@ -332,6 +389,7 @@ def _describe_run(
     if run.ejecucion is None:
         return
     counts = run.progress.tareas_por_estado if run.progress is not None else None
+    context["m3_published_at"] = publication_time(run, resolved) if resolved else None
     # El embudo que la vista ya leyó (Resumen o Veredictos) evita leerlo otra vez.
     summary, consulta = context.get("m3_summary"), context.get("m3_consulta")
     funnel = (
@@ -370,27 +428,45 @@ def _fill_m3_view(
     query: SelectionQuery = context["query"]
     base = {"vista": vista, "ejecucion": context["reference"]}
     resolved: models_v2.M3Run | None
-    if vista == "resumen":
-        context["m3_summary"] = found_summary = summary(repository, ejecucion_id, query.m3)
-        resolved = found_summary.run
-        if found_summary.champions is not None:
-            context["champion_svg"] = champion_share_svg(
-                champion_bars(found_summary.champions),
-                found_summary.champions.published_total,
-            )
-    elif vista == "clase":
-        context["m3_classes"] = found_classes = classes(repository, ejecucion_id, query.m3)
-        resolved = found_classes.run
-    else:
+    context["m3_classes"] = found_classes = classes(repository, ejecucion_id, query.m3)
+    resolved = found_classes.run
+    context["answers"] = answers(found_classes)
+    exact_m3 = resolved.run_id if resolved else query.m3
+    if vista in ("resumen", "prueba"):
+        context["m3_summary"] = found_summary = summary(repository, ejecucion_id, exact_m3)
+        context["answers"] = answers(found_classes, found_summary.verdicts)
+        resolved = found_summary.run or resolved
+    if vista == "clase":
         context["m3_profiles"] = found_profiles = profiles(
-            repository, ejecucion_id, query.m3, params.get("metrica") or "razon_sn"
+            repository, ejecucion_id, exact_m3, params.get("metrica") or "razon_sn"
         )
-        resolved = found_profiles.run
-        metric_base = {**base, **({"m3": resolved.run_id} if resolved else {})}
+        resolved = found_profiles.run or resolved
+        if resolved:
+            with suppress(DataLayerError, InvalidQuery):
+                context["blocks"] = repository.get_m3_reserve_blocks(resolved.run_id)
+        metric_base = {"m3": resolved.run_id} if resolved else {}
         context["metric_hrefs"] = {
-            name: "/resultados?" + urlencode({**metric_base, "metrica": name})
+            name: context["results_base"]
+            + "/p1?"
+            + urlencode({**metric_base, "metrica": name})
+            + "#perfiles-error"
             for name in PROFILE_METRICS
         }
+    if vista in ("resumen", "estabilidad"):
+        seeds = seed_evidence(repository, context["run"], found_classes)
+        context["seeds"] = seeds
+        context["published_seed_count"] = sum(
+            1 for seed in seeds if seed.evidence and seed.evidence.run and not seed.evidence.problem
+        )
+        context["stability_rows"] = stability_rows(seeds)
+        if vista == "estabilidad":
+            group = group_context(repository, params)
+            evidence = group["group"]
+            if evidence and exact_m3 not in {run.run_id for run in evidence.significance.runs}:
+                group["group"] = None
+                group["problem"] = "El grupo debe incluir la evaluación de la corrida mostrada."
+            context["seed_group"] = group
+    _fill_charts(context)
     if resolved is not None:
         # El encabezado muestra la misma corrida M3 que la pestaña; la causa de un problema la
         # explica solo la pestaña.
@@ -417,10 +493,7 @@ def _fill_exportar(
         others = other_publications(repository, resolved)
         context["m3"] = M3Decision(run=resolved, others=others)
         context["m3_hrefs"] = {
-            other.run_id: "/corridas/"
-            + str(context["reference"])
-            + "/resultados?"
-            + urlencode({"vista": "exportar", "m3": other.run_id})
+            other.run_id: context["results_base"] + "/exportar?" + urlencode({"m3": other.run_id})
             for other in others
         }
     funnel = found_summary.funnel
@@ -432,6 +505,60 @@ def _fill_exportar(
         n_excl = 0
     context["n_exclusiones"] = n_excl
     context["run_seed"] = seed if seed is not None else 0
+
+
+def _fill_charts(context: dict[str, Any]) -> None:
+    found: M3Classes = context["m3_classes"]
+    context["selection_svg"] = charts.selection_svg(found.rows)
+    confirmations = found.confirmations
+    context["confirmation_svgs"] = {
+        code: charts.confirmation_svg(confirmations[code])
+        for code in SKU_CLASS_ORDER
+        if code in confirmations
+    }
+    profiles: M3Profiles = context["m3_profiles"]
+    context["profile_svgs"] = {
+        code: charts.profile_svg(
+            [r for r in profiles.rows if r.sku_class == code], profiles.metrica, code
+        )
+        for code in SKU_CLASS_ORDER
+    }
+    context["significance_svg"] = charts.significance_svg(found.rows, found.significance)
+    summary: M3Summary = context["m3_summary"]
+    if context["vista"] == "prueba":
+        context["histograms"] = {
+            code: charts.histogram_svg(summary.verdicts, code) for code in SKU_CLASS_ORDER
+        }
+    if context["blocks"]:
+        run = context["run"]
+        cut = run.reserve.t_star if run.reserve else None
+        context["reserve_svg"] = charts.reserve_timeline_svg(context["blocks"], cut)
+    if context["vista"] == "estabilidad":
+        for rival, title in (
+            (False, "Campeona frente a la línea base"),
+            (True, "Campeona frente a la mejor familia que no es la campeona"),
+        ):
+            rows = []
+            for code in SKU_CLASS_ORDER:
+                values = []
+                for seed in context["seeds"]:
+                    confirmation = seed.evidence.confirmations.get(code) if seed.evidence else None
+                    value = confirmation.efecto_mediana_r if confirmation else None
+                    if rival and confirmation:
+                        comparison = next(
+                            (
+                                r
+                                for r in confirmation.comparaciones
+                                if r.competidora == confirmation.contendiente
+                            ),
+                            None,
+                        )
+                        value = comparison.mediana_razon if comparison else None
+                    values.append(
+                        (seed.seed, value, confirmation.familia_campeona if confirmation else None)
+                    )
+                rows.append((sku_class_label(code), values))
+            context["stability_svgs"].append((title, charts.stability_svg(rows, title), rows))
 
 
 def _fill_consulta(
@@ -458,6 +585,28 @@ def _fill_consulta(
         }
     if found.evidence is not None:
         context["consulta_pages"] = page_meta(found.evidence.page)
+        intervals = {}
+        if found.run is not None and found.evidence.items:
+            try:
+                intervals = {
+                    item.sku: item
+                    for item in repository.get_m3_intervals(
+                        found.run.run_id, [row.sku for row in found.evidence.items]
+                    )
+                }
+            except (DataLayerError, InvalidQuery) as exc:
+                context["product_intervals_error"] = str(exc)
+        context["product_intervals"] = intervals
+        context["ratio_svgs"] = {
+            row.sku: charts.product_ratio_svg(
+                row.razon_sn,
+                intervals[row.sku].inferior if row.sku in intervals else None,
+                intervals[row.sku].superior if row.sku in intervals else None,
+                intervals[row.sku].inferior_cola if row.sku in intervals else None,
+                result=test_result(row),
+            )
+            for row in found.evidence.items
+        }
 
 
 def _fill_list(repository: DataRepository, query: SelectionQuery, context: dict[str, Any]) -> None:
@@ -473,7 +622,7 @@ def _fill_list(repository: DataRepository, query: SelectionQuery, context: dict[
         return
     context["listing"] = listing
     context["pages"] = page_meta(listing.page)
-    if listing.availability.status == "available":
+    if listing.availability.status == "available" and context["champion_capability"].available:
         m3 = decision(repository, listing.run_id, [row.sku_id for row in listing.items], query.m3)
         context["m3"] = m3
         if m3.run is not None:

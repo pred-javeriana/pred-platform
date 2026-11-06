@@ -4,7 +4,7 @@
   <dl class="wz-check">
     <div>
       <dt>Veredictos</dt>
-      <dd>Un producto por fila: tipo, campeona, veredicto, razón de error, ventanas y significancia. Respeta los filtros de Productos.</dd>
+      <dd>Un producto por fila: tipo, campeona, veredicto, razón de error, ventanas y significancia, de todos los productos de la evaluación. Para llevarse solo los filtrados, use «Exportar CSV» en Productos.</dd>
       <span>
         <a class="pred-btn pred-btn--secondary" href="/resultados/exportar.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><span class="pred-icon i-download" aria-hidden="true"></span> CSV</a>
       </span>
@@ -35,9 +35,3 @@
     <a class="pred-btn pred-btn--primary wz-btn-lg" href="/corridas/nueva/ajustes?copiar_de={{ reference }}">Nueva corrida con estos ajustes <span class="pred-icon i-arrow-right" aria-hidden="true"></span></a>
   </div>
 </section>
-
-<nav class="pred-footnav" aria-label="Navegación entre pasos">
-  <div class="pred-footnav__side">
-    <a class="pred-btn pred-btn--subtle wz-btn-lg" href="/corridas/{{ reference }}/resultados?vista=sku">Atrás: Productos</a>
-  </div>
-</nav>

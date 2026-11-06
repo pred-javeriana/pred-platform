@@ -19,7 +19,7 @@
   <main class="pred-main" id="contenido" tabindex="-1">
     {% if wizard %}{% include "partials/wizard_header.html" %}{% endif %}
     {% block content %}{% endblock %}
-    {% if wizard and not locked %}{% include "partials/wizard_footer.html" %}{% endif %}
+    {% block step_footer %}{% if wizard and not locked %}{% include "partials/wizard_footer.html" %}{% endif %}{% endblock %}
   </main>
   {% block scripts %}{% endblock %}
 </body>

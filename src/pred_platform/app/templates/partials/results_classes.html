@@ -1,127 +1,64 @@
 {% from "components/tables.html" import table_start, table_end %}
-{% from "components/terms.html" import gloss, term %}
-{# La cifra exacta guardada como título de la celda que la muestra redondeada. #}
-{% macro exact(value) %}{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}{% endmacro %}
-{% macro exact_interval(lower, upper) %}{% if lower is not none and upper is not none %} title="[{{ exact_text(lower) }}; {{ exact_text(upper) }}]"{% endif %}{% endmacro %}
-{# La familia campeona que la evaluación final publicó por clase de demanda (m3_categorias).
-   m3_classes es un M3Classes. #}
-{% if m3_classes.problem %}
-<section class="pred-unavailable">
-  <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ m3_classes.problem.title }}</h2>
-  <p>{{ m3_classes.problem.detail }}</p>
-</section>
-{% endif %}
+{% from "partials/results_macros.html" import answer, family, family_legend, key, problem %}
+{{ problem(m3_classes) }}
 {% if m3_classes.run %}
-<section class="pred-section" id="campeon-por-clase">
-  <h2>Campeón por clase</h2>
-  <p class="pred-meta">La evaluación final elige una familia campeona por clase de demanda: la de menor mediana de {{ gloss("r") }} frente a la línea base en el bloque de selección del historial reservado. Después la congela y cuenta los veredictos de la clase en el bloque de prueba. Las cifras son las publicadas; la línea base vale 1.</p>
-  {{ table_start(["Clase", "Campeona", "Motivo"] + class_headers, "Campeón y mediana de r por clase") }}
-  {% for row in m3_classes.rows %}
-  <tr>
-    <td class="pred-nowrap">{{ term(sku_class_term(row.sku_class)) }}</td>
-    <td>{{ term(family_term(row.familia_campeona)) }}</td>
-    <td>{{ motivos.get(row.motivo, row.motivo) }}</td>
-    {% for family in class_families %}
-    <td class="num{% if family == row.familia_campeona %} is-champion{% endif %}"{% if family in row.medianas_r %}{{ exact(row.medianas_r[family]) }}{% endif %}>{% if family in row.medianas_r %}{{ ratio_text(row.medianas_r[family]) }}{% if family == row.familia_campeona %} <span class="pred-badge pred-badge--champion">campeona</span>{% endif %}{% else %}—{% endif %}</td>
-    {% endfor %}
-  </tr>
-  {% endfor %}
-  {{ table_end() }}
-</section>
-
-<section class="pred-section" id="confirmacion-del-campeon">
-  <h2>Confirmación del campeón</h2>
-  {% if m3_classes.confirmation_problem %}
-  <p class="pred-note"><strong>{{ m3_classes.confirmation_problem.title }}</strong> {{ m3_classes.confirmation_problem.detail }}</p>
-  {% elif not m3_classes.confirmation %}
-  <p class="pred-note">La evaluación final no publicó la confirmación del campeón para esta ejecución. Las evaluaciones anteriores a los bloques de selección y de prueba no la tienen.</p>
-  {% else %}
-  {% set confirmation = m3_classes.confirmation %}
-  {% set by_class = m3_classes.confirmations %}
-  {# La frase que hace falta para leer la tabla queda a la vista; el método, plegado: diez líneas
-     de 80 caracteres dejaban vacía la mitad derecha de la tarjeta. #}
-  <p class="pred-meta">En el bloque de prueba, la evaluación final compara la campeona congelada de cada clase con cada familia competidora, en los SKU que tienen ambas. Una confirmación fallida nunca cambia a la campeona.{% if confirmation.alfa is not none %} α = {{ exact_text(confirmation.alfa) }}; intervalos al {{ level_text(1 - confirmation.alfa) }}.{% endif %}</p>
-  <details class="pred-details pred-details--inline" id="metodo-confirmacion"><summary>Cómo se decide la confirmación</summary>
-    <p class="pred-meta">La razón de un SKU es RMSE de la campeona / RMSE de la competidora: menos de 1 favorece a la campeona. Hodges-Lehmann estima la razón típica y las victorias cuentan los SKU con razón menor que 1. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y p Holm lo ajusta entre clases. La campeona queda confirmada si p Holm ≤ α y el intervalo bootstrap de la mediana de razones queda bajo 1 frente a cada competidora.</p>
+{% call answer('Pregunta 1 · ¿Qué familia pronostica mejor cada tipo de demanda?', answers.selection, answers.label, answers.tone) %}
+<dl class="pred-results-kpis">
+{% for row in m3_classes.rows %}{% set confirmation = m3_classes.confirmations.get(row.sku_class) %}
+<div><dt>{{ family(row.familia_campeona, family_colors) }} · {{ sku_class_label(row.sku_class) }}</dt><dd>{% if confirmation and confirmation.efecto_mediana_r is not none %}{{ format_decimal(((1 - confirmation.efecto_mediana_r) if confirmation.efecto_mediana_r < 1 else (confirmation.efecto_mediana_r - 1)) * 100, 1) }} %<small>{{ 'menos error que la línea base' if confirmation.efecto_mediana_r < 1 else 'más error que la línea base' if confirmation.efecto_mediana_r > 1 else 'el mismo error que la línea base' }}</small>{% else %}<span class="pred-kpi-text">Sin efecto publicado</span>{% endif %}<small>{{ CONFIRMATION_STATES[confirmation.estado] if confirmation else 'Sin confirmación publicada' }}</small></dd></div>
+{% endfor %}
+</dl>
+{% endcall %}
+<section class="pred-panel" id="campeon-por-clase">
+  <h2>Primero se eligió: el bloque de selección</h2>
+  <p class="pred-results-lead">Para cada tipo de demanda, la familia con la menor razón de error mediana frente a la línea base gana y queda fija. La razón <strong>r</strong> es el error del modelo dividido por el de la línea base: menos de 1 es mejor.</p>
+  {% if reserve_svg %}
+  <figure class="pred-results-figure"><figcaption><strong>Qué días usa cada bloque</strong><span>La historia entrena y ajusta. La selección elige la campeona; la prueba comprueba la decisión.</span></figcaption>
+    {{ key([('area', 'historia comprimida; reserva a escala'), ('line', 'fechas objetivo, no orígenes de pronóstico')]) }}
+    {{ reserve_svg | safe }}
+  </figure>
+  <details class="pred-details"><summary>Ver las cifras de los bloques</summary>
+    {{ table_start(['Bloque', 'Desde', 'Hasta', 'Días / orígenes'], 'Fechas de los bloques de la reserva') }}
+    {% for label, block in [('Fechas de selección', blocks.selection_dates), ('Fechas de prueba', blocks.test_dates), ('Orígenes de selección', blocks.selection_origins), ('Orígenes de embargo', blocks.embargo_origins), ('Orígenes de prueba', blocks.test_origins)] %}<tr><th scope="row">{{ label }}</th><td>{{ format_date(block.start) if block.start else '—' }}</td><td>{{ format_date(block.end) if block.end else '—' }}</td><td class="num">{{ format_count(block.count) }}</td></tr>{% endfor %}
+    {{ table_end() }}
   </details>
-  {{ table_start(["Clase", "Campeona", "Estado", "p IUT", "p Holm", "Mediana de r frente a la línea base (IC)", "SKU comparados"], "Confirmación del campeón por clase", "confirmation") }}
-  {% for row in m3_classes.rows %}
-  {% set found = by_class.get(row.sku_class) %}
-  <tr>
-    <td class="pred-nowrap">{{ sku_class_label(row.sku_class) }}</td>
-    <td class="pred-nowrap">{{ family_label(found.familia_campeona if found else row.familia_campeona) }}</td>
-    {% if found %}
-    <td><strong class="pred-nowrap">{{ CONFIRMATION_STATES[found.estado] }}</strong>{% if found.causa %}<span class="pred-subvalue pred-cause">{{ cause_text(found.causa) }}</span>{% endif %}</td>
-    <td class="num"{{ exact(found.p_iut) }}>{{ p_text(found.p_iut, found.alfa) }}</td>
-    <td class="num"{{ exact(found.p_holm) }}>{{ p_text(found.p_holm, found.alfa) }}</td>
-    <td class="num"{{ exact(found.efecto_mediana_r) }}>{{ ratio_text(found.efecto_mediana_r) }}{% if found.efecto_ic_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(found.efecto_ic_inferior, found.efecto_ic_superior) }}>{{ interval_text(found.efecto_ic_inferior, found.efecto_ic_superior) }}</span>{% endif %}{% if found.efecto_causa %}<span class="pred-subvalue pred-cause">{{ cause_text(found.efecto_causa) }}</span>{% endif %}</td>
-    <td class="num">{{ format_count(found.efecto_n_skus) if found.efecto_n_skus is not none else "—" }}</td>
-    {% else %}
-    <td colspan="5">Sin confirmación publicada para esta clase.</td>
-    {% endif %}
-  </tr>
-  {% endfor %}
-  {{ table_end() }}
-  {% for row in m3_classes.rows if by_class.get(row.sku_class) and by_class[row.sku_class].comparaciones %}
-  {% set found = by_class[row.sku_class] %}
-  <h3>{{ sku_class_label(row.sku_class) }}: {{ family_label(found.familia_campeona) }} frente a cada competidora</h3>
-  {% if found.contendiente and found.contendiente != found.familia_campeona %}
-  <p class="pred-meta">Mejor familia sin la fundacional: {{ family_label(found.contendiente) }}.</p>
   {% endif %}
-  {{ table_start(["Competidora", "SKU", "Mediana de la razón", "Hodges-Lehmann", "Victorias de la campeona", "p Wilcoxon", "p IUT"], "Campeona de " ~ sku_class_label(row.sku_class) ~ " frente a cada competidora", "competitors") }}
-  {% for comparison in found.comparaciones %}
-  <tr>
-    <td>{{ family_label(comparison.competidora) }}{% if comparison.causa %}<span class="pred-subvalue pred-cause">{{ cause_text(comparison.causa) }}</span>{% endif %}</td>
-    <td class="num">{{ format_count(comparison.n_skus) }}</td>
-    <td class="num"{{ exact(comparison.mediana_razon) }}>{{ ratio_text(comparison.mediana_razon) }}{% if comparison.ic_mediana_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(comparison.ic_mediana_inferior, comparison.ic_mediana_superior) }}>{{ interval_text(comparison.ic_mediana_inferior, comparison.ic_mediana_superior) }}</span>{% endif %}</td>
-    <td class="num"{{ exact(comparison.hodges_lehmann) }}>{{ ratio_text(comparison.hodges_lehmann) }}</td>
-    <td class="num">{{ wins_text(comparison.n_victorias, comparison.n_skus) }}{% if comparison.ic_victorias_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(comparison.ic_victorias_inferior, comparison.ic_victorias_superior) }}>{{ interval_text(comparison.ic_victorias_inferior, comparison.ic_victorias_superior, percent=true) }}</span>{% endif %}</td>
-    <td class="num"{{ exact(comparison.p_wilcoxon) }}>{{ p_text(comparison.p_wilcoxon, found.alfa) }}</td>
-    <td class="num"{{ exact(comparison.p_iut) }}>{{ p_text(comparison.p_iut, found.alfa) }}</td>
-  </tr>
-  {% endfor %}
-  {{ table_end() }}
-  {% endfor %}
-  {% endif %}
+  <figure class="pred-results-figure"><figcaption><strong>Razón de error mediana por familia</strong><span>Mediana sobre los mismos productos para todas las familias. Escala logarítmica. Pase el puntero o enfoque una fila para ver el detalle.</span></figcaption>
+    {{ family_legend(family_colors) }}
+    {{ key([('dot', 'mediana de la familia'), ('ring', 'campeona del tipo'), ('reference', '1 = mismo error que la línea base')]) }}
+    {{ selection_svg | safe }}
+  </figure>
+  <details class="pred-details"><summary>Ver el detalle de la selección</summary>
+    {{ table_start(['Tipo', 'Campeona', 'Motivo'] + class_headers, 'Campeón y mediana de r por clase') }}
+    {% for row in m3_classes.rows %}<tr><th scope="row">{{ sku_class_label(row.sku_class) }}</th><td>{{ family(row.familia_campeona, family_colors) }}</td><td>{{ motivos.get(row.motivo, row.motivo) }}</td>{% for code in class_families %}<td class="num"{% if code in row.medianas_r %} title="{{ exact_text(row.medianas_r[code]) }}"{% endif %}>{{ ratio_text(row.medianas_r[code]) if code in row.medianas_r else '—' }}{% if code == row.familia_campeona and code in row.medianas_r %} <span class="pred-badge pred-badge--champion">campeona</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}
+    {{ table_end() }}
+    {{ table_start(['Tipo', 'Productos comparables', 'Fuera de la selección', 'Familias fuera', 'Mejor rival'], 'Detalle de la selección') }}
+    {% for row in m3_classes.rows %}{% set confirmation = m3_classes.confirmations.get(row.sku_class) %}<tr><th scope="row">{{ sku_class_label(row.sku_class) }}</th><td class="num">{{ format_count(row.skus_comparables | length) }}{% if row.skus_comparables %}<details><summary>Ver SKU comparables</summary><p class="mono pred-kv__list">{{ row.skus_comparables | join(', ') }}</p></details>{% endif %}</td><td class="num">{{ format_count(row.excluidos | length) }}{% if row.excluidos %}<details><summary>Ver SKU excluidos</summary><p class="pred-kv__list">{% for sku, cause in row.excluidos.items() %}{{ sku }}: {{ cause_text(cause) }}{% if not loop.last %} · {% endif %}{% endfor %}</p></details>{% endif %}</td><td>{% for code, cause in row.familias_excluidas.items() %}{{ family_label(code) }}: {{ cause_text(cause) }}{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</td><td>{{ family_label(confirmation.contendiente) if confirmation and confirmation.contendiente else '—' }}</td></tr>{% endfor %}
+    {{ table_end() }}
+    <p class="pred-meta">Fuera de la selección: productos sin razón de error en todas las familias de su tipo. La mediana usa el mismo conjunto de productos para todas las familias. Esos productos igual reciben su veredicto.</p>
+  </details>
 </section>
-
-{% if m3_classes.significance %}
-<section class="pred-section" id="significancia-por-clase">
-  <h2>Significancia frente a la línea base</h2>
-  <p class="pred-meta">Prueba {{ gloss("HLN-DM") }} de la campeona frente a la línea base en cada SKU del bloque de prueba. Benjamini-Hochberg ({{ gloss("BH") }}) ajusta los p dentro de cada clase; Benjamini-Yekutieli ({{ gloss("BY") }}) se informa como sensibilidad. Mejores y peores cuentan los SKU significativos a favor o en contra de la campeona. El nivel {{ gloss("FCR") }} es el de los intervalos de r de los SKU significativos por BH.</p>
-  {{ table_start(["Clase", "SKU probados", "Mejores (BH)", "Peores (BH)", "Mejores (BY)", "Peores (BY)", "Nivel FCR"], "Significancia HLN-DM por clase") }}
-  {% for row in m3_classes.significance %}
-  <tr>
-    <td class="pred-nowrap">{{ term(sku_class_term(row.sku_class)) }}</td>
-    <td class="num">{{ format_count(row.n_probados) }}</td>
-    <td class="num">{{ format_count(row.n_mejores) }}</td>
-    <td class="num">{{ format_count(row.n_peores) }}</td>
-    <td class="num">{{ format_count(row.n_mejores_by) }}</td>
-    <td class="num">{{ format_count(row.n_peores_by) }}</td>
-    <td class="num"{{ exact(row.nivel_fcr) }}>{{ level_text(row.nivel_fcr) if row.nivel_fcr is not none else "—" }}</td>
-  </tr>
-  {% endfor %}
-  {{ table_end() }}
+<section class="pred-panel" id="confirmacion-del-campeon">
+  <h2>Después se verificó: el bloque de prueba</h2>
+  <p class="pred-results-lead">Con días que no se usaron para elegir la campeona, se compara la campeona congelada con la línea base y con cada familia. El punto es la mediana de la razón de error y la línea, su intervalo.</p>
+  {% if m3_classes.confirmation_problem %}<p class="pred-note">{{ m3_classes.confirmation_problem.title }} {{ m3_classes.confirmation_problem.detail }}</p>
+  {% elif not m3_classes.confirmation %}<p class="pred-note">La evaluación final no publicó la confirmación del campeón para esta ejecución. Las evaluaciones anteriores a los bloques de selección y de prueba no la tienen.</p>
+  {% else %}
+    <details class="pred-details pred-details--inline" id="metodo-confirmacion"><summary>Cómo se decide la confirmación</summary>
+      <p class="pred-meta">La razón de un SKU es RMSE de la campeona / RMSE de la competidora: menos de 1 favorece a la campeona. Hodges-Lehmann estima la razón típica y las victorias cuentan los SKU con razón menor que 1. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y p Holm lo ajusta entre clases. La campeona queda confirmada si p Holm ≤ α y el intervalo bootstrap de la mediana de razones queda bajo 1 frente a cada competidora.</p>
+    </details>
+    {{ family_legend(family_colors) }}
+    {{ key([('dot', 'mediana de la razón entre productos'), ('interval', 'intervalo de confianza publicado'), ('reference', '1 = mismo error que la otra familia')]) }}
+    <div class="pred-results-smalls">{% for code, svg in confirmation_svgs.items() %}{% set row = m3_classes.confirmations[code] %}<figure class="pred-results-figure"><figcaption><strong>{{ sku_class_label(code) }} · {{ CONFIRMATION_STATES[row.estado] }}</strong><span>{{ family_label(row.familia_campeona) }} frente a cada familia</span></figcaption>{{ svg | safe }}</figure>{% endfor %}</div>
+    {% include "partials/results_confirmation_tables.html" %}
+  {% endif %}
+  <details class="pred-details"><summary>Límites de esta evidencia</summary><ul>
+    <li>Es evidencia retrospectiva sobre la reserva, no una estimación sin sesgo del desempeño futuro.</li>
+    <li>El periodo reservado se observó durante el desarrollo; el protocolo, la partición de la reserva, los umbrales y las semillas se fijaron antes de la corrida final.</li>
+    <li>Describe solo los productos en que al menos dos familias producen un modelo válido; los demás se informan aparte con su causa.</li>
+    <li>El presupuesto de búsqueda de cada modelo se consulta en el detalle del producto.</li>
+    <li>Las fechas de los bloques delimitan la temporada observada; no representan temporadas que quedaron fuera de la prueba.</li>
+  </ul></details>
 </section>
 {% endif %}
-
-<section class="pred-section" id="detalle-por-clase">
-  <h2>Detalle de cada clase</h2>
-  <div class="pred-class-details">
-  {% for row in m3_classes.rows %}
-  <div>
-  <h3>{{ sku_class_label(row.sku_class) }}</h3>
-  <dl class="pred-kv">
-    <dt>SKU comparados</dt><dd><span class="mono">{{ format_count(row.skus_comparables | length) }}</span>{% if row.skus_comparables %}
-      <details class="pred-kv__ids"><summary>Ver SKU</summary><p class="mono pred-kv__list">{{ row.skus_comparables | join(", ") }}</p></details>{% endif %}</dd>
-    <dt>SKU excluidos de la selección</dt><dd><span class="mono">{{ format_count(row.excluidos | length) }}</span>{% if row.excluidos %}
-      <details class="pred-kv__ids"><summary>Ver SKU</summary><p class="pred-kv__list">{% for sku, causa in row.excluidos.items() %}<span><span class="mono">{{ sku }}</span>: {{ cause_text(causa) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</p></details>{% endif %}</dd>
-    <dt>Familias fuera</dt><dd>{% for family, causa in row.familias_excluidas.items() %}{{ family_label(family) }}: {{ cause_text(causa) }}{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</dd>
-    <dt>Veredictos</dt><dd>{% for veredicto, count in verdict_counts(row) %}{{ verdict_label(veredicto) }} <span class="mono">{{ format_count(count) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
-    <dt>SKU con resultado adverso</dt><dd class="mono">{{ format_count(row.n_adversos) }}</dd>
-  </dl>
-  </div>
-  {% endfor %}
-  </div>
-</section>
-{% endif %}
+{% include "partials/results_profiles.html" %}

@@ -3,37 +3,40 @@
 {% from "components/alerts.html" import alert %}
 {% from "components/buttons.html" import button %}
 {% from "components/run_picker.html" import run_picker %}
-{# Qué ejecución y qué evaluación muestra la página: arriba y a lo ancho, como el contexto de un
-   panel de control, en vez de un panel lateral que le quita ancho a las tablas. #}
 {% if run and run.ejecucion %}
 {% set shown = run.ejecucion %}
-<section class="pred-context" aria-label="Ejecución y evaluación mostradas">
+<section class="pred-context{% if chapter %} pred-context--chapters{% endif %}" aria-label="Ejecución y evaluación mostradas">
   {% set known = executions | map(attribute="ejecucion_id") | list %}
   {% if executions and (known | length > 1 or shown.id not in known) %}
-  {{ run_picker(executions, vista, lista, shown.id) }}
+  {{ run_picker(executions, vista, lista, shown.id, compact=chapter is defined and chapter) }}
+  {% endif %}
+  {% if chapter %}
+  <p class="pred-context__compact-fact">Evaluación publicada <strong>{% if m3_published_at %}{{ when(m3_published_at) }}{% else %}Fecha de publicación no informada{% endif %}</strong></p>
+  <p class="pred-context__compact-fact">Datos <strong>{{ origin_label(m3.run) }}</strong></p>
+  {% if m3_summary.funnel %}<p class="pred-context__compact-fact">{{ format_count(m3_summary.funnel.total_productos) }} productos</p>{% elif m3_consulta.evidence and m3_consulta.evidence.funnel %}<p class="pred-context__compact-fact">{{ format_count(m3_consulta.evidence.funnel.total_productos) }} productos</p>{% endif %}
+  <details class="pred-details pred-context__record"><summary>Detalles de la corrida</summary>
   {% endif %}
   <dl class="pred-context__facts">
     <div><dt>Ejecución</dt><dd><a class="mono" href="/ejecucion?ejecucion={{ shown.id }}">#{{ shown.id }}</a> {{ status_indicator(run_status or describe_status("run", shown.estado)) }}</dd></div>
     {% if shown.ingest_id %}<div><dt>Datos</dt><dd title="Ingesta {{ shown.ingest_id }}">{% if run_ingest and run_ingest.file_name %}{{ run_ingest.file_name }}{% else %}<span class="mono">{{ abbreviate_id(shown.ingest_id) }}</span>{% endif %}</dd></div>{% endif %}
     <div><dt>Iniciada</dt><dd>{{ when(shown.iniciada_en) }}</dd></div>
-    <div><dt>Evaluación final</dt><dd{% if m3.run %} title="Evaluación {{ m3.run.run_id }}"{% endif %}>{% if m3.run %}<span>{{ evaluation_state_label(m3.run.estado) | capitalize_first }} · {{ when(m3.run.creado_en) }}</span>{% else %}Sin evaluación publicada{% endif %}</dd></div>
+    <div><dt>Evaluación publicada</dt><dd{% if m3.run %} title="Evaluación {{ m3.run.run_id }}"{% endif %}>{% if m3.run and m3.run.estado == 'PUBLICADA' %}{% if m3_published_at %}{{ when(m3_published_at) }}{% else %}Fecha de publicación no informada{% endif %}{% elif m3.run %}{{ evaluation_state_label(m3.run.estado) | capitalize_first }}{% else %}Sin evaluación publicada{% endif %}</dd></div>
     <div><dt>Origen de los datos</dt><dd>{{ origin_label(m3.run) | capitalize_first }}</dd></div>
   </dl>
   {% if outcome %}<p class="pred-context__outcome" id="resultado-ejecucion">{{ outcome }}</p>{% endif %}
-  {# El aviso del contrato v2 (sección 2) cuando varias evaluaciones publicadas comparten los datos
-     y los ajustes: cada una se nombra por su fecha; su identificador queda en el title. Una hora
-     termina en «a. m.» o «p. m.», cuyo punto cierra la frase. #}
-  {% if m3.run and m3.run.aviso %}
-    {% set notice %}Hay varias evaluaciones publicadas para los mismos datos y ajustes. Se muestra la publicada el <span class="pred-nowrap" title="Evaluación {{ m3.run.run_id }} · {{ exact_when(m3.run.creado_en) }}">{{ format_when(m3.run.creado_en) }}</span>{% endset %}
-    {{ alert(notice, variant="warning") }}
-    {% if m3.others %}
-    <p class="pred-meta">Otras evaluaciones publicadas para los mismos datos y ajustes:
-      {% for other in m3.others %}<a href="{{ m3_hrefs[other.run_id] }}" title="Evaluación {{ other.run_id }}{% if other.creado_en %} · {{ exact_when(other.creado_en) }}{% endif %}">{% if other.creado_en %}la publicada el {{ format_when(other.creado_en) }}{% else %}una sin fecha informada{% endif %}</a>{% if not loop.last %}, {% elif not other.creado_en %}.{% endif %}{% endfor %}
-    </p>
-    {% endif %}
-  {% endif %}
   <details class="pred-details pred-details--inline pred-context__scope"><summary>Evidencia retrospectiva: cómo leerla</summary>
     <p class="pred-meta">Los resultados describen el historial evaluado y no garantizan el desempeño futuro.{% if source == "fixture" %} Se muestran ejemplos de prueba.{% endif %} La ausencia de una métrica, campeón o contraste no equivale a cero ni a un resultado desfavorable. «{{ verdict_label("VALIDADO") }}» es una conclusión descriptiva: la significancia estadística se informa aparte.</p>
   </details>
+  {% if chapter %}</details>{% endif %}
+  {% if m3.run and m3.run.aviso %}
+    {% set shown_when = format_when(m3.run.creado_en) %}
+    {% set notice %}Hay varias evaluaciones publicadas para los mismos datos y ajustes. Se muestra la evaluación creada el <span class="pred-nowrap" title="Evaluación {{ m3.run.run_id }} · {{ exact_when(m3.run.creado_en) }}">{{ shown_when }}</span>{{ closing_period(shown_when) }}{% endset %}
+    {{ alert(notice, variant="warning") }}
+    {% if m3.others %}
+    <p class="pred-meta">Otras evaluaciones publicadas para los mismos datos y ajustes:
+      {% for other in m3.others %}{% set label = "la creada el " ~ format_when(other.creado_en) if other.creado_en else "una sin fecha informada" %}<a href="{{ m3_hrefs[other.run_id] }}" title="Evaluación {{ other.run_id }}{% if other.creado_en %} · {{ exact_when(other.creado_en) }}{% endif %}">{{ label }}</a>{% if not loop.last %}, {% else %}{{ closing_period(label) }}{% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  {% endif %}
 </section>
 {% endif %}
