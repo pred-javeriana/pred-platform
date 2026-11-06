@@ -58,9 +58,14 @@ class Worker:
         """Process queued runs until shutdown, leaving interrupted work queued for restart.
 
         While another worker holds the database, or the database is read-only, this one waits
-        without touching any run.
+        without touching any run. A lock file it cannot create, as in a read-only folder, stops
+        it with a logged reason, so the app reports that no worker follows the queue.
         """
-        if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
+        try:
+            if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
+                return
+        except OSError as exc:
+            self._log_unlockable(exc)
             return
         try:
             try:
@@ -90,7 +95,12 @@ class Worker:
                 self.settings.db_path,
             )
             return
-        if not self._lock.acquire():
+        try:
+            locked = self._lock.acquire()
+        except OSError as exc:
+            self._log_unlockable(exc)
+            return
+        if not locked:
             _logger.warning(
                 "Otro worker ya atiende %s; ese worker ejecutará las corridas en cola",
                 self.settings.db_path,
@@ -103,6 +113,14 @@ class Worker:
                     time.sleep(self.poll_interval)  # the database still fails: wait, then retry
         finally:
             self._lock.release()
+
+    def _log_unlockable(self, exc: OSError) -> None:
+        _logger.error(
+            "El worker no puede crear su candado %s (%s): no ejecuta corridas de %s",
+            self._lock.path,
+            exc,
+            self.settings.db_path,
+        )
 
     def _wait_until_writable(self, stop: threading.Event) -> bool:
         """Wait while the database is read-only (a copy served to look at), until ``stop``."""
@@ -136,11 +154,25 @@ class Worker:
 
         Only the worker that holds the database lock may call it: no other worker is alive to
         own those runs, so an engine still running for one of them is an orphan and is stopped.
+        A live engine of another database is left alone with its run: this database is a copy
+        taken while that engine ran, and stopping or relaunching it would break the original.
+        A pid now used by a process that is no engine is not stopped either.
         """
-        with closing(dal.connect(self.settings.db_path)) as conn:
+        db_path = self.settings.db_path
+        with closing(dal.connect(db_path)) as conn:
             for run in dal.interrupted_runs(conn):
-                if run.pid is not None and engine.is_alive(run.pid):
-                    engine.terminate(run.pid)
+                if run.pid is not None:
+                    owner = engine.engine_owner(run.pid, db_path)
+                    if owner == "other":
+                        _logger.warning(
+                            "Corrida %s: su motor (pid %s) trabaja para otra base; esta base es "
+                            "una copia y la corrida queda como está",
+                            run.run_id,
+                            run.pid,
+                        )
+                        continue
+                    if owner == "this":
+                        engine.terminate(run.pid)
                 if dal.requeue(conn, run.id):
                     _logger.info("Corrida %s retomada tras una caída", run.run_id)
 

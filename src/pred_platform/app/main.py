@@ -68,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     active = settings or Settings.from_env()
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Solo el DAL real tiene esquema que mantener; los fixtures no tocan el disco.
         if active.data_source == "dal":
             _migrate(active)
@@ -82,6 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 target=Worker(active).run_forever, args=(stop,), name="pred-worker", daemon=True
             )
             thread.start()
+        # The pages ask this thread whether the embedded worker still follows the queue.
+        app.state.worker_thread = thread
         try:
             yield
         finally:

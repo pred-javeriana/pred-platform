@@ -65,7 +65,9 @@
   {% if actions.nothing_to_compare %}
   <p class="pred-note">{{ "Reanudar" if run.estado == "detenida" else "Reintentar" }} no se ofrece: con las familias de esta corrida ningún SKU tiene dos familias que comparar, y repetirla daría lo mismo. Lance una ejecución nueva con más familias.</p>
   {% endif %}
-  {% if run.estado == "pendiente" and not worker_active and not control_reason %}
+  {% if run.estado == "pendiente" and worker == "stopped" and not control_reason %}
+  <p class="pred-note">En cola: el worker de esta aplicación se detuvo y ninguno sigue la cola; el registro de la aplicación dice por qué.</p>
+  {% elif run.estado == "pendiente" and worker == "off" and not control_reason %}
   <p class="pred-note">En cola: esta aplicación no ejecuta el worker (PRED_WORKER=off); inícielo con <span class="mono">make worker</span>.</p>
   {% elif run.estado == "pendiente" and not control_reason %}
   <p class="pred-note">En cola: empezará en cuanto el worker termine la corrida anterior.</p>

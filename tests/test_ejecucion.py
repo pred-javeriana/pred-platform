@@ -982,11 +982,71 @@ def test_with_the_launch_form_open_launching_is_the_one_primary_action(
 def test_a_second_run_waits_in_the_queue_and_the_screen_says_so(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    client = _dal_client(env, worker="embedded")
-    _launch(client, env)
+    other = WorkerLock.for_database(env.db)  # busy with an earlier run: the app's worker waits
+    assert other.acquire()
+    try:
+        with _dal_client(env, worker="embedded") as client:
+            _launch(client, env)
 
-    text = _text(client.get("/ejecucion").text)
+            text = _text(client.get("/ejecucion").text)
+    finally:
+        other.release()
     assert "empezará en cuanto el worker" in text and "PRED_WORKER=off" not in text
+
+
+def _wal_copy_in_a_read_only_folder(env: Env) -> sqlite3.Connection:
+    """A WAL copy whose file, -wal and -shm are writable in a folder without write permission.
+
+    The returned reader keeps the -wal and -shm files, which SQLite removes with the last
+    connection; the caller closes it after making the folder writable again.
+    """
+    reader = sqlite3.connect(env.db)
+    reader.execute("SELECT COUNT(*) FROM ejecuciones").fetchone()
+    assert {p.name for p in env.db.parent.glob(env.db.name + "-*")} == {
+        env.db.name + "-wal",
+        env.db.name + "-shm",
+    }
+    env.db.parent.chmod(0o555)
+    return reader
+
+
+def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
+    env: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    reader = _wal_copy_in_a_read_only_folder(env)
+    app = create_app(replace(env.settings, worker="embedded"))
+    try:
+        with TestClient(app) as served:
+            thread = app.state.worker_thread
+            _wait(lambda: not thread.is_alive(), timeout=10, what="the worker thread to stop")
+            run_page = _text(served.get("/ejecucion?ejecucion=1").text)
+            form = _text(served.get("/ejecucion?lanzar=1").text)
+    finally:
+        env.db.parent.chmod(0o755)
+        reader.close()
+
+    assert "el worker de esta aplicación se detuvo" in run_page
+    assert "empezará en cuanto el worker" not in run_page
+    assert "El worker de esta aplicación se detuvo" in form
+    assert "no puede crear su candado" in caplog.text
+    assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
+
+
+def test_once_without_a_lock_file_logs_why_and_leaves_the_queue(
+    env: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    _launch(_dal_client(env), env)
+    reader = _wal_copy_in_a_read_only_folder(env)
+    try:
+        env.worker().drain()
+    finally:
+        env.db.parent.chmod(0o755)
+        reader.close()
+
+    assert "no puede crear su candado" in caplog.text
+    assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
 
 
 def test_actions_on_a_bad_or_finished_run_are_explained_not_applied(

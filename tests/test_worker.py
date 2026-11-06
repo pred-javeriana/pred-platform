@@ -911,13 +911,29 @@ def test_drain_resumes_a_run_left_running_with_a_dead_engine(
     assert _run_state(env)[0] == "completada"
 
 
-def _orphan_engine() -> subprocess.Popen[bytes]:
-    """A live engine whose worker is gone: nobody supervises it, and it is reaped when it dies."""
+def _orphan_engine(db_path: Path | None) -> subprocess.Popen[bytes]:
+    """A live process whose worker is gone: nobody supervises it, and it is reaped when it dies.
+
+    ``launch`` gives an engine its database in ``PRED_DB_PATH``; ``None`` stands for a process
+    that is no engine, such as one that reused the pid of an engine that is gone.
+    """
+    environ = {k: v for k, v in os.environ.items() if k != "PRED_DB_PATH"}
+    if db_path is not None:
+        environ["PRED_DB_PATH"] = str(db_path.resolve())
     child = subprocess.Popen(  # noqa: S603 - the test's own interpreter
-        [sys.executable, "-c", "import time; time.sleep(300)"], start_new_session=True
+        [sys.executable, "-c", "import time; time.sleep(300)"],
+        start_new_session=True,
+        env=environ,
     )
     threading.Thread(target=child.wait, daemon=True).start()
     return child
+
+
+def _claimed_by(env: Env, child: subprocess.Popen[bytes]) -> None:
+    """The queued run is left ``ejecutando`` with ``child`` as its engine."""
+    with closing(dal.connect(env.db)) as conn, conn:
+        assert dal.claim_pending(conn) is not None
+        conn.execute("UPDATE ejecuciones SET pid=?", (child.pid,))
 
 
 def test_drain_stops_the_engine_of_a_run_whose_worker_is_gone_and_resumes_it(
@@ -925,11 +941,9 @@ def test_drain_stops_the_engine_of_a_run_whose_worker_is_gone_and_resumes_it(
 ) -> None:
     _scenario(monkeypatch, "ok")
     enqueue_run(env.settings, env.ingest_id, SMALL)
-    child = _orphan_engine()
+    child = _orphan_engine(env.db)
     try:
-        with closing(dal.connect(env.db)) as conn, conn:
-            assert dal.claim_pending(conn) is not None
-            conn.execute("UPDATE ejecuciones SET pid=?", (child.pid,))
+        _claimed_by(env, child)
 
         env.worker().drain()
 
@@ -938,6 +952,44 @@ def test_drain_stops_the_engine_of_a_run_whose_worker_is_gone_and_resumes_it(
     finally:
         if child.poll() is None:
             child.kill()
+
+
+def test_a_copy_taken_during_a_run_leaves_the_engine_of_the_original_alone(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    # The engine of the original database is still running; env.db is the copy served here.
+    child = _orphan_engine(env.db.parent / "original" / "pred.db")
+    try:
+        _claimed_by(env, child)
+
+        Worker(env.settings, launcher=_not_launched).drain()
+
+        time.sleep(0.5)  # terminate() would have signalled the process group by now
+        assert child.poll() is None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [
+            ("ejecutando", 1, child.pid)
+        ]
+    finally:
+        child.kill()
+
+
+def test_a_process_that_reused_the_pid_is_not_stopped_and_the_run_resumes(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    child = _orphan_engine(None)
+    try:
+        _claimed_by(env, child)
+
+        env.worker().drain()
+
+        assert child.poll() is None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        child.kill()
 
 
 class _Owner:
