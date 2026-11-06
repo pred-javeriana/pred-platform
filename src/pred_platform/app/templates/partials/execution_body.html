@@ -81,10 +81,10 @@
   </div>
   {% endif %}
   {% if actions.nothing_to_compare %}
-  <p class="pred-note">{{ "Reanudar" if run.estado == "detenida" else "Reintentar" }} no se ofrece: con las familias de esta corrida ningún SKU tiene dos familias que comparar, y repetirla daría lo mismo. Lance una ejecución nueva con más familias.</p>
+  <p class="pred-note">{{ "Reanudar" if run.estado == "detenida" else "Reintentar" }} no se ofrece: con las familias de esta ejecución ningún SKU tiene dos familias que comparar, y repetirla daría lo mismo. Lance una ejecución nueva con más familias.</p>
   {% endif %}
   {% if run.estado == "pendiente" and worker == "stopped" and not control_reason %}
-  <p class="pred-note">En cola: el worker de esta aplicación se detuvo y ninguno sigue la cola; el registro de la aplicación dice por qué.</p>
+  <p class="pred-note">En cola: el procesador de ejecuciones de esta instalación se detuvo, así que nadie atiende la cola. El registro de la aplicación dice por qué.</p>
   {% elif run.estado == "pendiente" and worker == "off" and not control_reason %}
   <p class="pred-note">En cola: esta instalación no procesa ejecuciones por sí sola. Para que empiece, quien administra PRED debe iniciar el procesador de ejecuciones con <span class="mono">make worker</span>.</p>
   {% elif run.estado == "pendiente" and not control_reason %}

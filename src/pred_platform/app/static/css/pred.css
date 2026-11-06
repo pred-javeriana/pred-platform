@@ -1253,7 +1253,10 @@ button.pred-btn {
   letter-spacing: 0;
 }
 
-.pred-kpis__note {
+/* Una nota bajo una cifra: un span dentro de su dd, o un dd propio (más específico que
+   .pred-kpis dd, para no heredar el tamaño de la cifra). */
+.pred-kpis__note,
+.pred-kpis dd.pred-kpis__note {
   display: block;
   max-width: 16rem;
   margin: var(--space-1) 0 0;

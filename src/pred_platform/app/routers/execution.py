@@ -37,7 +37,6 @@ from pred_platform.app.ejecucion import (
     FormResult,
     LaunchIngest,
     classes_without_family,
-    compares_nothing,
     default_form_values,
     elapsed_text,
     error_action,
@@ -51,6 +50,7 @@ from pred_platform.app.ejecucion import (
     parse_launch_form,
     refusal_text,
     run_actions,
+    run_compares_nothing,
     run_error,
     settings_items,
     short_of_two,
@@ -63,7 +63,7 @@ from pred_platform.app.resultados_m3 import run_outcome
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import Ejecucion, RunStatus, SkuClass, TopologyMetrics
+from pred_platform.contract.models import RunStatus, SkuClass, TopologyMetrics
 from pred_platform.dal import lectura
 from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.data.deps import get_repository
@@ -95,20 +95,6 @@ def _worker_state(request: Request) -> Literal["active", "off", "stopped"]:
     if WorkerLock.for_database(settings.db_path).held_elsewhere():
         return "active"
     return "stopped" if settings.worker == "embedded" else "off"
-
-
-def _nothing_to_compare(
-    repository: DataRepository, run: Ejecucion | None, status: RunStatus | None
-) -> bool:
-    """Si las familias de la corrida no dan a ninguna clase de su ingesta dos que comparar."""
-    families = status.settings.families if status is not None and status.settings else None
-    if run is None or run.ingest_id is None or not families:
-        return False
-    try:
-        by_class = repository.get_topology_report(run.ingest_id, size=1).summary.by_class
-    except (DataLayerError, InvalidQuery):
-        return False  # sin topología no se sabe: se ofrece reanudar
-    return compares_nothing(by_class, families)
 
 
 def _accepted_ingests(repository: DataRepository) -> list[LaunchIngest]:
@@ -205,7 +191,7 @@ def _context(
         estado,
         reason=control.reason,
         error=error,
-        nothing_to_compare=_nothing_to_compare(repository, run, status),
+        nothing_to_compare=run_compares_nothing(repository, run, status),
     )
     return {
         "active_surface": "ejecucion",
@@ -379,7 +365,7 @@ def lanzar(
             by_class = {}  # sin topología publicada, decide el motor
         except InvalidQuery:  # no es el SHA-256 de una ingesta
             by_class = {}
-            form.errors["ingest_id"] = "Elija una ingesta aceptada en Datos."
+            form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
         chosen = form.values["families"]
         needed = history_needed(form.settings) if form.settings is not None else 0
         single = single_family_classes(by_class, chosen)

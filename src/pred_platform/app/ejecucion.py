@@ -30,17 +30,20 @@ from pred_platform.app.presentation import (
     stage_label,
 )
 from pred_platform.app.seleccion import error_title
+from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import (
     Ejecucion,
     ErrorInfo,
     EstadoTarea,
     IngestSummary,
     RunSettings,
+    RunStatus,
     SkuClass,
     TopologyMetrics,
 )
 from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
 from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
+from pred_platform.data.repository import DataRepository
 from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS
 from pred_platform.worker.service import LaunchSettings
 
@@ -480,8 +483,8 @@ def exclusion_warning(
             )
     if compares_nothing(by_class, families):
         closing = (
-            "Con estas familias ningún SKU tiene dos familias que comparar: la corrida no elige "
-            "ningún campeón y puede detenerse en la etapa L2."
+            "Con estas familias ningún SKU tiene dos familias que comparar: la ejecución no elige "
+            f"ningún campeón y puede detenerse en la etapa «{stage_label('L2')}»."
         )
     else:
         closing = (
@@ -576,6 +579,24 @@ def offers_resume(estado: str, error_code: str | None) -> bool:
     publicar.
     """
     return estado in RESUMABLE_STATES and error_code != INCOMPATIBLE_CONFIG
+
+
+def run_compares_nothing(
+    repository: DataRepository, run: Ejecucion | None, status: RunStatus | None
+) -> bool:
+    """Si las familias de la corrida no dan a ninguna clase de su ingesta dos que comparar.
+
+    Ejecución y la barra de contexto de Resultados leen esta regla para no ofrecer Reanudar ni
+    mostrar como reanudable una corrida que daría lo mismo.
+    """
+    families = status.settings.families if status is not None and status.settings else None
+    if run is None or run.ingest_id is None or not families:
+        return False
+    try:
+        by_class = repository.get_topology_report(run.ingest_id, size=1).summary.by_class
+    except (DataLayerError, InvalidQuery):
+        return False  # sin topología no se sabe: se ofrece reanudar
+    return compares_nothing(by_class, families)
 
 
 def run_actions(

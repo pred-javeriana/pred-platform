@@ -218,4 +218,4 @@ def test_a_rollback_journal_copy_in_a_read_only_folder_serves_with_actions_off(
         settings.db_path.parent.chmod(0o755)
 
     assert ejecucion.status_code == 200 and "La base de datos es de solo lectura" in ejecucion.text
-    assert datos.status_code == 200 and "no cargar archivos nuevos" in datos.text
+    assert datos.status_code == 200 and "no cargar uno nuevo" in datos.text
