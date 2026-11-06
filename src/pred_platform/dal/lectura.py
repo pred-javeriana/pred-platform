@@ -303,15 +303,22 @@ def count_runs(db_path: Path) -> int:
         return int(conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone()[0])
 
 
-# The largest integer SQLite stores; a larger id names no run.
-_MAX_ROW_ID = 2**63 - 1
+# The largest integer SQLite stores: a larger id names no run, and a larger setting cannot be saved.
+SQLITE_MAX_INTEGER = 2**63 - 1
 
 
 def run_number(reference: str) -> int | None:
-    """The ``ejecuciones.id`` a reference names, or ``None`` if it is not ASCII digits that fit."""
-    if reference.isascii() and reference.isdigit():
+    """The ``ejecuciones.id`` a reference names, or ``None`` if it is not ASCII digits that fit.
+
+    The length is checked first: ``int`` refuses a string of more than 4300 digits.
+    """
+    if (
+        reference.isascii()
+        and reference.isdigit()
+        and len(reference) <= len(str(SQLITE_MAX_INTEGER))
+    ):
         number = int(reference)
-        if number <= _MAX_ROW_ID:
+        if number <= SQLITE_MAX_INTEGER:
             return number
     return None
 

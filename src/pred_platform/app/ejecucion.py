@@ -30,6 +30,7 @@ from pred_platform.contract.models import (
     SkuClass,
     TopologyMetrics,
 )
+from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
 from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
 from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS
 from pred_platform.worker.service import LaunchSettings
@@ -194,6 +195,9 @@ def parse_launch_form(
         if number < minimum:
             errors[name] = f"{label}: debe ser {'mayor que cero' if minimum else 'cero o más'}."
             continue
+        if number > SQLITE_MAX_INTEGER:
+            errors[name] = f"{label}: el número es demasiado grande."
+            continue
         numbers[name] = number
     trials: int | None = None
     if values["trials"]:
@@ -204,8 +208,12 @@ def parse_launch_form(
         else:
             if trials < 1:
                 errors["trials"] = "Ensayos por estudio: debe ser mayor que cero."
+            elif trials > SQLITE_MAX_INTEGER:
+                errors["trials"] = "Ensayos por estudio: el número es demasiado grande."
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
+    elif not set(values["families"]) <= {key for key, _ in FAMILY_CHOICES}:
+        errors["families"] = "Elija solo familias de la lista."
     if values["metric"] not in {key for key, _ in METRIC_CHOICES}:
         errors["metric"] = "Elija una de las métricas de la lista."
     if errors:

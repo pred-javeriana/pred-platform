@@ -16,6 +16,7 @@ from typing import Any, Literal
 from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import RunRequestError
+from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
 from pred_platform.worker.engine import engine_origin
 
 PARAMETERS_SCHEMA_VERSION = 2
@@ -40,16 +41,26 @@ class LaunchSettings:
     def __post_init__(self) -> None:
         for name in ("min_train", "horizon", "step", "seasonality", "workers"):
             value = getattr(self, name)
-            if type(value) is not int or value < 1:
-                raise ValueError(f"{name} debe ser un entero >= 1, se recibió {value!r}")
-        if self.trials is not None and (type(self.trials) is not int or self.trials < 1):
-            raise ValueError(f"trials debe ser un entero >= 1 o nulo, se recibió {self.trials!r}")
-        if type(self.seed) is not int or self.seed < 0:
-            raise ValueError(f"seed debe ser un entero >= 0, se recibió {self.seed!r}")
+            if not _fits(value, 1):
+                raise ValueError(
+                    f"{name} debe ser un entero entre 1 y {SQLITE_MAX_INTEGER}, "
+                    f"se recibió {value!r}"
+                )
+        if self.trials is not None and not _fits(self.trials, 1):
+            raise ValueError(
+                f"trials debe ser un entero entre 1 y {SQLITE_MAX_INTEGER} o nulo, "
+                f"se recibió {self.trials!r}"
+            )
+        if not _fits(self.seed, 0):
+            raise ValueError(
+                f"seed debe ser un entero entre 0 y {SQLITE_MAX_INTEGER}, se recibió {self.seed!r}"
+            )
         if self.metric not in _METRICS:
             raise ValueError(f"metric debe ser una de {_METRICS}, se recibió {self.metric!r}")
         if not self.families or any(f not in _FAMILIES for f in self.families):
             raise ValueError(f"families debe usar solo {_FAMILIES}, se recibió {self.families!r}")
+        # One order and no repeats, so the same families always give the same run.
+        object.__setattr__(self, "families", tuple(f for f in _FAMILIES if f in self.families))
 
     def to_parametros(self) -> dict[str, Any]:
         return {
@@ -65,6 +76,11 @@ class LaunchSettings:
             "datos_sinteticos": False,  # la plataforma solo trabaja con datos reales
             "workers": self.workers,
         }
+
+
+def _fits(value: object, minimum: int) -> bool:
+    """An ``int`` (not a ``bool``) from ``minimum`` up to the largest integer SQLite stores."""
+    return type(value) is int and minimum <= value <= SQLITE_MAX_INTEGER
 
 
 def run_id_for(ingest_sha256: str, settings: LaunchSettings) -> str:

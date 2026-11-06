@@ -278,6 +278,24 @@ def test_the_number_of_processes_does_not_change_the_run_identity() -> None:
     assert run_id_for("a" * 64, a) != run_id_for("a" * 64, LaunchSettings(metric="mae"))
 
 
+def test_the_order_of_the_families_does_not_change_the_run(env: Env) -> None:
+    first = enqueue_run(env.settings, env.ingest_id, replace(SMALL, families=("ml", "classical")))
+    again = enqueue_run(
+        env.settings, env.ingest_id, replace(SMALL, families=("classical", "ml", "classical"))
+    )
+
+    assert (again.ejecucion_id, again.queued) == (first.ejecucion_id, False)
+    ((parametros,),) = env.rows("SELECT parametros FROM configuraciones")
+    assert json.loads(parametros)["families"] == ["classical", "ml"]
+    # The form sends the contract order, so the runs it launched keep their identity.
+    assert LaunchSettings(families=("classical", "ml", "dl", "foundation")).families == (
+        "classical",
+        "ml",
+        "dl",
+        "foundation",
+    )
+
+
 @pytest.mark.parametrize("ingest_id", ["c" * 64, _fixture_id("failed")])
 def test_only_an_accepted_ingestion_can_be_run(env: Env, ingest_id: str) -> None:
     with pytest.raises(RunRequestError):
@@ -293,6 +311,9 @@ def test_only_an_accepted_ingestion_can_be_run(env: Env, ingest_id: str) -> None
         {"families": ()},
         {"trials": 0},
         {"workers": 0},
+        {"seed": 2**63},
+        {"trials": 2**63},
+        {"min_train": 2**63},
     ],
 )
 def test_launch_settings_are_validated(kwargs: dict[str, Any]) -> None:
