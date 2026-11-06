@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "summary": "Detiene el motor cuando se interrumpe su supervisor y registra los errores de supervisión sin abandonar la cola.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/engine.py",
+      "summary": "Protege el motor ante la muerte del supervisor y distingue los procesos zombis.",
+      "annotations": [
+        {
+          "newRange": [165, 170],
+          "summary": "El lanzamiento solicita SIGTERM del kernel cuando muere el supervisor en Linux.",
+          "rationale": "Un cierre abrupto puede impedir la limpieza de Python. El prefijo conserva el PID del motor y evita ejecutar código previo al arranque dentro de un proceso con hilos. Las pruebas reproducen la muerte forzada y dos interrupciones seguidas con recarga. La integración con el motor real pasó 11 pruebas. El sistema necesita setpriv en PATH.",
+          "author": "fm/pred-platform-worker-robustness"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/bucle.py",
+      "summary": "Liquida cada reclamo cuyo seguimiento falla y conserva el reintento del diagnóstico si la base no responde.",
+      "annotations": [
+        {
+          "newRange": [205, 216],
+          "summary": "run_next registra el error inesperado y detiene el reclamo antes de atender otra corrida.",
+          "rationale": "El manejador anterior detenía el proceso pero dejaba la fila ejecutando sin supervisor. Se reutiliza la liquidación pendiente para conservar el diagnóstico durante fallos de base. Las pruebas con progreso malformado comprueban el cierre del hijo, el error guardado y la ejecución de la siguiente corrida.",
+          "author": "fm/pred-platform-worker-robustness"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/dal/ejecuciones.py",
+      "summary": "Incluye en la liquidación los estados publicados cuyo proceso aún pertenece al reclamo.",
+      "annotations": [
+        {
+          "newRange": [310, 313],
+          "summary": "stop_claimed también liquida una publicación anticipada que conserva el PID del mismo intento.",
+          "rationale": "El motor puede publicar completada antes de terminar sus artefactos. Un error de seguimiento durante esa ventana también debe liberar el PID. La guarda del intento y la exigencia de PID conservan intactas las corridas ya liquidadas o retomadas. Una regresión reproduce el error después de publicar el estado.",
+          "author": "fm/pred-platform-worker-robustness"
+        }
+      ]
+    }
+  ]
+}
