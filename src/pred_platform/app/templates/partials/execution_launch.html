@@ -16,6 +16,9 @@
     <p class="pred-note pred-note--muted">Todavía no hay ningún archivo de datos aceptado. Cargue y valide un archivo en <a href="/corridas/nueva/datos">Datos</a> para poder ejecutar.</p>
   {% else %}
   <form method="post" action="/corridas/nueva/ajustes" class="pred-launch" id="{{ launch_form_id }}">
+    {# El primer botón de envío del formulario es el que usa Enter en un campo: Continuar, que
+       valida. Atrás y los pasos de la barra llevan su destino en su propio botón, más abajo. #}
+    <button type="submit" class="pred-sr-only" tabindex="-1" aria-hidden="true">Continuar a Revisar y lanzar</button>
     <div class="pred-launch__row">
       <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
         <label class="pred-field__label" for="ingest_id">Datos</label>

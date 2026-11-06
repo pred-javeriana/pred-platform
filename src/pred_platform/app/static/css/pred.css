@@ -156,7 +156,9 @@ samp,
   white-space: nowrap;
 }
 
-.pred-sr-only {
+/* Con «button» delante, para ganarle al ancho completo que Pico da a «button[type=submit]». */
+.pred-sr-only,
+button.pred-sr-only {
   position: absolute;
   width: 1px;
   height: 1px;

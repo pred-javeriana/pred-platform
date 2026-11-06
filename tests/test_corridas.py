@@ -18,6 +18,7 @@ from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.data.fixtures import FixtureRepository
+from tests import formulario_html
 from tests.test_worker import Env, _fixture_id
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -452,6 +453,75 @@ def test_a_value_left_unfinished_is_kept_but_revisar_still_checks_it(env: Env) -
     )
     assert to_revisar.status_code == 200 and "is-error" in to_revisar.text
     assert "set-cookie" not in to_revisar.headers
+
+
+_AJUSTES_FORM = "formulario-ajustes"
+_CONTINUAR = {"form": _AJUSTES_FORM, "class": "pred-btn pred-btn--primary pred-btn--large"}
+
+
+def test_enter_in_an_ajustes_field_continues_like_continuar(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    page = client.get("/corridas/nueva/ajustes").text
+
+    # Enter in a field submits through the form's default button: Continuar, never Atrás.
+    enter = formulario_html.submit(page, _AJUSTES_FORM, typed={"horizon": "5"})
+    assert "destino" not in enter
+    forward = client.post("/corridas/nueva/ajustes", data=enter, follow_redirects=False)
+    assert (forward.status_code, forward.headers["location"]) == (303, "/corridas/nueva/revisar")
+    assert (
+        '<input type="hidden" name="horizon" value="5">'
+        in client.get(forward.headers["location"]).text
+    )
+
+    # An invalid value and Enter: Ajustes says what is wrong and saves nothing.
+    page = client.get("/corridas/nueva/ajustes").text
+    invalid = formulario_html.submit(page, _AJUSTES_FORM, typed={"horizon": "0"})
+    stays = client.post("/corridas/nueva/ajustes", data=invalid, follow_redirects=False)
+    assert stays.status_code == 200 and "set-cookie" not in stays.headers
+    assert "<title>Ajustes · Corrida nueva · PRED</title>" in stays.text
+    assert "Horizonte (días): debe ser mayor que cero." in _text(stays.text)
+
+
+def test_after_a_rail_exit_and_browser_back_continuar_goes_to_revisar(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    page = client.get("/corridas/nueva/ajustes").text
+    typed = {"horizon": "4"}
+
+    # A rail step: the script sends the form with that step on a submit button of its own.
+    rail = formulario_html.submit(page, _AJUSTES_FORM, typed=typed)
+    rail["destino"] = ["datos"]
+    left = client.post("/corridas/nueva/ajustes", data=rail, follow_redirects=False)
+    assert left.headers["location"] == "/corridas/nueva/datos"
+
+    # Browser Back shows the same Ajustes page with what was typed; the destination of the
+    # earlier exit travelled only with that submit, so Continuar and Enter go forward.
+    for button in (_CONTINUAR, None):
+        data = formulario_html.submit(page, _AJUSTES_FORM, typed=typed, button=button)
+        assert "destino" not in data
+        forward = client.post("/corridas/nueva/ajustes", data=data, follow_redirects=False)
+        assert forward.headers["location"] == "/corridas/nueva/revisar"
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert '<input type="hidden" name="horizon" value="4">' in revisar
+
+    # Atrás is still the way back, with what was typed.
+    back = formulario_html.submit(
+        page, _AJUSTES_FORM, typed={"seed": "7"}, button={"value": "datos"}
+    )
+    assert back["destino"] == ["datos"]
+    assert client.post("/corridas/nueva/ajustes", data=back).url.path == "/corridas/nueva/datos"
+    assert re.search(r'name="seed"[^>]*value="7"', client.get("/corridas/nueva/ajustes").text)
+
+
+def test_the_rail_script_leaves_no_destination_in_the_page() -> None:
+    """The rail sends its destination in a field the script removes right after ``submit()``
+    (which reads the form at once); a field left in the form would ride along with Continuar
+    and Enter after browser Back."""
+    script = (Path(__file__).parent.parent / "src/pred_platform/app/static/js/pred.js").read_text()
+    handler = script.split('closest(".pred-rail a', 1)[1].split("});", 1)[0]
+    assert "formulario.submit();\n    destino.remove();" in handler
+    assert handler.count("appendChild(") == 1
 
 
 def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
