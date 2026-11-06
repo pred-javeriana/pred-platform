@@ -48,9 +48,12 @@ fingerprint (`run.incompatible_config`).
   `list_ingests`); filters and paging of the tasks are delegated to the repository.
 - **Writes** go through `app.state.run_control` (`worker/control.py`), a command service separate
   from the read contract (section 19 of the data contract). `DalRunControl` writes the DAL for the
-  worker to follow; with fixtures or a database file without write permission
-  `UnavailableRunControl` makes every action raise with the reason, and the screen shows the
-  buttons disabled and explained.
+  worker to follow; with fixtures `UnavailableRunControl` makes every action raise with the reason,
+  and the screen shows the buttons disabled and explained. A database the app cannot write
+  (`worker/solo_lectura.py`: the file or its `-wal`/`-shm` has no write permission, or a
+  rollback-journal database sits in a folder without it) gets the same treatment from `DalRunControl`, checked on every request, so
+  a permission change applies without a restart; a write the database still refuses as read-only
+  answers with the same reason, never a server error.
 - **Stop** needs no migration: `dal.request_stop` turns a `pendiente` or `ejecutando` run into
   `detenida` with the error `platform.run_stopped`, only if it is still in progress. The worker,
   which looks at the run's state every 0.2 s, sees it, terminates the engine's process group and

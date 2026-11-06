@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pred_platform.dal.lectura import _open_readonly
+from pred_platform.dal.lectura import _open_readonly, run_number
 from pred_platform.data.m3_query import M3Query
 
 Kind = Literal[
@@ -300,10 +300,9 @@ def _snapshot(conn: sqlite3.Connection) -> bool:
 
 def _m2_run_id(conn: sqlite3.Connection, reference: str) -> str | None:
     """The engine's run id an M2 reference names: a platform run id (digits) or the id itself."""
-    if reference.isdigit():
-        found = conn.execute(
-            "SELECT run_id FROM ejecuciones WHERE id = ?", (int(reference),)
-        ).fetchone()
+    number = run_number(reference)
+    if number is not None:
+        found = conn.execute("SELECT run_id FROM ejecuciones WHERE id = ?", (number,)).fetchone()
         if found is not None:
             return found[0]
     return reference

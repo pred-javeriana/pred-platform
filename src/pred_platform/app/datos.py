@@ -26,6 +26,7 @@ from pred_platform.contract.errors import DataLayerError
 from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
 from pred_platform.data.query import DEFAULT_SIZE, int_param
 from pred_platform.worker import ingesta
+from pred_platform.worker.solo_lectura import database_read_only
 
 _SUBMITTED_ATTR = "submitted_reports"
 
@@ -42,6 +43,22 @@ CSV_COLUMNS: tuple[tuple[str, str], ...] = tuple(
 CSV_HINT = (
     f"Un archivo .csv de hasta {ingesta.MAX_BYTES // (1024 * 1024)} MiB, una fila por SKU y día."
 )
+READ_ONLY_UPLOAD = (
+    "La base de datos es de solo lectura: se pueden consultar las ingestas cargadas, pero no "
+    "cargar archivos nuevos."
+)
+
+
+def upload_blocked(request: Request) -> str | None:
+    """Por qué no se puede cargar un archivo ahora; ``None`` si se puede.
+
+    La carga corre el motor y guarda su informe en la base: con una base de solo lectura el motor
+    dejaría archivos en la raíz de datos y el informe no se podría guardar.
+    """
+    settings = request.app.state.settings
+    if settings.data_source == "dal" and database_read_only(settings.db_path):
+        return READ_ONLY_UPLOAD
+    return None
 
 
 @dataclass(frozen=True, slots=True)

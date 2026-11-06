@@ -111,6 +111,9 @@ def test_sin_los_datos_se_usa_el_titulo_generico_y_nunca_un_marcador() -> None:
         "El archivo tiene un valor inválido."
     )
     assert mensajes.titulo("pipeline.stage_failed") == "Una etapa de la corrida falló."
+    assert mensajes.titulo("pipeline.stage_failed", stage="platform") == (
+        "Una etapa de la corrida falló."
+    )
     assert all("{" not in mensajes.titulo(codigo) for codigo in mensajes.CATALOGO)
 
 

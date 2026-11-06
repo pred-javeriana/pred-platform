@@ -1120,6 +1120,77 @@ def test_launch_once_next_to_a_running_worker_queues_the_run_for_it(
     assert _run_state(env)[0] == "completada"
 
 
+def test_once_runs_the_queue_when_a_probe_holds_the_lock_for_an_instant(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With PRED_WORKER=off every page render probes the lock (held_elsewhere); a worker that
+    # starts during a probe must not leave the queue to a worker that does not exist.
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    probe = WorkerLock.for_database(env.db)
+    assert probe.acquire()
+    threading.Timer(0.05, probe.release).start()
+
+    env.worker().drain()
+
+    assert _run_state(env)[0] == "completada"
+
+
+def test_on_a_read_only_database_the_worker_waits_and_runs_once_it_is_writable(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A copy served to look at, in a folder without write permission (with a rollback journal,
+    # as the README says): the worker may not even create its lock file there, and must neither
+    # fail nor touch a run.
+    _scenario(monkeypatch, "ok")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute("PRAGMA journal_mode=DELETE")
+    env.db.chmod(0o444)
+    env.db.parent.chmod(0o555)
+    stop = threading.Event()
+    worker = threading.Thread(target=env.worker().run_forever, args=(stop,), daemon=True)
+    try:
+        env.worker().drain()  # --once
+        worker.start()
+        time.sleep(0.3)
+        waiting = _run_state(env)[0]
+        env.db.parent.chmod(0o755)
+        env.db.chmod(0o644)
+        _wait(lambda: _run_state(env)[0] == "completada", what="the worker to run the queue")
+    finally:
+        env.db.parent.chmod(0o755)
+        env.db.chmod(0o644)
+        stop.set()
+        worker.join(timeout=10)
+
+    assert waiting == "pendiente"
+    assert not worker.is_alive()
+
+
+def test_concurrent_probes_never_report_a_worker_that_does_not_run(env: Env) -> None:
+    lock = WorkerLock.for_database(env.db)
+    assert lock.acquire()
+    lock.release()  # the lock file exists, as after any worker ran here
+    seen: list[bool] = []
+
+    def probe() -> None:
+        seen.extend(WorkerLock.for_database(env.db).held_elsewhere() for _ in range(500))
+
+    threads = [threading.Thread(target=probe) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(seen) == 4000 and not any(seen)
+    assert lock.acquire()  # and a worker that does run is seen
+    try:
+        assert WorkerLock.for_database(env.db).held_elsewhere()
+    finally:
+        lock.release()
+
+
 def test_an_interrupt_stops_the_engine_and_leaves_the_run_running(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

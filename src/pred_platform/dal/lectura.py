@@ -303,11 +303,25 @@ def count_runs(db_path: Path) -> int:
         return int(conn.execute("SELECT COUNT(*) FROM ejecuciones").fetchone()[0])
 
 
+# The largest integer SQLite stores; a larger id names no run.
+_MAX_ROW_ID = 2**63 - 1
+
+
+def run_number(reference: str) -> int | None:
+    """The ``ejecuciones.id`` a reference names, or ``None`` if it is not ASCII digits that fit."""
+    if reference.isascii() and reference.isdigit():
+        number = int(reference)
+        if number <= _MAX_ROW_ID:
+            return number
+    return None
+
+
 def get_run(db_path: Path, reference: str) -> RunDetail | None:
     """A run by its ``ejecuciones.id`` (digits), by the engine's ``run_id`` or ``latest``.
 
     ``latest`` is the run with the highest id, i.e. the most recently queued one.
     """
+    number = run_number(reference)
     with _open_readonly(db_path) as conn:
         if conn is None or not _has_run_columns(conn):
             return None
@@ -315,9 +329,9 @@ def get_run(db_path: Path, reference: str) -> RunDetail | None:
             row = conn.execute(
                 f"SELECT {_RUN_COLUMNS} {_RUN_FROM} ORDER BY e.id DESC LIMIT 1"
             ).fetchone()
-        elif reference.isdigit():
+        elif number is not None:
             row = conn.execute(
-                f"SELECT {_RUN_COLUMNS} {_RUN_FROM} WHERE e.id = ?", (int(reference),)
+                f"SELECT {_RUN_COLUMNS} {_RUN_FROM} WHERE e.id = ?", (number,)
             ).fetchone()
         else:
             row = conn.execute(

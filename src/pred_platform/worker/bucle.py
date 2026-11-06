@@ -28,6 +28,7 @@ from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.errores import platform_error, run_stopped_error
 from pred_platform.worker.importacion import finalize
 from pred_platform.worker.progreso import ProgressFollower
+from pred_platform.worker.solo_lectura import database_read_only
 
 _logger = logging.getLogger("pred_platform.worker")
 
@@ -56,9 +57,10 @@ class Worker:
     def run_forever(self, stop: threading.Event) -> None:
         """Process queued runs until shutdown, leaving interrupted work queued for restart.
 
-        While another worker holds the database, this one waits without touching any run.
+        While another worker holds the database, or the database is read-only, this one waits
+        without touching any run.
         """
-        if not self._wait_for_lock(stop):
+        if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
             return
         try:
             try:
@@ -79,8 +81,15 @@ class Worker:
     def drain(self) -> None:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``).
 
-        While another worker holds the database, that worker runs the queue and this one exits.
+        While another worker holds the database, that worker runs the queue and this one exits;
+        on a read-only database there is nothing it may run.
         """
+        if database_read_only(self.settings.db_path):
+            _logger.warning(
+                "La base %s es de solo lectura: no se ejecuta ninguna corrida",
+                self.settings.db_path,
+            )
+            return
         if not self._lock.acquire():
             _logger.warning(
                 "Otro worker ya atiende %s; ese worker ejecutará las corridas en cola",
@@ -94,6 +103,19 @@ class Worker:
                     time.sleep(self.poll_interval)  # the database still fails: wait, then retry
         finally:
             self._lock.release()
+
+    def _wait_until_writable(self, stop: threading.Event) -> bool:
+        """Wait while the database is read-only (a copy served to look at), until ``stop``."""
+        if not database_read_only(self.settings.db_path):
+            return True
+        _logger.warning(
+            "La base %s es de solo lectura: el worker espera a que se pueda escribir",
+            self.settings.db_path,
+        )
+        while not stop.wait(self.poll_interval):
+            if not database_read_only(self.settings.db_path):
+                return True
+        return False
 
     def _wait_for_lock(self, stop: threading.Event) -> bool:
         """Take the database for this worker, waiting while another holds it, until ``stop``."""

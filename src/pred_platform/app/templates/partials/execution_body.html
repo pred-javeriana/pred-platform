@@ -58,13 +58,16 @@
   <div class="pred-callout pred-callout--{{ 'warn' if run_error.retryable else 'err' }}" id="error-ejecucion">
     <p><strong>{{ run_error.title }}</strong>{% if run_error.detail %} {{ run_error.detail }}{% endif %}</p>
     {% if run_error.action %}<p>{{ run_error.action }}</p>{% endif %}
-    {% if not actions.offers_resume and run.estado == "detenida" %}<p class="pred-meta">Reanudar no se ofrece: la corrida fallaría igual. Corrija la causa y lance una ejecución nueva.</p>{% endif %}
+    {% if not actions.offers_resume and run.estado == "detenida" and not actions.nothing_to_compare %}<p class="pred-meta">Reanudar no se ofrece: la corrida fallaría igual. Corrija la causa y lance una ejecución nueva.</p>{% endif %}
     <p class="pred-meta"><span class="mono">{{ run_error.code }}</span></p>
   </div>
   {% endif %}
+  {% if actions.nothing_to_compare %}
+  <p class="pred-note">{{ "Reanudar" if run.estado == "detenida" else "Reintentar" }} no se ofrece: con las familias de esta corrida ningún SKU tiene dos familias que comparar, y repetirla daría lo mismo. Lance una ejecución nueva con más familias.</p>
+  {% endif %}
   {% if run.estado == "pendiente" and not worker_active and not control_reason %}
   <p class="pred-note">En cola: esta aplicación no ejecuta el worker (PRED_WORKER=off); inícielo con <span class="mono">make worker</span>.</p>
-  {% elif run.estado == "pendiente" %}
+  {% elif run.estado == "pendiente" and not control_reason %}
   <p class="pred-note">En cola: empezará en cuanto el worker termine la corrida anterior.</p>
   {% endif %}
   {% if run.estado == "detenida" and not (progress and progress.tareas_total) %}

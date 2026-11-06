@@ -46,6 +46,8 @@ the engine's reason (for example, missing canonical columns), or `needs_confirma
 already has a file with that name and other content (G5): confirming repeats the call with
 `--confirm-overwrite` and the engine keeps both files.
 
+- On a database the app cannot write (`worker/solo_lectura.py`), "Cargar y validar" is disabled with
+  the reason and a posted file is refused before the engine runs, so nothing lands in the data root.
 - A missing or crashing engine, or one that takes more than 15 minutes, is an `unavailable` state
   with a retry button, never a 500. Files must be `.csv` and at most 256 MiB; only the base name of
   the uploaded file is used.

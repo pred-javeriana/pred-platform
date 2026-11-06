@@ -186,13 +186,18 @@ e «Reproducir una ejecución anterior» plegado al final del panel.
 
 **E2. El formulario no dice qué SKU pierden la comparación por las familias elegidas.** H5,
 severidad 3 (#82). El motor compara al menos dos familias por SKU. Si una clase queda con una
-sola familia admitida, el motor ejecuta la corrida y deja esos SKU fuera de la comparación, sin
-campeón. Si una clase queda sin ninguna, la etapa L2 falla para toda la corrida. El formulario
-aceptaba los dos casos sin avisar. Referente: H5. Corrección: la ayuda dice qué familias admite
-cada clase. Si una clase queda sin familia, el formulario no lanza y dice qué familias agregar.
-Si una clase queda con una sola, el formulario avisa qué SKU quedan sin campeón y qué familia
-agregar, y el operador puede lanzar de todos modos. Reanudar no se ofrece cuando la corrida
-fallaría igual.
+sola familia admitida y otra clase conserva dos, el motor ejecuta la corrida y deja los SKU de
+esa clase fuera de la comparación, sin campeón. Si ninguna clase conserva dos, ningún SKU tiene
+campeón: la etapa L2 no produce candidatos y la corrida se detiene, o termina sin nada evaluado.
+Si una clase queda sin ninguna familia, la etapa L2 falla para toda la corrida. Un SKU con menos
+historia que entrenamiento + horizonte + 3 pasos queda fuera con cualquier familia. El formulario
+aceptaba todos estos casos sin avisar. Referente: H5. Corrección: la ayuda dice qué familias
+admite cada clase. Si una clase con SKU evaluables queda sin familia, el formulario no lanza,
+dice qué familias agregar y avisa también de las clases que quedarían con una sola. Si una clase
+queda con una sola, el formulario nombra sus SKU (plegados cuando son muchos), aparte los que
+la historia ya deja fuera, dice qué familia agregar y deja lanzar de todos modos; si ninguna
+clase conserva dos, el aviso dice que la corrida no elige campeón. Reanudar no se ofrece cuando
+la corrida fallaría igual: una identidad incompatible o familias que no dan dos a ninguna clase.
 
 **E3. El estado de la corrida no muestra en qué etapa va ni cuánto lleva.** H1, severidad 3.
 «Ejecutando» era un título de 36 px, la etapa era una línea suelta bajo el anillo y no se veían

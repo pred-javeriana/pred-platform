@@ -8,6 +8,7 @@
   <h2 id="titulo-lanzar">Nueva ejecución</h2>
   <p class="pred-meta">Elija la ingesta, las familias de modelos y la ventana de evaluación. La corrida queda en cola y el worker la lanza.</p>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
+  {% if form_errors.get("form") %}{{ alert(form_errors["form"], variant="error") }}{% endif %}
 
   {% if not ingests %}
     <p class="pred-note pred-note--muted">Todavía no hay ninguna ingesta aceptada. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
@@ -36,7 +37,24 @@
       </label>
       {% endfor %}
       {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}
-      {% if exclusion_warning %}{{ alert(exclusion_warning, variant="warning") }}{% endif %}
+      {% if exclusion_warning %}
+      {# Cada grupo nombra sus SKU sin cortar un identificador; una lista larga va plegada. #}
+      <div class="pred-alert pred-alert--warning" role="alert" id="aviso-familias">
+        <svg aria-hidden="true"><use href="#i-warn"></use></svg>
+        <div>
+          {% for part in exclusion_warning.parts %}
+          {% set names %}{% for sku in part.skus %}<span class="mono pred-nowrap">{{ sku }}</span>{{ ", " if not loop.last }}{% endfor %}{% if part.more %}{{ " y " if part.skus }}{{ format_count(part.more) }} más{% endif %}{% endset %}
+          {% if part.skus | length <= 20 %}
+          <p>{{ part.text }}: {{ names }}.{% if part.advice %} {{ part.advice }}{% endif %}</p>
+          {% else %}
+          <p>{{ part.text }}.{% if part.advice %} {{ part.advice }}{% endif %}</p>
+          <details class="pred-details pred-details--inline"><summary>Ver los {{ format_count(part.skus | length + part.more) }} SKU</summary><div class="pred-evidence-scroll"><p>{{ names }}</p></div></details>
+          {% endif %}
+          {% endfor %}
+          <p>{{ exclusion_warning.closing }}</p>
+        </div>
+      </div>
+      {% endif %}
     </fieldset>
 
     <div class="pred-launch__grid">

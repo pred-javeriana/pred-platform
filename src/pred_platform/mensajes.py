@@ -306,7 +306,7 @@ def titulo(
     datos: dict[str, Any] = {
         "row_index": None if row_index is None else fila_en_archivo(row_index),
         "column": column,
-        "stage": stage,
+        "stage": None if stage == "platform" else stage,  # not an engine stage to name
     }
     usados = [nombre for nombre in datos if "{" + nombre + "}" in entrada.titulo]
     if any(datos[nombre] is None for nombre in usados):
