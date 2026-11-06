@@ -1,9 +1,9 @@
 {% from "components/buttons.html" import button %}
-{# Lanzar se hace en Ejecución: aquí es una acción secundaria, que abre el formulario con la misma
-   ingesta. Si falta algo para lanzar, se dice qué. #}
-{% set launch_href = "/ejecucion" ~ ("?ingest_id=" ~ run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "") ~ "#lanzar" %}
+{# Lanzar se hace en Revisar y lanzar: aquí es una acción secundaria, que empieza una corrida nueva
+   en Ajustes con los mismos datos. Si falta algo para lanzar, se dice qué. #}
+{% set launch_href = "/corridas/nueva/ajustes" ~ ("?ingest_id=" ~ run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "") %}
 <div class="pred-actions" id="accion-seleccion">
-  {{ button("Nueva ejecución", variant="secondary", href=launch_href, icon="i-play", disabled=not action.enabled) }}
+  {{ button("Nueva corrida con estos datos", variant="secondary", href=launch_href, icon="i-play", disabled=not action.enabled) }}
 </div>
 {% if not action.enabled %}
 <details class="pred-details" id="accion-razon"><summary>Por qué no se puede lanzar</summary>

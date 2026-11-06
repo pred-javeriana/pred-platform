@@ -11,7 +11,7 @@
 <section class="pred-panel pred-file-summary" id="diagnostico" aria-labelledby="estado-archivo">
   <header class="pred-file-summary__head">
     <div>
-      <p class="pred-eyebrow">Archivo seleccionado</p>
+      <p class="pred-eyebrow">{{ "Archivo de esta corrida" if record else "Archivo seleccionado" }}</p>
       <h2 class="pred-file-summary__name" id="estado-archivo">{{ report.source_file.name }}</h2>
       <p class="pred-meta" title="Ingesta {{ report.ingest_id }}">{{ format_count(report.source_file.row_count) }} filas en el archivo</p>
     </div>
@@ -58,7 +58,7 @@
       </details>
     </div>
     {% if report.error.retryable %}
-    <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
+    <p class="pred-actions">{{ button("Reintentar", variant="secondary", href=datos_path, icon="i-rotate") }}</p>
     {% elif report.status in ("rejected", "failed") %}
     <p class="pred-actions">{{ button("Cargar el archivo corregido", variant="primary", href="#carga", icon="i-upload") }}</p>
     {% endif %}

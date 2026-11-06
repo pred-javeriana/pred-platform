@@ -442,12 +442,23 @@ class ExecutionChoice:
     m3_run_id: str
 
 
-def published_executions(repository: DataRepository, limit: int = 20) -> list[ExecutionChoice]:
+def champion_available(repository: DataRepository) -> bool:
+    """Si la etapa del campeón (M3) existe: sin ella no se lee ninguna evidencia M3."""
+    capabilities = repository.get_capabilities()
+    return any(item.id == "champion_selection" and item.available for item in capabilities.items)
+
+
+def published_executions(
+    repository: DataRepository, limit: int | None = 20
+) -> list[ExecutionChoice]:
     """Las ejecuciones con al menos una corrida M3 PUBLICADA, de la más nueva a la más vieja.
 
     Resultados abre por defecto la primera: la ejecución más reciente puede seguir en curso y
-    todavía no tener evidencia que mostrar. Una lectura que falla deja la lista vacía.
+    todavía no tener evidencia que mostrar. Sin la etapa del campeón, o si la lectura falla, la
+    lista queda vacía. ``limit=None`` las trae todas.
     """
+    if not champion_available(repository):
+        return []
     try:
         runs = repository.list_m3_runs(estado="PUBLICADA", size=MAX_SIZE)
     except (InvalidQuery, DataLayerError):

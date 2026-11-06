@@ -21,6 +21,7 @@ from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ContractInvalid
 from pred_platform.contract.models import (
     Capabilities,
+    Ejecucion,
     ErrorInfo,
     IngestList,
     IngestReport,
@@ -127,6 +128,13 @@ class DataRepository(Protocol):
         page: int = 1,
         size: int = DEFAULT_SIZE,
     ) -> RunStatus: ...
+
+    def list_runs(self) -> list[Ejecucion]:
+        """Every launched run, newest first; empty when none was launched.
+
+        Each run's status, settings and progress come from ``get_run_status``.
+        """
+        ...
 
     def get_run_error(self, run_id: str) -> ErrorInfo | None:
         """The error a stopped or failed run recorded; ``Ejecucion`` (contract v1) has none."""

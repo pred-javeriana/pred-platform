@@ -189,6 +189,13 @@ def test_run_status_without_any_run_is_an_empty_state(repo: DalRepository) -> No
     assert doc.tasks == [] and doc.ejecucion is None
 
 
+def test_list_runs_without_any_run_or_database_is_empty(
+    repo: DalRepository, tmp_path: Path
+) -> None:
+    assert repo.list_runs() == []
+    assert DalRepository(tmp_path / "missing.db").list_runs() == []
+
+
 def test_selection_list_without_any_run_is_an_empty_state(repo: DalRepository) -> None:
     # The selection is real (G4): with nothing launched there is no data, and no gap blocks it.
     doc = repo.list_sku_selections(RUN)

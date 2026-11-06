@@ -3,20 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}{{ page_title | default("PRED") }}{% endblock %}</title>
+  <title>{% block title %}{{ wizard.page_title if wizard else (page_title ~ " · PRED" if page_title else "PRED") }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ static_url('css/pico.min.css') }}">
-  <link rel="stylesheet" href="{{ static_url('css/pred.css') }}?v=ux-5">
+  <link rel="stylesheet" href="{{ static_url('css/pred.css') }}?v=ux-8">
   <link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
   <script src="{{ static_url('js/htmx.min.js') }}" defer></script>
-  <script src="{{ static_url('js/pred.js') }}?v=ux-4" defer></script>
+  <script src="{{ static_url('js/pred.js') }}?v=ux-8" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body class="pred-shell">
+<body class="pred-shell{% if wizard %} has-rail{% endif %}">
   <a class="pred-skip" href="#contenido">Saltar al contenido</a>
   {% include "partials/icons.html" %}
   {% include "partials/navigation.html" %}
+  {% if wizard %}{% include "partials/wizard_rail.html" %}{% endif %}
   <main class="pred-main" id="contenido" tabindex="-1">
+    {% if wizard %}{% include "partials/wizard_header.html" %}{% endif %}
     {% block content %}{% endblock %}
+    {% if wizard and not locked %}{% include "partials/wizard_footer.html" %}{% endif %}
   </main>
   {% block scripts %}{% endblock %}
 </body>

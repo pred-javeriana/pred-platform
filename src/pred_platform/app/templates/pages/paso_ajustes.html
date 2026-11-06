@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "components/alerts.html" import alert %}
+{% from "components/buttons.html" import button %}
+{% from "components/terms.html" import day %}
+
+{# Ajustes: el formulario de una corrida nueva, o lo que se lanzó (record). #}
+{% block content %}
+  {% if source == "fixture" %}
+  <p class="pred-meta">Datos de prueba</p>
+  {% endif %}
+
+  {% if record %}
+  <section class="pred-panel" aria-labelledby="titulo-ajustes">
+    <h2 id="titulo-ajustes">Ajustes de esta corrida</h2>
+    <dl class="pred-check">
+      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+      <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
+      {% if reserve %}
+      <div><dt>Fecha de corte</dt><dd>{{ day(reserve.t_star) }}<span class="pred-subvalue">Después de esta fecha, {{ format_count(reserve.reserved_days) }} días quedan reservados para probar.</span></dd></div>
+      {% endif %}
+    </dl>
+    {% if source != "fixture" %}
+    <p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>
+    {% endif %}
+  </section>
+  {% else %}
+  {% if notice %}{{ alert(notice[1], variant=notice[0]) }}{% endif %}
+  {% include "partials/execution_launch.html" %}
+  {% endif %}
+{% endblock %}

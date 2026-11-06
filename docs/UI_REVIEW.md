@@ -29,14 +29,19 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
 
 ## Composición y navegación
 
-- **Jerarquía.** Cada página es una sola columna: el encabezado con la acción, el resumen de la
-  situación y, debajo, pestañas de detalle con la evidencia bajo demanda. No hay columna
-  lateral. A anchos de 390 px y 320 px no hay desborde de página; las tablas se desplazan
+- **Jerarquía.** Cada paso es una sola columna: el encabezado con la acción, el resumen de la
+  situación, debajo, pestañas de detalle con la evidencia bajo demanda y, al pie, Atrás y
+  Siguiente. A anchos de 390 px y 320 px no hay desborde de página; las tablas se desplazan
   localmente y las cifras no se parten.
-- **Navegación.** La barra superior numera las superficies en el orden del flujo (1 Datos,
-  2 Ejecución, 3 Resultados) y marca la actual con `aria-current="page"`.
-- **Datos.** El resumen del archivo reúne nombre, estado, conteos, mezcla de clases y continuar.
-  Continuar es la acción primaria tras aceptar la ingesta; cargar otro archivo es secundario.
+- **Navegación.** La barra superior lleva a Corridas (marcada con `aria-current="page"` en el
+  inicio) y nombra la corrida que se ve. La barra de pasos es una lista ordenada de los cinco
+  pasos: el actual lleva `aria-current="step"`, cada paso dice su estado en texto para lectores
+  de pantalla y un paso bloqueado no es un enlace. Se abre con el puntero o con el foco del
+  teclado, sin mover la página, y bajo 900 px la reemplaza un resumen compacto. Siguiente
+  deshabilitado dice por qué con `aria-describedby`.
+- **Datos.** El resumen del archivo reúne nombre, estado, conteos y mezcla de clases. Siguiente,
+  al pie del paso y fuera de las pestañas de evidencia, es la acción primaria tras aceptar la
+  ingesta; cargar otro archivo es secundario.
   El resumen global precede a las pestañas, y el gráfico ADI–CV² y la tabla se abren juntos e
   indican que corresponden a la página filtrada.
 - **Navegador de evidencia.** Datos ofrece Diagnóstico, Clases y SKU, Cargar otro archivo e Historial.
@@ -48,9 +53,9 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
 - **Ejecución.** Muestra la corrida actual primero: estado, acciones, etapas del motor como
   pasos numerados (`aria-current="step"` en la etapa en curso) y progreso circular que usa el
   porcentaje existente y conteos textuales. Los conteos por estado son enlaces al panel de
-  tareas filtrado. Desde Datos con `ingest_id`, o tras un envío inválido, la configuración de
-  lanzamiento se presenta primero y abierta, con el botón Lanzar de ancho intrínseco y un solo
-  chevron en los disclosures.
+  tareas filtrado. La configuración de lanzamiento es el paso Ajustes y Lanzar, de ancho
+  intrínseco, es la única acción primaria de Revisar y lanzar; los disclosures llevan un solo
+  chevron.
 - **Resultados.** Abre en Resumen cuando la ejecución tiene evidencia M3 publicada y, si no, en
   la pestaña SKU. «Veredictos», paginada, tiene una fila por SKU con clase, familia y
   modelo campeones, veredicto con su explicación, r frente a la línea base, ventanas y
@@ -79,8 +84,8 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
   intersectan a 1280, 535 y 320 px.
 - **Poda.** El texto de un ensayo podado conserva la regla o motivo registrado. `podada` tiene
   icono y representación propios, distintos de `fallida`.
-- **Nueva ejecución desde Resultados.** La acción secundaria «Nueva ejecución» abre el
-  formulario de lanzamiento con la ingesta de la ejecución mostrada y respeta las
+- **Nueva corrida desde Resultados.** La acción secundaria «Nueva corrida con estos datos» abre
+  Ajustes de una corrida nueva con la ingesta de la corrida mostrada y respeta las
   comprobaciones de capacidad.
 
 ## Actualización de Ejecución
@@ -122,7 +127,7 @@ están fuera de él, igual que la configuración contextual de lanzamiento.
 | Resultados | La interfaz no elige campeones ni calcula métricas, distribuciones, ratios, pruebas o p-valores, y conserva `null` con su causa. El filtro de familia es de familia evaluada, no campeona. Segmento, exportación CSV y reimportación de configuración pertenecen a M4. |
 | Resultados | Los cinco veredictos M3 (`FALLO_TECNICO`, `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO`, `EXPLORATORIO`) no equivalen al vocabulario retrospectivo v1 de las fixtures. |
 | Ejecución | `RunStatus` no expone la etapa actual ni el error de una corrida sin tareas. La interfaz no los deduce de errores ni de tareas paginadas. |
-| Ejecución | El selector de lanzamiento ofrece hasta 200 ingestas y filtra las aceptadas dentro de esa página, así que no es un catálogo exhaustivo. La selección desde Datos conserva `ingest_id`. |
+| Ajustes | El selector de datos ofrece hasta 200 ingestas y filtra las aceptadas dentro de esa página, así que no es un catálogo exhaustivo. El archivo elegido en Datos queda en el borrador de la corrida nueva. |
 | Ejecución | Una etapa gráfica o una serie temporal del progreso requeriría datos adicionales del contrato. |
 | Datos | Un informe ausente para un identificador concreto produce un estado no disponible. |
 | Fundacional | La plataforma no ejecuta ni verifica la inferencia Chronos-2; eso lo hace el motor. |

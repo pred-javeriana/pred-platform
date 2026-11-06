@@ -2,19 +2,23 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 
-{# El formulario en filas que llenan el ancho: los datos junto a la ventana de evaluación, las
-   familias junto a las que admite cada clase y, plegado, lo que casi nunca cambia. Importar una
-   configuración es otra tarea y va aparte. #}
+{# Los ajustes de una corrida nueva, en filas que llenan el ancho: los datos junto a la ventana de
+   evaluación, las familias junto a las que admite cada clase y, plegado, lo que casi nunca
+   cambia. «Continuar» (al pie del paso) guarda el borrador; lanzar se hace en Revisar. Importar
+   una configuración es otra tarea y va aparte. #}
 <section class="pred-panel pred-launch-section" id="lanzar" aria-labelledby="titulo-lanzar">
-  <h2 id="titulo-lanzar">Nueva ejecución</h2>
-  <p class="pred-meta">Elija los datos, la ventana de evaluación y las familias de modelos. La ejecución queda en cola y empieza cuando le toca el turno.</p>
+  <h2 id="titulo-lanzar">Datos y ajustes</h2>
+  <p class="pred-meta">Elija los datos, la ventana de evaluación y las familias de modelos. Nada empieza todavía: en el paso siguiente revisa todo antes de lanzar.</p>
   {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
   {% if form_errors.get("form") %}{{ alert(form_errors["form"], variant="error") }}{% endif %}
 
   {% if not ingests %}
-    <p class="pred-note pred-note--muted">Todavía no hay ningún archivo de datos aceptado. Cargue y valide un archivo en <a href="/datos">Datos</a> para poder ejecutar.</p>
+    <p class="pred-note pred-note--muted">Todavía no hay ningún archivo de datos aceptado. Cargue y valide un archivo en <a href="/corridas/nueva/datos">Datos</a> para poder ejecutar.</p>
   {% else %}
-  <form method="post" action="/ejecucion/lanzar" class="pred-launch">
+  <form method="post" action="/corridas/nueva/ajustes" class="pred-launch" id="{{ launch_form_id }}">
+    {# El primer botón de envío del formulario es el que usa Enter en un campo: Continuar, que
+       valida. Atrás y los pasos de la barra llevan su destino en su propio botón, más abajo. #}
+    <button type="submit" class="pred-sr-only" tabindex="-1" aria-hidden="true">Continuar a Revisar y lanzar</button>
     <div class="pred-launch__row">
       <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
         <label class="pred-field__label" for="ingest_id">Datos</label>
@@ -59,24 +63,7 @@
           </ul>
         </div>
       </div>
-      {% if exclusion_warning %}
-      {# Cada grupo nombra sus SKU sin cortar un identificador; una lista larga va plegada. #}
-      <div class="pred-alert pred-alert--warning" role="alert" id="aviso-familias">
-        <svg aria-hidden="true"><use href="#i-warn"></use></svg>
-        <div>
-          {% for part in exclusion_warning.parts %}
-          {% set names %}{% for sku in part.skus %}<span class="mono pred-nowrap">{{ sku }}</span>{{ ", " if not loop.last }}{% endfor %}{% if part.more %}{{ " y " if part.skus }}{{ format_count(part.more) }} más{% endif %}{% endset %}
-          {% if part.skus | length <= 20 %}
-          <p>{{ part.text }}: {{ names }}.{% if part.advice %} {{ part.advice }}{% endif %}</p>
-          {% else %}
-          <p>{{ part.text }}.{% if part.advice %} {{ part.advice }}{% endif %}</p>
-          <details class="pred-details pred-details--inline"><summary>Ver los {{ format_count(part.skus | length + part.more) }} SKU</summary><div class="pred-evidence-scroll"><p>{{ names }}</p></div></details>
-          {% endif %}
-          {% endfor %}
-          <p>{{ exclusion_warning.closing }}</p>
-        </div>
-      </div>
-      {% endif %}
+      {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
     </fieldset>
 
     <details class="pred-details pred-launch__advanced"{% if form_errors | select("in", ["step", "seasonality", "trials", "seed", "workers"]) | list %} open{% endif %}><summary>Ajustes de búsqueda y reproducibilidad</summary>
@@ -89,16 +76,7 @@
     </div>
     </details>
 
-    <div class="pred-launch__submit">
-      {% if exclusion_confirmation %}
-      {{ button("Lanzar de todos modos", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none, name="confirmar", value=exclusion_confirmation) }}
-      <p class="pred-meta">Lanza con estas familias y deja fuera de la comparación los SKU del aviso. Si cambia las familias, el formulario vuelve a revisarlas.</p>
-      {% else %}
-      {{ button("Lanzar ejecución", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
-      {% endif %}
-      {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El procesador de ejecuciones de esta instalación se detuvo: la ejecución quedará en cola. El registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta instalación no procesa ejecuciones por sí sola: la ejecución quedará en cola hasta que se inicie el procesador de ejecuciones con <span class="mono">make worker</span>.</p>{% endif %}
-    </div>
-    {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se puede lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
+    {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se podrá lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
   </form>
 
   <details class="pred-details pred-launch__import" id="importar"{% if import_error %} open{% endif %}>

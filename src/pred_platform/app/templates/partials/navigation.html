@@ -1,6 +1,9 @@
-<nav class="pred-nav" aria-label="Principal">
-  <a class="pred-nav__brand" href="/datos">PRED</a>
-  {% for surface, href, label in (("datos", "/datos", "Datos"), ("ejecucion", "/ejecucion", "Ejecución"), ("resultados", "/resultados", "Resultados")) %}
-  <a class="pred-nav__link" href="{{ href }}"{% if active_surface == surface %} aria-current="page"{% endif %}><span class="pred-nav__step" aria-hidden="true">{{ loop.index }}</span>{{ label }}</a>
-  {% endfor %}
-</nav>
+{# La barra superior: el inicio (Corridas), la corrida que se está viendo y «Nueva corrida». #}
+<header class="pred-topbar">
+  <nav class="pred-topbar__nav" aria-label="Principal">
+    <a class="pred-topbar__brand" href="/">PRED</a>
+    <a class="pred-topbar__link" href="/"{% if at_home %} aria-current="page"{% endif %}>Corridas</a>
+    {% if wizard %}<span class="pred-topbar__crumb"><span aria-hidden="true">›</span><strong>{{ wizard.title }}</strong></span>{% endif %}
+  </nav>
+  {% with new_run_class="pred-btn pred-btn--subtle pred-btn--small pred-topbar__new" %}{% include "partials/new_run.html" %}{% endwith %}
+</header>

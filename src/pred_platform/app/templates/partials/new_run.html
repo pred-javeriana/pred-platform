@@ -1,0 +1,8 @@
+{# «Nueva corrida»: necesita leer el panel de datos, comparar familias y guardar la selección
+   (seleccion.run_action). Si falta algo, sale deshabilitada y dice qué. Recibe ``new_run_class``
+   con las clases del botón. #}
+{% if new_run.enabled %}
+<a class="{{ new_run_class }}" href="/corridas/nueva/datos"><svg aria-hidden="true"><use href="#i-play"></use></svg>Nueva corrida</a>
+{% else %}
+<a class="{{ new_run_class }}" role="link" aria-disabled="true" title="No se puede empezar una corrida nueva. {{ new_run.missing | join(' ') }}"><svg aria-hidden="true"><use href="#i-play"></use></svg>Nueva corrida</a>
+{% endif %}

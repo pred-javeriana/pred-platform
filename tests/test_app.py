@@ -42,30 +42,32 @@ def test_an_unknown_address_is_a_pred_page_in_a_browser_and_json_elsewhere(
     page = client.get("/no-existe", headers={"Accept": "text/html,application/xhtml+xml"})
     assert page.status_code == 404
     assert "<h1>Página no encontrada</h1>" in page.text
-    assert 'href="/datos"' in page.text and "Not Found" not in page.text
+    assert re.search(r'href="/">\s*Ir a Corridas\s*</a>', page.text)
+    assert "Not Found" not in page.text
     # A probe or a script that does not ask for HTML keeps the JSON answer.
     probe = client.get("/no-existe")
     assert probe.status_code == 404 and probe.json() == {"detail": "Not Found"}
 
 
-def test_root_redirects_to_datos(client: TestClient) -> None:
+def test_root_is_the_corridas_home(client: TestClient) -> None:
     response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/datos"
+    assert response.status_code == 200
+    assert "<title>Corridas · PRED</title>" in response.text
 
 
 def test_datos_is_spanish_light_themed_page(client: TestClient) -> None:
-    html = client.get("/datos").text
+    html = client.get("/corridas/nueva/datos").text
     assert '<html lang="es" data-theme="light">' in html
 
 
 def test_datos_links_only_host_relative_local_assets(client: TestClient) -> None:
-    html = client.get("/datos").text
+    html = client.get("/corridas/nueva/datos").text
     references = re.findall(r'(?:href|src)="([^"]+)"', html)
     assert references, "the page should link its stylesheets and script"
     for ref in references:
         url = urlparse(ref)
-        if url.path in {"/datos", "/ejecucion", "/resultados"}:
+        if url.path == "/" or url.path.startswith("/corridas/"):
+            assert not url.scheme and not url.netloc, f"{ref} is not host-relative"
             continue
         if url.path.startswith("#") or not url.path:
             continue

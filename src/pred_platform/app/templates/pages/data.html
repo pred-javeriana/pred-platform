@@ -5,8 +5,6 @@
 {% from "components/states.html" import unavailable_state, error_state %}
 {% from "components/evidence.html" import evidence_nav, evidence_panel %}
 
-{% block title %}Datos · PRED{% endblock %}
-
 {# La carga: el formulario y las columnas que espera el motor. upload_first la muestra como la
    acción principal de la página; si no, es una pestaña del detalle. Las columnas se ven abiertas
    en los dos casos: llenan la mitad derecha, que plegada quedaba vacía. #}
@@ -33,14 +31,9 @@
 </form>
 {% endmacro %}
 
+{# El paso Datos. En el registro de una corrida lanzada (record) se ve el archivo que usó, sin
+   cargar otro ni elegir del historial. #}
 {% block content %}
-  <header class="pred-page-header">
-    <div>
-      <h1>Datos</h1>
-      <p>Cargue el historial de demanda en CSV. PRED lo valida, publica el panel diario y clasifica cada SKU por su patrón de demanda antes de ejecutar.</p>
-    </div>
-  </header>
-
   {% if source == "fixture" %}
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
@@ -52,7 +45,7 @@
   {% if report_error and not report %}
   <section class="pred-section" id="diagnostico">
     {% if report_error.code not in ("platform.artifact_missing", "platform.engine_unavailable") %}
-    {{ error_state(report_error.title, report_error.detail or "Vuelva a intentar la operación.", report_error.code, "Reintentar", "/datos") }}
+    {{ error_state(report_error.title, report_error.detail or "Vuelva a intentar la operación.", report_error.code, "Reintentar", datos_path) }}
     {% else %}
     {{ unavailable_state(
       report_error.title,
@@ -61,7 +54,7 @@
       report_error.blocked_by
     ) }}
     {% if report_error.retryable %}
-    <p class="pred-actions">{{ button("Reintentar", variant="secondary", href="/datos", icon="i-rotate") }}</p>
+    <p class="pred-actions">{{ button("Reintentar", variant="secondary", href=datos_path, icon="i-rotate") }}</p>
     {% endif %}
   {% endif %}
   </section>
@@ -75,7 +68,7 @@
     {% if report.status == "accepted" and topology and not topology_error %}
     {% set data_sections = data_sections + [{"id": "explorar-topologia", "label": "Clases y SKU"}] %}
     {% endif %}
-    {{ evidence_nav(data_sections + [
+    {{ evidence_nav(data_sections if record else data_sections + [
       {"id": "carga", "label": "Cargar otro archivo"},
       {"id": "historial", "label": "Historial"}
     ], "Secciones de datos") }}
@@ -83,9 +76,11 @@
     {% if report.status == "accepted" %}
     {% with topology_details=true %}{% include "partials/data_topology.html" %}{% endwith %}
     {% endif %}
+    {% if not record %}
     {% call evidence_panel("carga", "Cargar otro archivo", "Valide otro CSV en lugar del actual; el historial conserva las ingestas anteriores.", active=form_error or report.status == "needs_confirmation" and not pending_token) %}
       {{ upload_form(false) }}
     {% endcall %}
+    {% endif %}
   {% else %}
   <section class="pred-panel pred-upload-panel" id="carga" aria-labelledby="titulo-carga">
     <h2 id="titulo-carga">Cargar un archivo</h2>
@@ -97,6 +92,7 @@
     <h2 class="pred-sr-only">Archivos ya cargados</h2>
   {% endif %}
 
+  {% if not record %}
   {% call evidence_panel("historial", "Historial de ingestas", "Los archivos ya cargados. Abra uno para revisar su diagnóstico y sus clases de demanda.", active=request.query_params.get("history_page")) %}
     {% if list_error %}
       {{ unavailable_state(
@@ -111,5 +107,6 @@
       <p class="pred-meta">Todavía no hay ingestas registradas.</p>
     {% endif %}
   {% endcall %}
+  {% endif %}
   </div>
 {% endblock %}

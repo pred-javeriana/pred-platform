@@ -4,20 +4,10 @@
 {% from "components/tabs.html" import tabs %}
 {% from "components/buttons.html" import button %}
 
-{% block title %}Resultados · PRED{% endblock %}
+{# El encabezado del paso lleva el grupo de semillas y lanzar otra corrida con los mismos datos. #}
+{% set step_actions %}{{ button("Grupo de semillas", variant="subtle", href="/resultados/grupo") }}{% include "partials/results_action.html" %}{% endset %}
 
 {% block content %}
-  <header class="pred-page-header">
-    <div>
-      <h1>Resultados</h1>
-      <p>El veredicto de la evaluación final para cada producto, de la vista general al detalle de un SKU.</p>
-    </div>
-    <div class="pred-page-header__actions">
-      {{ button("Grupo de semillas", variant="subtle", href="/resultados/grupo") }}
-      {% if run and run.ejecucion %}{{ button("Ver la ejecución", variant="subtle", href="/ejecucion?ejecucion=" ~ run.ejecucion.id) }}{% endif %}
-      {% include "partials/results_action.html" %}
-    </div>
-  </header>
   {% if source == "fixture" %}
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}

@@ -150,6 +150,14 @@ class FixtureRepository(M3FixtureSource):
         return frozenset()  # the examples declare no origin
 
     # -------------------------------------------------------------------- run status
+    def list_runs(self) -> list[models.Ejecucion]:
+        runs = [
+            doc.ejecucion
+            for doc in (_load(models.RunStatus, example) for example in self.scenario.run_status)
+            if doc.ejecucion is not None
+        ]
+        return sorted(runs, key=lambda run: int(run.id), reverse=True)
+
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         return None  # the examples record no run error
 

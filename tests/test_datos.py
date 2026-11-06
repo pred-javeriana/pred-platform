@@ -73,7 +73,7 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
     assert response.status_code == 200
     assert "Cargar y validar" in html
     assert 'type="file"' in html
-    assert "pred-nav" in html
+    assert "pred-topbar" in html and "pred-rail" in html
     assert "Aún no se han cargado datos." not in html
     assert "Cuando la carga esté conectada" not in html
     assert "Administración" not in html
@@ -124,13 +124,17 @@ def test_accepted_upload_delegates_and_exposes_ingest_id(tmp_path: Path) -> None
     assert "Filas validadas" in html
     assert ACCEPTED[:12] in html
     assert "Clases de demanda" in html
-    assert "Continuar a Ejecución" in html
-    assert 'href="/ejecucion"' in html
+    # Siguiente elige el archivo para la corrida nueva y lleva a Ajustes.
+    assert '<form method="post" action="/corridas/nueva/datos" class="pred-footnav__form">' in html
+    assert f'<input type="hidden" name="ingest_id" value="{ACCEPTED}">' in html
+    assert "Continuar a Ajustes" in html
 
 
 def test_rejected_history_shows_actionable_diagnosis_without_topology(tmp_path: Path) -> None:
     client, repo = _client(tmp_path, "normal")
     html = client.get(f"/datos?ingest_id={REJECTED}").text
+    # A file that cannot run is not offered as the step's Siguiente.
+    assert 'id="siguiente-motivo">Elija un archivo válido para continuar.' in html
     assert "El archivo necesita correcciones" in html
     assert "demand_qty" in html
     assert "Renombre la columna" in html
@@ -177,7 +181,7 @@ def test_cancel_drops_the_pending_upload_so_it_can_no_longer_be_confirmed(
     assert len(client.app.state.pending_uploads) == 1  # type: ignore[attr-defined]
 
     cancelled = client.post("/datos/cancelar", data={"pendiente": token}, follow_redirects=False)
-    assert (cancelled.status_code, cancelled.headers["location"]) == (303, "/datos")
+    assert (cancelled.status_code, cancelled.headers["location"]) == (303, "/corridas/nueva/datos")
     assert len(client.app.state.pending_uploads) == 0  # type: ignore[attr-defined]
 
     late = client.post("/datos/cargar", data={"pendiente": token, "confirm_overwrite": "true"})

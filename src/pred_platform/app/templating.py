@@ -4,16 +4,25 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from pred_platform import mensajes
 from pred_platform.app import presentation, resultados_m3, seleccion
+from pred_platform.data.deps import get_repository
+
+
+def _shell(request: Request) -> dict[str, Any]:
+    """Lo que la barra superior de cada página necesita: si se puede empezar una corrida nueva
+    (``seleccion.run_action``) y, si no, por qué."""
+    return {"new_run": seleccion.run_action(get_repository(request).get_capabilities())}
 
 
 def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2Templates:
     """Una sola instancia, registrada en application.state.templates."""
-    templates = Jinja2Templates(directory=str(directory))
+    templates = Jinja2Templates(directory=str(directory), context_processors=[_shell])
     templates.env.globals["static_url"] = static_url
     # «capitalize» de Jinja pasa el resto a minúsculas («Rmse»); este solo sube la primera letra.
     templates.env.filters["capitalize_first"] = lambda text: str(text)[:1].upper() + str(text)[1:]

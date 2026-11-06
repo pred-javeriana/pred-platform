@@ -8,7 +8,7 @@
 <tr{% if current %} class="is-current"{% endif %}>
   <th scope="row">
     {% if item.ingest_id %}
-    <a href="/datos?ingest_id={{ item.ingest_id }}" title="Ingesta {{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
+    <a href="{{ datos_path }}?ingest_id={{ item.ingest_id }}" title="Ingesta {{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
     {% if current %}<span class="pred-subvalue">La que se muestra arriba</span>{% endif %}
     {% else %}
     {{ item.name }}

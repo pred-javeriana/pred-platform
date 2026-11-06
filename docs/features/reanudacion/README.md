@@ -11,7 +11,7 @@ trabajo actual y la importación final marcaba temporalmente tareas exitosas com
 
 | Situación | Resultado |
 | --- | --- |
-| Cerrar la pestaña del navegador | El worker del servidor continúa; volver a `/ejecucion` permite seguirlo. |
+| Cerrar la pestaña del navegador | El worker del servidor continúa; volver a la corrida (Corridas, o `/corridas/<id>/ejecucion`) permite seguirlo. |
 | Cerrar normalmente la aplicación | Se termina el proceso del motor y la ejecución queda pendiente para el siguiente worker. |
 | Caída abrupta del servidor | Al iniciar, se detiene el motor registrado de esta base y se vuelve a encolar la misma ejecución. Un pid que ahora usa otro proceso no se detiene. |
 | Servir una copia tomada durante una corrida | El motor de la base original sigue: su `PRED_DB_PATH` nombra otra base, así que el worker de la copia no lo detiene ni relanza la corrida, que en la copia queda `ejecutando`. |

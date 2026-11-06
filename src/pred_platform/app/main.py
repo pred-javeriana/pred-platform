@@ -9,12 +9,20 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from pred_platform.app.datos import PendingUploads
-from pred_platform.app.routers import catalog, data, execution, exportar, group_results, results
+from pred_platform.app.routers import (
+    catalog,
+    corridas,
+    data,
+    execution,
+    exportar,
+    group_results,
+    results,
+)
 from pred_platform.app.templating import build_templates
 from pred_platform.config import Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
@@ -117,10 +125,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @application.get("/")
-    def index() -> RedirectResponse:
-        return RedirectResponse(url="/datos", status_code=307)
-
     # Una dirección que no existe se lee como una página de PRED en un navegador; un cliente que
     # no pide HTML (una sonda, un script) sigue recibiendo el JSON de siempre.
     @application.exception_handler(StarletteHTTPException)
@@ -131,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return await http_exception_handler(request, exc)
 
+    application.include_router(corridas.router)
     application.include_router(data.router)
     application.include_router(execution.router)
     application.include_router(results.router)

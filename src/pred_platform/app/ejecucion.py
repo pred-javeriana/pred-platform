@@ -182,6 +182,19 @@ class LaunchIngest:
     synthetic: bool
 
 
+def accepted_ingests(repository: DataRepository) -> list[LaunchIngest]:
+    """Las ingestas aceptadas, marcadas si su informe declara datos sintéticos."""
+    try:
+        listing = repository.list_ingests(size=200)
+    except DataLayerError:
+        return []
+    accepted = [item for item in listing.items if item.status == "accepted"]
+    synthetic = repository.synthetic_ingests(
+        [item.ingest_id for item in accepted if item.ingest_id]
+    )
+    return [LaunchIngest(item, item.ingest_id in synthetic) for item in accepted]
+
+
 SYNTHETIC_INGEST = (
     "El archivo elegido declara datos sintéticos y la plataforma solo ejecuta datos reales. "
     "Elija un archivo de datos reales."
@@ -609,6 +622,24 @@ def run_compares_nothing(
     return compares_nothing(by_class, families)
 
 
+def run_resumable(repository: DataRepository, status: RunStatus) -> bool:
+    """Si la corrida de ``status`` se puede reanudar, con la regla de :func:`offers_resume`. El
+    error guardado y la topología solo se leen si se detuvo, el único estado cuyo tono depende de
+    esto. La barra de pasos, Corridas y la barra de contexto de Resultados leen esta lectura."""
+    run = status.ejecucion
+    if run is None:
+        return False
+    if run.estado != "detenida":
+        return offers_resume(run.estado, None)
+    try:
+        error = run_error(repository.get_run_error(run.id))
+    except DataLayerError:
+        error = None
+    return offers_resume(
+        run.estado, error, nothing_to_compare=run_compares_nothing(repository, run, status)
+    )
+
+
 def run_actions(
     estado: str | None,
     *,
@@ -684,6 +715,27 @@ def _percent(share: float) -> str:
     """Una proporción del motor en porcentaje, sin decimales si es entera: 0,1 es «10»."""
     value = round(100 * share, 6)
     return format_decimal(value, 0 if value == int(value) else 1)
+
+
+def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Los ajustes de una corrida por lanzar (los valores del formulario), como «etiqueta, valor»,
+    con los mismos nombres que :func:`settings_items` usa para una corrida lanzada."""
+    families = values.get("families") or []
+    trials = values.get("trials") or ""
+    return [
+        ("Familias", ", ".join(family_label(f) for f in families) if families else "—"),
+        ("Métrica de selección", metric_label(values.get("metric") or _DEFAULTS.metric)),
+        ("Mínimo de entrenamiento", f"{values.get('min_train')} días"),
+        ("Horizonte", f"{values.get('horizon')} días"),
+        ("Paso entre ventanas", f"{values.get('step')} días"),
+        ("Estacionalidad", f"{values.get('seasonality')} días"),
+        (
+            "Configuraciones a probar por familia",
+            trials if trials else "Las que cada familia prueba por defecto",
+        ),
+        ("Semilla", str(values.get("seed"))),
+        ("Procesos en paralelo", str(values.get("workers"))),
+    ]
 
 
 def settings_items(settings: RunSettings) -> list[tuple[str, str]]:

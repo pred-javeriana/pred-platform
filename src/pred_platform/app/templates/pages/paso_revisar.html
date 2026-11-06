@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "components/alerts.html" import alert %}
+{% from "components/buttons.html" import button %}
+{% from "components/terms.html" import when %}
+
+{# Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por fila, y el botón Lanzar. En una
+   corrida lanzada (record), lo que se lanzó. #}
+{% block content %}
+  {% if source == "fixture" %}
+  <p class="pred-meta">Datos de prueba</p>
+  {% endif %}
+
+  <section class="pred-panel" aria-labelledby="titulo-revisar">
+    <h2 id="titulo-revisar">{{ "Datos y ajustes lanzados" if record else "Compruebe antes de lanzar" }}</h2>
+    <dl class="pred-check">
+      {% if record %}
+      <div><dt>Datos</dt><dd>{{ facts.file_name or abbreviate_id(facts.ingest_id or "") }}{% if facts.n_skus is not none %}<span class="pred-subvalue">{{ format_count(facts.n_skus) }} productos</span>{% endif %}</dd></div>
+      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+      <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
+      <div><dt>Lanzada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
+      {% else %}
+      <div><dt>Datos</dt><dd>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}{% if ingest and ingest.n_skus is not none %}<span class="pred-subvalue">{{ format_count(ingest.n_skus) }} productos</span>{% endif %}{% if form_errors.get("ingest_id") %}<span class="pred-subvalue pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}</dd><a href="/corridas/nueva/datos">Cambiar</a></div>
+      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd><a href="/corridas/nueva/ajustes">Cambiar</a></div>{% endfor %}
+      {% endif %}
+    </dl>
+    {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
+    {% if form_errors and not record %}{{ alert("Estos ajustes no se pueden lanzar: " ~ (form_errors.values() | join(" ")) ~ " Corríjalos en Ajustes.", variant="error") }}{% endif %}
+  </section>
+
+  {% if not record %}
+  <section class="pred-panel pred-action-card" aria-labelledby="titulo-lanzar">
+    <div>
+      <h2 id="titulo-lanzar">Lanzar</h2>
+      <p class="pred-lead">Al lanzar, la corrida entra en cola y el procesador la empieza. Puede cerrar el navegador: la corrida sigue, y en Corridas la encontrará en este recorrido.</p>
+      {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
+      {% if exclusion_confirmation %}<p class="pred-meta">Lanzar así deja fuera de la comparación los SKU del aviso. Si cambia las familias en Ajustes, PRED vuelve a revisarlas.</p>{% endif %}
+      {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El procesador de ejecuciones de esta instalación se detuvo: la corrida quedará en cola. El registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta instalación no procesa corridas por sí sola: la corrida quedará en cola hasta que se inicie el procesador de ejecuciones con <span class="mono">make worker</span>.</p>{% endif %}
+      {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se puede lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
+    </div>
+    <form method="post" action="/ejecucion/lanzar" class="pred-action-card__do" id="lanzar">
+      <input type="hidden" name="ingest_id" value="{{ ingest_id }}">
+      {% for family in form.families %}<input type="hidden" name="families" value="{{ family }}">{% endfor %}
+      {% for name in ("metric", "min_train", "horizon", "step", "seasonality", "trials", "seed", "workers") %}<input type="hidden" name="{{ name }}" value="{{ form[name] }}">{% endfor %}
+      {% if exclusion_confirmation %}<input type="hidden" name="confirmar" value="{{ exclusion_confirmation }}">{% endif %}
+      {{ button("Lanzar de todos modos" if exclusion_confirmation else "Lanzar la corrida", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none or form_errors, extra="pred-btn--large") }}
+    </form>
+  </section>
+  {% endif %}
+{% endblock %}

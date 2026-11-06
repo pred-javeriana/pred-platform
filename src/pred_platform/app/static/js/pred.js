@@ -7,6 +7,30 @@
     if (nombre) nombre.textContent = entrada.files.length ? entrada.files[0].name : "Ningún archivo seleccionado";
   });
 
+  /* En Ajustes de una corrida nueva, un paso de la barra guarda lo escrito antes de salir: envía
+     el formulario, sin validar, con el paso al que va («destino») en un campo temporal.
+     «submit()» lee el formulario antes de volver, así que el campo se quita enseguida: la página
+     que devuelve Atrás del navegador no guarda ningún destino, y Continuar y Enter siguen yendo
+     a Revisar. «submit()» y no «requestSubmit()»: este último reemplazó la entrada del historial
+     en Chrome y Atrás ya no vuelve a Ajustes. Sin script, el enlace va directo. */
+  document.addEventListener("click", function (evento) {
+    if (evento.defaultPrevented || evento.button !== 0) return;
+    if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.altKey) return;
+    const enlace = evento.target.closest && evento.target.closest(".pred-rail a[href^='/corridas/nueva/']");
+    const formulario = document.getElementById("formulario-ajustes");
+    if (!enlace || !formulario) return;
+    const paso = enlace.getAttribute("href").split(/[?#]/)[0].split("/").pop();
+    if (paso === "ajustes") return;
+    evento.preventDefault();
+    const destino = document.createElement("input");
+    destino.type = "hidden";
+    destino.name = "destino";
+    destino.value = paso;
+    formulario.appendChild(destino);
+    formulario.submit();
+    destino.remove();
+  });
+
   function colorProgreso(pct) {
     const desde = [46, 110, 158];
     const hasta = [62, 107, 79];
