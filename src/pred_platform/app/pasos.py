@@ -184,6 +184,10 @@ class RailStep:
 class NavLink:
     label: str
     href: str
+    # En Ajustes de una corrida nueva, Atrás envía el formulario del paso (``submits``) con el
+    # paso al que va (``destino``), para que el borrador guarde lo escrito antes de salir.
+    submits: str | None = None
+    destino: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,7 +312,11 @@ def draft_wizard(
             )
         )
     elif current == "ajustes":
-        back = NavLink("Atrás: Datos", step_href(NEW, "datos"))
+        back = (
+            NavLink("Atrás: Datos", step_href(NEW, "datos"), submits=AJUSTES_FORM, destino="datos")
+            if can_continue
+            else NavLink("Atrás: Datos", step_href(NEW, "datos"))
+        )
         nxt = (
             NavNext(
                 "Continuar a Revisar y lanzar", hint="Nada empieza todavía.", submits=AJUSTES_FORM

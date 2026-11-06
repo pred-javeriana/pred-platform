@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 
-from pred_platform.app.borrador import clear_draft, read_draft, save_draft
+from pred_platform.app.borrador import Draft, clear_draft, read_draft, save_draft
 from pred_platform.app.configuracion import (
     MAX_BYTES,
     ConfigExportError,
@@ -68,6 +68,7 @@ from pred_platform.app.ejecucion import (
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
     NEW,
+    STEP_KEYS,
     RunFacts,
     StepKey,
     draft_resume,
@@ -416,6 +417,7 @@ def _render_ajustes(
     import_error: str | None = None,
     imported: tuple[str, str] | None = None,
     exclusion: tuple[ExclusionWarning, str | None] | None = None,
+    save: Draft | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     """Ajustes de la corrida nueva: el formulario con los valores del borrador (o los enviados).
@@ -424,9 +426,9 @@ def _render_ajustes(
     formulario y, si el archivo trae otra ingesta que esta plataforma no tiene, lo deja sin
     ingesta elegida, para que nadie lance los ajustes importados sobre otros datos sin darse
     cuenta. ``exclusion`` es el aviso de los SKU que quedarían sin campeón, junto al rechazo que
-    impide continuar.
+    impide continuar. ``save`` es el borrador que la página guarda y muestra en la barra de pasos.
     """
-    draft = read_draft(request)
+    draft = save or read_draft(request)
     values = form.values if form is not None else dict(draft.values)
     if form is None:
         values["ingest_id"] = ingest_id or draft.ingest_id or ""
@@ -457,7 +459,10 @@ def _render_ajustes(
         "control_reason": control.reason,
         "launch_form_id": AJUSTES_FORM,
     }
-    return _render(request, "pages/paso_ajustes.html", context, status_code)
+    response = _render(request, "pages/paso_ajustes.html", context, status_code)
+    if save is not None:
+        save_draft(response, save)
+    return response
 
 
 def _render_revisar(
@@ -527,10 +532,13 @@ def paso_ajustes(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
     if corrida == NEW:
-        # ``?ingest_id=`` llega de un enlace que ya eligió el archivo (Resultados, rutas viejas).
-        return _render_ajustes(
-            request, repository, ingest_id=request.query_params.get("ingest_id") or None
-        )
+        # ``?ingest_id=`` llega de un enlace que ya eligió el archivo (Resultados, rutas viejas):
+        # si se puede ejecutar, el borrador lo guarda, para que Datos, la barra de pasos y Revisar
+        # lean el mismo archivo que muestra la página.
+        linked = request.query_params.get("ingest_id") or None
+        runnable = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
+        save = read_draft(request).with_ingest(linked) if linked and linked in runnable else None
+        return _render_ajustes(request, repository, ingest_id=linked, save=save)
     facts = run_facts(repository, corrida)
     if facts is None:
         return render_missing_run(request, corrida)
@@ -551,9 +559,14 @@ def guardar_ajustes(
     trials: Annotated[str | None, Form()] = None,
     seed: Annotated[str | None, Form()] = None,
     workers: Annotated[str | None, Form()] = None,
+    destino: Annotated[str | None, Form()] = None,
 ) -> HTMLResponse | RedirectResponse:
     """«Continuar a Revisar y lanzar»: valida como lo hará Lanzar y guarda el borrador. Nada se
-    lanza todavía; un error vuelve a Ajustes con su explicación."""
+    lanza todavía; un error vuelve a Ajustes con su explicación.
+
+    Con ``destino`` (Atrás o un paso de la barra), guarda lo escrito sin validarlo y va a ese
+    paso: salir de Ajustes nunca pierde un valor. Revisar valida igual que «Continuar».
+    """
     fields = {
         "min_train": min_train,
         "horizon": horizon,
@@ -563,6 +576,12 @@ def guardar_ajustes(
         "seed": seed,
         "workers": workers,
     }
+    if destino in STEP_KEYS and destino != "revisar":
+        draft = read_draft(request)
+        typed = {"families": families or [], "metric": metric, **fields}
+        response = RedirectResponse(step_href(NEW, destino), status_code=303)
+        save_draft(response, draft.with_values(ingest_id or draft.ingest_id, typed))
+        return response
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
     if form.errors or ingest_id is None:
@@ -686,7 +705,7 @@ def importar_configuracion(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
     archivo: Annotated[UploadFile | None, File()] = None,
 ) -> HTMLResponse:
-    """Rellena el formulario de Ajustes con un archivo exportado. No lanza ni guarda nada."""
+    """Rellena Ajustes y el borrador con un archivo exportado, sin validarlo. No lanza."""
     raw = b"" if archivo is None else archivo.file.read(MAX_BYTES + 1)
     imported = parse_config(raw if isinstance(raw, bytes) else raw.encode("utf-8"))
     if imported.values is None:
@@ -709,7 +728,9 @@ def importar_configuracion(
             f"plataforma (ingesta {(imported.ingest_sha256 or '')[:12]}…). Elija otro archivo "
             "antes de lanzar: los resultados solo son comparables sobre los mismos datos.",
         )
-    return _render_ajustes(request, repository, form=form, imported=notice)
+    # El borrador guarda lo importado: salir de Ajustes no lo pierde (Revisar lo valida).
+    save = read_draft(request).with_values(form.values["ingest_id"] or None, form.values)
+    return _render_ajustes(request, repository, form=form, imported=notice, save=save)
 
 
 def _render_action_error(

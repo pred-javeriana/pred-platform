@@ -20,8 +20,11 @@ no administration screen. M0 is out of the flow.
   Siguiente go. It reads nothing; `app/corridas.py` reads the repository (`list_runs`,
   `get_run_status`, the published M3 runs) and builds the home and the facts the rail needs.
 - The draft of a new run (the chosen file and settings) lives in a browser session cookie
-  (`app/borrador.py`). Siguiente in Datos and Ajustes writes it; launching clears it and
-  validates everything again with the worker's rule.
+  (`app/borrador.py`). Siguiente in Datos and Ajustes writes it. Leaving Ajustes by Atrás or a
+  rail step also writes what was typed, unvalidated (`destino` on `POST /corridas/nueva/ajustes`;
+  `static/js/pred.js` turns a rail click into that post). A link that chooses a runnable file
+  (`/corridas/nueva/ajustes?ingest_id=`) and an imported configuration write it too. Revisar and
+  launching validate everything again with the worker's rule; launching clears the draft.
 - `docs/UI_FLOW.md` maps the routes and lists their `DataRepository` operations and
   capabilities.
 - `static/css/pred.css` and `templates/components/` are the reusable design system on

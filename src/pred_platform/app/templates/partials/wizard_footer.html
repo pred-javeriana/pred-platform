@@ -4,7 +4,10 @@
 {% set next = wizard.next %}
 <nav class="pred-footnav" aria-label="Navegación entre pasos">
   <div class="pred-footnav__side">
-    {% if wizard.back %}<a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ wizard.back.href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>{{ wizard.back.label }}</a>{% endif %}
+    {% if wizard.back and wizard.back.submits %}
+    {# Atrás guarda lo escrito en Ajustes antes de salir, sin validarlo todavía. #}
+    <button class="pred-btn pred-btn--subtle pred-btn--large" type="submit" form="{{ wizard.back.submits }}" name="destino" value="{{ wizard.back.destino }}" formnovalidate><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>{{ wizard.back.label }}</button>
+    {% elif wizard.back %}<a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ wizard.back.href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>{{ wizard.back.label }}</a>{% endif %}
   </div>
   {% if next %}
   <div class="pred-footnav__side pred-footnav__side--end">

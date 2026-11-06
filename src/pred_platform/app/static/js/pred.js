@@ -7,6 +7,28 @@
     if (nombre) nombre.textContent = entrada.files.length ? entrada.files[0].name : "Ningún archivo seleccionado";
   });
 
+  /* En Ajustes de una corrida nueva, un paso de la barra guarda lo escrito antes de salir: envía
+     el formulario con el paso al que va («destino»). Sin script, el enlace va directo. */
+  document.addEventListener("click", function (evento) {
+    if (evento.defaultPrevented || evento.button !== 0) return;
+    if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.altKey) return;
+    const enlace = evento.target.closest && evento.target.closest(".pred-rail a[href^='/corridas/nueva/']");
+    const formulario = document.getElementById("formulario-ajustes");
+    if (!enlace || !formulario) return;
+    const paso = enlace.getAttribute("href").split(/[?#]/)[0].split("/").pop();
+    if (paso === "ajustes") return;
+    evento.preventDefault();
+    let destino = formulario.querySelector("input[type=hidden][name=destino]");
+    if (!destino) {
+      destino = document.createElement("input");
+      destino.type = "hidden";
+      destino.name = "destino";
+      formulario.appendChild(destino);
+    }
+    destino.value = paso;
+    formulario.submit();
+  });
+
   function colorProgreso(pct) {
     const desde = [46, 110, 158];
     const hasta = [62, 107, 79];

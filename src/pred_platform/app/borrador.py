@@ -50,6 +50,15 @@ class Draft:
     def with_settings(self, ingest_id: str, values: dict[str, Any]) -> Draft:
         return Draft(ingest_id=ingest_id, values=_clean(values), settings_ready=True)
 
+    def with_values(self, ingest_id: str | None, values: dict[str, Any]) -> Draft:
+        """Lo escrito en Ajustes sin validar todavía (al salir por Atrás, la barra de pasos o al
+        importar una configuración). Ajustes sigue completo solo si nada cambió."""
+        cleaned = _clean(values)
+        unchanged = ingest_id == self.ingest_id and cleaned == self.values
+        return Draft(
+            ingest_id=ingest_id, values=cleaned, settings_ready=self.settings_ready and unchanged
+        )
+
 
 def _clean(raw: object) -> dict[str, Any]:
     """Solo los campos conocidos, con su forma; lo demás toma el valor por defecto."""

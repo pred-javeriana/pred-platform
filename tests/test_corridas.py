@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import Response
 from fastapi.testclient import TestClient
 
-from pred_platform.app.borrador import COOKIE
+from pred_platform.app.borrador import COOKIE, Draft, save_draft
+from pred_platform.app.configuracion import FORMAT, FORMAT_VERSION
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
@@ -386,6 +389,130 @@ def test_settings_that_cannot_run_stay_in_ajustes_with_the_reason(env: Env) -> N
     assert "set-cookie" not in response.headers
     assert "<title>Ajustes · Corrida nueva · PRED</title>" in response.text
     assert "is-error" in response.text
+
+
+def _choose(client: TestClient, ingest_id: str) -> None:
+    chosen = client.post("/corridas/nueva/datos", data={"ingest_id": ingest_id})
+    assert chosen.url.path == "/corridas/nueva/ajustes"
+
+
+def _draft_cookie(ingest_id: str) -> str:
+    response = Response()
+    save_draft(response, Draft(ingest_id=ingest_id))
+    found = re.search(rf"{COOKIE}=([^;]+)", response.headers["set-cookie"])
+    assert found is not None
+    return found.group(1)
+
+
+def test_leaving_ajustes_by_atras_keeps_what_was_typed(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    ajustes = client.get("/corridas/nueva/ajustes").text
+    # Atrás sends the form with its destination and without the browser's validation.
+    back = re.search(r'<button[^>]*name="destino"[^>]*>', _footer(ajustes))
+    assert back is not None
+    assert 'form="formulario-ajustes"' in back.group(0) and 'value="datos"' in back.group(0)
+    assert "formnovalidate" in back.group(0)
+
+    left = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "149", "destino": "datos"},
+        follow_redirects=False,
+    )
+
+    assert (left.status_code, left.headers["location"]) == (303, "/corridas/nueva/datos")
+    assert COOKIE in left.headers["set-cookie"]
+    assert re.search(r'name="seed"[^>]*value="149"', client.get("/corridas/nueva/ajustes").text)
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert '<input type="hidden" name="seed" value="149">' in revisar
+    assert '<input type="hidden" name="families" value="foundation">' in revisar
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_a_value_left_unfinished_is_kept_but_revisar_still_checks_it(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    left = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "datos"},
+        follow_redirects=False,
+    )
+    assert left.headers["location"] == "/corridas/nueva/datos"
+    assert re.search(r'name="horizon"[^>]*value="0"', client.get("/corridas/nueva/ajustes").text)
+    # Ajustes is not done until «Continuar» validates it, and Revisar does not launch it.
+    ajustes = client.get("/corridas/nueva/ajustes").text
+    assert [state for state, _ in _rail(ajustes)][:2] == ["done", "todo"]
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert "Estos ajustes no se pueden lanzar" in revisar
+    # The rail's Revisar link checks like «Continuar»: an error stays in Ajustes, unsaved.
+    to_revisar = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "revisar"},
+        follow_redirects=False,
+    )
+    assert to_revisar.status_code == 200 and "is-error" in to_revisar.text
+    assert "set-cookie" not in to_revisar.headers
+
+
+def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(SOME_INGEST))
+
+    ajustes = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+
+    assert COOKIE in ajustes.headers["set-cookie"]
+    assert f'<option value="{env.ingest_id}" selected>' in ajustes.text
+    # Datos, the rail and Revisar read the file the page shows, not the earlier draft.
+    assert [state for state, _ in _rail(ajustes.text)][0] == "done"
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert f'<input type="hidden" name="ingest_id" value="{env.ingest_id}">' in revisar
+    assert SOME_INGEST not in revisar
+
+
+def test_a_link_with_a_file_that_cannot_run_leaves_the_draft_alone(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    for ingest_id in (SOME_INGEST, _fixture_id("failed")):
+        response = client.get(f"/corridas/nueva/ajustes?ingest_id={ingest_id}")
+        assert "set-cookie" not in response.headers
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert f'<input type="hidden" name="ingest_id" value="{env.ingest_id}">' in revisar
+
+
+def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
+    client = _dal_client(env)
+    document = {
+        "formato": FORMAT,
+        "schema_version": FORMAT_VERSION,
+        "run_id": "r-0123456789abcdef",
+        "identidad": "r-0123456789abcdef",
+        "ingesta_sha256": env.ingest_id,
+        "parametros": {
+            "min_train": 40,
+            "horizon": 2,
+            "step": 14,
+            "seasonality": 7,
+            "metric": "mae",
+            "families": ["classical", "ml"],
+            "trials": 1,
+            "seed": 149,
+            "workers": 2,
+        },
+        "versiones": {"plataforma": "0.1.0"},
+    }
+    imported = client.post(
+        "/ejecucion/configuracion",
+        files={"archivo": ("c.json", json.dumps(document).encode(), "application/json")},
+    )
+    assert imported.status_code == 200 and COOKIE in imported.headers["set-cookie"]
+
+    # Leaving Ajustes and coming back keeps the import; Revisar lists it.
+    client.get("/corridas/nueva/datos")
+    assert re.search(r'name="seed"[^>]*value="149"', client.get("/corridas/nueva/ajustes").text)
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert '<input type="hidden" name="seed" value="149">' in revisar
+    assert f'<input type="hidden" name="ingest_id" value="{env.ingest_id}">' in revisar
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
 @pytest.mark.parametrize("cookie", ["no-es-base64", "eyJpbmdlc3RfaWQiOiAxfQ", "W10"])

@@ -1152,7 +1152,10 @@ button.pred-btn {
   border-color: var(--primary);
 }
 
-.pred-btn--subtle {
+/* Con «button» delante, para ganarle al borde transparente de «button.pred-btn»: Atrás en
+   Ajustes es un botón que envía el formulario y se ve igual que el enlace de los otros pasos. */
+.pred-btn--subtle,
+button.pred-btn--subtle {
   background: var(--surface);
   color: var(--ink-soft);
   border-color: var(--border-strong);

@@ -25,8 +25,10 @@ inicio, nombra la corrida que se ve y ofrece «Nueva corrida».
 
 Una corrida nueva vive en `/corridas/nueva/<paso>` hasta que se lanza. Su borrador (el archivo
 y los ajustes elegidos) se guarda en una cookie de sesión del navegador (`app/borrador.py`). El
-borrador se escribe solo con Siguiente en Datos o en Ajustes y se descarta al lanzar; lanzar
-vuelve a validar todo con la regla del worker. Una corrida lanzada vive en
+borrador se escribe con Siguiente en Datos o en Ajustes; al salir de Ajustes por Atrás o por la
+barra de pasos guarda lo escrito sin validarlo, y también lo escriben un enlace que elige un
+archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`) y una configuración importada. Revisar
+y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. Una corrida lanzada vive en
 `/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
 se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
 «Después» de cada paso, su estado (hecho, por hacer, en curso o bloqueado) y adónde llevan Atrás
