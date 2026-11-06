@@ -57,6 +57,12 @@ def _status(repository: DataRepository, corrida: str) -> RunStatus | None:
     return status if status.ejecucion is not None else None
 
 
+def resolve_run_id(repository: DataRepository, reference: str) -> str | None:
+    """El número de corrida de una referencia anterior: número, id del motor o ``latest``."""
+    status = _status(repository, reference)
+    return status.ejecucion.id if status is not None and status.ejecucion is not None else None
+
+
 def _facts(
     repository: DataRepository,
     status: RunStatus,

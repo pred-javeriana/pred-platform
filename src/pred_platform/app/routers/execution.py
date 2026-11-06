@@ -29,7 +29,7 @@ from pred_platform.app.configuracion import (
     export_config,
     parse_config,
 )
-from pred_platform.app.corridas import draft_facts, ingests_by_id, run_facts
+from pred_platform.app.corridas import draft_facts, ingests_by_id, resolve_run_id, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
     FAMILY_CHOICES,
@@ -260,11 +260,7 @@ def _context(
 
 
 def _latest_run_id(repository: DataRepository) -> str | None:
-    try:
-        status = repository.get_run_status(LATEST, size=1)
-    except (DataLayerError, InvalidQuery):
-        return None
-    return status.ejecucion.id if status.ejecucion is not None else None
+    return resolve_run_id(repository, LATEST)
 
 
 def _render_execution(
@@ -298,7 +294,9 @@ def ejecucion(
     if params.get("lanzar"):
         return redirect_with_query(step_href(NEW, "datos"), [])
     wanted = (params.get("ejecucion") or "").strip()
-    target = _latest_run_id(repository) if wanted in ("", LATEST) else wanted
+    target = resolve_run_id(repository, wanted or LATEST)
+    if target is None and wanted not in ("", LATEST):
+        target = wanted  # Una referencia desconocida conserva la página 404.
     if target is None:
         return redirect_with_query(step_href(NEW, "datos"), [])
     return redirect_with_query(step_href(target, "ejecucion"), items, drop=("ejecucion",))

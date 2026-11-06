@@ -20,6 +20,7 @@ from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.data.fixtures import FixtureRepository
 from tests import formulario_html
+from tests.m3_publicada import publish
 from tests.test_worker import Env, _fixture_id
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -117,6 +118,39 @@ def _main(html: str) -> str:
 def test_the_old_addresses_lead_to_their_step_with_the_same_query(old: str, new: str) -> None:
     response = _fixture_client().get(old, follow_redirects=False)
     assert (response.status_code, response.headers["location"]) == (307, new)
+
+
+@pytest.mark.parametrize("surface", ["ejecucion", "resultados"])
+@pytest.mark.parametrize("reference", ["number", "engine", "latest"])
+def test_an_old_link_opens_the_run_it_names(env: Env, surface: str, reference: str) -> None:
+    client = _dal_client(env)
+    for seed in ("11", "12"):
+        assert client.post(
+            "/ejecucion/lanzar", data={"ingest_id": env.ingest_id, **FORM, "seed": seed}
+        ).status_code == 200
+    ((engine_id,),) = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")
+    publish(
+        env.db, ingesta_sha256=env.ingest_id, run_id_m2=engine_id,
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+    )
+    wanted = {"number": "1", "engine": engine_id, "latest": "latest"}[reference]
+    expected = "2" if reference == "latest" else "1"
+
+    page = client.get(f"/{surface}?ejecucion={wanted}", follow_redirects=True)
+
+    assert page.status_code == 200
+    assert page.url.path == f"/corridas/{expected}/{surface}"
+    assert f"Corrida #{expected} · semilla" in page.text
+    # Only an absent reference chooses the most recent published evaluation.
+    if surface == "resultados":
+        product = client.get(f"/resultados/sku/FIL-0001?ejecucion={wanted}")
+        # There is no SKU detail in these queued runs, but its page keeps the named run.
+        assert product.status_code == 404
+        assert product.url.path == f"/corridas/{expected}/resultados/producto/FIL-0001"
+        assert f"Corrida #{expected} · semilla" in product.text
+        default = client.get("/resultados", follow_redirects=True)
+        assert default.url.path == "/corridas/1/resultados"
+        assert "Corrida #1 · semilla 11" in default.text
 
 
 def test_without_runs_the_old_addresses_start_a_new_run() -> None:
