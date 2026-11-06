@@ -99,7 +99,7 @@ after(async () => {
   if (profile) await rm(profile, { recursive: true, force: true });
 });
 
-test("La vista de prueba permanece fija y no inventa un fallo del servidor", async () => {
+test("La vista de prueba permanece fija y no inventa un fallo del servidor", { timeout: 15000 }, async () => {
   await open(process.env.PRED_FIXTURE_URL + "/ejecucion");
   const before = await evaluate("document.querySelector('#pulso-transcurrido').textContent");
   await tick(15000);
@@ -111,7 +111,7 @@ test("La vista de prueba permanece fija y no inventa un fallo del servidor", asy
   assert.equal(await evaluate("document.querySelector('#pulso-ejecucion').textContent.includes('no se actualiza sola')"), true);
 });
 
-test("Pausar congela el tiempo y reanudar recupera el tiempo real", async () => {
+test("Pausar congela el tiempo y reanudar recupera el tiempo real", { timeout: 15000 }, async () => {
   await open(process.env.PRED_LIVE_URL + "/ejecucion");
   await tick(2000);
   await evaluate("document.querySelector('#pausar-actualizacion').click()");
@@ -123,7 +123,7 @@ test("Pausar congela el tiempo y reanudar recupera el tiempo real", async () => 
   assert.notEqual(await evaluate("document.querySelector('#pulso-transcurrido').textContent"), before);
 });
 
-test("Un fallo de conexión cambia la ayuda y el siguiente sondeo la recupera", async () => {
+test("Un fallo de conexión cambia la ayuda y el siguiente sondeo la recupera", { timeout: 15000 }, async () => {
   await open(process.env.PRED_LIVE_URL + "/ejecucion");
   await command("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await tick(15000);
@@ -137,7 +137,7 @@ test("Un fallo de conexión cambia la ayuda y el siguiente sondeo la recupera", 
   assert.match(await evaluate("document.querySelector('#actualizacion-ayuda').textContent"), /Se actualiza cada 2 segundos/);
 });
 
-test("Una petición sin respuesta vence a los diez segundos y cambia la ayuda", async () => {
+test("Una petición sin respuesta vence a los diez segundos y cambia la ayuda", { timeout: 15000 }, async () => {
   await open(process.env.PRED_LIVE_URL + "/ejecucion");
   await command("Fetch.enable", { patterns: [{ urlPattern: "*/ejecucion/estado*" }] });
   try {

@@ -506,22 +506,42 @@ def test_unknown_filter_keeps_the_run_and_all_tasks(parameter: str) -> None:
     assert "Valor desconocido" not in response.text
 
 
+@pytest.mark.parametrize("failure", [ArtifactMissing, InvalidQuery])
 def test_failed_focus_read_falls_back_to_complete_task_list(
-    monkeypatch: pytest.MonkeyPatch,
+    env: Env, monkeypatch: pytest.MonkeyPatch, failure: type[Exception]
 ) -> None:
-    client, repo = _fixture_client("errores")
+    app = create_app(replace(env.settings, worker="off"))
+    client = TestClient(app)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        dal.plan_tasks(
+            conn,
+            run.id,
+            corte=run.t_star,
+            seed=run.seed,
+            units=[(f"SKU-{i:03}", "ml:lightgbm") for i in range(60)],
+        )
+        conn.execute(
+            "UPDATE tareas SET estado = 'fallida', detalle_error = ? WHERE sku = 'SKU-000'",
+            (json.dumps(run_stopped_error()),),
+        )
+    repo = app.state.repository
     original = repo.get_run_status
 
     def read(run_id: str, **kwargs: Any) -> models.RunStatus:
         if kwargs.get("size") == 5 and kwargs.get("estado"):
-            raise ArtifactMissing("lectura temporalmente no disponible")
+            raise failure("lectura temporalmente no disponible")
         return original(run_id, **kwargs)
 
     monkeypatch.setattr(repo, "get_run_status", read)
     html = client.get("/ejecucion").text
     assert "tareas fallaron hasta ahora" not in _text(html)
-    assert "5 tareas coinciden con la consulta." in _text(html)
+    assert "60 tareas coinciden con la consulta." in _text(html)
     assert "Tareas de la ejecución filtrada" in html
+    assert 'aria-label="Paginación de tareas"' in html
+    assert "Página 1 de 2" in _text(html) and "Siguiente" in html
 
 
 def test_origin_timeout_does_not_expose_command(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -546,6 +566,13 @@ def test_launch_refuses_when_no_sku_has_enough_history(env: Env) -> None:
     assert "se necesitan 444 días antes del corte" in response.text
     assert 'id="min_train"' in response.text and 'aria-invalid="true"' in response.text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_launch_accepts_the_exact_history_required(env: Env) -> None:
+    # 49 + 2 + 3 * 7 = 72, los días que tienen los SKU de esta ingesta.
+    response = _launch(_dal_client(env), env, min_train="49")
+    assert response.status_code == 303
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
 
 
 def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
