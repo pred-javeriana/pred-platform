@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "summary": "The contract loader refuses a schema_version whose major uses non-ASCII digits as a contract error.",
+  "files": [
+    {
+      "path": "src/pred_platform/contract/loader.py",
+      "summary": "Version major parsing accepts only ASCII digits.",
+      "annotations": [
+        {
+          "newRange": [26, 26],
+          "summary": "_major returns None for a head such as a superscript two, so parse_as raises ContractInvalid.",
+          "rationale": "str.isdigit accepts superscript digits but int() refuses them, so parse_as raised ValueError, which its docstring does not allow. Same rule as lectura.run_number. Verified by the new case in test_a_missing_or_malformed_version_is_a_contract_error, which raised ValueError before the change.",
+          "author": "fm/pred-platform-readonly-hardening"
+        }
+      ]
+    }
+  ]
+}
