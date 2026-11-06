@@ -31,7 +31,7 @@ def _read(
 ):
     for seed, run_id in enumerate(selected):
         if run_id not in {r.run_id for r in by_seed[seed]}:
-            raise EvidenceInvalid(f"Seleccione una corrida PUBLICADA de la semilla {seed}.")
+            raise EvidenceInvalid(f"Elija una evaluación publicada para la semilla {seed}.")
     return repository.get_m3_group(selected)
 
 
@@ -65,7 +65,7 @@ def group_results(
                 (p for p in group.significance.products if p.sku == context["sku"]), None
             )
         elif any(request.query_params.get(f"semilla{s}") for s in range(3)):
-            context["problem"] = "Falta elegir una corrida publicada para cada semilla."
+            context["problem"] = "Falta elegir una evaluación publicada para cada semilla."
     except (EvidenceInvalid, ValueError) as exc:
         context["problem"] = str(exc)
     return request.app.state.templates.TemplateResponse(

@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse
 from pred_platform.app.charts import champion_forecast_svg, champion_share_svg
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
 from pred_platform.app.datos import error_view, ingest_name, page_meta
-from pred_platform.app.ejecucion import offers_resume, run_compares_nothing
+from pred_platform.app.ejecucion import offers_resume, run_compares_nothing, run_error
 from pred_platform.app.presentation import FAMILY_ORDER, describe_run, family_label
 from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
@@ -206,16 +206,16 @@ def _describe_run(
 
 
 def _resumable(repository: DataRepository, status: RunStatus, run: Ejecucion) -> bool:
-    """Si la ejecución mostrada se puede reanudar, con las reglas de Ejecución; el error guardado
-    y la topología solo se leen si se detuvo."""
+    """Si la ejecución mostrada se puede reanudar, con la regla de Ejecución; el error guardado
+    y la topología solo se leen si se detuvo, el único estado cuyo tono depende de esto."""
     if run.estado != "detenida":
         return offers_resume(run.estado, None)
     try:
-        error = repository.get_run_error(run.id)
+        error = run_error(repository.get_run_error(run.id))
     except DataLayerError:
         error = None
-    return offers_resume(run.estado, error.code if error else None) and not (
-        run_compares_nothing(repository, run, status)
+    return offers_resume(
+        run.estado, error, nothing_to_compare=run_compares_nothing(repository, run, status)
     )
 
 

@@ -1165,20 +1165,27 @@ def _stopped_in_l2(env: Env, monkeypatch: pytest.MonkeyPatch, message: str) -> T
 def test_an_l2_failure_that_a_resume_repeats_is_not_offered_again(
     env: Env, monkeypatch: pytest.MonkeyPatch, message: str
 ) -> None:
-    page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
+    client = _stopped_in_l2(env, monkeypatch, message)
+    page = client.get("/ejecucion?ejecucion=1").text
 
     assert 'id="accion-reanudar"' not in page
     assert "Reanudar no se ofrece: la ejecución fallaría igual." in _text(page)
+    # Resultados reads the same rule: the run is not shown as one that could be resumed.
+    assert _run_state_tone(page) == "err"
+    assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "err"
 
 
 def test_an_l2_failure_of_some_units_can_still_be_resumed(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     message = "L2 sin resultados (6 unidades, 0 SKU excluidos): FIL-0001/ml: MemoryError"
-    page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
+    client = _stopped_in_l2(env, monkeypatch, message)
+    page = client.get("/ejecucion?ejecucion=1").text
 
     assert _resume_button(page) == "enabled"
     assert "fallaría igual" not in page
+    assert _run_state_tone(page) == "warn"
+    assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "warn"
 
 
 def test_a_run_whose_families_compare_nothing_is_not_offered_again(

@@ -105,6 +105,10 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
 
 **Grupo de semillas** is a separate compact view at `/resultados/grupo`, linked from the
 Resultados header. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2.
+Each option reads «Publicada el …» from `GroupRunOption.creado_en` in Bogotá time, with the run id
+and the data fingerprint in `title`. A source without a test reads its cause through
+`resultados_m3.source_cause`: the message catalog title for an exclusion, plain Spanish for a test
+cause, and the published code in `title`.
 It shows group significance by class, full/common-population lumpy medians and ranges, a query
 for one SKU's three source tests, and a JSON download with all values and source row keys.
 Until all three publications are selected, it shows no final-group numbers. The calculation
