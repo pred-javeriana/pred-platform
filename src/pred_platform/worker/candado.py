@@ -14,6 +14,7 @@ waits a moment for a probe to let go before it concludes that another worker run
 
 from __future__ import annotations
 
+import errno
 import os
 import sys
 import threading
@@ -54,7 +55,15 @@ class WorkerLock:
         while True:
             try:
                 _lock(fd)
-            except OSError:
+            except OSError as exc:
+                busy = (
+                    exc.errno in (errno.EACCES, errno.EDEADLK)
+                    if sys.platform == "win32"
+                    else isinstance(exc, BlockingIOError)
+                )
+                if not busy:
+                    os.close(fd)
+                    raise OSError(exc.errno, exc.strerror, str(self.path)) from exc
                 if time.monotonic() >= deadline:
                     os.close(fd)
                     return False

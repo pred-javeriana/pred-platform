@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sqlite3
 import sys
 import threading
@@ -104,15 +105,35 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
     worker = Worker(settings)
-    if args.once:
-        worker.drain()
-        return _status(settings.db_path)
-
     stop = threading.Event()
+    signals = [signal.SIGINT, signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):
+        signals.append(signal.SIGHUP)
+    previous = {sig: signal.getsignal(sig) for sig in signals}
+
+    def interrupt(signum: int, frame: object) -> None:
+        # A second signal must not interrupt the engine's termination and reaping.
+        for sig in signals:
+            signal.signal(sig, signal.SIG_IGN)
+        raise KeyboardInterrupt
+
     try:
+        for sig in signals:
+            signal.signal(sig, interrupt)
+        if args.once:
+            worker.drain()
+            return _status(settings.db_path)
         worker.run_forever(stop)
     except KeyboardInterrupt:
         stop.set()
+        if args.once:
+            return 130  # interrupted, not a successfully drained queue
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
     return 0
 
 

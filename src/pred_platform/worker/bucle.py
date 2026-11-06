@@ -57,15 +57,10 @@ class Worker:
     def run_forever(self, stop: threading.Event) -> None:
         """Process queued runs until shutdown, leaving interrupted work queued for restart.
 
-        While another worker holds the database, or the database is read-only, this one waits
-        without touching any run. A lock file it cannot create, as in a read-only folder, stops
-        it with a logged reason, so the app reports that no worker follows the queue.
+        While another worker holds the database, the database is read-only, or its lock cannot
+        be opened, this worker waits without touching any run and retries until shutdown.
         """
-        try:
-            if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
-                return
-        except OSError as exc:
-            self._log_unlockable(exc)
+        if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
             return
         try:
             try:
@@ -86,8 +81,8 @@ class Worker:
     def drain(self) -> None:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``).
 
-        While another worker holds the database, that worker runs the queue and this one exits;
-        on a read-only database there is nothing it may run.
+        While another worker holds the database, this one exits without running anything;
+        queued work waits for that worker or the next one. A read-only database is left alone.
         """
         if database_read_only(self.settings.db_path):
             _logger.warning(
@@ -99,10 +94,11 @@ class Worker:
             locked = self._lock.acquire()
         except OSError as exc:
             self._log_unlockable(exc)
-            return
+            raise
         if not locked:
             _logger.warning(
-                "Otro worker ya atiende %s; ese worker ejecutará las corridas en cola",
+                "Otro worker ya atiende %s; --once no ejecutó nada: las corridas en cola quedan "
+                "para ese worker o para el siguiente que arranque",
                 self.settings.db_path,
             )
             return
@@ -136,17 +132,22 @@ class Worker:
         return False
 
     def _wait_for_lock(self, stop: threading.Event) -> bool:
-        """Take the database for this worker, waiting while another holds it, until ``stop``."""
-        if self._lock.acquire():
-            return True
-        _logger.warning(
-            "Otro worker ya atiende %s; este espera a que termine para seguir la cola",
-            self.settings.db_path,
-        )
-        while not stop.wait(self.poll_interval):
-            if self._lock.acquire():
-                _logger.info("Este worker atiende ahora %s", self.settings.db_path)
-                return True
+        """Wait for the database lock, retrying access and system errors until ``stop``."""
+        waiting = False
+        while not stop.is_set():
+            try:
+                if self._lock.acquire():
+                    return True
+            except OSError as exc:
+                self._log_unlockable(exc)
+            else:
+                if not waiting:
+                    _logger.warning(
+                        "Otro worker ya atiende %s; este espera a que termine para seguir la cola",
+                        self.settings.db_path,
+                    )
+                    waiting = True
+            stop.wait(self.poll_interval)
         return False
 
     def recover(self) -> None:
@@ -200,6 +201,18 @@ class Worker:
                     retryable=True,
                 )
                 self._unsettled = (run, error)
+                self._settle(conn)
+            except Exception as exc:  # noqa: BLE001 - settle every unexpected supervision failure
+                _logger.exception("Corrida %s: falló la supervisión", run.run_id)
+                conn.rollback()
+                self._unsettled = (
+                    run,
+                    platform_error(
+                        "pipeline.stage_failed",
+                        f"Falló la supervisión del motor: {type(exc).__name__}: {exc}",
+                        retryable=True,
+                    ),
+                )
                 self._settle(conn)
         return True
 
@@ -308,6 +321,7 @@ class Worker:
             follower.poll()
         except ValueError as exc:  # a progress stream this platform cannot read
             engine.terminate(process.pid)
+            process.wait()
             dal.close_open_tasks(
                 conn,
                 run.id,
@@ -326,8 +340,9 @@ class Worker:
             process.wait()
             raise
         except BaseException:
-            # An interrupt or shutdown: the engine runs in its own session, so stop it here and
-            # leave the run `ejecutando` for `recover()` to queue again.
+            # An interrupt, a shutdown or an unexpected error: the engine runs in its own
+            # session, so stop it here. Interrupts leave the run `ejecutando` for recovery;
+            # run_next settles unexpected errors before claiming more work.
             engine.terminate(process.pid)
             process.wait()
             raise

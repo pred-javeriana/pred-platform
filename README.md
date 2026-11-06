@@ -267,11 +267,12 @@ make worker                                     # follow the queue in its own pr
   with a readable error and the app keeps working.
 - **One worker per database.** A worker holds an exclusive lock on `<database>.worker.lock`
   (beside `PRED_DB_PATH`) for as long as it runs; the operating system frees it when the worker
-  exits or crashes. A worker that cannot create that file, as in a read-only folder, logs why and
-  runs nothing. A second `make worker` or app worker waits without touching any run and takes
-  over when the first stops. `--once` next to a running worker exits and leaves the queue to it,
-  so `make launch ARGS="... --once"` while the app runs only queues the run. Do not delete the
-  lock file while a worker runs.
+  exits or crashes. A worker that cannot open or lock that file logs why and retries until
+  shutdown; `--once` reports the error and exits with code 1. A second `make worker` or app worker
+  waits without touching any run and takes over when the first stops. `--once` next to a running
+  worker exits without executing anything: queued runs wait for that worker or the next one,
+  with no guarantee that either will execute them. Thus `make launch ARGS="... --once"` while the
+  app runs only queues the run. Do not delete the lock file while a worker runs.
 - **One task per engine unit** (SKU × model, decision D6): `modelo` is `familia:algoritmo`, `corte`
   is the reserve cut t\*. A SKU the engine skips becomes one `no_ejecutable` task per configured
   family, with the cause.
@@ -282,9 +283,14 @@ make worker                                     # follow the queue in its own pr
   processes, nor the order in which the families are given), so launching the same run again
   resumes it with the same task rows. Successful tasks retain their state; historical progress is not replayed as live work. Graceful app shutdown
   queues interrupted work, and a crash is recovered on startup. Ctrl-C stops the worker's engine
-  and leaves the run `ejecutando`; the next worker that takes the database, `--once` included,
-  queues it again. Closing a browser tab leaves the server worker running. The accompanying engine checkpoint change also skips successful L2/L3
-  units; updating platform alone cannot provide that guarantee. See
+  and leaves the run `ejecutando`; SIGTERM and SIGHUP do the same. The next worker that takes
+  the database, `--once` included, queues it again. Stopping one worker does not stop the work
+  while another waits on the same database: that worker resumes it immediately, outside any
+  resource guard of the stopped worker. Run the app with `PRED_WORKER=off` while a guarded CLI
+  worker serves its queue. On Linux, launching the engine requires `setpriv` (util-linux): the
+  kernel sends SIGTERM to the engine even if the supervisor dies before cleanup can run.
+  Closing a browser tab leaves the server worker running. The accompanying engine checkpoint
+  change also skips successful L2/L3 units; updating platform alone cannot provide that guarantee. See
   [recovery and verification](docs/features/reanudacion/README.md).
 - **Reading it.** `get_run_status` returns the run, its settings, reserve cut, progress over all its
   tasks and a filtered, paged list of tasks; `/ejecucion` will show it (task C4).

@@ -295,19 +295,22 @@ def stop_claimed(
 ) -> None:
     """Stop the claim (``intento``) a worker could not settle and close its tasks, in one step.
 
-    A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
-    the meantime keeps its own error and time; both release the recorded process, which the worker
-    has already reaped. A later attempt, or any other state, belongs to someone else and is left
-    alone.
+    A claim still ``ejecutando``, or published by the engine before its process was reaped,
+    becomes ``detenida`` with ``error``. One the operator stopped in the meantime keeps its own
+    error and time. All release the reaped process. A later attempt or a fully settled run is
+    left alone.
     """
     with conn:
         _begin_immediate(conn)
         row = conn.execute(
-            "SELECT estado, error_json, intento FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+            "SELECT estado, error_json, intento, pid FROM ejecuciones WHERE id = ?", (ejecucion_id,)
         ).fetchone()
-        if row is None or row[2] != intento or row[0] not in ("ejecutando", "detenida"):
+        if row is None or row[2] != intento:
             return
-        if row[0] == "ejecutando":
+        published_claim = row[0] in ("completada", "completada_con_fallos") and row[3] is not None
+        if row[0] not in ("ejecutando", "detenida") and not published_claim:
+            return
+        if row[0] == "ejecutando" or published_claim:
             conn.execute(
                 "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, pid = NULL, "
                 "error_json = ? WHERE id = ?",

@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -161,6 +162,12 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
         "PRED_DATA_ROOT": str(settings.data_root.resolve()),
         "PRED_DB_PATH": str(settings.db_path.resolve()),
     }
+    if sys.platform == "linux":
+        # setpriv execs the engine in place. The kernel also stops it when reload or a
+        # forced shutdown kills the supervisor before Python can run its cleanup.
+        if shutil.which(command[0], path=env.get("PATH")) is None:
+            raise FileNotFoundError(f"No existe el ejecutable del motor: {command[0]}")
+        command = ["setpriv", "--pdeathsig", "SIGTERM", "--", *command]
     with log_path.open("ab") as log:
         return subprocess.Popen(  # noqa: S603 - the command comes from trusted settings
             command,
@@ -199,12 +206,13 @@ def is_alive(pid: int) -> bool:
     if sys.platform == "win32":
         return _windows_is_alive(pid)
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        # A terminated child can remain a zombie until its Popen owner reaps it.
+        # It needs no grace period and must not trigger a later SIGKILL.
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
         return False
-    except PermissionError:
+    except psutil.AccessDenied:
         return True
-    return True
 
 
 def _windows_is_alive(pid: int) -> bool:
