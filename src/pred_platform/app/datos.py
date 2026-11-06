@@ -46,8 +46,8 @@ CSV_HINT = (
     f"Un archivo .csv de hasta {ingesta.MAX_BYTES // (1024 * 1024)} MiB, una fila por SKU y día."
 )
 READ_ONLY_UPLOAD = (
-    "La base de datos es de solo lectura: se pueden consultar las ingestas cargadas, pero no "
-    "cargar archivos nuevos."
+    "La base de datos es de solo lectura: puede consultar los archivos ya cargados, pero no "
+    "cargar uno nuevo."
 )
 
 

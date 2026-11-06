@@ -613,8 +613,8 @@ def test_families_that_leave_no_class_two_say_the_run_elects_no_champion(env: En
     for sku in ("FIL-0001", "FIL-0002", "FIL-0003"):
         assert sku in text
     assert (
-        "Con estas familias ningún SKU tiene dos familias que comparar: la corrida no elige "
-        "ningún campeón y puede detenerse en la etapa L2." in text
+        "Con estas familias ningún SKU tiene dos familias que comparar: la ejecución no elige "
+        "ningún campeón y puede detenerse en la etapa «Ajuste de modelos»." in text
     )
     assert "si lanza así, esos SKU quedan fuera" not in text
     assert "Lanzar de todos modos" in text
@@ -793,7 +793,7 @@ def test_a_malformed_ingest_id_is_a_form_error_not_a_server_error(env: Env, inge
     response = _launch(client, env, ingest_id=ingest_id)
 
     assert response.status_code == 200
-    assert "Elija una ingesta aceptada en Datos." in _text(response.text)
+    assert "Elija un archivo de datos aceptado en Datos." in _text(response.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
@@ -1165,20 +1165,27 @@ def _stopped_in_l2(env: Env, monkeypatch: pytest.MonkeyPatch, message: str) -> T
 def test_an_l2_failure_that_a_resume_repeats_is_not_offered_again(
     env: Env, monkeypatch: pytest.MonkeyPatch, message: str
 ) -> None:
-    page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
+    client = _stopped_in_l2(env, monkeypatch, message)
+    page = client.get("/ejecucion?ejecucion=1").text
 
     assert 'id="accion-reanudar"' not in page
     assert "Reanudar no se ofrece: la ejecución fallaría igual." in _text(page)
+    # Resultados reads the same rule: the run is not shown as one that could be resumed.
+    assert _run_state_tone(page) == "err"
+    assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "err"
 
 
 def test_an_l2_failure_of_some_units_can_still_be_resumed(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     message = "L2 sin resultados (6 unidades, 0 SKU excluidos): FIL-0001/ml: MemoryError"
-    page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
+    client = _stopped_in_l2(env, monkeypatch, message)
+    page = client.get("/ejecucion?ejecucion=1").text
 
     assert _resume_button(page) == "enabled"
     assert "fallaría igual" not in page
+    assert _run_state_tone(page) == "warn"
+    assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "warn"
 
 
 def test_a_run_whose_families_compare_nothing_is_not_offered_again(
@@ -1197,9 +1204,12 @@ def test_a_run_whose_families_compare_nothing_is_not_offered_again(
     assert env.rows("SELECT estado FROM ejecuciones") == [("detenida",)]
     assert 'id="accion-reanudar"' not in page
     assert (
-        "Reanudar no se ofrece: con las familias de esta corrida ningún SKU tiene dos familias "
+        "Reanudar no se ofrece: con las familias de esta ejecución ningún SKU tiene dos familias "
         "que comparar" in _text(page)
     )
+    # Resultados reads the same rule: the run is not shown as one that could be resumed.
+    assert _run_state_tone(page) == "err"
+    assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "err"
 
 
 def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_worker_runs(
@@ -1294,9 +1304,9 @@ def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
         env.db.parent.chmod(0o755)
         reader.close()
 
-    assert "el worker de esta aplicación se detuvo" in run_page
-    assert "empezará en cuanto el worker" not in run_page
-    assert "El worker de esta aplicación se detuvo" in form
+    assert "el procesador de ejecuciones de esta instalación se detuvo" in run_page
+    assert "empezará cuando termine" not in run_page and "worker" not in run_page
+    assert "El procesador de ejecuciones de esta instalación se detuvo" in form
     assert "no puede crear su candado" in caplog.text
     assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
 

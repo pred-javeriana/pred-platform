@@ -22,6 +22,7 @@ from pred_platform import mensajes
 from pred_platform.app.consulta import ConsultaQuery
 from pred_platform.app.presentation import (
     SKU_CLASS_ORDER,
+    Term,
     evaluation_state_label,
     family_label,
     format_count,
@@ -968,6 +969,8 @@ _CAUSES: dict[str, str] = {
     "sin_ventanas_comunes_con_linea_base": "sin ventanas comunes con la línea base",
     "escala_cero": "la escala de MASE es cero",
     "escala_no_calculable": "la escala de MASE no se pudo calcular",
+    "sin_productos_comparables": "sin productos comparables",
+    "sin_instancia_de_ambas_familias": "falta un modelo de alguna de las dos familias",
 }
 
 # Los valores que una pérdida cero deja sin definir (``perdida_cero:<campos>``).
@@ -976,6 +979,7 @@ _UNDEFINED_FIELDS: dict[str, str] = {
     "mediana_razon": "mediana de la razón",
     "ic_mediana": "intervalo de la mediana",
     "hodges_lehmann": "Hodges-Lehmann",
+    "mediana": "mediana",
 }
 
 
@@ -1005,6 +1009,9 @@ def _cause_part(code: str) -> str:
     if name == "pocos_skus" and "<" in argument:
         n, minimum = argument.split("<", 1)
         return f"{n} SKU (mínimo {minimum})"
+    if name == "pocas_ventanas_comunes" and "<" in argument:
+        n, minimum = argument.split("<", 1)
+        return f"{n} ventanas comunes (mínimo {minimum})"
     if name == "pocos_skus" and argument:
         return f"pocos SKU frente a {_families(argument)}"
     if name == "intervalo_no_bajo_1" and argument:
@@ -1022,6 +1029,18 @@ def cause_text(code: str) -> str:
     10)» y ``veredicto:NO_EVALUABLE``, «el veredicto es «No evaluable», que no lleva prueba». Las
     causas unidas por ``; `` se traducen una a una; una causa desconocida queda igual."""
     return "; ".join(_cause_part(part) for part in code.split("; "))
+
+
+def source_cause(cause: str) -> Term:
+    """La causa de una fuente sin prueba en el grupo de semillas, leída como en el resto de
+    Resultados: una exclusión («código: causa del motor») por el título del catálogo de mensajes,
+    con la causa del motor en title; una causa de la prueba, en español (:func:`cause_text`), con
+    la causa publicada en title."""
+    code, separator, detail = cause.partition(": ")
+    if separator and code in mensajes.CATALOGO:
+        return Term(cause, mensajes.titulo(code), detail)
+    text = cause_text(cause)
+    return Term(cause, text, cause if text != cause else None)
 
 
 def _side_digits(value: float, threshold: float | None, digits: int) -> int:

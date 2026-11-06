@@ -86,9 +86,11 @@ def calculate_lumpy(
     """
     per_run = [{v.sku: v for v in r.verdicts if v.sku_class == "lumpy"} for r in runs]
     if not any(per_run):
-        return LumpyEvidence((), (), (), (), "No hay productos lumpy en el grupo.")
+        return LumpyEvidence((), (), (), (), "No hay productos de demanda grumosa en el grupo.")
     if any(r.run_id not in champions for r in runs):
-        return LumpyEvidence((), (), (), (), "Falta la confirmación publicada de lumpy.")
+        return LumpyEvidence(
+            (), (), (), (), "Falta la confirmación publicada de la demanda grumosa."
+        )
     common = set.intersection(*(set(v) for v in per_run))
     # The final lumpy comparison is foundation against SARIMA and Seasonal Naive.
     # A different class champion cannot be attributed to new SARIMA draws.
@@ -98,7 +100,7 @@ def calculate_lumpy(
             (),
             (),
             (),
-            "La campeona de lumpy no es Fundacional en todas las corridas.",
+            "La campeona de la demanda grumosa no es Fundacional en todas las evaluaciones.",
         )
     comparisons = ("seasonal_naive", "classical")
     products = tuple(

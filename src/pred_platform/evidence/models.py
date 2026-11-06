@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
@@ -23,6 +24,8 @@ class GroupRunOption:
     seed: int
     ingesta_sha256: str
     run_id_m2: str | None
+    # When the publication was created (UTC); the page names each option by it.
+    creado_en: datetime | None = None
 
 
 class Verdict(BaseModel):

@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from pred_platform.dal.evidencia import _utc
 from pred_platform.dal.lectura import _open_readonly
 from pred_platform.evidence.group import calculate_significance
 from pred_platform.evidence.lumpy import LumpyEvidence, calculate_lumpy
@@ -75,7 +76,7 @@ def list_group_runs(db_path: Path) -> tuple[GroupRunOption, ...]:
         return ()
     with _snapshot(db_path) as conn:
         rows = conn.execute(
-            "SELECT c.run_id,c.run_id_m2,c.ingesta_sha256,p.protocolo "
+            "SELECT c.run_id,c.run_id_m2,c.ingesta_sha256,c.creado_en,p.protocolo "
             "FROM m3_corridas c JOIN m3_protocolos p ON p.run_id=c.run_id "
             "WHERE c.estado='PUBLICADA' AND c.datos_sinteticos=0 AND c.origen_declarado=1 "
             "ORDER BY c.creado_en DESC,c.run_id"
@@ -89,7 +90,13 @@ def list_group_runs(db_path: Path) -> tuple[GroupRunOption, ...]:
             seed = config.get("seed")
             if type(seed) is int and seed in (0, 1, 2) and "bloques" in protocol:
                 options.append(
-                    GroupRunOption(row["run_id"], seed, row["ingesta_sha256"], row["run_id_m2"])
+                    GroupRunOption(
+                        row["run_id"],
+                        seed,
+                        row["ingesta_sha256"],
+                        row["run_id_m2"],
+                        _utc(row["creado_en"]),
+                    )
                 )
         return tuple(options)
 

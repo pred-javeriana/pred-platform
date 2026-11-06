@@ -19,9 +19,9 @@
     <div class="pred-kpis__item"><dt>Con veredicto</dt><dd>{{ format_count(funnel.tras_exclusiones) }}</dd></div>
     {% for code in ("VALIDADO", "EXPLORATORIO") %}
     {% set shown = describe_status("verdict", code) %}
-    <div class="pred-kpis__item"><dt>{{ status_indicator(shown) }}</dt><dd>{{ format_count(counts[code]) }}</dd><p class="pred-kpis__note">{{ shown.hint }}</p></div>
+    <div class="pred-kpis__item"><dt>{{ status_indicator(shown) }}</dt><dd>{{ format_count(counts[code]) }}</dd><dd class="pred-kpis__note">{{ shown.hint }}</dd></div>
     {% endfor %}
-    <div class="pred-kpis__item"><dt>No evaluados</dt><dd>{{ format_count(funnel.no_evaluados) }}</dd><p class="pred-kpis__note">Sin comparación válida con la línea base: {{ verdict_label("FALLO_TECNICO") | lower }}, {{ verdict_label("NO_EVALUABLE") | lower }} o {{ verdict_label("EVIDENCIA_INSUFICIENTE") | lower }}.</p></div>
+    <div class="pred-kpis__item"><dt>No evaluados</dt><dd>{{ format_count(funnel.no_evaluados) }}</dd><dd class="pred-kpis__note">Sin comparación válida con la línea base: {{ verdict_label("FALLO_TECNICO") | lower }}, {{ verdict_label("NO_EVALUABLE") | lower }} o {{ verdict_label("EVIDENCIA_INSUFICIENTE") | lower }}.</dd></div>
   </dl>
   <p class="pred-meta">Conteos de toda la ejecución, no de una página ni de un filtro. <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}">Ver la lista de SKU</a>.</p>
 </section>

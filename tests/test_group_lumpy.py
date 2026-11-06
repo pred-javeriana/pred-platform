@@ -174,7 +174,7 @@ def test_missing_confirmation_is_reported_not_as_zero_effect(lumpy_db: Path) -> 
     sql(lumpy_db, "DELETE FROM m3_comparaciones WHERE run_id='seed-2'")
     sql(lumpy_db, "DELETE FROM m3_confirmaciones WHERE run_id='seed-2'")
     result = read_group(lumpy_db, RUNS)
-    assert result.lumpy.cause == "Falta la confirmación publicada de lumpy."
+    assert result.lumpy.cause == "Falta la confirmación publicada de la demanda grumosa."
     assert result.lumpy.effects == ()
 
 

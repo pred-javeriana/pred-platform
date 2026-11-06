@@ -96,7 +96,7 @@
       {% else %}
       {{ button("Lanzar ejecución", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none) }}
       {% endif %}
-      {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El worker de esta aplicación se detuvo: la corrida quedará en cola; el registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta instalación no procesa ejecuciones por sí sola: la ejecución quedará en cola hasta que se inicie el procesador de ejecuciones con <span class="mono">make worker</span>.</p>{% endif %}
+      {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El procesador de ejecuciones de esta instalación se detuvo: la ejecución quedará en cola. El registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta instalación no procesa ejecuciones por sí sola: la ejecución quedará en cola hasta que se inicie el procesador de ejecuciones con <span class="mono">make worker</span>.</p>{% endif %}
     </div>
     {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se puede lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
   </form>

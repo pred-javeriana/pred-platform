@@ -78,15 +78,15 @@
               {% endif %}
             </span>
           </dd>
-          <p class="pred-kpis__note">Menos de 1: menos error que la línea base.</p>
+          <dd class="pred-kpis__note">Menos de 1: menos error que la línea base.</dd>
         </div>
         <div class="pred-kpis__item"><dt>Ventanas de prueba válidas</dt><dd>{{ format_count(verdict.n_ventanas) }} <span class="pred-kpis__note">mínimo {{ format_count(verdict.n_min) }}</span></dd></div>
-        <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd><p class="pred-kpis__note">Parte del periodo de prueba con pronóstico.</p></div>
+        <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd><dd class="pred-kpis__note">Parte del periodo de prueba con pronóstico.</dd></div>
         <div class="pred-kpis__item"><dt>Significancia</dt><dd class="pred-kpis__text">{{ significance_text(verdict) }}</dd></div>
         <div class="pred-kpis__item"><dt>Pierde frente a la línea base</dt><dd class="pred-kpis__text">{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd></div>
         <div class="pred-kpis__item"><dt>Comparación incompleta</dt><dd class="pred-kpis__text">{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd></div>
       </dl>
-      {% if interval %}<p class="pred-meta">La prueba HLN-DM sin el ajuste BH no descarta los valores de r de este intervalo; la significancia de arriba sí aplica el ajuste BH.</p>{% endif %}
+      {% if interval %}<p class="pred-meta" id="intervalo-r-explicacion">El intervalo de r reúne los valores compatibles con los datos de este producto según la prueba {{ gloss("HLN-DM") }}, sin el ajuste {{ gloss("BH") }}. La significancia de arriba sí aplica ese ajuste, así que las dos lecturas pueden no coincidir.</p>{% endif %}
 
       <h3>Significancia</h3>
       <p class="pred-meta">Prueba {{ gloss("HLN-DM") }} del campeón frente a la línea base, con el ajuste {{ gloss("BH") }} dentro de cada clase de demanda. Un estadístico negativo favorece a la campeona. Se informa aparte del veredicto: «{{ verdict_label("VALIDADO") }}» no equivale a significativo.</p>

@@ -32,6 +32,7 @@ from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures import FixtureRepository
 from tests.m3_publicada import LATE
 from tests.test_seleccion import _run
+from tests.test_ui_review import Markup
 from tests.test_worker import Env
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -80,6 +81,18 @@ def _client(scenario: str = "normal", repo: Any = None) -> tuple[TestClient, Any
 
 def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
+
+def _reading(html: str) -> str:
+    """The page text as the reader sees it: inline markup such as a glossed term adds no space."""
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))
+
+
+_INTERVAL_NOTE = (
+    "El intervalo de r reúne los valores compatibles con los datos de este producto según la "
+    "prueba HLN-DM, sin el ajuste BH. La significancia de arriba sí aplica ese ajuste, así que "
+    "las dos lecturas pueden no coincidir."
+)
 
 
 def _notice(html: str) -> str:
@@ -548,6 +561,7 @@ def test_sku_shows_the_published_interval_beside_r(
         )
         conn.commit()
     html = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1").text
+    assert Markup(html).definition_list_misuse() == []
     kpis = html.split('id="numeros-decisivos"', 1)[1].split("</dl>", 1)[0]
     assert "r frente a la línea base" in _text(kpis) and "0,800" in kpis
     assert re.search(
@@ -556,10 +570,7 @@ def test_sku_shows_the_published_interval_beside_r(
     )
     assert f"Intervalo de r {shown}" in _text(kpis)
     assert f'title="{exact}"' in kpis
-    assert (
-        "La prueba HLN-DM sin el ajuste BH no descarta los valores de r de este intervalo; "
-        "la significancia de arriba sí aplica el ajuste BH."
-    ) in _text(html)
+    assert _INTERVAL_NOTE in _reading(html)
     other = _dal_client(env).get("/resultados/sku/FIL-0002?m3=m3-real-1").text
     assert "Intervalo de r no publicado." in other
     assert shown not in other
@@ -587,10 +598,7 @@ def test_sku_distinguishes_the_unadjusted_interval_from_bh_significance(
     assert "Intervalo de r [0,622; 0,995]" in text
     assert "Significancia No significativa" in text
     assert "p-valor 0,048" in text and "p ajustado (BH) 0,059" in text
-    assert (
-        "La prueba HLN-DM sin el ajuste BH no descarta los valores de r de este intervalo; "
-        "la significancia de arriba sí aplica el ajuste BH."
-    ) in text
+    assert _INTERVAL_NOTE in _reading(response.text)
 
 
 def test_invalid_interval_does_not_hide_the_sku_decision(
@@ -1010,6 +1018,8 @@ def test_the_summary_shows_the_funnel_m3_published(
     _run(env, monkeypatch)
     _publish_for_the_run(env, verdicts=_SUMMARY_VERDICTS)  # FIL-0003 is launched after the cut
     funnel = _funnel(env)
+    page = _dal_client(env).get("/resultados?vista=resumen").text
+    assert Markup(page).definition_list_misuse() == []
 
     # Each row subtracts from or splits the one above it.
     assert (

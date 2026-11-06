@@ -21,19 +21,43 @@ ACCEPTED = "b1831d4585b72d7c7bcb98ada7bae70e7b229449edf74a8a7a7f39e6552df56e"
 TEMPLATES = Path(__file__).resolve().parents[1] / "src/pred_platform/app/templates"
 
 
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "wbr"}
+
+
 class Markup(HTMLParser):
     """Recoge atributos semánticos sin depender del orden de atributos ni de píxeles."""
 
     def __init__(self, text: str) -> None:
         super().__init__()
         self.tags: list[tuple[str, dict[str, str | None]]] = []
+        self.ancestry: list[tuple[str, tuple[str, ...]]] = []
+        self._open: list[str] = []
         self.feed(text)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.tags.append((tag, dict(attrs)))
+        self.ancestry.append((tag, tuple(self._open)))
+        if tag not in VOID:
+            self._open.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._open:
+            while self._open.pop() != tag:
+                pass
 
     def select(self, tag: str) -> list[dict[str, str | None]]:
         return [attrs for found, attrs in self.tags if found == tag]
+
+    def definition_list_misuse(self) -> list[str]:
+        """Cada hijo de un ``dl`` que no es ``dt``, ``dd`` ni un ``div`` que agrupa solo ``dt`` y
+        ``dd``: un lector de pantalla deja de leer ese texto como parte de la descripción."""
+        found = []
+        for tag, above in self.ancestry:
+            if above[-1:] == ("dl",) and tag not in ("dt", "dd", "div"):
+                found.append(f"{tag} en dl")
+            if above[-2:] == ("dl", "div") and tag not in ("dt", "dd"):
+                found.append(f"{tag} en div de dl")
+        return found
 
 
 def client_for(scenario: str = "normal", repo: Any = None) -> TestClient:
@@ -87,6 +111,15 @@ def test_routes_keep_unique_ids_labels_and_skip_link(scenario: str, path: str) -
             assert attrs.get("role") == "region"
             assert attrs.get("tabindex") == "0"
             assert attrs.get("aria-label")
+
+
+@pytest.mark.parametrize("scenario", ["normal", "vacio", "errores"])
+@pytest.mark.parametrize(
+    "path", ["/datos", f"/datos?ingest_id={ACCEPTED}", "/ejecucion", "/resultados/sku/FIL-0001"]
+)
+def test_definition_lists_hold_only_terms_and_descriptions(scenario: str, path: str) -> None:
+    page = Markup(client_for(scenario).get(path).text)
+    assert page.definition_list_misuse() == []
 
 
 @pytest.mark.parametrize("input_type", ["text", "select", "file", "checkbox"])

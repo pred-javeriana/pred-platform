@@ -69,7 +69,7 @@
   {% if report.validation %}
   <dl class="pred-kpis pred-kpis--compact">
     <div class="pred-kpis__item"><dt>Filas validadas</dt><dd>{{ format_count(report.validation.rows_validated) }}</dd></div>
-    <div class="pred-kpis__item"><dt>Panel diario</dt><dd>{{ format_count(report.validation.rows_daily_panel) }}</dd><p class="pred-kpis__note">Filas publicadas: una por SKU y día del calendario.</p></div>
+    <div class="pred-kpis__item"><dt>Panel diario</dt><dd>{{ format_count(report.validation.rows_daily_panel) }}</dd><dd class="pred-kpis__note">Filas publicadas: una por SKU y día del calendario.</dd></div>
     <div class="pred-kpis__item"><dt>SKU</dt><dd>{{ format_count(report.validation.n_skus) }}</dd></div>
   </dl>
   {% endif %}

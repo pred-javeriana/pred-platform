@@ -300,8 +300,8 @@ def test_on_a_read_only_database_uploading_is_off_and_never_runs_the_engine(env:
         env.db.chmod(0o644)
 
     reason = (
-        "La base de datos es de solo lectura: se pueden consultar las ingestas cargadas, pero no "
-        "cargar archivos nuevos."
+        "La base de datos es de solo lectura: puede consultar los archivos ya cargados, pero no "
+        "cargar uno nuevo."
     )
     assert reason in page
     assert re.search(

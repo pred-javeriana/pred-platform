@@ -83,6 +83,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "ratio_text",
         "significance_items",
         "significance_text",
+        "source_cause",
         "verdict_counts",
         "verdict_group",
         "verdict_reason",

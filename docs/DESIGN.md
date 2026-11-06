@@ -123,8 +123,10 @@ excluida. Runs use pendiente, ejecutando, completada, completada_con_fallos and 
 finished with failed tasks still reads «Completada» (ok); the outcome line beside it says how many
 tasks failed and how many products have a verdict. A stopped run («Detenida») is warn, like its
 error notice, while the page offers Reanudar; it is err only when resuming would fail the same way
-(`run.incompatible_config`). `presentation.describe_run` owns that tone and `ejecucion.offers_resume`
-owns the rule.
+(`run.incompatible_config`, families that leave no class two to compare, or an L2 failure that
+depends only on the engine policy and the data). `presentation.describe_run` owns that tone;
+`ejecucion.offers_resume` owns the rule for all three cases, read the same way by Ejecución and by
+the Resultados context bar.
 HPO trials use pendiente, corriendo, completado, podado and fallido; podado is distinct from a
 failure. Ingestion has accepted, rejected, failed and needs_confirmation, presented through the
 ingest vocabulary. These contexts remain separate in the presentation helpers.

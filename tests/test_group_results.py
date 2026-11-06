@@ -41,6 +41,11 @@ def test_results_links_to_the_group_and_the_group_shows_both_computations(lumpy_
         assert "no se restan" in html
         assert "semilla0=seed-0" in html and "semilla2=seed-2" in html
         assert "sin cambiar sus publicaciones" in html
+        # Each publication reads by its time; the run and data identifiers stay in its title.
+        assert ">Publicada el 27 oct 2026, 5:00 a. m.</option>" in html
+        assert 'title="Evaluación final seed-0 · huella de los datos ' in html
+        assert ">seed-0 ·" not in html and "Seasonal Naive" not in html
+        assert "Fundacional frente a la línea base" in html and "Grumosa: población" in html
 
 
 def test_each_product_shows_the_three_directions_and_missing_test_causes(lumpy_db: Path) -> None:
@@ -51,7 +56,12 @@ def test_each_product_shows_the_three_directions_and_missing_test_causes(lumpy_d
         assert "Mejora significativa en las tres semillas" in tested
         missing = browser.get("/resultados/grupo", params={**CHOICES, "sku": "Z"}).text
         assert "sin segunda familia" not in missing
-        assert "eligibility.fewer_than_two_families: SARIMA sin candidato" in missing
+        # A missing test reads by its message title; the engine's cause stays in the title.
+        assert (
+            'title="SARIMA sin candidato">El SKU quedó fuera de la comparación porque conservó '
+            "menos de dos familias evaluables.</span>"
+        ) in missing
+        assert "eligibility.fewer_than_two_families" not in missing
         assert "Sin prueba del grupo: falta alguna prueba válida" in missing
         unknown = browser.get("/resultados/grupo", params={**CHOICES, "sku": "unknown"})
         assert unknown.status_code == 200
@@ -73,7 +83,7 @@ def test_seed_two_pending_never_displays_two_seed_numbers_as_final(lumpy_db: Pat
     sql(lumpy_db, "UPDATE m3_corridas SET estado='EN_CURSO' WHERE run_id='seed-2'")
     with client(lumpy_db) as browser:
         html = browser.get("/resultados/grupo").text
-        assert "El grupo final requiere tres corridas publicadas" in html
+        assert "El grupo final requiere tres evaluaciones publicadas" in html
         assert "Significancia del grupo por clase" not in html
         assert 'value="seed-2"' not in html
         assert browser.get("/resultados/grupo.json").status_code == 400
@@ -84,7 +94,7 @@ def test_unpublished_or_wrong_seed_cannot_be_injected_through_a_shared_link(lump
         for value in ("unknown", "seed-2"):
             response = browser.get("/resultados/grupo", params={**CHOICES, "semilla0": value})
             assert response.status_code == 200
-            assert "Seleccione una corrida PUBLICADA de la semilla 0" in response.text
+            assert "Elija una evaluación publicada para la semilla 0" in response.text
             assert "Significancia del grupo por clase" not in response.text
             assert (
                 browser.get(
@@ -139,6 +149,6 @@ def test_fixture_mode_does_not_invent_a_final_group(tmp_path: Path) -> None:
     with TestClient(application) as browser:
         html = browser.get("/resultados/grupo").text
         assert "Datos de prueba" in html
-        assert "El grupo final requiere tres corridas publicadas" in html
+        assert "El grupo final requiere tres evaluaciones publicadas" in html
         assert browser.get("/resultados/grupo.json").status_code == 400
     assert not (tmp_path / "unused.db").exists()
