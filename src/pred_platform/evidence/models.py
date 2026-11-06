@@ -102,6 +102,13 @@ class GroupProduct:
     significant: bool | None
     improved: bool | None
 
+    @property
+    def worsened(self) -> bool | None:
+        """Significant with a positive loss differential in every seed."""
+        if self.significant is None:
+            return None
+        return self.significant and all(s.direction == "positivo" for s in self.sources)
+
 
 @dataclass(frozen=True)
 class ClassSignificance:

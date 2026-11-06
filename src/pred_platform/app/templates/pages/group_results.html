@@ -92,7 +92,7 @@
   {% endfor %}
   {{ table_end() }}
   <p>p máximo: <strong {{ exact(product.p_max) }}>{{ p_text(product.p_max, significance.alpha) }}</strong>. p ajustado por BH: <strong {{ exact(product.p_adjusted) }}>{{ p_text(product.p_adjusted, significance.alpha) }}</strong>.</p>
-  <p>{% if product.improved %}Mejora significativa en las tres semillas.{% elif product.significant %}Diferencia significativa sin mejora uniforme en las tres semillas.{% elif product.significant is none %}Sin prueba del grupo: falta alguna prueba válida.{% else %}Sin diferencia significativa del grupo.{% endif %}</p>
+  <p>{% if product.improved %}Mejora significativa en las tres semillas.{% elif product.worsened %}Empeora de forma significativa en las tres semillas.{% elif product.significant %}Diferencia significativa sin mejora uniforme en las tres semillas.{% elif product.significant is none %}Sin prueba del grupo: falta alguna prueba válida.{% else %}Sin diferencia significativa del grupo.{% endif %}</p>
   {% elif sku %}<p>No hay un SKU «{{ sku }}» en este grupo.</p>{% endif %}
 </section>
 </div>

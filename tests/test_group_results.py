@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
+from tests.test_group_evidence import group_db as group_db  # noqa: F401
 from tests.test_group_evidence import sql
 from tests.test_group_lumpy import lumpy_db as lumpy_db  # noqa: F401
 
@@ -55,6 +56,17 @@ def test_each_product_shows_the_three_directions_and_missing_test_causes(lumpy_d
         unknown = browser.get("/resultados/grupo", params={**CHOICES, "sku": "unknown"})
         assert unknown.status_code == 200
         assert "No hay un SKU «unknown»" in unknown.text
+
+
+def test_each_product_names_a_uniform_worsening_apart_from_mixed_directions(
+    group_db: Path,
+) -> None:
+    with client(group_db) as browser:
+        worse = browser.get("/resultados/grupo", params={**CHOICES, "sku": "G"}).text
+        assert "Empeora de forma significativa en las tres semillas" in worse
+        mixed = browser.get("/resultados/grupo", params={**CHOICES, "sku": "C"}).text
+        assert "Diferencia significativa sin mejora uniforme" in mixed
+        assert "Empeora de forma significativa" not in mixed
 
 
 def test_seed_two_pending_never_displays_two_seed_numbers_as_final(lumpy_db: Path) -> None:

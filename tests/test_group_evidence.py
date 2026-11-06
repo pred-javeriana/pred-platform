@@ -110,6 +110,8 @@ def test_largest_raw_p_then_one_bh_per_class_and_all_three_directions(group_db: 
     assert products["C"].significant is True and products["C"].improved is False
     assert products["G"].significant is True and products["G"].improved is False
     assert products["X"].significant is False  # BH is not pooled with smooth.
+    assert products["G"].worsened is True and products["C"].worsened is False
+    assert products["A"].worsened is False and products["E"].worsened is None
     assert [s.direction for s in products["C"].sources] == ["negativo", "positivo", "negativo"]
     assert [
         (c.sku_class, c.tested, c.untested, c.significant, c.improved, c.worsened, c.mixed)

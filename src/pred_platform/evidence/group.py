@@ -134,7 +134,7 @@ def calculate_significance(
         own = [p for p in products if p.sku_class == sku_class]
         significant = [p for p in own if p.significant]
         better = sum(p.improved is True for p in own)
-        worse = sum(all(s.direction == "positivo" for s in p.sources) for p in significant)
+        worse = sum(p.worsened is True for p in own)
         classes.append(
             ClassSignificance(
                 sku_class,
