@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "summary": "A read-only database, edited input and the worker-lock probe answer readably, and the families warning names every affected SKU with its true cause.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/solo_lectura.py",
+      "summary": "Owns the one rule that says whether the database can be written.",
+      "annotations": [
+        {
+          "newRange": [1, 55],
+          "summary": "database_read_only checks the file, its -wal and -shm, and a rollback journal's folder; is_read_only_error recognises SQLite's refusal.",
+          "rationale": "SQLite creates -wal and -shm with the file's mode, so a copy read while 0444 stays unwritable after chmod 0644 until the sidecars change too. Verified by tests in test_ejecucion.py and by serving each layout. A read-only mount is not visible here, so control.py also catches the write error.",
+          "author": "fm/pred-platform-readonly-hardening"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/candado.py",
+      "summary": "The worker lock tolerates the app's probe.",
+      "annotations": [
+        {
+          "newRange": [53, 64],
+          "summary": "acquire retries for up to 0.25 s before it concludes that another worker holds the lock.",
+          "rationale": "A probe holds the lock for microseconds and a worker holds it for its whole life, so a short wait separates them. The retry is here, not in Worker.drain, because every acquirer has the same race. test_once_runs_the_queue_when_a_probe_holds_the_lock_for_an_instant fails on the previous main.",
+          "author": "fm/pred-platform-readonly-hardening"
+        },
+        {
+          "newRange": [76, 93],
+          "summary": "held_elsewhere serializes this process's probes and retries once after 10 ms before it reports a holder.",
+          "rationale": "Two concurrent probes saw each other's hold, so a render hid the make-worker hint. With 16 clients for 60 s, 0 of 7,187 renders hid it (865 of 10,381 before). Windows locking is not tested.",
+          "author": "fm/pred-platform-readonly-hardening"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/ejecucion.py",
+      "summary": "Launch-form rules for families, short history and resume.",
+      "annotations": [
+        {
+          "newRange": [240, 285],
+          "summary": "history_needed copies the engine's min_train + horizon + 3 steps rule, and compares_nothing says when no class keeps two families.",
+          "rationale": "The rule uses total n_periods, which is an upper bound on the history before the cut, so a SKU listed as short is certainly excluded. Some SKUs that are short only after the cut are still advised to add a family. The 3 must follow ReglasPoda().min_ventanas in the engine.",
+          "author": "fm/pred-platform-readonly-hardening"
+        },
+        {
+          "newRange": [467, 493],
+          "summary": "run_actions withholds Reanudar only when the run's families give no class two families to compare.",
+          "rationale": "The engine marks every stage exception as stage_failed with retryable false, including transient ones, so honoring retryable would block resuming a long run. Covered by test_a_failed_stage_is_named_and_can_be_resumed and test_a_run_whose_families_compare_nothing_is_not_offered_again.",
+          "author": "fm/pred-platform-readonly-hardening"
+        }
+      ]
+    }
+  ]
+}
