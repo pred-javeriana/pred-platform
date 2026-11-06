@@ -23,7 +23,7 @@ def _major(version: object) -> int | None:
     if not isinstance(version, str):
         return None
     head = version.split(".", 1)[0]
-    return int(head) if head.isdigit() else None
+    return int(head) if head.isascii() and head.isdigit() else None
 
 
 def parse_as[T: BaseModel](model: type[T], raw: str | bytes | Mapping[str, Any]) -> T:
