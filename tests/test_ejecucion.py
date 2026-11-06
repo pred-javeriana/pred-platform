@@ -568,14 +568,55 @@ def test_repeated_families_in_a_crafted_post_count_once(env: Env) -> None:
     assert json.loads(parametros)["families"] == ["classical", "dl", "foundation"]
 
 
-def test_a_form_error_no_field_owns_is_shown(env: Env) -> None:
-    # An unknown family passes the form's own checks; the launch settings refuse it.
+def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> None:
     response = _launch(_dal_client(env), env, families=["classical", "quantum"])
     text = _text(response.text)
 
     assert response.status_code == 200
-    assert "quantum" in text and "pred-alert--error" in response.text
+    assert "Elija solo familias de la lista." in text
+    assert "families debe" not in text and "'classical'" not in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("seed", str(2**63), "Semilla: el número es demasiado grande."),
+        ("trials", str(2**63), "Ensayos por estudio: el número es demasiado grande."),
+        ("workers", str(2**63), "Procesos en paralelo: el número es demasiado grande."),
+        ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
+        ("trials", "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
+        ("seed", "+" + "9" * 4301, "Semilla: el número es demasiado grande."),
+        ("seed", "\u0669" * 4301, "Semilla: el número es demasiado grande."),
+        ("trials", "+" + "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        ("trials", "\u0669" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        ("seed", "-" + "9" * 4301, "Semilla: debe ser cero o más."),
+        ("trials", "-" + "9" * 4301, "Ensayos por estudio: debe ser mayor que cero."),
+    ],
+)
+def test_a_number_sqlite_cannot_store_is_a_field_error_not_a_server_error(
+    env: Env, field: str, value: str, message: str
+) -> None:
+    client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
+
+    response = _launch(client, env, **{field: value})
+
+    assert response.status_code == 200
+    assert message in _text(response.text)
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+    assert _launch(client, env, **{field: str(2**63 - 1)}).status_code == 303
+
+
+def test_leading_zeros_do_not_make_a_number_too_big(env: Env) -> None:
+    response = _launch(_dal_client(env), env, seed="0" * 20 + "42", trials="0" * 20 + "3")
+
+    assert response.status_code == 303
+    ((seed, parametros),) = env.rows(
+        "SELECT e.seed, c.parametros FROM ejecuciones e "
+        "JOIN configuraciones c ON c.id = e.configuracion_id"
+    )
+    assert (seed, json.loads(parametros)["trials"]) == (42, 3)
 
 
 @pytest.mark.parametrize("ingest_id", ["deadbeef", "z" * 64, "../" * 3])
@@ -877,7 +918,9 @@ def test_a_queued_run_in_a_read_only_copy_does_not_promise_to_start(env: Env) ->
     assert "empezará en cuanto el worker" not in text and "make worker" not in text
 
 
-@pytest.mark.parametrize("reference", ["99999999999999999999999", "²", "٣", "-1"])
+@pytest.mark.parametrize(
+    "reference", ["99999999999999999999999", "9" * 4301, "²", "٣", "-1"], ids=str.__len__
+)
 def test_an_edited_run_number_is_never_a_server_error(
     env: Env, monkeypatch: pytest.MonkeyPatch, reference: str
 ) -> None:

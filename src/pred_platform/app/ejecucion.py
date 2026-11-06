@@ -30,6 +30,7 @@ from pred_platform.contract.models import (
     SkuClass,
     TopologyMetrics,
 )
+from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
 from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
 from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS
 from pred_platform.worker.service import LaunchSettings
@@ -169,6 +170,18 @@ class FormResult:
     errors: dict[str, str]
 
 
+def _form_int(raw: str) -> int:
+    """``int(raw)``, but an integer with more significant digits than ``SQLITE_MAX_INTEGER`` is
+    one past that limit, with its sign, because ``int`` refuses more than 4300 digits."""
+    text = raw.strip()
+    digits = text[1:] if text.startswith(("+", "-")) else text
+    if not (digits.startswith("_") or digits.endswith("_") or "__" in digits):
+        significant = digits.replace("_", "").lstrip("0")
+        if significant.isdecimal() and len(significant) > len(str(SQLITE_MAX_INTEGER)):
+            return -(SQLITE_MAX_INTEGER + 1) if text.startswith("-") else SQLITE_MAX_INTEGER + 1
+    return int(raw)
+
+
 def parse_launch_form(
     *,
     families: Sequence[str],
@@ -187,25 +200,32 @@ def parse_launch_form(
         raw = (fields.get(name) or "").strip()
         values[name] = raw
         try:
-            number = int(raw)
+            number = _form_int(raw)
         except ValueError:
             errors[name] = f"{label}: escriba un número entero."
             continue
         if number < minimum:
             errors[name] = f"{label}: debe ser {'mayor que cero' if minimum else 'cero o más'}."
             continue
+        if number > SQLITE_MAX_INTEGER:
+            errors[name] = f"{label}: el número es demasiado grande."
+            continue
         numbers[name] = number
     trials: int | None = None
     if values["trials"]:
         try:
-            trials = int(values["trials"])
+            trials = _form_int(values["trials"])
         except ValueError:
             errors["trials"] = "Ensayos por estudio: escriba un número entero o déjelo vacío."
         else:
             if trials < 1:
                 errors["trials"] = "Ensayos por estudio: debe ser mayor que cero."
+            elif trials > SQLITE_MAX_INTEGER:
+                errors["trials"] = "Ensayos por estudio: el número es demasiado grande."
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
+    elif not set(values["families"]) <= {key for key, _ in FAMILY_CHOICES}:
+        errors["families"] = "Elija solo familias de la lista."
     if values["metric"] not in {key for key, _ in METRIC_CHOICES}:
         errors["metric"] = "Elija una de las métricas de la lista."
     if errors:

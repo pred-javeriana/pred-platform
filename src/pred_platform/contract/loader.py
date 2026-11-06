@@ -19,11 +19,17 @@ from pred_platform.contract.errors import (
 _MAJORS: dict[str, int] = {models.__name__: 1, models_v2.__name__: 2}
 
 
+# A real major version has one or two digits; ``int`` refuses a string of more than 4300.
+_MAJOR_DIGITS = 9
+
+
 def _major(version: object) -> int | None:
     if not isinstance(version, str):
         return None
     head = version.split(".", 1)[0]
-    return int(head) if head.isascii() and head.isdigit() else None
+    if head.isascii() and head.isdigit() and len(head) <= _MAJOR_DIGITS:
+        return int(head)
+    return None
 
 
 def parse_as[T: BaseModel](model: type[T], raw: str | bytes | Mapping[str, Any]) -> T:
