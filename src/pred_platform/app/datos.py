@@ -21,11 +21,10 @@ from fastapi import Request
 from starlette.datastructures import UploadFile
 
 from pred_platform import mensajes
-from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count, sku_class_label
 from pred_platform.contract import models_v2
-from pred_platform.contract.errors import DataLayerError
-from pred_platform.contract.models import IngestReport, Page, SkuClass, TopologyReport
-from pred_platform.data.query import DEFAULT_SIZE, MAX_SIZE, int_param
+from pred_platform.contract.errors import DataLayerError, InvalidQuery
+from pred_platform.contract.models import IngestReport, Page, TopologyReport
+from pred_platform.data.query import DEFAULT_SIZE, int_param
 from pred_platform.data.repository import DataRepository
 from pred_platform.worker import ingesta
 from pred_platform.worker.solo_lectura import database_read_only
@@ -297,19 +296,14 @@ class IngestName:
 def ingest_name(repository: DataRepository, ingest_id: str | None) -> IngestName | None:
     """El nombre del archivo de una ingesta, para mostrarlo en lugar de su hash SHA-256.
 
-    Una lectura que falla o una ingesta que ya no está en la lista dejan el hash como nombre.
+    Una lectura que falla o una ingesta que no existe dejan el hash como nombre.
     """
     if not ingest_id:
         return None
     try:
-        listing = repository.list_ingests(size=MAX_SIZE)
-    except DataLayerError:
-        listing = None
-    found = (
-        next((item for item in listing.items if item.ingest_id == ingest_id), None)
-        if listing
-        else None
-    )
+        found = repository.get_ingest(ingest_id)
+    except (DataLayerError, InvalidQuery):
+        found = None
     if found is None:
         return IngestName(ingest_id, None, None)
     return IngestName(ingest_id, found.name, found.published_at)
@@ -318,22 +312,6 @@ def ingest_name(repository: DataRepository, ingest_id: str | None) -> IngestName
 def topology_ready(report: TopologyReport | None) -> bool:
     """La continuación a Ejecución exige reporte presente y disponible."""
     return report is not None and report.availability.status == "available"
-
-
-def topology_summary_metrics(report: TopologyReport) -> list[dict[str, str | None]]:
-    """Fila plana de KPI tomada de TopologyReport.summary, no de la página visible."""
-    items: list[dict[str, str | None]] = [
-        {"label": "SKU totales", "value": format_count(report.summary.n_skus), "tone": "data"}
-    ]
-    for code in SKU_CLASS_ORDER:
-        items.append(
-            {
-                "label": sku_class_label(code),
-                "value": format_count(report.summary.by_class.get(cast(SkuClass, code), 0)),
-                "tone": None,
-            }
-        )
-    return items
 
 
 def page_meta(page: Page | models_v2.Page) -> dict[str, object]:

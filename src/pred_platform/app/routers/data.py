@@ -31,7 +31,6 @@ from pred_platform.app.datos import (
     remember_report,
     store_pending,
     topology_ready,
-    topology_summary_metrics,
     upload_blocked,
     validate_upload,
 )
@@ -247,7 +246,6 @@ def _render_page(
     topology: TopologyReport | None = None
     topology_error = None
     topology_query = None
-    topology_metrics = None
     topology_pages = None
     chart_svg = None
     query_error = history_query_error
@@ -281,7 +279,6 @@ def _render_page(
             topology = repository.get_topology_report(
                 report.ingest_id, **topology_query.as_kwargs()
             )
-            topology_metrics = topology_summary_metrics(topology)
             topology_pages = page_meta(topology.page)
             if topology.availability.status == "available":
                 chart_svg = topology_scatter_svg(topology)
@@ -353,7 +350,6 @@ def _render_page(
         "topology": topology,
         "topology_error": topology_error,
         "topology_query": topology_query,
-        "topology_metrics": topology_metrics,
         "topology_pages": topology_pages,
         "chart_svg": chart_svg,
         "can_continue": can_continue,

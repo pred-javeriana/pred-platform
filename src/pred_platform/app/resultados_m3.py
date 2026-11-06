@@ -39,7 +39,7 @@ from pred_platform.data.m3_confirmation import (
     M3Confirmation,
 )
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
-from pred_platform.data.query import MAX_SIZE
+from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository, M3ReserveBlocks
 
 
@@ -141,8 +141,15 @@ def _resolve(
     runs = repository.list_m3_runs(run_id_m2=m2_run_id)
     if wanted:
         run = repository.get_m3_run(wanted)
+        if run is None:
+            return M3Problem(
+                "No existe esa evaluación.",
+                f"Sin elegir una evaluación, Resultados muestra la publicada más reciente de la "
+                f"ejecución #{m2_run_id}.",
+                "no_data",
+            )
         mine = {item.run_id_m2 for item in runs.items}
-        if run is None or run.run_id_m2 not in mine:
+        if run.run_id_m2 not in mine:
             return M3Problem(
                 "La evaluación pedida no corresponde a esta ejecución.",
                 f"Es de otra ejecución. Sin elegir una evaluación, Resultados muestra la "
@@ -481,6 +488,12 @@ def published_executions(
         reverse=True,
     )
     return choices[:limit]
+
+
+def default_execution(repository: DataRepository) -> str:
+    """La ejecución por defecto en Resultados: la más nueva con evidencia M3 publicada, o LATEST."""
+    executions = published_executions(repository)
+    return executions[0].ejecucion_id if executions else LATEST
 
 
 @dataclass(frozen=True, slots=True)
@@ -1103,7 +1116,7 @@ def gap_digits(upper: float, tail: float, digits: int = 3) -> int:
         _side_digits(tail, 1.0, digits),
         _side_digits(tail, 0.0, digits),
     )
-    while d < 17 and f"{upper:.{d}f}" == f"{tail:.{d}f}":
+    while d < 17 and upper != tail and f"{upper:.{d}f}" == f"{tail:.{d}f}":
         d += 1
     return d
 
@@ -1114,7 +1127,10 @@ def interval_text(lower: float | None, upper: float | None, *, percent: bool = F
         return ""
     if percent:
         return f"[{percent_text(lower)}; {percent_text(upper)}]"
-    return f"[{ratio_text(lower)}; {ratio_text(upper)}]"
+    if lower == math.inf or upper == math.inf:
+        return f"[{ratio_text(lower)}; {ratio_text(upper)}]"
+    digits = gap_digits(max(lower, upper), min(lower, upper), 3)
+    return f"[{_decimal(lower, digits)}; {_decimal(upper, digits)}]"
 
 
 def percent_text(share: float) -> str:

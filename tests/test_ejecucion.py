@@ -1614,3 +1614,19 @@ def test_an_ingest_declared_synthetic_is_listed_but_cannot_be_launched(env: Env)
     assert "El archivo elegido declara datos sintéticos" in _text(response.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
     assert "Declara datos sintéticos: no ejecutable" in _text(client.get("/datos").text)
+
+
+def test_an_older_ingest_beyond_500_still_shows_its_filename(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        for i in range(500):
+            conn.execute(
+                "INSERT INTO ingestas (sha256, nombre_archivo, filas, skus, estado) "
+                "VALUES (?, ?, 10, 1, 'accepted')",
+                (f"{i:064x}", f"dummy_{i}.csv"),
+            )
+        conn.commit()
+    page = client.get("/ejecucion?ejecucion=1").text
+    assert "demo_canonico.csv</a>" in page
+    assert f'<span class="mono">{env.ingest_id[:12]}</span>' not in page

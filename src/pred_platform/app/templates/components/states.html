@@ -21,8 +21,8 @@
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ title }}</h2>
   <p>{{ detail }}</p>
   {% if reason_code or blocked_by %}
-  <details class="pred-details pred-details--inline"><summary>Disponibilidad y dependencias</summary>
-    <p class="pred-unavailable__meta">{{ reason_code or "" }}{% if blocked_by %} · {{ blocked_by | join(", ") }}{% endif %}</p>
+  <details class="pred-details"><summary>Detalle técnico</summary>
+    <p class="pred-unavailable__meta">{% if reason_code %}Código <span class="mono">{{ reason_code }}</span>{% endif %}{% if blocked_by %} · depende de <span class="mono">{{ blocked_by | join(", ") }}</span>{% endif %}</p>
   </details>
   {% endif %}
 </section>

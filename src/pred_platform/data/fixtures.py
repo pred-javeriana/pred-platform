@@ -96,6 +96,13 @@ class FixtureRepository(M3FixtureSource):
         items, paging = paginate(doc.items, PageRequest(page, size))
         return _with(doc, items=items, page=paging)
 
+    def get_ingest(self, ingest_id: str) -> models.IngestSummary | None:
+        doc = _load(models.IngestList, self.scenario.ingest_list)
+        for item in doc.items:
+            if item.ingest_id == ingest_id:
+                return item
+        return None
+
     def get_ingest_report(self, ingest_id: str) -> models.IngestReport:
         for example in self.scenario.ingest_reports:
             report = _load(models.IngestReport, example)
