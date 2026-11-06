@@ -3,7 +3,7 @@
 {% from "components/buttons.html" import button %}
 {% from "components/terms.html" import day %}
 
-{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1"><script src="{{ static_url('js/wizard_steps.js') }}?v=1" defer></script>{% endblock %}
 
 {# Ajustes: el formulario de una corrida nueva, o lo que se lanzó (record). #}
 {% block content %}
@@ -28,7 +28,6 @@
     {% endif %}
   </section>
   {% else %}
-  {% if notice %}{{ alert(notice[1], variant=notice[0]) }}{% endif %}
   {% include "partials/execution_launch.html" %}
   {% endif %}
 {% endblock %}

@@ -161,7 +161,9 @@ def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
     # Without runs, the old Ejecución link starts a new run at Datos, with the upload first.
     first = client.get("/ejecucion")
     assert first.url.path == "/corridas/nueva/datos"
-    assert 'id="titulo-carga">Cargar un archivo<' in first.text
+    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in first.text
+    assert 'id="carga" open' in first.text
+    assert 'action="/datos/cargar"' in first.text
     # Ajustes says what is missing and cannot continue.
     ajustes = client.get("/corridas/nueva/ajustes").text
     assert "Todavía no hay ningún archivo de datos aceptado" in _text(ajustes)
@@ -343,7 +345,8 @@ def test_the_launch_form_lists_the_families_each_class_admits() -> None:
     rows = re.findall(r'<tr>\s*<th scope="row">.*?</tr>', matrix[1], re.S)
     assert len(rows) == 5  # cuatro familias y los conteos por clase
     assert [
-        [_text(cell) for cell in re.findall(r"<td>(.*?)</td>", row, re.S)] for row in rows[:4]
+        [_text(cell).strip() for cell in re.findall(r"<td>(.*?)</td>", row, re.S)]
+        for row in rows[:4]
     ] == [
         ["Compite", "Compite", "Compite", "Compite"],
         ["Compite", "Compite", "Compite", "No admite este tipo"],

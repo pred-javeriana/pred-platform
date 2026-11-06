@@ -13,7 +13,9 @@ def demand_scatter_svg(report: TopologyReport) -> str:
     """ADI y CV² sobre ejes logarítmicos; CV² cero se marca en el borde inferior y se declara."""
     width, height = 640, 400
     left, right, top, bottom = 66, 20, 28, 70
-    x_min, y_min = 0.9, 0.01
+    x_min = 0.9
+    positive_cv2 = [row.cv2 for row in report.items if row.cv2 > 0]
+    y_min = min(0.01, min(positive_cv2, default=0.01) * 0.9)
     x_max = max([5, *(row.adi * 1.15 for row in report.items)])
     y_max = max([3, *(row.cv2 * 1.15 for row in report.items)])
 
@@ -53,17 +55,18 @@ def demand_scatter_svg(report: TopologyReport) -> str:
             f'<text x="{px:.2f}" y="{height - bottom + 18}" text-anchor="middle" '
             f'class="pred-chart__tick">{format_decimal(tick, 0)}</text>'
         )
-    for tick in (0.01, 0.1, 0.49, 1, 10, 100, 1000, 10000):
-        if tick > y_max:
+    for tick in (0.0001, 0.001, 0.01, 0.1, 0.49, 1, 10, 100, 1000, 10000):
+        if tick > y_max or tick < y_min:
             continue
         py = y(tick)
+        digits = max(2, -math.floor(math.log10(tick))) if tick < 1 else 0
         parts.append(
             f'<line x1="{left}" x2="{width - right}" y1="{py:.2f}" y2="{py:.2f}" '
             'class="pred-scatter-grid"/>'
         )
         parts.append(
             f'<text x="{left - 8}" y="{py + 4:.2f}" text-anchor="end" '
-            f'class="pred-chart__tick">{format_decimal(tick, 2 if tick < 1 else 0)}</text>'
+            f'class="pred-chart__tick">{format_decimal(tick, digits)}</text>'
         )
     if report.thresholds:
         px, py = x(report.thresholds.adi), y(report.thresholds.cv2)

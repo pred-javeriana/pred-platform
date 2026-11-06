@@ -27,7 +27,7 @@ stays in `app/charts.py`. Neither chart recalculates ADI, CV² or class.
 | Router | `src/pred_platform/app/routers/data.py` |
 | Helpers | `src/pred_platform/app/datos.py` |
 | Charts | `src/pred_platform/app/charts_datos.py`, `src/pred_platform/app/charts.py` |
-| Map interaction | `src/pred_platform/app/static/js/datos.js` |
+| Map interaction | `src/pred_platform/app/static/js/wizard_steps.js` |
 | Presentation | `src/pred_platform/app/presentation.py` |
 | Page | `src/pred_platform/app/templates/pages/data.html` |
 | Partials | `src/pred_platform/app/templates/partials/data_*.html` |

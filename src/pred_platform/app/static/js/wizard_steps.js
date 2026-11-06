@@ -1,10 +1,13 @@
 /* Un mapa, una parada de teclado; todas las cifras también se consultan en la tabla. */
 (function () {
-  document.querySelectorAll("[data-file-choice]").forEach(function (form) {
+  document.querySelectorAll("[data-auto-choice]").forEach(function (form) {
     const submit = form.querySelector("button[type=submit]");
-    if (submit && submit.parentElement) submit.parentElement.hidden = true;
+    if (submit) {
+      submit.hidden = true;
+      if (submit.parentElement && submit.parentElement.classList.contains("pred-actions")) submit.parentElement.hidden = true;
+    }
     form.addEventListener("change", function (event) {
-      if (event.target.matches('input[type=radio]')) form.requestSubmit();
+      if (event.target.matches('input[type=radio], select[name=copiar]')) form.requestSubmit();
     });
   });
   document.querySelectorAll("[data-demand-map]").forEach(function (map) {
@@ -38,6 +41,7 @@
       event.preventDefault();
       if (event.key === "Home") show(0);
       else if (event.key === "End") show(points.length - 1);
+      else if (active < 0) show(event.key === "ArrowLeft" || event.key === "ArrowUp" ? points.length - 1 : 0);
       else show((active + (event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1) + points.length) % points.length);
     });
     svg.addEventListener("blur", function () { show(-1); });

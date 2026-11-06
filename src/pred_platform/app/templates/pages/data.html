@@ -7,7 +7,7 @@
 {% from "components/terms.html" import when %}
 {% from "components/status.html" import status_indicator %}
 
-{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1"><script src="{{ static_url('js/datos.js') }}?v=1" defer></script>{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1"><script src="{{ static_url('js/wizard_steps.js') }}?v=1" defer></script>{% endblock %}
 
 {# La carga: el formulario y las columnas que espera el motor. upload_first la muestra como la
    acción principal de la página; si no, es una pestaña del detalle. Las columnas se ven abiertas
@@ -69,7 +69,7 @@
     <h2 id="titulo-elegir-datos">¿Qué datos usa esta corrida?</h2>
     <p class="pred-lead">Elija un archivo que PRED ya validó. Si sus datos cambiaron, cargue el archivo nuevo.</p>
     {% if listing and listing.items | selectattr('status', 'equalto', 'accepted') | list %}
-    <form method="post" action="/corridas/nueva/datos" class="pred-file-choices" data-file-choice>
+    <form method="post" action="/corridas/nueva/datos" class="pred-file-choices" data-auto-choice>
       <input type="hidden" name="mostrar" value="true">
       <div role="region" aria-label="Archivos validados">
       {% for item in listing.items if item.status == 'accepted' %}

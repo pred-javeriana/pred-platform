@@ -8,7 +8,7 @@
       <tbody>
       {% for family, label in family_choices %}
       <tr>
-        <th scope="row"><label for="fam-{{ family }}">{% if not record %}<input id="fam-{{ family }}" type="checkbox" name="families" value="{{ family }}"{% if family in form.families %} checked{% endif %}{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}>{% endif %}<span><strong class="pred-family-key" data-family="{{ family }}">{{ label }}</strong>{% if family == 'foundation' %}<small>Necesita Chronos-2 instalado en el equipo del motor.</small>{% endif %}</span></label></th>
+        <th scope="row"><label for="fam-{{ family }}">{% if not record %}<input id="fam-{{ family }}" type="checkbox" name="families" value="{{ family }}"{% if family in form.families %} checked{% endif %}{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}>{% endif %}<span><strong class="pred-family-key" data-family="{{ family }}">{{ family_label(family) }}</strong><small>{{ family_term(family).hint }}</small>{% if family == 'foundation' %}<small>Necesita Chronos-2 instalado en el equipo del motor.</small>{% endif %}</span></label></th>
         {% for code, admitted in families_hint %}
         {% set state = 'on' if family in admitted and family in form.families else 'off' if family in admitted else 'na' %}
         <td><span class="pred-matrix-dot pred-matrix-dot--{{ state }}" title="{{ family_label(family) }}: {{ 'compite' if state == 'on' else 'admitida, sin elegir' if state == 'off' else 'la política no la usa en este tipo' }}"><span class="pred-sr-only">{{ 'Compite' if state == 'on' else 'Admitida, sin elegir' if state == 'off' else 'No admite este tipo' }}</span></span></td>
