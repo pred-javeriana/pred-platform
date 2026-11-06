@@ -262,6 +262,7 @@ def test_an_unknown_filter_value_gets_the_repository_reason(
 
 def test_a_missing_execution_or_run_is_a_404(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     _published(env, monkeypatch)
+    _publish_for_the_run(env, run_id="m3-ajena", run_id_m2="r-otra")
     client = _client(env)
 
     assert client.get(f"{EXPORT}?ejecucion=99").status_code == 404

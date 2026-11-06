@@ -14,7 +14,7 @@ from fastapi.responses import PlainTextResponse, Response
 
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
 from pred_platform.app.exportar import exclusions_csv, filename, verdicts_csv
-from pred_platform.app.resultados_m3 import export_evidence
+from pred_platform.app.resultados_m3 import default_execution, export_evidence
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.data.deps import get_repository
 from pred_platform.data.repository import DataRepository
@@ -40,8 +40,11 @@ def _m2_run_id(repository: DataRepository, reference: str) -> str | None:
 
 
 def _export(request: Request, repository: DataRepository, *, rows: bool) -> Response:
+    params = dict(request.query_params)
+    if not (params.get("ejecucion") or "").strip():
+        params["ejecucion"] = default_execution(repository)
     try:
-        query = parse_consulta_query(dict(request.query_params))
+        query = parse_consulta_query(params)
     except InvalidQuery as exc:
         return _error("La consulta no es válida.", str(exc), 400)
     m2_run_id = _m2_run_id(repository, query.ejecucion)

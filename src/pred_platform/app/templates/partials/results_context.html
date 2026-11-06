@@ -28,7 +28,7 @@
     {{ alert(notice, variant="warning") }}
     {% if m3.others %}
     <p class="pred-meta">Otras evaluaciones publicadas para los mismos datos y ajustes:
-      {% for other in m3.others %}<a href="{{ m3_hrefs[other.run_id] }}" title="Evaluación {{ other.run_id }}">{% if other.creado_en %}la publicada el {{ format_when(other.creado_en) }}{% else %}una sin fecha informada{% endif %}</a>{% if not loop.last %}, {% elif not other.creado_en %}.{% endif %}{% endfor %}
+      {% for other in m3.others %}<a href="{{ m3_hrefs[other.run_id] }}" title="Evaluación {{ other.run_id }}{% if other.creado_en %} · {{ exact_when(other.creado_en) }}{% endif %}">{% if other.creado_en %}la publicada el {{ format_when(other.creado_en) }}{% else %}una sin fecha informada{% endif %}</a>{% if not loop.last %}, {% elif not other.creado_en %}.{% endif %}{% endfor %}
     </p>
     {% endif %}
   {% endif %}

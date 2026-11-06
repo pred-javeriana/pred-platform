@@ -307,6 +307,7 @@ def test_an_m3_run_of_another_execution_is_refused(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _published(env, monkeypatch)
+    _publish_for_the_run(env, run_id="m3-ajena", run_id_m2="r-otra")
     html = _client(env).get("/resultados?vista=sku&m3=m3-ajena").text
 
     assert "La evaluación pedida no corresponde a esta ejecución." in _text(html)

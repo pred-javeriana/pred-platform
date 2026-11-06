@@ -25,6 +25,7 @@ from pred_platform.contract.models import (
     ErrorInfo,
     IngestList,
     IngestReport,
+    IngestSummary,
     RunStatus,
     SkuSelection,
     SkuSelectionList,
@@ -92,6 +93,8 @@ class DataRepository(Protocol):
     def get_capabilities(self) -> Capabilities: ...
 
     def list_ingests(self, *, page: int = 1, size: int = DEFAULT_SIZE) -> IngestList: ...
+
+    def get_ingest(self, ingest_id: str) -> IngestSummary | None: ...
 
     def get_ingest_report(self, ingest_id: str) -> IngestReport: ...
 

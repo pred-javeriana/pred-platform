@@ -179,6 +179,21 @@ class DalRepository(M3DalSource):
         ]
         return models.IngestList(**_envelope(availability), items=items, page=paging)  # type: ignore[arg-type]
 
+    def get_ingest(self, ingest_id: str) -> models.IngestSummary | None:
+        try:
+            detail = self._require_ingest(ingest_id)
+        except (ArtifactMissing, InvalidQuery):
+            return None
+        return models.IngestSummary(
+            ingest_id=detail.sha256,
+            name=detail.nombre_archivo,
+            status=detail.estado,  # type: ignore[arg-type]
+            parquet_path=self._display_path(detail.ruta_parquet),
+            rows=detail.filas,
+            n_skus=detail.skus,
+            published_at=detail.publicada_en,  # type: ignore[arg-type]
+        )
+
     def get_ingest_report(self, ingest_id: str) -> models.IngestReport:
         detail = self._require_ingest(ingest_id)
         if detail.estado is None:

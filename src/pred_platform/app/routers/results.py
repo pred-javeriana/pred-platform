@@ -65,6 +65,7 @@ from pred_platform.app.resultados_m3 import (
     classes,
     consulta,
     decision,
+    default_execution,
     other_publications,
     profiles,
     published_executions,
@@ -160,7 +161,12 @@ def resultados(
     con evidencia publicada (si no hay, la más reciente)."""
     params = request.query_params
     wanted = (params.get("ejecucion") or "").strip()
-    target: str | None = wanted if wanted not in ("", LATEST) else None
+    target: str | None = None
+    if wanted and wanted != LATEST:
+        header = _run_header(repository, wanted)
+        target = (
+            header.ejecucion.id if header is not None and header.ejecucion is not None else wanted
+        )
     if target is None:
         published = published_executions(repository)
         target = published[0].ejecucion_id if published else _latest_run(repository)
@@ -256,7 +262,9 @@ def _resultados_page(
     # La ejecución (la de la ruta) y la corrida M3 se leen aparte de los filtros: un page o un
     # size inválido nunca hace perder qué ejecución se estaba mirando.
     executions = published[:_EXECUTION_CHOICES]
-    evidence = champion and any(e.ejecucion_id == reference for e in executions)
+    run = _run_header(repository, reference)
+    run_id = run.ejecucion.id if run is not None and run.ejecucion is not None else reference
+    evidence = champion and any(e.ejecucion_id == run_id for e in executions)
     vista = forced_vista or _vista(params, evidence)
     lista = _lista(params, champion, evidence) if vista == "sku" else None
     context = {**probe, "vista": vista, "lista": lista, "wizard": wizard}
@@ -266,7 +274,6 @@ def _resultados_page(
         query = replace(parse_selection_query(params), ejecucion=reference, m3=wanted_m3)
     except InvalidQuery as exc:
         query, query_error = SelectionQuery(ejecucion=reference, m3=wanted_m3), str(exc)
-    run = _run_header(repository, reference)
     context.update(
         query=query,
         query_error=query_error,
@@ -330,11 +337,20 @@ def _describe_run(
     counts = run.progress.tareas_por_estado if run.progress is not None else None
     # El embudo que la vista ya leyó (Resumen o Veredictos) evita leerlo otra vez.
     summary, consulta = context.get("m3_summary"), context.get("m3_consulta")
-    funnel = (summary.funnel if summary is not None else None) or (
-        consulta.evidence.funnel if consulta is not None and consulta.evidence else None
+    funnel = (
+        (
+            (summary.funnel if summary is not None else None)
+            or (consulta.evidence.funnel if consulta is not None and consulta.evidence else None)
+        )
+        if resolved is not None and resolved.estado == "PUBLICADA"
+        else None
     )
     context["outcome"] = run_outcome(
-        repository, run.ejecucion, counts, resolved.run_id if resolved else None, funnel
+        repository,
+        run.ejecucion,
+        counts,
+        resolved.run_id if resolved and resolved.estado == "PUBLICADA" else None,
+        funnel,
     )
     context["run_ingest"] = ingest_name(repository, run.ejecucion.ingest_id)
     context["run_status"] = describe_run(
@@ -538,7 +554,7 @@ def sku_detalle(
     if target is None:
         target = _resolve_sku_run(repository, sku_id)
     if target is None:
-        target = "1"
+        target = default_execution(repository)
     quoted_target = quote(target, safe="")
     quoted_sku = quote(sku_id, safe="")
     return redirect_with_query(

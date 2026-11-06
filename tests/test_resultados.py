@@ -532,18 +532,19 @@ def test_exclusion_texts_are_platform_sentences_without_engine_codes() -> None:
 
 
 # ------------------------------------------------------------ la decisión publicada por M3
-def _publish_for_the_run(env: Env, **options: Any) -> str:
+def _publish_for_the_run(env: Env, *, run_id_m2: str = "", **options: Any) -> str:
     """Publish an M3 evaluation of the platform's run 1, with FIL-0003 launched after the cut."""
     from tests.m3_publicada import publish
 
-    [(run_id_m2,)] = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")
+    m2_id = run_id_m2 or env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")[0][0]
+    assert m2_id is not None
     options.setdefault("late", ("FIL-0003",))
     options.setdefault(
         "verdicts",
         {"FIL-0001": ("smooth", "VALIDADO"), "FIL-0002": ("intermittent", "EXPLORATORIO")},
     )
-    publish(env.db, ingesta_sha256=env.ingest_id, run_id_m2=run_id_m2, **options)
-    return run_id_m2
+    publish(env.db, ingesta_sha256=env.ingest_id, run_id_m2=m2_id, **options)
+    return m2_id
 
 
 @pytest.mark.parametrize(
@@ -969,7 +970,8 @@ def test_several_publications_of_one_identity_are_announced_and_can_be_chosen(
     assert 'title="Evaluación m3-real-1 · 2026-10-27 10:00:00 UTC' in html
     other = re.search(
         r'<a href="/resultados\?vista=resumen&amp;ejecucion=1&amp;m3=m3-real-0" '
-        r'title="Evaluación m3-real-0">([^<]*)</a>',
+        r'title="Evaluación m3-real-0 · 2026-10-26 10:00:00 UTC '
+        r'\(hora universal coordinada\)">([^<]*)</a>',
         html,
     )
     assert other is not None and other.group(1) == "la publicada el 26 oct 2026, 5:00 a. m."
@@ -995,6 +997,7 @@ def test_an_m3_run_of_another_execution_is_refused_and_an_unpublished_one_explai
     assert "La evaluación más reciente está evaluada, sin publicar." in text
     assert "Sin veredicto" in text
 
+    _publish_for_the_run(env, run_id="m3-ajena", run_id_m2="r-otra")
     other = client.get("/resultados?m3=m3-ajena").text
     assert "La evaluación pedida no corresponde a esta ejecución." in _text(other)
     assert 'pred-status__label">Validado' not in other
@@ -1781,9 +1784,9 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
     assert (
         "Suave Clásica No confirmado p Holm > 0,05 0,0496 0,0504 0,9998 [0,9996; 1,0003] 412"
     ) in text
-    # 0,9992 keeps three decimals: 0,999 is still below 1.
+    # 0,9992 y 0,9999 comparten los cuatro decimales del par.
     assert (
-        "Aprendizaje automático 412 0,9996 [0,999; 0,9999] 0,9997 230 (55,8 %) [51,0 %; 60,5 %] "
+        "Aprendizaje automático 412 0,9996 [0,9992; 0,9999] 0,9997 230 (55,8 %) [51,0 %; 60,5 %] "
         "0,0496 0,0496"
     ) in text
     # Values away from 1 and from α keep three decimals.
@@ -1796,7 +1799,7 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
         '<td class="num" title="0,0496">0,0496</td>',
         '<td class="num" title="0,0504">0,0504</td>',
         '<td class="num" title="0,9996">0,9996<span class="pred-subvalue" '
-        'title="[0,9992; 0,9999]">[0,999; 0,9999]</span></td>',
+        'title="[0,9992; 0,9999]">[0,9992; 0,9999]</span></td>',
         '<td class="num" title="0,9997">0,9997</td>',
         '<span class="pred-subvalue" title="[0,9996; 1,0003]">[0,9996; 1,0003]</span>',
     ):
@@ -2009,3 +2012,96 @@ def test_by_class_without_a_published_run_or_with_a_rejected_one_shows_the_cause
     rejected = _text(client.get("/resultados?vista=clase&m3=m3-real-1").text)
     assert "La evaluación no está publicada." in rejected
     assert "Campeón por clase" not in rejected
+
+
+def test_interval_text_formats_both_limits_with_same_precision() -> None:
+    from pred_platform.app.resultados_m3 import interval_text
+
+    assert interval_text(0.0003, 0.0005) == "[0,0003; 0,0005]"
+    assert interval_text(0.8, 1.2) == "[0,800; 1,200]"
+
+
+def test_resultados_with_motor_run_id_opens_resumen(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts={"FIL-0001": ("smooth", "VALIDADO")})
+    motor_id = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")[0][0]
+    assert motor_id is not None and motor_id.startswith("r-")
+    client = _dal_client(env)
+    page = client.get(f"/resultados?ejecucion={motor_id}").text
+    assert 'aria-current="page">Resumen</a>' in page
+    assert "Embudo de la ejecución" in page
+
+
+def test_sku_and_export_default_to_published_run(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_worker import SMALL, enqueue_run
+
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts={"FIL-0001": ("smooth", "VALIDADO")})
+    # Run 2 is queued (becomes latest), but has no published M3
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    client = _dal_client(env)
+    # /resultados/sku/{sku} without ejecucion uses the published run (1)
+    sku_page = client.get("/resultados/sku/FIL-0001")
+    assert sku_page.status_code == 200
+    assert "FIL-0001" in sku_page.text
+    # /resultados/exportar.csv without ejecucion uses the published run (1)
+    export_resp = client.get("/resultados/exportar.csv")
+    assert export_resp.status_code == 200
+    assert export_resp.headers["content-type"].startswith("text/csv")
+    assert "FIL-0001" in export_resp.text
+
+
+def test_unknown_m3_shows_no_existe_esa_evaluacion(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    client = _dal_client(env)
+    text = _text(client.get("/resultados?m3=no-existe").text)
+    assert "No existe esa evaluación." in text
+    assert "Es de otra ejecución." not in text
+
+
+def test_unpublished_m3_shows_creada_el_in_sku_list(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, estado="EVALUADA")
+    client = _dal_client(env)
+    page = client.get("/resultados?vista=sku&m3=m3-real-1").text
+    text = _text(page)
+    assert "creada el" in text
+    assert "publicada el" not in text
+
+
+def test_unpublished_m3_does_not_claim_no_verdicts_when_run_has_published(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(
+        env,
+        run_id="m3-real-pub",
+        estado="PUBLICADA",
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+    )
+    _publish_for_the_run(env, run_id="m3-real-eval", estado="EVALUADA")
+    client = _dal_client(env)
+    page = client.get("/resultados?ejecucion=1&m3=m3-real-eval").text
+    assert "productos tienen veredicto" in page
+    assert "Todavía no hay veredictos publicados." not in page
+
+
+def test_unavailable_state_shows_detalle_tecnico_and_codigo(env: Env) -> None:
+    from tests.test_worker import SMALL, enqueue_run
+
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    client = _dal_client(env)
+    page = client.get("/resultados?ejecucion=1").text
+    assert "Detalle técnico" in page
+    assert "Código" in page
+    assert "prerequisite_missing" in page
+    assert "Disponibilidad y dependencias" not in page
