@@ -1,5 +1,6 @@
 {% from "components/tables.html" import table_start, table_end %}
-{# Los perfiles de error de la corrida M3 resuelta (m3_cartera). m3_profiles es un M3Profiles. #}
+{# Los perfiles de error de la evaluación final resuelta (m3_cartera). m3_profiles es un
+   M3Profiles. #}
 {% if m3_profiles.problem %}
 <section class="pred-unavailable">
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ m3_profiles.problem.title }}</h2>
@@ -12,12 +13,12 @@
   <nav class="pred-segmented" aria-label="Métrica del perfil">
     {% for name, label in profile_metrics.items() %}<a href="{{ metric_hrefs[name] }}"{% if name == m3_profiles.metrica %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
-  <p class="pred-meta">Distribución de {{ profile_metrics[m3_profiles.metrica] }} en el bloque de prueba, tal como la publicó M3{% if m3_profiles.metrica == "razon_sn" %}; la línea base vale 1{% endif %}.</p>
-  {{ table_start(["Clase", "Familia", "Media", "Mediana", "p25", "p75", "SKU", "Instancias", "No calculables"], "Perfiles de error de la corrida") }}
+  <p class="pred-meta">{{ metric_term(m3_profiles.metrica).hint }} Distribución en el bloque de prueba, tal como la publicó la evaluación final{% if m3_profiles.metrica == "razon_sn" %}; la línea base vale 1{% endif %}.</p>
+  {{ table_start(["Clase", "Familia", "Media", "Mediana", "p25", "p75", "SKU", "Instancias", "No calculables"], "Perfiles de error de la ejecución") }}
   {% for row in m3_profiles.rows %}
   <tr{% if loop.first or row.sku_class != loop.previtem.sku_class %} class="pred-table__group-start"{% endif %}>
-    <td class="pred-demand-class">{% if loop.first or row.sku_class != loop.previtem.sku_class %}{{ sku_class_label(row.sku_class) }}{% else %}<span class="pred-sr-only">{{ sku_class_label(row.sku_class) }}</span>{% endif %}</td>
-    <td class="pred-nowrap">{{ family_label(row.familia) }}</td>
+    <td class="pred-demand-class">{% if loop.first or row.sku_class != loop.previtem.sku_class %}<span title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</span>{% else %}<span class="pred-sr-only">{{ sku_class_label(row.sku_class) }}</span>{% endif %}</td>
+    <td class="pred-nowrap" title="{{ family_term(row.familia).hint }}">{{ family_label(row.familia) }}</td>
     {% for value in (row.media, row.mediana, row.p25, row.p75) %}
     <td class="num"{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}>{% if value is none %}—{% elif m3_profiles.metrica == "razon_sn" %}{{ ratio_text(value) }}{% else %}{{ format_decimal(value, 3) }}{% endif %}</td>
     {% endfor %}

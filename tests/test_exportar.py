@@ -196,7 +196,7 @@ def test_a_total_that_changes_between_pages_gives_no_partial_file(
     response = _client(env, repo).get(EXPORT)
 
     assert response.status_code == 409
-    assert "La evidencia cambió durante la exportación." in response.text
+    assert "La evaluación cambió durante la exportación." in response.text
     assert "run_id" not in response.text and not response.headers["content-type"].startswith(
         "text/csv"
     )
@@ -267,7 +267,7 @@ def test_a_missing_execution_or_run_is_a_404(env: Env, monkeypatch: pytest.Monke
     assert client.get(f"{EXPORT}?ejecucion=99").status_code == 404
     other = client.get(f"{EXPORT}?m3=m3-ajena")
     assert other.status_code == 404
-    assert "La corrida M3 pedida no corresponde a esta ejecución." in other.text
+    assert "La evaluación pedida no corresponde a esta ejecución." in other.text
 
 
 def test_without_an_m3_evaluation_there_is_nothing_to_export(
@@ -276,7 +276,7 @@ def test_without_an_m3_evaluation_there_is_nothing_to_export(
     _run(env, monkeypatch)
     response = _client(env).get(EXPORT)
     assert response.status_code == 404
-    assert "Esta ejecución todavía no tiene evaluación M3." in response.text
+    assert "Esta ejecución todavía no tiene evaluación final." in response.text
 
 
 def test_a_run_that_is_not_published_is_a_conflict(
@@ -287,7 +287,7 @@ def test_a_run_that_is_not_published_is_a_conflict(
     response = _client(env).get(EXPORT)
 
     assert response.status_code == 409
-    assert "Esta ejecución todavía no tiene una corrida M3 PUBLICADA." in response.text
+    assert "Esta ejecución todavía no tiene una evaluación publicada." in response.text
     assert "run_id" not in response.text
 
 
@@ -298,7 +298,7 @@ def test_a_publication_without_its_metadata_is_a_conflict(
     for path in (EXPORT, EXCLUSIONS):
         response = _client(env).get(path)
         assert response.status_code == 409
-        assert "La publicación M3 no tiene sus metadatos de exclusión." in response.text
+        assert "La evaluación publicada no trae la lista de productos excluidos." in response.text
 
 
 # -------------------------------------------------------------------------- desde la pestaña

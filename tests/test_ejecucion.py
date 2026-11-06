@@ -67,28 +67,43 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
+def _run_state_tone(html: str) -> str:
+    """The colour modifier of the run's «Detenida» state, in Ejecución or in Resultados."""
+    found = re.findall(
+        r'<span class="pred-status pred-status--(\w+)"[^>]*>\s*<svg[^>]*><use href="#i-stop">'
+        r'</use></svg>\s*<span class="pred-status__label">Detenida</span>',
+        html,
+    )
+    assert len(set(found)) == 1, found
+    return found[0]
+
+
 # -------------------------------------------------------------------- con los fixtures
 def test_the_active_run_shows_its_state_progress_settings_and_tasks() -> None:
     client, repo = _fixture_client("normal")
     response = client.get("/ejecucion")
     text = _text(response.text)
 
-    assert response.status_code == 200 and repo.status_calls[-1][0] == "latest"
+    assert response.status_code == 200 and repo.status_calls[0][0] == "latest"
     assert "Ejecución #1" in text and "Ejecutando" in text
     assert "4 / 7 tareas" in text and "57,1 %" in text
-    assert "Mínimo de entrenamiento 60 días" in text and "Corte t* 2026-06-29" in text
+    assert "Mínimo de entrenamiento 60 días" in text and "Fecha de corte ( t* ) 29 jun 2026" in text
     for state in ("Pendiente", "Ejecutando", "Exitosa"):
         assert state in text
-    assert "FIL-0001" in text and "classical:sarima" in text
+    # While the run works, the list keeps to the tasks worth a look; all of them are one link away.
+    assert "Ver las 7 tareas" in text
+    every = _text(client.get("/ejecucion?tareas=todas").text)
+    assert "FIL-0001 Clásica SARIMA Exitosa" in every
 
 
 def test_the_family_and_model_cells_never_break_a_word() -> None:
     client, _ = _fixture_client("normal")
-    html = client.get("/ejecucion").text
+    html = client.get("/ejecucion?tareas=todas").text
 
-    cells = r'<td class="pred-nowrap">Cl[^<]*</td>\s*<td class="pred-nowrap">'
-    assert re.search(cells + r'<span class="mono">classical:sarima</span></td>', html)
-    assert html.count('<td class="pred-nowrap">') >= 2 * 7
+    # The model reads by its name; the engine id it came from is not shown as a code.
+    cells = r'<td class="pred-nowrap">Cl[^<]*</td>\s*<td class="pred-nowrap" title="[^"]+">'
+    assert re.search(cells + r"SARIMA</td>", html)
+    assert html.count('<td class="pred-nowrap"') >= 2 * 7
 
 
 def test_pending_evaluation_settings_show_the_engine_handoff(
@@ -103,7 +118,7 @@ def test_pending_evaluation_settings_show_the_engine_handoff(
     monkeypatch.setattr(repo, "get_run_status", lambda *args, **kwargs: pending)
     response = client.get("/ejecucion")
     assert response.status_code == 200
-    assert "Lo informa el motor al terminar la corrida" in response.text
+    assert "Lo informa el motor al terminar la ejecución" in response.text
     assert "recorte None" not in response.text
 
 
@@ -114,7 +129,7 @@ def test_every_task_state_has_icon_text_and_colour_and_errors_have_a_next_step()
     for modifier in ("neutral", "info", "ok", "err", "warn"):
         assert f"pred-status--{modifier}" in html
     text = _text(html)
-    assert "Fallida" in text and "No Ejecutable" in text
+    assert "Fallida" in text and "No ejecutable" in text
     assert "Etapa" in text and re.search(r"\b[a-z]+\.[a-z_]+\b", text)
     assert "Traceback" not in text
 
@@ -136,6 +151,11 @@ def test_an_invalid_filter_is_a_warning_and_an_unknown_run_is_not_a_500() -> Non
         assert response.status_code == 200 and "pred-alert--warning" in response.text
     missing = client.get("/ejecucion?ejecucion=99")
     assert missing.status_code == 200 and "Traceback" not in missing.text
+    # The missing run is named by its number, with a way out, not with the generic error.
+    text = _text(missing.text)
+    assert "No existe la ejecución «99». Puede abrir la ejecución más reciente" in text
+    assert "No se encontró el resultado esperado" not in text and "'99'" not in text
+    assert '<a class="pred-btn pred-btn--secondary" href="/ejecucion"' in missing.text
 
 
 def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
@@ -143,7 +163,7 @@ def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
     text = _text(client.get("/ejecucion").text)
 
     assert "No existe una ejecución activa." in text
-    assert "Todavía no hay ninguna ingesta aceptada" in text
+    assert "Todavía no hay ningún archivo de datos aceptado" in text
 
 
 def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
@@ -156,7 +176,7 @@ def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
     )
     launch_html = client.get(f"/ejecucion?ingest_id={ingest_id}").text
     assert re.search(r'<button class="pred-btn pred-btn--primary"[^>]*disabled', launch_html)
-    assert "Lanzar está deshabilitado. Estás viendo datos de prueba" in launch_html
+    assert "Lanzar está deshabilitado. Está viendo datos de prueba" in launch_html
     assert re.search(
         r'<button class="pred-btn pred-btn--secondary"[^>]*disabled[^>]*>\s*<svg[^>]*>'
         r'<use href="#i-stop"',
@@ -193,6 +213,109 @@ def test_polling_is_off_with_fixtures_and_the_fragment_stops_it() -> None:
     assert fragment.status_code == 286 and "pred-nav" not in fragment.text
 
 
+def _task_table(html: str) -> str:
+    """The rows of the task list, as the reader sees them."""
+    found = re.search(r"<tbody>(.*?)</tbody>", html.split('id="tareas-foco"', 1)[1], re.S)
+    assert found is not None
+    return _text(found.group(1))
+
+
+def test_while_a_run_works_the_task_list_shows_the_failures_first_and_links_the_rest() -> None:
+    client, repo = _fixture_client("errores")  # running, 5 tasks, one of each state
+    html = client.get("/ejecucion").text
+
+    # The list keeps to what needs a look, so progress and steps stay in view.
+    assert "1 tarea falló hasta ahora." in _text(html)
+    rows = _task_table(html)
+    assert "Fallida" in rows
+    for other in ("Pendiente", "Exitosa", "No ejecutable"):
+        assert other not in rows
+    assert re.search(
+        r'<a href="/ejecucion\?[^"]*tareas=todas[^"]*#tareas">Ver las 5 tareas</a>', html
+    )
+    assert repo.status_calls[-1][1].get("estado") == "fallida"
+
+
+def test_without_failures_the_task_list_shows_what_runs_now() -> None:
+    client, repo = _fixture_client("normal")
+    html = client.get("/ejecucion").text
+
+    assert "Ninguna tarea ha fallado. Se ejecutan ahora:" in _text(html)
+    rows = _task_table(html)
+    assert "Ejecutando" in rows and "Exitosa" not in rows and "Pendiente" not in rows
+    assert repo.status_calls[-1][1].get("estado") == "ejecutando"
+
+
+def test_a_running_run_without_tasks_yet_says_so_instead_of_offering_zero_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo = _fixture_client("normal")
+    data = repo.get_run_status("latest").model_dump()
+    data["tasks"] = []
+    data["page"]["total"] = 0
+    data["progress"]["tareas_total"] = 0
+    data["progress"]["tareas_por_estado"] = dict.fromkeys(data["progress"]["tareas_por_estado"], 0)
+    data["progress"]["avance_pct"] = 0.0
+    empty = models.RunStatus.model_validate(data)
+    monkeypatch.setattr(repo, "get_run_status", lambda *args, **kwargs: empty)
+    text = _text(client.get("/ejecucion").text)
+
+    assert "Todavía no hay tareas en esta ejecución." in text
+    assert "Ver las 0 tareas" not in text and "Ver la tarea" not in text
+
+
+def test_a_working_run_shows_what_it_is_doing_and_that_it_is_still_alive() -> None:
+    client, _ = _fixture_client("normal")
+    html = client.get("/ejecucion").text
+
+    pulse = re.search(
+        r'<div class="pred-run__pulse" id="pulso-ejecucion"[^>]*>(.*?)</div>', html, re.S
+    )
+    assert pulse is not None
+    assert 'data-pred-started="' in pulse.group(0)
+    text = _text(pulse.group(1))
+    assert text.strip().startswith("Trabajando")
+    assert re.search(r"Lleva \S+", text)
+    # The ring and the counts carry the hooks that let them move instead of jump.
+    assert "pred-progress__sweep" in html and 'data-pred-tween="avance-pct"' in html
+
+
+def test_a_page_that_does_not_poll_does_not_say_when_it_read_the_progress() -> None:
+    # Fixtures (and a read-only copy) never read the progress again: a «read now» line would
+    # turn into «the server does not answer» after 12 s, about a server that is fine.
+    client, _ = _fixture_client("normal")
+    html = client.get("/ejecucion").text
+
+    assert 'hx-trigger="none"' in html and 'id="pulso-ejecucion"' in html
+    assert 'id="pulso-lectura"' not in html and "avance leído" not in html
+    time_line = re.search(r'<p class="pred-run__pulse-time">(.*?)</p>', html, re.S)
+    assert time_line is not None
+    assert not _text(time_line.group(1)).strip().endswith("·")
+
+
+def test_the_launch_form_lists_the_families_each_class_admits() -> None:
+    client, repo = _fixture_client("normal")
+    ingest_id = next(
+        item.ingest_id for item in repo.list_ingests().items if item.status == "accepted"
+    )
+    html = client.get(f"/ejecucion?ingest_id={ingest_id}").text
+
+    hint = re.search(r'id="families-hint">(.*?)</ul>', html, re.S)
+    assert hint is not None
+    items = [
+        _text(item).strip() for item in re.findall(r"<li[^>]*>(.*?)</li>", hint.group(1), re.S)
+    ]
+    assert items == [
+        "Suave Clásica Aprendizaje automático Aprendizaje profundo Fundacional",
+        "Errática Clásica Aprendizaje automático Aprendizaje profundo Fundacional",
+        "Intermitente Clásica Aprendizaje automático Fundacional",
+        "Grumosa Clásica Fundacional",
+    ]
+    # Each class explains itself on demand; the families are short tags, not a sentence.
+    assert 'title="Vende casi todos los días, en cantidades parecidas."' in hint.group(1)
+    assert hint.group(1).count('class="pred-tag"') == 4 + 4 + 3 + 2
+
+
 # -------------------------------------------------------------------------- con el DAL real
 def _dal_client(env: Env, **overrides: Any) -> TestClient:
     settings = replace(env.settings, **{"worker": "off", **overrides})
@@ -201,7 +324,7 @@ def _dal_client(env: Env, **overrides: Any) -> TestClient:
     return TestClient(app)
 
 
-# Lumpy (Grumosa) admite solo Clásica y Fundacional: con las dos, cada SKU de la ingesta de
+# Grumosa admite solo Clásica y Fundacional: con las dos, cada SKU de la ingesta de
 # prueba (smooth, intermittent y lumpy) tiene al menos dos familias que comparar.
 FORM: dict[str, Any] = {
     "families": ["classical", "ml", "foundation"],
@@ -248,7 +371,9 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     )
     page = client.get(response.headers["location"]).text
     assert "La ejecución quedó en cola" in page
-    assert "Pendiente" in _text(page) and "PRED_WORKER=off" in page  # no worker in this app
+    # No worker in this app: the page says who must start it, without an environment variable.
+    assert "Pendiente" in _text(page) and "make worker" in page and "PRED_WORKER" not in page
+    assert "no procesa ejecuciones por sí sola" in _text(page)
 
 
 def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
@@ -277,11 +402,11 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
         {"event": "run_started", "attempt": 1},
         {"event": "stage_started", "stage": "L2"},
     )
-    assert "Etapa en curso: Ajuste e HPO (M2)" in fragmento()
-    assert "Ajuste e HPO (M2) ·" not in fragmento()  # sin plan de la etapa no hay contador
+    assert "Trabajando en Ajuste de modelos" in fragmento()
+    assert "Ajuste de modelos ·" not in fragmento()  # sin plan de la etapa no hay contador
     # L3 cierra M2 (L2 y L3); M3 es solo L4.
     _escribir_progreso(env, run.run_id, {"event": "stage_started", "stage": "L3"})
-    assert "Etapa en curso: Validación walk-forward (M2)" in fragmento()
+    assert "Trabajando en Validación con ventanas" in fragmento()
     _escribir_progreso(
         env,
         run.run_id,
@@ -291,7 +416,9 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
         {"event": "unit_finished", "stage": "L4", "sku_id": "B", "state": "completada"},
     )
     texto = fragmento()
-    assert "Etapa en curso: Evaluación retrospectiva (M3) · 2 de 3 SKU" in texto
+    assert "Trabajando en Evaluación final · 2 de 3 SKU terminados en esta etapa" in texto
+    # The working line counts the elapsed time and says when progress was read.
+    assert "Lleva " in texto and "avance leído" in texto
     page = client.get("/ejecucion?ejecucion=1").text
     assert "La etapa analítica actual no está informada" not in page
 
@@ -315,7 +442,7 @@ def test_ejecutar_muestra_las_tareas_que_terminaron_m2(env: Env) -> None:
             finished_at="2026-10-27T12:00:00+00:00",
             error=None,
         )
-    etiqueta = "Terminó configuración con HPO, esperando evaluación retrospectiva"
+    etiqueta = "Por evaluar"
 
     # El resumen de estados la cuenta y el filtro por estado la encuentra.
     assert f"{etiqueta} 1" in _text(client.get("/ejecucion?ejecucion=1").text)
@@ -361,14 +488,14 @@ def test_foundation_is_selectable_and_reaches_the_worker_and_results(
     env.worker().run_next()
     assert ("foundation:chronos2",) in env.rows("SELECT DISTINCT modelo FROM tareas")
     detail = client.get("/resultados/sku/FIL-0001?ejecucion=1").text
-    assert "foundation:chronos2" in detail and "Fundacional" in detail
+    assert "Chronos-2" in detail and "Fundacional" in detail
 
 
 def test_la_configuracion_encolada_espera_los_ajustes_del_motor(env: Env) -> None:
     client = _dal_client(env)
     assert _launch(client, env).status_code == 303
     text = _text(client.get("/ejecucion?ejecucion=1").text)
-    assert "Lo informa el motor al terminar la corrida" in text
+    assert "Lo informa el motor al terminar la ejecución" in text
     assert "None (recorte" not in text
 
 
@@ -404,7 +531,7 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert response.status_code == 200
     assert "Mínimo de entrenamiento (días): escriba un número entero." in text
     assert "Horizonte (días): debe ser mayor que cero." in text
-    assert "Ensayos por estudio: debe ser mayor que cero." in text
+    assert "Configuraciones a probar por familia: debe ser mayor que cero." in text
     assert "Elija al menos una familia de modelos." in text
     assert "Elija una de las métricas de la lista." in text
     assert 'value="abc"' in response.text  # what the operator typed is kept
@@ -427,9 +554,9 @@ def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
     text = _text(response.text)
 
     assert response.status_code == 200
-    assert "1 SKU Lumpy (Grumosa) queda sin modelo: agregue Clásica y Fundacional." in text
+    assert "1 SKU Grumosa queda sin modelo: agregue Clásica y Fundacional." in text
     assert "Sin ninguna familia para una clase, el motor no puede ejecutar." in text
-    assert "1 SKU Intermittent (Intermitente) queda con una sola familia" in text
+    assert "1 SKU Intermitente queda con una sola familia" in text
     assert "FIL-0002" in text
     assert "Lanzar de todos modos" not in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
@@ -445,7 +572,7 @@ def test_a_class_without_family_whose_skus_are_all_too_short_does_not_block_the_
 
     assert "queda sin modelo" not in text
     assert (
-        "1 SKU Intermittent (Intermitente) queda fuera por historia insuficiente con cualquier "
+        "1 SKU Intermitente queda fuera por historia insuficiente con cualquier "
         "familia (menos de 84 días): FIL-0002 ." in text
     )
     assert "Lanzar de todos modos" in text
@@ -459,7 +586,7 @@ def test_one_family_for_a_class_warns_which_skus_lose_the_comparison(env: Env) -
 
     assert response.status_code == 200
     assert (
-        "1 SKU Lumpy (Grumosa) queda con una sola familia (Clásica): FIL-0003 . "
+        "1 SKU Grumosa queda con una sola familia (Clásica): FIL-0003 . "
         "Para evaluarlos, agregue Fundacional." in text
     )
     assert '<span class="mono pred-nowrap">FIL-0003</span>' in response.text  # never split
@@ -473,7 +600,7 @@ def test_a_sku_too_short_for_any_family_is_not_told_to_add_one(env: Env) -> None
     text = _text(response.text)
 
     assert (
-        "1 SKU Lumpy (Grumosa) queda fuera por historia insuficiente con cualquier familia "
+        "1 SKU Grumosa queda fuera por historia insuficiente con cualquier familia "
         "(menos de 84 días): FIL-0003 ." in text
     )
     assert "Para evaluarlos" not in text
@@ -520,7 +647,7 @@ def test_a_class_larger_than_a_topology_page_is_named_whole_and_folded(env: Env)
     )
     text = _text(response.text)
 
-    assert "551 SKU Intermittent (Intermitente) quedan con una sola familia (Clásica)." in text
+    assert "551 SKU Intermitente quedan con una sola familia (Clásica)." in text
     assert "Ver los 551 SKU" in text
     assert "INT-0000" in text and "INT-0550" in text and " más" not in text
 
@@ -540,7 +667,7 @@ def test_the_refusal_counts_only_the_skus_long_enough_to_reach_l2(env: Env) -> N
     )
     text = _text(response.text)
 
-    assert "2 SKU Lumpy (Grumosa) quedan sin modelo: agregue Clásica y Fundacional." in text
+    assert "2 SKU Grumosa quedan sin modelo: agregue Clásica y Fundacional." in text
     assert "3 SKU Lumpy" not in text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
@@ -602,17 +729,37 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
     ("field", "value", "message"),
     [
         ("seed", str(2**63), "Semilla: el número es demasiado grande."),
-        ("trials", str(2**63), "Ensayos por estudio: el número es demasiado grande."),
+        (
+            "trials",
+            str(2**63),
+            "Configuraciones a probar por familia: el número es demasiado grande.",
+        ),
         ("workers", str(2**63), "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
-        ("trials", "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        (
+            "trials",
+            "9" * 4301,
+            "Configuraciones a probar por familia: el número es demasiado grande.",
+        ),
         ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "+" + "9" * 4301, "Semilla: el número es demasiado grande."),
         ("seed", "\u0669" * 4301, "Semilla: el número es demasiado grande."),
-        ("trials", "+" + "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
-        ("trials", "\u0669" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        (
+            "trials",
+            "+" + "9" * 4301,
+            "Configuraciones a probar por familia: el número es demasiado grande.",
+        ),
+        (
+            "trials",
+            "\u0669" * 4301,
+            "Configuraciones a probar por familia: el número es demasiado grande.",
+        ),
         ("seed", "-" + "9" * 4301, "Semilla: debe ser cero o más."),
-        ("trials", "-" + "9" * 4301, "Ensayos por estudio: debe ser mayor que cero."),
+        (
+            "trials",
+            "-" + "9" * 4301,
+            "Configuraciones a probar por familia: debe ser mayor que cero.",
+        ),
     ],
 )
 def test_a_number_sqlite_cannot_store_is_a_field_error_not_a_server_error(
@@ -720,6 +867,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
 
     live = client.get("/ejecucion")
     assert "every 2s" in live.text and "Ejecutando" in _text(live.text)
+    assert '<span id="pulso-lectura">avance leído ahora</span>' in live.text  # it polls
     assert client.get("/ejecucion/estado").status_code == 200  # keep polling
     assert re.search(
         r'<button class="pred-btn pred-btn--secondary"[^>]*>\s*<svg[^>]*><use href="#i-stop"',
@@ -783,7 +931,13 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
     env.worker().run_next()
 
     text = _text(client.get("/ejecucion").text)
-    assert "Completada con fallos" in text and "Reintentar las tareas con fallos" in text
+    # Failed tasks do not make the run read as a failure: it completed, and a sentence says
+    # how many tasks failed.
+    assert "Completada con fallos" not in text and "Reintentar las tareas con fallos" in text
+    assert re.search(r"(Falló|Fallaron) \d+ de \d+ tareas de modelos\.", text)
+    # A finished run is not working any more: no pulse, no moving ring.
+    html = client.get("/ejecucion").text
+    assert 'id="pulso-ejecucion"' not in html and "pred-progress__sweep" not in html
     assert "El modelo no pudo ajustarse." in text
     assert "Pruebe con más ensayos o con otra familia" in text
     assert "Ver resultados" in text
@@ -976,8 +1130,10 @@ def test_a_failed_stage_is_named_and_can_be_resumed(
     page = client.get("/ejecucion?ejecucion=1").text
 
     text = _text(page)
-    assert "La etapa L3 falló." in text and "etapa platform" not in page
-    assert text.count("La etapa L3 falló") == 1 and "ninguna unidad evaluó" in text
+    assert "La etapa «Validación con ventanas» falló." in text
+    assert "etapa platform" not in page and "etapa «Plataforma»" not in page
+    assert text.count("La etapa «Validación con ventanas» falló") == 1
+    assert "ninguna unidad evaluó" in text
     assert _resume_button(page) == "enabled"
 
 
@@ -1012,7 +1168,7 @@ def test_an_l2_failure_that_a_resume_repeats_is_not_offered_again(
     page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
 
     assert 'id="accion-reanudar"' not in page
-    assert "Reanudar no se ofrece: la corrida fallaría igual." in _text(page)
+    assert "Reanudar no se ofrece: la ejecución fallaría igual." in _text(page)
 
 
 def test_an_l2_failure_of_some_units_can_still_be_resumed(
@@ -1051,12 +1207,13 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
 ) -> None:
     client = _dal_client(env)
     _launch(client, env)
-    hint = "inícielo con make worker"
+    hint = "hasta que se inicie el procesador de ejecuciones con make worker"
 
     def page() -> str:
         return _text(client.get("/ejecucion?ejecucion=1&lanzar=1").text)
 
-    assert "hasta que lo inicie con make worker" in page() and hint in page()
+    assert "debe iniciar el procesador de ejecuciones con make worker" in page()
+    assert hint in page()
     other = WorkerLock.for_database(env.db)  # a `make worker` beside the app
     assert other.acquire()
     try:
@@ -1065,7 +1222,7 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
         other.release()
 
     assert "make worker" not in shown
-    assert "En cola: empezará en cuanto el worker termine la corrida anterior." in shown
+    assert "En cola: empezará cuando termine la ejecución anterior." in shown
     assert hint in page()  # the lock is free again: nothing runs the queue
 
 
@@ -1100,7 +1257,8 @@ def test_a_second_run_waits_in_the_queue_and_the_screen_says_so(
             text = _text(client.get("/ejecucion").text)
     finally:
         other.release()
-    assert "empezará en cuanto el worker" in text and "PRED_WORKER=off" not in text
+    assert "En cola: empezará cuando termine la ejecución anterior." in text
+    assert "make worker" not in text
 
 
 def _wal_copy_in_a_read_only_folder(env: Env) -> sqlite3.Connection:
@@ -1273,9 +1431,13 @@ def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
     assert 'id="accion-reanudar"' not in html and "Reanudar" not in text.replace(
         "Reanudar no se ofrece", ""
     )
-    assert "La configuración no coincide con la corrida guardada." in text
+    assert "La configuración no coincide con la ejecución guardada." in text
     assert "run_id incompatible con la entrada o configuracion previa" in text
-    assert "Reanudar no se ofrece: la corrida fallaría igual." in text
+    assert "Reanudar no se ofrece: la ejecución fallaría igual." in text
+    # Nothing to resume: the state and the notice read as an error, here and in Resultados.
+    assert 'pred-callout--err" id="error-ejecucion"' in html
+    assert _run_state_tone(html) == "err"
+    assert _run_state_tone(client.get("/resultados").text) == "err"
 
 
 def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryable(
@@ -1301,6 +1463,10 @@ def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryabl
 
     assert 'id="accion-reanudar"' in html
     assert "Reanudar no se ofrece" not in _text(html)
+    # The page offers Reanudar, so the stop is a warning, not a final error (#126).
+    assert 'pred-callout--warn" id="error-ejecucion"' in html
+    assert _run_state_tone(html) == "warn"
+    assert _run_state_tone(client.get("/resultados").text) == "warn"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="SIGKILL no existe en Windows")
@@ -1352,6 +1518,9 @@ def test_a_run_stopped_by_the_operator_shows_why_and_offers_to_resume(
 
     assert 'id="accion-reanudar"' in html and 'id="error-ejecucion"' in html
     assert "Reanude la ejecución cuando quiera." in _text(html)
+    # The stored detail repeats the catalog title: the reason reads once.
+    callout = _text(html.split('id="error-ejecucion"', 1)[1].split("</div>", 1)[0])
+    assert callout.count("La ejecución se detuvo a petición del operador.") == 1
 
 
 def test_after_stop_the_page_keeps_polling_until_the_open_tasks_are_closed(
@@ -1392,6 +1561,6 @@ def test_an_ingest_declared_synthetic_is_listed_but_cannot_be_launched(env: Env)
 
     response = _launch(client, env)
     assert response.status_code == 200
-    assert "La ingesta elegida declara datos sintéticos" in _text(response.text)
+    assert "El archivo elegido declara datos sintéticos" in _text(response.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
     assert "Declara datos sintéticos: no ejecutable" in _text(client.get("/datos").text)

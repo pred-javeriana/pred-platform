@@ -16,12 +16,20 @@ from urllib.parse import urlencode
 
 from pred_platform import mensajes
 from pred_platform.app.presentation import (
+    FAMILY_ORDER,
+    SKU_CLASS_ORDER,
+    STAGE_ORDER,
+    aggregation_label,
+    family_label,
     format_count,
     format_decimal,
     format_duration,
+    metric_label,
+    model_label,
     sku_class_label,
+    stage_label,
 )
-from pred_platform.app.seleccion import error_title, family_label
+from pred_platform.app.seleccion import error_title
 from pred_platform.contract.models import (
     Ejecucion,
     ErrorInfo,
@@ -42,22 +50,26 @@ RESUMABLE_STATES = ("detenida", "completada_con_fallos")
 INCOMPATIBLE_CONFIG = "run.incompatible_config"
 FINISHED_STATES = ("completada", "completada_con_fallos")
 
-# Familias que ofrece el formulario, en el orden del contrato.
-FAMILY_CHOICES: tuple[tuple[str, str], ...] = (
-    ("classical", "Clásica (SARIMA)"),
-    ("ml", "Aprendizaje automático (LightGBM)"),
-    ("dl", "Aprendizaje profundo (MLP)"),
-    ("foundation", "Fundacional (Chronos-2)"),
+# El modelo que corre cada familia (pred-engine, una estrategia por familia).
+_FAMILY_MODELS: dict[str, str] = {
+    "classical": "sarima",
+    "ml": "lightgbm",
+    "dl": "mlp",
+    "foundation": "chronos2",
+}
+# Familias que ofrece el formulario, en el orden del contrato: «Clásica (SARIMA)».
+FAMILY_CHOICES: tuple[tuple[str, str], ...] = tuple(
+    (code, f"{family_label(code)} ({model_label(_FAMILY_MODELS[code])})") for code in FAMILY_ORDER
 )
-METRIC_CHOICES: tuple[tuple[str, str], ...] = (
-    ("rmse", "RMSE"),
-    ("mae", "MAE"),
-    ("smape", "sMAPE"),
-    ("mase", "MASE"),
+METRIC_CHOICES: tuple[tuple[str, str], ...] = tuple(
+    (code, metric_label(code)) for code in ("rmse", "mae", "smape", "mase")
 )
 # Avisos que se muestran tras una acción (el redirect lleva `aviso=<clave>`).
 NOTICES: dict[str, tuple[str, str]] = {
-    "en_cola": ("success", "La ejecución quedó en cola; empezará en cuanto el worker la tome."),
+    "en_cola": (
+        "success",
+        "La ejecución quedó en cola; empezará cuando el procesador de ejecuciones la tome.",
+    ),
     "existente": (
         "info",
         "Ya existía una ejecución con esta ingesta y estos parámetros; se muestra esa.",
@@ -76,7 +88,11 @@ def error_action(code: str) -> str | None:
 # ---------------------------------------------------------------------------- consulta
 @dataclass(frozen=True, slots=True)
 class ExecutionQuery:
-    """Parámetros que se delegan en ``get_run_status``, sin filtrar en el cliente."""
+    """Parámetros que se delegan en ``get_run_status``, sin filtrar en el cliente.
+
+    ``todas`` pide la lista completa de tareas mientras la ejecución avanza; sin ella, y sin otro
+    filtro, la página muestra solo las tareas que necesitan atención (``focus_tasks``).
+    """
 
     ejecucion: str = LATEST
     estado: str | None = None
@@ -84,6 +100,19 @@ class ExecutionQuery:
     family: str | None = None
     page: int = 1
     size: int = DEFAULT_SIZE
+    todas: bool = False
+
+    @property
+    def explicit(self) -> bool:
+        """Si la persona pidió una lista concreta de tareas (un filtro, una página o todas)."""
+        return bool(
+            self.todas
+            or self.estado
+            or self.sku
+            or self.family
+            or self.page > 1
+            or self.size != DEFAULT_SIZE
+        )
 
     def as_kwargs(self) -> dict[str, Any]:
         return {
@@ -102,6 +131,7 @@ class ExecutionQuery:
             "family": self.family or "",
             "page": self.page if self.page > 1 else "",
             "size": "" if self.size == DEFAULT_SIZE else self.size,
+            "tareas": "todas" if self.todas else "",
         }
         values.update(overrides)
         return urlencode([(k, str(v)) for k, v in values.items() if v not in ("", None)])
@@ -115,7 +145,27 @@ def parse_execution_query(params: Mapping[str, str]) -> ExecutionQuery:
         family=params.get("family") or None,
         page=int_param(params.get("page"), 1, "page"),
         size=int_param(params.get("size"), DEFAULT_SIZE, "size"),
+        todas=params.get("tareas") == "todas",
     )
+
+
+# Mientras la ejecución avanza, la página muestra a lo sumo estas tareas bajo el avance.
+FOCUS_SIZE = 5
+
+
+def focus_tasks(estado: str | None, query: ExecutionQuery) -> bool:
+    """Si la lista de tareas se reduce a las que necesitan atención para no tapar el avance.
+
+    Solo mientras la ejecución está en cola o en curso y nadie pidió otra lista: entonces la
+    página muestra las tareas fallidas (o, si no hay, las que se ejecutan ahora) y ofrece la lista
+    completa en un enlace.
+    """
+    return estado in ACTIVE_STATES and not query.explicit
+
+
+def focus_state(counts: Mapping[EstadoTarea, int]) -> str:
+    """Qué tareas muestra la lista reducida: las fallidas primero; si no hay, las que corren."""
+    return "fallida" if counts.get("fallida", 0) else "ejecutando"
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,8 +180,8 @@ class LaunchIngest:
 
 
 SYNTHETIC_INGEST = (
-    "La ingesta elegida declara datos sintéticos y la plataforma solo ejecuta datos reales. "
-    "Elija una ingesta de datos reales."
+    "El archivo elegido declara datos sintéticos y la plataforma solo ejecuta datos reales. "
+    "Elija un archivo de datos reales."
 )
 
 
@@ -217,12 +267,16 @@ def parse_launch_form(
         try:
             trials = _form_int(values["trials"])
         except ValueError:
-            errors["trials"] = "Ensayos por estudio: escriba un número entero o déjelo vacío."
+            errors["trials"] = (
+                "Configuraciones a probar por familia: escriba un número entero o déjelo vacío."
+            )
         else:
             if trials < 1:
-                errors["trials"] = "Ensayos por estudio: debe ser mayor que cero."
+                errors["trials"] = "Configuraciones a probar por familia: debe ser mayor que cero."
             elif trials > SQLITE_MAX_INTEGER:
-                errors["trials"] = "Ensayos por estudio: el número es demasiado grande."
+                errors["trials"] = (
+                    "Configuraciones a probar por familia: el número es demasiado grande."
+                )
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
     elif not set(values["families"]) <= {key for key, _ in FAMILY_CHOICES}:
@@ -445,17 +499,16 @@ def exclusion_confirmation(ingest_id: str, families: Sequence[str]) -> str:
     return f"{ingest_id}:{','.join(sorted(families))}"
 
 
-def families_hint() -> str:
-    """Qué familias admite cada clase de demanda, para elegirlas antes de lanzar."""
-    groups: dict[tuple[str, ...], list[str]] = {}
-    for sku_class, admitted in FAMILIES_BY_SKU_CLASS.items():
-        groups.setdefault(admitted, []).append(sku_class_label(sku_class))
-    parts = []
-    for admitted, classes in groups.items():
-        names = [family_label(f) for f in admitted]
-        which = "las cuatro" if len(admitted) == len(FAMILY_CHOICES) else _both(names)
-        parts.append(f"{_both(classes)} {'admite' if len(classes) == 1 else 'admiten'} {which}")
-    return f"Cada SKU necesita al menos dos familias que admitan su clase: {'; '.join(parts)}."
+def families_hint() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Qué familias admite cada clase de demanda, para elegirlas antes de lanzar.
+
+    Pares (clase, familias) en el orden de las clases y de las familias; la vista los nombra.
+    """
+    return tuple(
+        (sku_class, tuple(f for f in FAMILY_ORDER if f in FAMILIES_BY_SKU_CLASS[sku_class]))
+        for sku_class in SKU_CLASS_ORDER
+        if sku_class in FAMILIES_BY_SKU_CLASS
+    )
 
 
 # ----------------------------------------------------------------------------- vistas
@@ -475,9 +528,11 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
     """El error que guardó la ejecución, con el título y el paso siguiente del catálogo."""
     if info is None:
         return None
+    title = error_title(info.code, info.stage, info.row_index, info.column)
     return RunError(
-        title=error_title(info.code, info.stage, info.row_index, info.column),
-        detail=info.detail,
+        title=title,
+        # Un detalle que repite el título no dice nada nuevo: se lee una sola vez.
+        detail=None if (info.detail or "").strip() == title else info.detail,
         action=error_action(info.code),
         code=info.code,
         retryable=info.retryable,
@@ -513,6 +568,16 @@ class RunActions:
     nothing_to_compare: bool = False
 
 
+def offers_resume(estado: str, error_code: str | None) -> bool:
+    """Si la ejecución se puede reanudar, con la misma regla que aplica la cola al reanudar
+    (``dal.ejecuciones._resume``): solo una identidad incompatible no se reanuda.
+
+    Vale también para filas guardadas antes con ``retryable`` falso por un motor que murió sin
+    publicar.
+    """
+    return estado in RESUMABLE_STATES and error_code != INCOMPATIBLE_CONFIG
+
+
 def run_actions(
     estado: str | None,
     *,
@@ -531,16 +596,15 @@ def run_actions(
     """
     if estado is None:
         return RunActions(False, False, False, reason)
-    offers_resume = (
-        estado in RESUMABLE_STATES
-        and (error is None or error.code != INCOMPATIBLE_CONFIG)
+    resumable = (
+        offers_resume(estado, error.code if error else None)
         and not nothing_to_compare
         and not _same_on_resume(error)
     )
     return RunActions(
         can_stop=reason is None and estado in ACTIVE_STATES,
-        can_resume=reason is None and offers_resume,
-        offers_resume=offers_resume,
+        can_resume=reason is None and resumable,
+        offers_resume=resumable,
         disabled_reason=reason,
         nothing_to_compare=nothing_to_compare and estado in RESUMABLE_STATES,
     )
@@ -561,13 +625,9 @@ def should_poll(
     return estado == "detenida" and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
 
 
-# Las etapas del motor, en orden (contrato 1.2.0, ``Progress.etapa_actual``).
-STAGES: tuple[tuple[str, str], ...] = (
-    ("L1", "Ingesta de datos (M1)"),
-    ("L2", "Ajuste e HPO (M2)"),
-    ("L3", "Validación walk-forward (M2)"),
-    ("L4", "Evaluación retrospectiva (M3)"),
-)
+# Las etapas del motor, en orden (contrato 1.2.0, ``Progress.etapa_actual``); sus nombres son los
+# de ``presentation``.
+STAGES: tuple[tuple[str, str], ...] = tuple((code, stage_label(code)) for code in STAGE_ORDER)
 
 
 @dataclass(frozen=True, slots=True)
@@ -600,6 +660,12 @@ def elapsed_text(run: Ejecucion, now: datetime) -> str | None:
     return format_duration((end - run.iniciada_en).total_seconds())
 
 
+def _percent(share: float) -> str:
+    """Una proporción del motor en porcentaje, sin decimales si es entera: 0,1 es «10»."""
+    value = round(100 * share, 6)
+    return format_decimal(value, 0 if value == int(value) else 1)
+
+
 def settings_items(settings: RunSettings) -> list[tuple[str, str]]:
     """Los ajustes de la ejecución como filas «etiqueta, valor» para mostrarlos."""
     families = (
@@ -607,18 +673,18 @@ def settings_items(settings: RunSettings) -> list[tuple[str, str]]:
         if settings.families
         else "—"
     )
-    metrics = dict(METRIC_CHOICES)
     return [
         ("Familias", families),
-        ("Métrica de selección", metrics.get(settings.metric, settings.metric)),
+        ("Métrica de selección", metric_label(settings.metric)),
         ("Mínimo de entrenamiento", f"{settings.min_train} días"),
         ("Horizonte", f"{settings.horizon} días"),
         ("Paso entre ventanas", f"{settings.step} días"),
         ("Estacionalidad", f"{settings.seasonality} días"),
         (
-            "Agregación",
-            f"{settings.aggregation} (recorte {format_decimal(settings.trim, 2)})"
+            "Resumen de las ventanas",
+            f"{aggregation_label(settings.aggregation)} "
+            f"(recorte del {_percent(settings.trim)} % en cada extremo)"
             if settings.aggregation is not None and settings.trim is not None
-            else "Lo informa el motor al terminar la corrida",
+            else "Lo informa el motor al terminar la ejecución",
         ),
     ]

@@ -1,0 +1,18 @@
+{% from "components/buttons.html" import button %}
+{# Elegir qué ejecución con resultados se muestra: en la franja de contexto de Resultados y en el
+   aviso de una ejecución que no existe. shown_id es la mostrada, aunque no tenga evaluación. #}
+{% macro run_picker(executions, vista, lista=none, shown_id=none) %}
+{% set known = executions | map(attribute="ejecucion_id") | list %}
+<form method="get" action="/resultados" class="pred-context__picker" id="elegir-ejecucion">
+  <input type="hidden" name="vista" value="{{ vista }}">
+  {% if lista == "familias" %}<input type="hidden" name="lista" value="familias">{% endif %}
+  <label class="pred-field__label" for="ejecucion-mostrada">Ejecución</label>
+  <select class="pred-field__control" id="ejecucion-mostrada" name="ejecucion">
+    {% if shown_id is not none and shown_id not in known %}<option value="{{ shown_id }}" selected>#{{ shown_id }} · sin evaluación publicada</option>{% endif %}
+    {% for choice in executions %}
+    <option value="{{ choice.ejecucion_id }}"{% if choice.ejecucion_id == shown_id %} selected{% endif %}>#{{ choice.ejecucion_id }} · {{ describe_status("run", choice.estado).label }} · {{ format_when(choice.iniciada_en) }}</option>
+    {% endfor %}
+  </select>
+  {{ button("Mostrar", variant="subtle", type="submit") }}
+</form>
+{% endmacro %}

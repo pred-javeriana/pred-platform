@@ -1,73 +1,75 @@
 {% from "components/tables.html" import table_start, table_end %}
-{% from "components/status.html" import status_indicator %}
-{# El resumen de la corrida M3 resuelta (contrato v2). m3_summary es un M3Summary. Primero las
-   cifras que responden «¿qué decidió M3?», después el embudo que las explica y el detalle. #}
+{% from "components/status.html" import status_indicator, verdict_status %}
+{% from "components/terms.html" import gloss %}
+{# El resumen de la evaluación final resuelta (contrato v2). m3_summary es un M3Summary. Primero
+   las cifras que responden «¿qué se decidió?», después el embudo que las explica y el detalle. #}
 {% if m3_summary.problem %}
 <section class="pred-unavailable">
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ m3_summary.problem.title }}</h2>
   <p>{{ m3_summary.problem.detail }}</p>
-  {% if run and run.ejecucion and run.ejecucion.estado in ("pendiente", "ejecutando") %}<p><a href="/ejecucion?ejecucion={{ run.ejecucion.id }}">Siga el avance en Ejecución</a>: los resultados aparecen cuando M3 publique la evaluación.</p>{% endif %}
+  {% if run and run.ejecucion and run.ejecucion.estado in ("pendiente", "ejecutando") %}<p><a href="/ejecucion?ejecucion={{ run.ejecucion.id }}">Siga el avance en Ejecución</a>: los resultados aparecen cuando se publique la evaluación final.</p>{% endif %}
 </section>
 {% endif %}
 {% if m3_summary.funnel %}
 {% set funnel = m3_summary.funnel %}
 {% set counts = funnel.conteos %}
-<section class="pred-section" id="resumen-cifras" aria-label="Cifras de la corrida">
+<section class="pred-section" id="resumen-cifras" aria-label="Cifras de la ejecución">
   <dl class="pred-kpis">
-    <div class="pred-kpis__item"><dt>Productos de la corrida</dt><dd>{{ format_count(funnel.total_productos) }}</dd></div>
-    <div class="pred-kpis__item"><dt>Con veredicto M3</dt><dd>{{ format_count(funnel.tras_exclusiones) }}</dd></div>
-    <div class="pred-kpis__item"><dt>{{ status_indicator(describe_status("verdict", "VALIDADO")) }}</dt><dd>{{ format_count(counts.VALIDADO) }}</dd></div>
-    <div class="pred-kpis__item"><dt>{{ status_indicator(describe_status("verdict", "EXPLORATORIO")) }}</dt><dd>{{ format_count(counts.EXPLORATORIO) }}</dd></div>
-    <div class="pred-kpis__item"><dt>No evaluados</dt><dd>{{ format_count(funnel.no_evaluados) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Productos de la ejecución</dt><dd>{{ format_count(funnel.total_productos) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Con veredicto</dt><dd>{{ format_count(funnel.tras_exclusiones) }}</dd></div>
+    {% for code in ("VALIDADO", "EXPLORATORIO") %}
+    {% set shown = describe_status("verdict", code) %}
+    <div class="pred-kpis__item"><dt>{{ status_indicator(shown) }}</dt><dd>{{ format_count(counts[code]) }}</dd><p class="pred-kpis__note">{{ shown.hint }}</p></div>
+    {% endfor %}
+    <div class="pred-kpis__item"><dt>No evaluados</dt><dd>{{ format_count(funnel.no_evaluados) }}</dd><p class="pred-kpis__note">Sin comparación válida con la línea base: {{ verdict_label("FALLO_TECNICO") | lower }}, {{ verdict_label("NO_EVALUABLE") | lower }} o {{ verdict_label("EVIDENCIA_INSUFICIENTE") | lower }}.</p></div>
   </dl>
-  <p class="pred-meta">Conteos que M3 publicó para toda la corrida, no para una página ni un filtro. <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}">Ver la lista de SKU</a>.</p>
+  <p class="pred-meta">Conteos de toda la ejecución, no de una página ni de un filtro. <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}">Ver la lista de SKU</a>.</p>
 </section>
 
+<div class="pred-section-grid">
 <section class="pred-section" id="embudo">
-  <h2>Embudo de la corrida</h2>
-  <p class="pred-meta">De los productos del archivo a los SKU con veredicto: cada fila resta o reparte la anterior.</p>
+  <h2>Embudo de la ejecución</h2>
+  <p class="pred-meta">De los productos del archivo a los que tienen veredicto: cada fila resta o reparte la anterior.</p>
   <table class="pred-funnel">
-    <caption class="pred-sr-only">Embudo de la corrida</caption>
+    <caption class="pred-sr-only">Embudo de la ejecución</caption>
     <tbody>
-      <tr class="pred-funnel__total"><th scope="row">Productos de la corrida</th><td class="num">{{ format_count(funnel.total_productos) }}</td></tr>
-      <tr class="pred-funnel__minus"><th scope="row">Lanzados después del corte</th><td class="num">− {{ format_count(funnel.excluded_count) }}</td></tr>
-      <tr class="pred-funnel__minus"><th scope="row">Excluidos por elegibilidad (M2)</th><td class="num">{% if funnel.eligibility_excluded_count is none %}No informado{% else %}− {{ format_count(funnel.eligibility_excluded_count) }}{% endif %}</td></tr>
+      <tr class="pred-funnel__total"><th scope="row">Productos de la ejecución</th><td class="num">{{ format_count(funnel.total_productos) }}</td></tr>
+      <tr class="pred-funnel__minus"><th scope="row">Empezaron a venderse después de la fecha de corte</th><td class="num">− {{ format_count(funnel.excluded_count) }}</td></tr>
+      <tr class="pred-funnel__minus"><th scope="row">Excluidos antes de evaluar</th><td class="num">{% if funnel.eligibility_excluded_count is none %}No informado{% else %}− {{ format_count(funnel.eligibility_excluded_count) }}{% endif %}</td></tr>
       {% for code, reason, count in m3_summary.eligibility or [] %}
-      <tr class="pred-funnel__detail"><th scope="row">{{ reason }} <span class="mono">{{ code }}</span></th><td class="num">{{ format_count(count) }}</td></tr>
+      <tr class="pred-funnel__detail"><th scope="row" title="Código {{ code }}">{{ reason }}</th><td class="num">{{ format_count(count) }}</td></tr>
       {% endfor %}
-      <tr class="pred-funnel__total"><th scope="row">Con veredicto M3</th><td class="num">{{ format_count(funnel.tras_exclusiones) }}</td></tr>
+      <tr class="pred-funnel__total"><th scope="row">Con veredicto</th><td class="num">{{ format_count(funnel.tras_exclusiones) }}</td></tr>
       {% for group, veredicto, count in funnel_rows(funnel) %}
       {% if loop.first or group != loop.previtem[0] %}
       <tr class="pred-funnel__group"><th scope="row">{{ group }}</th><td class="num">{{ format_count(funnel.evaluados if group == "Evaluados" else funnel.no_evaluados) }}</td></tr>
       {% endif %}
-      <tr class="pred-funnel__detail"><th scope="row">{{ status_indicator(describe_status("verdict", veredicto)) }}</th><td class="num">{{ format_count(count) }}</td></tr>
+      <tr class="pred-funnel__detail"><th scope="row">{{ verdict_status(veredicto) }}</th><td class="num">{{ format_count(count) }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="pred-meta">Evaluados son VALIDADO y EXPLORATORIO; no evaluados, FALLO_TECNICO, NO_EVALUABLE y EVIDENCIA_INSUFICIENTE.</p>
+  <p class="pred-meta">Evaluados: {{ verdict_label("VALIDADO") }} y {{ verdict_label("EXPLORATORIO") }}. No evaluados: {{ verdict_label("FALLO_TECNICO") }}, {{ verdict_label("NO_EVALUABLE") }} y {{ verdict_label("EVIDENCIA_INSUFICIENTE") }}.</p>
 </section>
-{% endif %}
 {% if m3_summary.champions_problem %}
 <p class="pred-note"><strong>{{ m3_summary.champions_problem.title }}</strong> {{ m3_summary.champions_problem.detail }}</p>
 {% endif %}
 {% if m3_summary.champions %}
 {% set champions = m3_summary.champions %}
-{% set funnel = m3_summary.funnel %}
 <section class="pred-section" id="campeones-por-familia">
   <h2>Distribución de campeones por familia</h2>
-  <p class="pred-meta">Cuenta los SKU con veredicto M3 según la familia campeona que M3 publicó para cada uno: M3 elige y esta vista solo cuenta. El porcentaje es la parte de los {{ format_count(champions.published_total) }} SKU con veredicto; los productos excluidos antes de M3 están en el embudo y no entran aquí. Es evidencia retrospectiva sobre la reserva, no una estimación del desempeño futuro.</p>
+  <p class="pred-meta">Cuenta los productos con veredicto según la familia campeona de cada uno: la evaluación final elige y esta vista solo cuenta. El porcentaje es la parte de los {{ format_count(champions.published_total) }} productos con veredicto; los excluidos antes de evaluar están en el embudo. Es evidencia sobre el historial reservado, no una estimación del desempeño futuro.</p>
   {% if not champions.consistent %}
-  <p class="pred-note"><strong>Las cifras no cuadran.</strong> Las familias suman {{ format_count(champions.counted_total) }} SKU y el embudo publicó {{ format_count(champions.published_total) }} con veredicto. Se muestran tal como las publicó M3.</p>
+  <p class="pred-note"><strong>Las cifras no cuadran.</strong> Las familias suman {{ format_count(champions.counted_total) }} productos y el embudo publicó {{ format_count(champions.published_total) }} con veredicto. Se muestran tal como se publicaron.</p>
   {% endif %}
   {% if champion_svg %}
   <figure class="pred-chart" aria-label="Gráfico: SKU por familia campeona">
     {{ champion_svg | safe }}
   </figure>
   {% endif %}
-  {{ table_start(["Familia campeona", "Evaluados", "No evaluados", "SKU", "% de los SKU con veredicto"], "SKU por familia campeona publicada") }}
+  {{ table_start(["Familia campeona", "Evaluados", "No evaluados", "SKU", "% con veredicto"], "SKU por familia campeona") }}
   {% for row in champions.portfolio %}
   <tr>
-    <th scope="row" class="pred-nowrap">{{ family_label(row.familia) }}</th>
+    <th scope="row" class="pred-nowrap" title="{{ family_term(row.familia).hint }}">{{ family_label(row.familia) }}</th>
     <td class="num">{{ format_count(row.n_evaluados) }}</td>
     <td class="num">{{ format_count(row.n_no_evaluados) }}</td>
     <td class="num">{{ format_count(row.n_skus) }}</td>
@@ -75,23 +77,28 @@
   </tr>
   {% endfor %}
   <tr class="pred-table__total">
-    <th scope="row">Con veredicto M3</th>
+    <th scope="row">Con veredicto</th>
     <td class="num">{{ format_count(funnel.evaluados) }}</td>
     <td class="num">{{ format_count(funnel.no_evaluados) }}</td>
     <td class="num">{{ format_count(funnel.tras_exclusiones) }}</td>
     <td class="num">{{ percent_text(1.0) if funnel.tras_exclusiones else "—" }}</td>
   </tr>
   {{ table_end() }}
-  <p class="pred-meta">Un SKU con fallo técnico no tiene candidato campeón y cuenta en la familia que M3 publicó para él.</p>
+  <p class="pred-meta">Un producto con «{{ verdict_label("FALLO_TECNICO") }}» no tiene modelo campeón y cuenta en la familia que la evaluación le asignó.</p>
 </section>
-{% if champions.classes %}
+{% endif %}
+</div>
+{% endif %}
+<div class="pred-section-grid pred-section-grid--wide-first">
+{% if m3_summary.champions and m3_summary.champions.classes %}
+{% set champions = m3_summary.champions %}
 <section class="pred-section" id="campeones-por-clase">
   <h2>Campeones por clase de demanda</h2>
-  <p class="pred-meta">SKU con veredicto de cada clase, según la familia campeona publicada de cada SKU. Puede diferir de la familia campeona de la clase (en «Por clase») cuando M3 aplicó el fallback que documenta en la justificación.</p>
+  <p class="pred-meta">Productos con veredicto de cada clase, según la familia campeona de cada uno. Puede diferir de la campeona de la clase (en «Por clase») cuando el producto no tenía modelo de esa familia y la evaluación usó la siguiente.</p>
   {{ table_start(["Clase"] + CHAMPION_HEADERS + ["SKU"], "SKU por clase y familia campeona") }}
   {% for row in champions.classes %}
   <tr>
-    <th scope="row" class="pred-nowrap">{{ sku_class_label(row.sku_class) }}</th>
+    <th scope="row" class="pred-nowrap" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</th>
     {% for family in CHAMPION_FAMILIES %}
     <td class="num{% if not row.counts[family] %} is-zero{% endif %}">{{ format_count(row.counts[family]) }}</td>
     {% endfor %}
@@ -101,23 +108,22 @@
   {{ table_end() }}
 </section>
 {% endif %}
-{% endif %}
 {% if m3_summary.dm %}
 {% set dm = m3_summary.dm %}
 <section class="pred-section" id="prueba-dm">
   <h2>Prueba Diebold-Mariano</h2>
-  <p class="pred-meta">Prueba HLN-DM del campeón frente a Seasonal Naive, con el ajuste BH dentro de cada categoría de demanda. M4 cuenta los veredictos publicados; no calcula la prueba. VALIDADO no equivale a significativo.</p>
+  <p class="pred-meta">Dice si la diferencia de error entre el modelo campeón y la línea base es real o puede ser azar: prueba {{ gloss("HLN-DM") }}, con el ajuste {{ gloss("BH") }} dentro de cada clase de demanda. Esta vista cuenta los resultados publicados; no calcula la prueba. «{{ verdict_label("VALIDADO") }}» no equivale a significativo.</p>
   <dl class="pred-kpis pred-kpis--compact">
-    <div class="pred-kpis__item"><dt>Con prueba HLN-DM</dt><dd>{{ format_count(dm.con_prueba) }}</dd></div>
-    <div class="pred-kpis__item"><dt>Significativas después de BH</dt><dd>{{ format_count(dm.significativas) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Con prueba</dt><dd>{{ format_count(dm.con_prueba) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Significativas tras el ajuste {{ gloss("BH") }}</dt><dd>{{ format_count(dm.significativas) }}</dd></div>
     <div class="pred-kpis__item"><dt>No significativas</dt><dd>{{ format_count(dm.no_significativas) }}</dd></div>
     <div class="pred-kpis__item"><dt>Sin prueba</dt><dd>{{ format_count(dm.sin_prueba.values() | sum) }}</dd></div>
   </dl>
   {% if dm.sin_prueba %}
-  {{ table_start(["Causa publicada", "SKU"], "SKU sin prueba HLN-DM por causa") }}
+  {{ table_start(["Por qué no tienen prueba", "SKU"], "SKU sin prueba HLN-DM por causa") }}
   {% for causa, count in dm.sin_prueba.items() %}
   <tr>
-    <td><span class="mono">{{ causa }}</span></td>
+    <td title="Código {{ causa }}">{{ cause_text(causa) | capitalize_first }}</td>
     <td class="num">{{ format_count(count) }}</td>
   </tr>
   {% endfor %}
@@ -125,3 +131,4 @@
   {% endif %}
 </section>
 {% endif %}
+</div>

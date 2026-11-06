@@ -9,8 +9,8 @@ error**. Without `?ejecucion=` it shows the newest execution with a PUBLICADA M3
 newest execution may still be running; a picker in the context bar lists the executions with
 published evidence. Without `?vista=` it opens on Resumen when the execution shown has published M3
 evidence and on the SKU tab otherwise. The SKU tab has two readings of the same products, chosen with
-a segmented control: **Veredictos de M3** (`?vista=sku`, what M3 decided per SKU; the old
-`?vista=consulta` link still opens it) and **Familias de M2** (`?vista=sku&lista=familias`, one row
+a segmented control: **Veredictos** (`?vista=sku`, what M3 decided per SKU; the old
+`?vista=consulta` link still opens it) and **Resultados por familia** (`?vista=sku&lista=familias`, one row
 per SKU with its demand class, the state and value of each of the four families, one column per
 family, and the champion with its verdict, as M3 published them). A link with the M2 filters
 (`family`, `estado`) opens the M2 reading. `/resultados/sku/{sku_id}` is the detail, under a
@@ -23,8 +23,11 @@ The champion, the verdict and its evidence come from one exact M3 run of the M2 
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail
 links, filters and pages keep that resolved run. A context bar above the tabs names the execution,
 its ingest, the M3 run and the data origin. When several PUBLICADA runs share an identity the bar
-shows the contract's notice and links to the others. The five verdicts are shown
-verbatim; the detail adds the justification, windows against `n_min`, r against Seasonal Naive,
+shows the contract's notice and links to the others. Each verdict is shown with its Spanish
+label and a one-line explanation, both owned by `app/presentation.py`; the published code stays
+in filters, CSV and `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the
+order of the engine's rules), the engine's justification on request, windows against `n_min`, r
+against Seasonal Naive (shown as «r frente a la línea base»),
 coverage, the data origin and, apart from the verdict, the HLN-DM/BH significance or its cause. A
 SKU launched after the cut says so; a run that is not PUBLICADA, or a publication without its
 exclusion metadata, explains why there is no verdict.
@@ -36,7 +39,7 @@ family M3 froze for each class on the selection block, its reason, every family'
 class verdict counts. Below it, **Confirmación del campeón** shows, per class, the champion's state
 on the test block with its IUT and Holm p, its median r against Seasonal Naive with the bootstrap
 interval, and one row per competitor (SKU count, median ratio with interval, Hodges-Lehmann, wins
-with Wilson interval, Wilcoxon p and IUT p). **Significancia frente a Seasonal Naive** lists the
+with Wilson interval, Wilcoxon p and IUT p). **Significancia frente a la línea base** lists the
 HLN-DM counts per class after BH and after BY, with the FCR level. A run evaluated before the
 reserve blocks has no confirmation and says so; a class without a row says so in its own line. **Perfiles de error** shows the error profiles of the portfolio (`m3_cartera`, test
 block) for one metric at a time. The SKU detail also draws the champion's published h=1 forecast
@@ -58,11 +61,11 @@ documents in the justification. If the read of `m3_campeones` fails or comes inc
 the test counts stay and the cause is shown. The M2 reading of the SKU tab links back to the summary
 ("Ver distribución de campeones") when a PUBLICADA M3 run is resolved.
 
-**Veredictos de M3** (`?vista=sku`, RF-CON-05 of section 4.5; called Consulta before) is the query
+**Veredictos** (`?vista=sku`, RF-CON-05 of section 4.5; called Consulta before) is the query
 over M3's published verdicts. Unlike the M2 reading, whose rows are M2's selection per family, its
 list comes from `get_m3_evidence` of
 the resolved M3 run, so it can filter by the three things M3 decides: demand class (Syntetos-Boylan),
-champion family and verdict (the five exact labels). They combine, with a SKU search, and the list
+champion family and verdict (the five published codes, shown with their labels). They combine, with a SKU search, and the list
 sorts by SKU, class, verdict, r, windows or BH-adjusted p. Each row shows the champion family and
 model, the verdict, r, windows with `n_min` under them and, apart from the verdict, the significance
 (whether it is significant, in which direction, and the BH-adjusted p) or the cause M3 published when

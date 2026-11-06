@@ -10,6 +10,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from pred_platform.app.charts import champion_forecast_svg
+from pred_platform.app.presentation import family_label
 from pred_platform.app.resultados_m3 import M3Decision, decision
 from pred_platform.app.resultados_pronostico import champion_forecast
 from pred_platform.contract import models, models_v2
@@ -17,6 +18,11 @@ from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 from tests.test_resultados import _client
+
+
+def _text(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
 
 RUN = "m3-real-02"
 SKU = "SKU-VALIDADO"
@@ -196,7 +202,9 @@ def test_la_pagina_respeta_cualquier_familia_y_no_elige_el_menor_r(family: str) 
     response = client.get(f"/resultados/sku/{SKU}?m3={RUN}")
     assert response.status_code == 200
     root = _svg(response.text)
-    assert repo.candidate in (root.findtext("svg:desc", namespaces=NS) or "")
+    # The description names the published champion by its model and family, never another one.
+    desc = root.findtext("svg:desc", namespaces=NS) or ""
+    assert f"Modelo campeón modelo-publicado, familia {family_label(family)}." in desc
     assert "h=1" in response.text
     assert "otro/candidato" not in ET.tostring(root, encoding="unicode")
     assert (
@@ -218,7 +226,7 @@ def test_los_nulos_cortan_ambas_lineas_y_el_cero_conserva_su_marca() -> None:
     forecast = root.findall(".//svg:g[@class='pred-forecast__forecast']/svg:rect", NS)
     assert len(observed) == len(forecast) == 3
     zero = next(
-        p for p in observed if p.findtext("svg:title", namespaces=NS) == "2026-07-03: 0,000"
+        p for p in observed if p.findtext("svg:title", namespaces=NS) == "3 jul 2026: 0,000"
     )
     assert float(zero.attrib["cy"]) == 286
 
@@ -307,7 +315,7 @@ def test_bloques_solo_dependen_del_valor_resuelto_no_de_reserva_h_o_t_star() -> 
     assert champion_forecast(repo, decision(repo, "m2-ejemplo", [SKU]), SKU).blocks is None
     root = ET.fromstring(champion_forecast_svg(_series(SeriesRepository())))
     test = root.find("svg:rect[@class='pred-forecast__test']/svg:title", NS)
-    assert test is not None and test.text == "Prueba final: 2026-07-02 a 2026-07-04"
+    assert test is not None and test.text == "Prueba final: del 2 jul 2026 al 4 jul 2026"
 
 
 def test_fixture_separa_origenes_y_objetivos() -> None:
@@ -317,8 +325,8 @@ def test_fixture_separa_origenes_y_objetivos() -> None:
     assert blocks.embargo_origins == M3DateRange("2026-06-30", "2026-06-30", 1)
     series = champion_forecast(repo, decision(repo, "m2-ejemplo", [SKU]), SKU)
     svg = champion_forecast_svg(series)
-    assert "Selección: 2026-06-30 a 2026-07-01" in svg
-    assert "Prueba final: 2026-07-02 a 2026-07-03" in svg
+    assert "Selección: del 30 jun 2026 al 1 jul 2026" in svg
+    assert "Prueba final: del 2 jul 2026 al 3 jul 2026" in svg
     assert 'class="pred-forecast__embargo"' not in svg
     assert repo.get_m3_reserve_blocks("desconocida") is None
 
@@ -337,11 +345,14 @@ def test_origenes_sobreviven_y_el_embargo_solo_se_informa_en_texto() -> None:
     assert [point.origen for point in series.forecast] == [f"2026-06-{27 + i}" for i in range(4)]
     client, _ = _client(repo=repo)
     html = client.get(f"/resultados/sku/{SKU}").text
-    assert "Orígenes de embargo" in html and "2026-06-30 a 2026-06-30" in html
-    assert "Fecha objetivo" in html and "Origen" in html and "2026-06-27" in html
+    text = _text(html)
+    assert "Orígenes de embargo" in html and "30 jun 2026 a 30 jun 2026" in text
+    # Days read in Spanish; the ISO date stays in the title for traceability.
+    assert "Fecha objetivo" in html and "Origen" in html and "27 jun 2026" in text
+    assert 'title="2026-06-27"' in html
     assert 'class="pred-forecast__embargo"' not in html
-    assert "ajuste BH dentro de cada categoría de demanda" in html
-    assert "ajuste BH de toda la corrida" not in html
+    assert "ajuste BH dentro de cada clase de demanda" in text
+    assert "ajuste BH de toda la corrida" not in text
 
 
 def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:
@@ -366,7 +377,7 @@ def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:
     assert root.findall(".//svg:circle", NS) and root.findall(".//svg:g/svg:rect", NS)
     client, _ = _client(repo=SeriesRepository())
     page = client.get(f"/resultados/sku/{SKU}").text
-    assert "2026-07-01 al 2026-07-04" in page
+    assert "Del 1 jul 2026 al 4 jul 2026" in _text(page)
     assert "continua" in desc and "discontinua" in desc
     assert "Los huecos indican valores ausentes" in page
 
@@ -397,8 +408,8 @@ def test_bandas_svg_conservan_fechas_objetivo_ante_cambios_metodologicos() -> No
 
     expected = bands(champion_forecast_svg(champion_forecast(repo, resolved, SKU)))
     assert [title for _, title in expected] == [
-        "Selección: 2026-06-30 a 2026-07-01",
-        "Prueba final: 2026-07-02 a 2026-07-04",
+        "Selección: del 30 jun 2026 al 1 jul 2026",
+        "Prueba final: del 2 jul 2026 al 4 jul 2026",
     ]
     for length, horizon, cut, ratio in (
         (1, 2, "2000-01-01", 0.4),

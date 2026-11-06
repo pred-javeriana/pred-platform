@@ -31,10 +31,10 @@ from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 LABELS = {
     "classical": "Clásica",
-    "ml": "ML",
-    "dl": "DL",
+    "ml": "Aprendizaje automático",
+    "dl": "Aprendizaje profundo",
     "foundation": "Fundacional",
-    "seasonal_naive": "Seasonal Naive",
+    "seasonal_naive": "Línea base estacional",
 }
 VERDICTS = {
     "FIL-0001": ("smooth", "VALIDADO"),
@@ -83,7 +83,7 @@ def _portfolio(html: str) -> dict[str, tuple[int, int, int, str]]:
     found: dict[str, tuple[int, int, int, str]] = {}
     for family, label in LABELS.items():
         match = re.search(
-            rf'<th scope="row" class="pred-nowrap">{label}</th>\s*'
+            rf'<th scope="row" class="pred-nowrap"[^>]*>{label}</th>\s*'
             r'<td class="num">(\d+)</td>\s*<td class="num">(\d+)</td>\s*'
             r'<td class="num">(\d+)</td>\s*<td class="num">([^<]+)</td>',
             section,
@@ -127,10 +127,10 @@ def test_the_denominator_is_the_skus_with_a_verdict_and_the_funnel_keeps_the_res
     section = _text(_section(html, "campeones-por-familia"))
 
     # 8 productos = 1 lanzado después del corte + 1 excluido por M2 + 6 con veredicto.
-    assert "Productos de la corrida 8" in text and "Con veredicto M3 6" in text
+    assert "Productos de la ejecución 8" in text and "Con veredicto 6" in text
     assert "de los 6 SKU con veredicto" in section
-    assert "Con veredicto M3 3 3 6 100,0 %" in section
-    assert "evidencia retrospectiva" in section
+    assert "Con veredicto 3 3 6 100,0 %" in section
+    assert "Es evidencia sobre el historial reservado" in section
     # Todo el portafolio: los fallos técnicos y no evaluables cuentan como no evaluados.
     assert _portfolio(html)["classical"][1] == 2
 
@@ -143,16 +143,11 @@ def test_the_class_matrix_sums_to_each_family_of_the_portfolio(
     section = _section(html, "campeones-por-clase")
 
     rows = re.findall(
-        r'<th scope="row" class="pred-nowrap">([^<]+)</th>'
+        r'<th scope="row" class="pred-nowrap"[^>]*>([^<]+)</th>'
         r'((?:\s*<td class="num(?: is-zero)?">\d+</td>){6})',
         section,
     )
-    assert [name.split(" ")[0] for name, _ in rows] == [
-        "Smooth",
-        "Erratic",
-        "Intermittent",
-        "Lumpy",
-    ]
+    assert [name for name, _ in rows] == ["Suave", "Errática", "Intermitente", "Grumosa"]
     matrix = [[int(n) for n in re.findall(r"(\d+)</td>", cells)] for _, cells in rows]
     for index, family in enumerate(CHAMPION_FAMILIES):
         assert sum(row[index] for row in matrix) == _portfolio(html)[family][2], family
@@ -202,7 +197,7 @@ def test_figures_that_do_not_match_the_funnel_are_said_not_adjusted(
     text = _text(html)
 
     assert "Las cifras no cuadran." in text
-    assert "Las familias suman 7 SKU y el embudo publicó 6 con veredicto." in text
+    assert "Las familias suman 7 productos y el embudo publicó 6 con veredicto." in text
     # La cifra publicada se muestra tal cual, sin corregirla.
     assert _portfolio(html)["classical"][2] == 5
     assert _text(html).count("Las cifras no cuadran.") == 1
@@ -226,10 +221,10 @@ def test_a_failed_champions_read_leaves_the_rest_of_the_summary(
     html = _page(env, repo)
     text = _text(html)
 
-    assert "No fue posible leer la evidencia M3." in text and "m3_campeones" in text
+    assert "No fue posible leer la evaluación." in text and "m3_campeones" in text
     assert "Distribución de campeones por familia" not in text
     # El embudo y la prueba DM no dependen de esa lectura.
-    assert "Embudo de la corrida" in text and "Prueba Diebold-Mariano" in text
+    assert "Embudo de la ejecución" in text and "Prueba Diebold-Mariano" in text
     assert "pred-champion__svg" not in html
 
 
@@ -258,7 +253,7 @@ def test_without_published_evidence_no_figures_are_invented(
     _publish_for_the_run(env, verdicts=VERDICTS, estado="EVALUADA")
     html = _page(env)
     assert "campeones-por-familia" not in html and "pred-champion__svg" not in html
-    assert "Esta ejecución todavía no tiene una corrida M3 PUBLICADA." in _text(html)
+    assert "Esta ejecución todavía no tiene una evaluación publicada." in _text(html)
 
 
 def test_a_publication_without_its_metadata_shows_no_distribution(
@@ -268,7 +263,7 @@ def test_a_publication_without_its_metadata_shows_no_distribution(
     _publish_for_the_run(env, verdicts=VERDICTS, publish_m4=False)
     html = _page(env)
     assert "campeones-por-familia" not in html
-    assert "La publicación M3 no tiene sus metadatos de exclusión." in _text(html)
+    assert "La evaluación publicada no trae la lista de productos excluidos." in _text(html)
 
 
 # --------------------------------------------------------------------------- el enlace
@@ -351,7 +346,7 @@ def test_the_chart_draws_what_it_is_given() -> None:
     )
     # El 100 % ocupa toda la escala; un valor minúsculo sigue siendo visible; el cero no se dibuja.
     assert svg.count("<path") == 2
-    assert "H476.0" in svg  # 150 + 330 de escala completa, menos 4 px de radio
+    assert "H386.0" in svg  # 180 + 210 de escala completa, menos 4 px de radio
     assert svg.count('class="pred-champion__value"') == 3
     assert "Fracción de los 6 SKU" in svg
 

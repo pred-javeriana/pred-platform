@@ -1,13 +1,14 @@
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
-{% from "components/status.html" import status_indicator %}
+{% from "components/status.html" import status_indicator, verdict_legend %}
+{% from "components/terms.html" import gloss %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
-{# Los veredictos de la corrida M3 resuelta, uno por SKU (RF-CON-05). m3_consulta es un
+{# Los veredictos de la evaluación final resuelta, uno por SKU (RF-CON-05). m3_consulta es un
    M3Consulta; cq, su consulta. El repositorio filtra, ordena y pagina; aquí solo se muestra. #}
 {% set found = m3_consulta %}
 <section class="pred-results-list" id="consulta-m3">
-  <h2 class="pred-sr-only">Veredictos de M3 por SKU</h2>
+  <h2 class="pred-sr-only">Veredictos por SKU</h2>
   {% if consulta_error %}
     {{ alert(consulta_error, variant="warning") }}
   {% endif %}
@@ -18,7 +19,7 @@
     <p>{{ found.problem.detail }}</p>
   </section>
   {% elif not found.run %}
-  <p class="pred-note"><strong>Todavía no hay una ejecución con resultados.</strong> Cuando una ejecución tenga una corrida M3 PUBLICADA, aquí podrá consultar sus veredictos.</p>
+  <p class="pred-note"><strong>Todavía no hay una ejecución con resultados.</strong> Cuando una ejecución tenga su evaluación final publicada, aquí podrá consultar sus veredictos.</p>
   {% endif %}
 
   {% if found.run %}
@@ -27,19 +28,12 @@
     {% if cq.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ cq.ejecucion }}">{% endif %}
     {% if cq.m3 %}<input type="hidden" name="m3" value="{{ cq.m3 }}">{% endif %}
     {{ field("q", "Buscar SKU", value=cq.q or "") }}
-    {{ field("veredicto", "Veredicto", value=cq.veredicto or "", input_type="select", options=[
-      ("", "Todos"), ("VALIDADO", "VALIDADO"), ("EXPLORATORIO", "EXPLORATORIO"), ("FALLO_TECNICO", "FALLO_TECNICO"),
-      ("NO_EVALUABLE", "NO_EVALUABLE"), ("EVIDENCIA_INSUFICIENTE", "EVIDENCIA_INSUFICIENTE")
-    ]) }}
-    {{ field("sku_class", "Clase", value=cq.sku_class or "", input_type="select", options=[
-      ("", "Todas"), ("smooth", "Smooth (Suave)"), ("erratic", "Erratic (Errática)"), ("intermittent", "Intermittent (Intermitente)"), ("lumpy", "Lumpy (Grumosa)")
-    ]) }}
-    {{ field("familia_campeona", "Familia campeona", value=cq.familia_campeona or "", input_type="select", options=[
-      ("", "Todas"), ("classical", "Clásica"), ("ml", "ML"), ("dl", "DL"), ("foundation", "Fundacional"), ("seasonal_naive", "Seasonal Naive")
-    ]) }}
+    {{ field("veredicto", "Veredicto", value=cq.veredicto or "", input_type="select", options=verdict_options()) }}
+    {{ field("sku_class", "Clase", value=cq.sku_class or "", input_type="select", options=sku_class_options()) }}
+    {{ field("familia_campeona", "Familia campeona", value=cq.familia_campeona or "", input_type="select", options=family_options(baseline=true)) }}
     {{ field("sort", "Ordenar por", value=cq.sort, input_type="select", options=[
       ("sku", "SKU"), ("sku_class", "Clase"), ("veredicto", "Veredicto"),
-      ("razon_sn", "r frente a Seasonal Naive"), ("n_ventanas", "Ventanas"), ("dm_p_ajustado", "p ajustado (BH)")
+      ("razon_sn", metric_label("razon_sn")), ("n_ventanas", "Ventanas"), ("dm_p_ajustado", "p ajustado (BH)")
     ]) }}
     {{ field("descending", "Descendente", value=cq.descending, input_type="checkbox") }}
     <input type="hidden" name="size" value="{{ cq.size }}">
@@ -58,22 +52,23 @@
     </p>
   </div>
   {% if evidence.funnel %}
-  <p class="pred-meta">La corrida tiene {{ format_count(evidence.funnel.tras_exclusiones) }} SKU con veredicto M3 de {{ format_count(evidence.funnel.total_productos) }} productos. Esos conteos son de toda la corrida y no cambian con los filtros. El CSV trae todos los SKU de la consulta, no solo esta página, con la corrida M3 y la ingesta de cada fila. Las exclusiones son las de toda la corrida.</p>
+  <p class="pred-meta">En toda la ejecución, {{ format_count(evidence.funnel.tras_exclusiones) }} de {{ format_count(evidence.funnel.total_productos) }} productos tienen veredicto; ese conteo no cambia con los filtros. El CSV trae todos los SKU de la consulta, no solo esta página, con la evaluación y la ingesta de cada fila. Las exclusiones son las de toda la ejecución.</p>
   {% endif %}
-  {{ table_start(["SKU", "Clase", "Campeona", "Veredicto", "r frente a SN", "Ventanas", "Significancia (HLN-DM)"], "Veredictos publicados por M3") }}
+  {% if evidence.items %}{{ verdict_legend() }}{% endif %}
+  {{ table_start(["SKU", "Clase", "Modelo campeón", "Veredicto", "r frente a la línea base", "Ventanas de prueba", "Significancia"], "Veredictos publicados") }}
   {% if evidence.items %}
     {% for row in evidence.items %}
     <tr>
       <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ row.sku | urlencode }}?{{ cq.detail_query() }}" aria-label="Ver evidencia del SKU {{ row.sku }}">{{ row.sku }}</a></th>
-      <td class="pred-demand-class">{{ sku_class_label(row.sku_class) }}</td>
+      <td class="pred-demand-class" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</td>
       {% set model = champion_model(row) %}
-      <td class="pred-nowrap">{{ family_label(row.familia_campeona) }}{% if model %} · <span class="mono">{{ model }}</span>{% endif %}</td>
-      <td class="pred-nowrap">{{ status_indicator(describe_status("verdict", row.veredicto)) }}</td>
+      <td><span class="pred-nowrap" title="{{ family_term(row.familia_campeona).hint }}">{{ family_label(row.familia_campeona) }}</span>{% if model %}<span class="pred-subvalue" title="{{ model_term(model).hint }}">{{ model_label(model) }}</span>{% endif %}</td>
+      <td class="pred-verdict-cell">{{ status_indicator(describe_status("verdict", row.veredicto)) }}</td>
       <td class="num">{{ ratio_text(row.razon_sn) }}</td>
       <td class="num">{{ format_count(row.n_ventanas) }}<span class="pred-subvalue">mínimo {{ format_count(row.n_min) }}</span></td>
       <td class="pred-significance">
         {% if row.dm_causa %}
-        <span class="pred-cell--none">Sin prueba: <span class="mono">{{ row.dm_causa }}</span></span>
+        <span class="pred-cell--none" title="Causa publicada: {{ row.dm_causa }}">Sin prueba: {{ cause_text(row.dm_causa) }}</span>
         {% else %}
         <span>{{ significance_text(row) }}</span>
         <span class="pred-subvalue">p ajustado {{ p_text(row.dm_p_ajustado, row.dm_alfa) }}</span>
@@ -90,7 +85,7 @@
     </tr>
     {% endfor %}
   {% else %}
-    {{ table_empty(7, "Sin coincidencias", "No hay SKU con veredicto M3 que coincidan con los filtros seleccionados.") }}
+    {{ table_empty(7, "Sin coincidencias", "No hay SKU con veredicto que coincidan con los filtros seleccionados.") }}
   {% endif %}
   {{ table_end() }}
 

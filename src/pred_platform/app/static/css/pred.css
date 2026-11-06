@@ -773,7 +773,7 @@ button.pred-btn {
 /* La barra de filtros sobre una lista: compacta, sobre lienzo, Aplicar al final de la fila. */
 .pred-filters--bar {
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-3) 12px;
   margin: 0 0 var(--space-3);
   padding: 12px var(--space-3);
   background: var(--canvas);
@@ -783,7 +783,7 @@ button.pred-btn {
 .pred-filters--bar .pred-field {
   flex: 1 1 9rem;
   max-width: 17rem;
-  min-width: 8rem;
+  min-width: 7.5rem;
 }
 
 .pred-filters--bar .pred-field__label {
@@ -853,6 +853,16 @@ button.pred-btn {
   font-size: 0.875rem;
 }
 
+/* En la tarjeta de la ejecución, el aviso llega a los mismos bordes que los hechos y las etapas;
+   su texto conserva el ancho de lectura. */
+.pred-run .pred-callout {
+  max-width: none;
+}
+
+.pred-run .pred-callout p {
+  max-width: 80ch;
+}
+
 .pred-callout--warn {
   border-left-color: var(--warn);
 }
@@ -919,6 +929,43 @@ button.pred-btn {
   color: var(--ink-soft);
 }
 
+/* La explicación de un estado, en una línea bajo su rótulo (status_indicator con explain). */
+.pred-status-hint {
+  display: block;
+  margin: 1px 0 0 19px;
+  color: var(--muted-text);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+/* Una leyenda que explica una vez los estados que una lista repite fila por fila. */
+.pred-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+  padding: 12px var(--space-3);
+  background: var(--canvas);
+  font-size: 0.875rem;
+}
+
+.pred-legend > div {
+  min-width: 0;
+}
+
+.pred-legend dt .pred-status {
+  padding: 0;
+}
+
+.pred-legend dd {
+  margin: 0 0 0 19px;
+  color: var(--muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
 /* Marca de texto con borde fino, nunca una píldora rellena. */
 .pred-badge {
   display: inline-block;
@@ -961,9 +1008,18 @@ button.pred-btn {
   color: var(--err);
 }
 
+/* Lo que no está disponible o no existe se lee como un estado vacío: centrado, con lo que se puede
+   hacer debajo, y no pegado a la izquierda de una página o una tarjeta vacía. */
 .pred-unavailable {
-  max-width: 80ch;
-  padding: var(--space-3) 0;
+  max-width: 36rem;
+  margin: var(--space-4) auto;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+
+.pred-unavailable .pred-context__picker {
+  justify-content: center;
+  margin: var(--space-3) 0 0;
 }
 
 .pred-unavailable h2 {
@@ -1101,13 +1157,21 @@ button.pred-btn {
   overflow-wrap: anywhere;
 }
 
-/* Hechos en fila (qué ejecución, desde cuándo, con qué ingesta): rótulo encima y valor. */
+/* Hechos en fila (qué ejecución, desde cuándo, con qué ingesta): rótulo encima y valor, en
+   columnas iguales que llenan el ancho para no dejar un hueco a la derecha. */
 .pred-facts,
 .pred-context__facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-2) var(--space-4);
   margin: 0;
+}
+
+/* Cifras de una prueba (estadístico, p, α…): en el color de dato, como en .pred-kv. */
+.pred-facts dd.mono {
+  color: var(--data-text);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
 }
 
 :is(.pred-facts, .pred-context__facts) > div {
@@ -1135,30 +1199,22 @@ button.pred-btn {
   padding: 0;
 }
 
-/* Fila de KPI plana: rótulo y cifra, separados por una línea fina, sin tarjetas. */
+/* Fila de KPI plana: columnas iguales que llenan el ancho, cada cifra con una línea fina a la
+   izquierda, sin tarjetas. Al pasar a otra fila, cada cifra conserva su línea. */
 .pred-kpis {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3) 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3) var(--space-4);
   margin: 0 0 var(--space-3);
 }
 
 .pred-kpis__item {
-  min-width: 7rem;
-  margin-right: var(--space-5);
-  padding-right: var(--space-5);
-  border-right: 1px solid var(--border);
-}
-
-.pred-kpis__item:last-child {
-  margin-right: 0;
-  padding-right: 0;
-  border-right: 0;
+  min-width: 0;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-strong);
 }
 
 .pred-kpis dt {
-  display: flex;
-  align-items: center;
   min-height: 1.5rem;
   margin: 0 0 var(--space-1);
   color: var(--muted-text);
@@ -1211,15 +1267,14 @@ button.pred-btn {
 
 /* Fila de métricas de la topología de un SKU (components/metrics.html). */
 .pred-metrics {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: var(--space-4);
   padding: var(--space-3) 0;
 }
 
 .pred-metrics__item {
-  min-width: 8rem;
-  max-width: 100%;
+  min-width: 0;
 }
 
 .pred-metrics__label {
@@ -1267,10 +1322,10 @@ button.pred-btn {
   overflow-x: auto;
 }
 
-/* Una tabla mide lo que su contenido pide, hasta el ancho disponible: las cifras quedan cerca
-   de sus rótulos. */
+/* Una tabla ocupa el ancho de su contenedor: una lista, el de la página; una tabla corta, el de
+   su columna en una cuadrícula (.pred-section-grid). */
 .pred-table {
-  width: auto;
+  width: 100%;
   min-width: 36rem;
   max-width: 100%;
   margin: 0;
@@ -1324,6 +1379,17 @@ button.pred-btn {
 
 .pred-table tbody tr:hover :is(th, td) {
   background: var(--canvas);
+}
+
+/* Un estado en una celda se parte en líneas en vez de invadir la columna vecina; el ícono queda
+   arriba, junto a la primera línea. */
+.pred-table .pred-status {
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.pred-table .pred-status__icon {
+  margin-top: 0.3em;
 }
 
 .pred-table .num {
@@ -1641,7 +1707,21 @@ button.pred-btn {
   border-color: var(--primary);
 }
 
-/* El rótulo largo («Terminó configuración con HPO…») pasa a otra línea en un teléfono. */
+/* Los seis estados de tarea de una ejecución en dos filas de tres, del mismo ancho, en vez de
+   cinco y uno suelto. */
+@media (min-width: 48rem) {
+  .pred-run__states .pred-statelist {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pred-run__states .pred-statelist a {
+    display: flex;
+    justify-content: space-between;
+  }
+}
+
+/* Un rótulo largo pasa a otra línea en un teléfono. */
 .pred-statelist .pred-status {
   padding: 0;
   font-size: inherit;
@@ -1857,7 +1937,6 @@ button.pred-btn {
 /* SKU por clase: el conteo y una barra proporcional, con el número siempre escrito. */
 .pred-class-mix {
   width: 100%;
-  max-width: 44rem;
   margin: 0;
   border-collapse: collapse;
   font-size: 0.875rem;
@@ -1875,9 +1954,10 @@ button.pred-btn {
   border-bottom: 0;
 }
 
+/* La clase y su explicación: la explicación pasa a otra línea antes de empujar la tabla fuera de
+   un teléfono. */
 .pred-class-mix th {
-  width: 15rem;
-  white-space: nowrap;
+  width: 55%;
 }
 
 .pred-class-mix .num {
@@ -1889,7 +1969,21 @@ button.pred-btn {
 }
 
 .pred-class-mix__bar {
+  width: 30%;
   padding-left: var(--space-1);
+}
+
+/* Desde una tableta, la clase y su explicación ocupan lo que mide su texto y la barra el resto:
+   sin un hueco entre la explicación y el conteo. */
+@media (min-width: 48rem) {
+  .pred-class-mix th {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  .pred-class-mix__bar {
+    width: auto;
+  }
 }
 
 .pred-class-mix__bar span {
@@ -1920,8 +2014,32 @@ button.pred-btn {
   margin: 0;
 }
 
+/* La carga: el archivo y su botón a la izquierda, las columnas que espera a la derecha. */
 .pred-upload-form {
-  max-width: 40rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3) var(--space-5);
+}
+
+.pred-upload-form > * {
+  min-width: 0;
+}
+
+.pred-upload-form .pred-actions {
+  margin: 0;
+}
+
+@media (min-width: 64rem) {
+  .pred-upload-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pred-upload-form__columns {
+    margin: 0;
+    padding-left: var(--space-5);
+    border-left: 1px solid var(--border);
+  }
 }
 
 /* ---------------------------------------------------- Superficie Ejecución */
@@ -2066,9 +2184,92 @@ button.pred-btn {
 }
 
 .pred-steps__item.is-en_curso .pred-steps__mark {
+  position: relative;
   border: 2px solid var(--info);
   color: var(--info);
   font-weight: 700;
+}
+
+/* La etapa en curso gira un arco alrededor de su número; con movimiento reducido, un halo quieto.
+   «En curso» lo dice también en texto. */
+.pred-steps__item.is-en_curso .pred-steps__mark::before {
+  position: absolute;
+  inset: -6px;
+  border: 2px solid transparent;
+  border-top-color: var(--info);
+  border-radius: 50%;
+  content: "";
+  animation: pred-spin 1.2s linear var(--pred-reloj, 0s) infinite;
+}
+
+.pred-steps__now {
+  display: block;
+  margin-top: 2px;
+  color: var(--info);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+@keyframes pred-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pred-beat {
+  0% {
+    box-shadow: 0 0 0 0 rgb(46 110 158 / 45%);
+  }
+
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px rgb(46 110 158 / 0%);
+  }
+}
+
+/* Mientras el motor trabaja: un punto que late, qué hace ahora y cuánto lleva. */
+.pred-run__pulse {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.pred-run__pulse p {
+  max-width: 80ch;
+  margin: 0;
+}
+
+.pred-run__pulse-now {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--ink-soft);
+}
+
+.pred-run__pulse-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--info);
+  transform: translateY(-1px);
+  animation: pred-beat 1.6s ease-out var(--pred-reloj, 0s) infinite;
+}
+
+.pred-run__pulse-time {
+  padding-left: 16px;
+  color: var(--muted-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sin respuesta del servidor o con la actualización pausada: el punto se detiene y se apaga. */
+.pred-run__pulse.is-stale .pred-run__pulse-dot {
+  background: var(--muted);
+  animation: none;
+}
+
+.pred-run__pulse.is-stale .pred-run__pulse-time {
+  color: var(--warn-text);
 }
 
 .pred-run__progress {
@@ -2161,6 +2362,18 @@ button.pred-btn {
 
 .pred-progress__arc {
   stroke: var(--info);
+  transition: stroke-dasharray 0.9s ease-out;
+}
+
+/* Un arco corto que gira dentro del anillo mientras el motor trabaja; se oculta con movimiento
+   reducido, donde el texto «Trabajando» y el punto quieto dicen lo mismo. */
+.pred-progress__sweep {
+  stroke: var(--info);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.55;
+  transform-origin: 60px 60px;
+  animation: pred-spin 2.4s linear var(--pred-reloj, 0s) infinite;
 }
 
 .pred-progress__ring.is-complete .pred-progress__arc {
@@ -2181,7 +2394,7 @@ button.pred-btn {
   letter-spacing: -0.03em;
 }
 
-.pred-progress__ring-value > span {
+.pred-progress__ring-unit {
   color: var(--muted-text);
   font-size: 0.875rem;
   letter-spacing: 0;
@@ -2200,17 +2413,87 @@ button.pred-btn {
   font-size: 1rem;
 }
 
-/* Nueva ejecución: un formulario de una columna, en el orden en que se decide. */
+/* Nueva ejecución: filas de dos columnas en pantalla ancha (los datos junto a la ventana, las
+   familias junto a las que admite cada clase); una columna en un teléfono. */
 .pred-launch-section {
   margin-bottom: var(--space-5);
 }
 
-.pred-launch {
-  max-width: 48rem;
+.pred-launch__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 0 var(--space-5);
 }
 
-.pred-launch > .pred-field {
-  max-width: 36rem;
+.pred-launch__row > * {
+  min-width: 0;
+}
+
+@media (min-width: 64rem) {
+  .pred-launch__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.pred-launch__families {
+  margin-top: var(--space-2);
+}
+
+.pred-launch__checks {
+  margin-bottom: var(--space-3);
+}
+
+/* Qué familias admite cada clase: una lista de clases, cada una con sus familias. */
+.pred-family-rules {
+  display: block;
+}
+
+.pred-family-rules p {
+  margin: 0 0 var(--space-2);
+}
+
+.pred-family-rules__list {
+  display: grid;
+  gap: 0;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.pred-family-rules__item {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+
+.pred-family-rules__class {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.pred-family-rules__families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Una etiqueta de texto con borde fino, como .pred-badge, para valores en una lista. */
+.pred-tag {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 .pred-launch__grid {
@@ -2218,6 +2501,13 @@ button.pred-btn {
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   align-items: start;
   gap: 0 var(--space-3);
+}
+
+/* La ventana de evaluación: métrica, mínimo y horizonte en una fila, con los controles alineados
+   aunque un rótulo ocupe dos líneas. */
+.pred-launch__window {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  align-items: end;
 }
 
 .pred-launch__advanced {
@@ -2240,7 +2530,6 @@ button.pred-btn {
 }
 
 .pred-launch__import {
-  max-width: 48rem;
   margin-top: var(--space-4);
   padding-top: 12px;
   border-top: 1px solid var(--border);
@@ -2297,15 +2586,97 @@ button.pred-btn {
   margin-top: var(--space-2);
 }
 
+/* Qué pasó en la ejecución, en una frase: bajo los hechos en Resultados, bajo el título en
+   Ejecución. */
+.pred-context__outcome,
+.pred-run__outcome {
+  max-width: 80ch;
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.pred-run__outcome {
+  margin: 0 0 12px;
+}
+
+/* Dos secciones lado a lado en pantalla ancha, separadas por una línea; una sola ocupa la fila. */
+.pred-section-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+
+.pred-section-grid:last-child {
+  border-bottom: 0;
+}
+
+.pred-section-grid > * {
+  min-width: 0;
+}
+
+.pred-section-grid > .pred-section {
+  padding: var(--space-4) 0;
+  border-bottom: 0;
+}
+
+.pred-section-grid > .pred-section + .pred-section {
+  border-top: 1px solid var(--border);
+}
+
+.pred-section-grid .pred-table {
+  min-width: 0;
+}
+
+.pred-section-grid .pred-table thead th {
+  white-space: normal;
+}
+
+@media (min-width: 64rem) {
+  .pred-section-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-5);
+  }
+
+  .pred-section-grid > .pred-section + .pred-section {
+    padding-left: var(--space-5);
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  /* Una tabla ancha (siete columnas) junto a una sección corta. */
+  .pred-section-grid--wide-first {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .pred-section-grid > :only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* El detalle de cada clase de demanda: dos clases por fila en pantalla ancha. */
+.pred-class-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: 0 var(--space-5);
+}
+
+.pred-class-details > * {
+  min-width: 0;
+}
+
+.pred-class-details h3 {
+  margin-top: var(--space-3);
+}
+
 .pred-context__scope .pred-meta {
   margin: 0;
 }
 
 /* El embudo: cada fila resta o reparte la anterior; los totales en tinta, el detalle sangrado. */
 .pred-funnel {
-  width: auto;
-  min-width: min(100%, 30rem);
-  max-width: 100%;
+  width: 100%;
   margin: 0 0 12px;
   border-collapse: collapse;
   font-size: 0.875rem;
@@ -2384,6 +2755,18 @@ button.pred-btn {
   margin: 0;
 }
 
+/* Qué significa el veredicto, en su propia línea bajo la decisión. */
+.pred-decision__head .pred-status-hint {
+  flex-basis: 100%;
+  order: 1;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.pred-decision > .pred-details {
+  margin-bottom: var(--space-3);
+}
+
 .pred-decision__why {
   max-width: 72ch;
   margin: 0 0 var(--space-4);
@@ -2395,6 +2778,10 @@ button.pred-btn {
 .pred-decision > h2 {
   font-size: 1.5rem;
   font-weight: 800;
+}
+
+.pred-decision__test {
+  margin: var(--space-3) 0 var(--space-2);
 }
 
 /* Familias de un SKU: cada una se abre aparte y su resumen se lee cerrado. */
@@ -2462,6 +2849,18 @@ button.pred-btn {
   background: var(--surface);
 }
 
+/* El mapa ADI–CV² ocupa el ancho de su tarjeta; en un teléfono se desplaza en vez de encoger su
+   texto. */
+.pred-topology__svg {
+  width: 100%;
+  min-width: 40rem;
+}
+
+/* En un teléfono el gráfico de campeones se desplaza en vez de encoger su texto. */
+.pred-champion__svg {
+  min-width: 30rem;
+}
+
 .pred-chart__axis {
   stroke: var(--border-strong);
   stroke-width: 1;
@@ -2502,7 +2901,9 @@ button.pred-btn {
 }
 
 /* Evidencia temporal del campeón: trazo, forma y texto además del color. */
-.pred-forecast__svg { min-width: 38rem; }
+/* La serie del campeón ocupa el ancho de la hoja; en un teléfono se desplaza en vez de encoger su
+   texto. */
+.pred-forecast__svg { width: 100%; min-width: 48rem; }
 .pred-forecast__figure { margin: var(--space-3) 0; }
 .pred-forecast__selection { fill: var(--canvas); }
 .pred-forecast__test { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 2; }
@@ -2545,11 +2946,6 @@ button.pred-btn {
 
   .pred-steps__item::after {
     display: none;
-  }
-
-  .pred-kpis__item {
-    margin-right: var(--space-4);
-    padding-right: var(--space-4);
   }
 
   .pred-evidence-panel {
@@ -2620,11 +3016,8 @@ button.pred-btn {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .pred-kpis__item {
-    flex: 1 1 40%;
-    margin-right: 0;
-    padding-right: var(--space-3);
-    border-right: 0;
+  .pred-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2678,5 +3071,14 @@ button.pred-btn {
     scroll-behavior: auto !important;
     transition: none !important;
     animation: none !important;
+  }
+
+  /* Equivalentes quietos del estado «trabajando»: un halo entero y sin el arco que gira. */
+  .pred-steps__item.is-en_curso .pred-steps__mark::before {
+    border-color: var(--info-soft);
+  }
+
+  .pred-progress__sweep {
+    display: none;
   }
 }

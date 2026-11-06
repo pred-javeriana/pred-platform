@@ -116,7 +116,7 @@ def test_trials_and_configuration_start_closed_and_windows_are_requested() -> No
     ]
     assert technical and all("open" not in d for d in technical)
     assert "Evidencia retrospectiva" in html
-    assert "<dt>Origen de los datos</dt><dd>no informado en esta vista</dd>" in html
+    assert "<dt>Origen de los datos</dt><dd>No informado en esta vista</dd>" in html
     assert "Entrenamiento" not in html
     full = client.get("/resultados/sku/FIL-0001?ventanas=1").text
     requested = [

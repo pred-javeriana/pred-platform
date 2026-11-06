@@ -131,8 +131,8 @@ def build_run_control(settings: Settings) -> RunControl:
     """``DalRunControl`` for the real database; with fixtures the disabled one, with why."""
     if settings.data_source == "fixture":
         return UnavailableRunControl(
-            "Estás viendo datos de prueba: lanzar, detener y reanudar necesitan la base real "
-            "(PRED_DATA_SOURCE=dal)."
+            "Está viendo datos de prueba: lanzar, detener y reanudar solo funcionan con la base "
+            "de datos real."
         )
     return DalRunControl(settings)
 

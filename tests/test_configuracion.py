@@ -247,10 +247,10 @@ def test_a_file_from_another_ingestion_imports_the_settings_but_chooses_no_data(
 
     text = _text(page.text)
     assert page.status_code == 200
-    assert "no está aceptada en esta plataforma" in text and "aaaaaaaaaaaa" in text
+    assert "no están cargados en esta plataforma" in text and "aaaaaaaaaaaa" in text
     assert re.search(r'name="horizon"[^>]*value="2"', page.text)  # los ajustes sí se importan
     # Ninguna ingesta queda elegida: hay que escoger y la opción vacía lo dice.
-    assert '<option value="" selected disabled>Elija una ingesta</option>' in page.text
+    assert '<option value="" selected disabled>Elija un archivo de datos</option>' in page.text
     assert f'<option value="{env.ingest_id}" selected>' not in page.text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
@@ -258,7 +258,7 @@ def test_a_file_from_another_ingestion_imports_the_settings_but_chooses_no_data(
 def test_launching_without_choosing_the_ingestion_is_refused(env: Env) -> None:
     client = _dal_client(env)
     page = client.post("/ejecucion/lanzar", data={**FORM, "ingest_id": ""})
-    assert "Elija la ingesta que se va a ejecutar." in page.text
+    assert "Elija el archivo de datos que se va a ejecutar." in page.text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 

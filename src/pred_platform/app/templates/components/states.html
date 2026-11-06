@@ -21,10 +21,21 @@
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ title }}</h2>
   <p>{{ detail }}</p>
   {% if reason_code or blocked_by %}
-  <details class="pred-details"><summary>Disponibilidad y dependencias</summary>
+  <details class="pred-details pred-details--inline"><summary>Disponibilidad y dependencias</summary>
     <p class="pred-unavailable__meta">{{ reason_code or "" }}{% if blocked_by %} · {{ blocked_by | join(", ") }}{% endif %}</p>
   </details>
   {% endif %}
+</section>
+{% endmacro %}
+
+{# Una ejecución pedida por su número que no existe: el mismo aviso en Ejecución y en Resultados.
+   Lo que se puede hacer va en el bloque del llamador (una lista para elegir otra) o en el botón. #}
+{% macro missing_run_state(reference, detail, action_label=none, action_href=none) %}
+<section class="pred-unavailable" id="ejecucion-inexistente">
+  <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> No existe la ejecución «{{ reference }}».</h2>
+  <p>{{ detail }}</p>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+  {% if action_label and action_href %}{{ button(action_label, variant="secondary", href=action_href) }}{% endif %}
 </section>
 {% endmacro %}
 

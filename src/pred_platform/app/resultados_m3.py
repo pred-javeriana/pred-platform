@@ -3,38 +3,43 @@
 La pestaña SKU y el detalle de un SKU muestran la selección M2 de una ejecución. El campeón, el
 veredicto y su evidencia vienen de una corrida M3 exacta de esa ejecución: la que pide la
 consulta (``m3``) o, si no pide ninguna, la PUBLICADA más nueva que resuelve el repositorio. Aquí
-solo se resuelve esa corrida y se nombra lo que el repositorio entregó; no se recalcula nada ni se
-traducen los cinco veredictos.
+solo se resuelve esa corrida y se nombra lo que el repositorio entregó; no se recalcula nada. Las
+etiquetas de veredictos, clases y familias salen de ``presentation``; aquí se escriben las causas
+que publica la evaluación.
 """
 
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
 from pred_platform import mensajes
 from pred_platform.app.consulta import ConsultaQuery
-from pred_platform.app.presentation import SKU_CLASS_ORDER, format_count
-from pred_platform.app.seleccion import family_label
+from pred_platform.app.presentation import (
+    SKU_CLASS_ORDER,
+    evaluation_state_label,
+    family_label,
+    format_count,
+    metric_label,
+    verdict_label,
+)
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
+from pred_platform.contract.models import Ejecucion, EstadoTarea
 from pred_platform.data.m3_confirmation import (
     M3ClassConfirmation,
     M3ClassSignificance,
     M3Comparison,
     M3Confirmation,
 )
-from pred_platform.data.m3_documents import NO_RUN
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository, M3ReserveBlocks
-
-# Texto literal del contrato v2 (sección 2) para varias corridas PUBLICADA de una identidad.
-_DUPLICATES = "Hay varias corridas PUBLICADA con esta identidad. Se muestra {run_id}."
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,58 +52,86 @@ class M3Problem:
 
 
 @dataclass(frozen=True, slots=True)
+class Exclusion:
+    """Por qué un SKU quedó fuera antes de la evaluación: la frase de la plataforma y la causa que
+    publicó el motor, que se muestra como detalle."""
+
+    reason: str
+    detail: str
+
+
+_LATE_LAUNCH = (
+    "Empezó a venderse después de la fecha de corte: no tiene historia para entrenar y comparar."
+)
+
+
+@dataclass(frozen=True, slots=True)
+class OtherPublication:
+    """Otra evaluación publicada con los mismos datos y ajustes; la vista la nombra por su fecha."""
+
+    run_id: str
+    creado_en: datetime | None
+
+
+def other_publications(
+    repository: DataRepository, run: models_v2.M3Run
+) -> tuple[OtherPublication, ...]:
+    """Las otras evaluaciones PUBLICADA de la identidad de ``run`` (contrato v2, sección 2).
+
+    Solo se leen cuando el contrato avisa que hay varias; una que ya no se puede leer queda sin
+    fecha.
+    """
+    found = []
+    for run_id in run.publicadas_misma_identidad:
+        if run_id == run.run_id:
+            continue
+        try:
+            other = repository.get_m3_run(run_id)
+        except (InvalidQuery, DataLayerError):
+            other = None
+        found.append(OtherPublication(run_id, other.creado_en if other else None))
+    return tuple(found)
+
+
+@dataclass(frozen=True, slots=True)
 class M3Decision:
     """La corrida M3 resuelta para una ejecución M2 y los veredictos de los SKU pedidos."""
 
     run: models_v2.M3Run | None = None
     problem: M3Problem | None = None
     verdicts: dict[str, models_v2.M3Verdict] = field(default_factory=dict)
-    # SKU excluido antes de M3 -> causa publicada: lanzado después del corte, o excluido de la
-    # competencia en M2 (por ejemplo, la regla de dos familias).
-    excluded: dict[str, str] = field(default_factory=dict)
+    # SKU excluido antes de M3 -> por qué: lanzado después del corte, o excluido de la competencia
+    # en M2 (por ejemplo, la regla de dos familias).
+    excluded: dict[str, Exclusion] = field(default_factory=dict)
     # Los SKU lanzados después del corte t*, la única exclusión que el corte explica.
     late_launched: frozenset[str] = frozenset()
     t_star: str | None = None
-    others: tuple[str, ...] = ()
+    # Con el aviso del contrato, las otras evaluaciones publicadas de la misma identidad.
+    others: tuple[OtherPublication, ...] = ()
     blocks: M3ReserveBlocks | None = None
-
-    @property
-    def notice(self) -> str | None:
-        """El aviso visible cuando varias corridas PUBLICADA comparten la identidad."""
-        if self.run is None or self.run.aviso is None:
-            return None
-        return _DUPLICATES.format(run_id=self.run.run_id)
-
-    @property
-    def notice_parts(self) -> tuple[str, str, str] | None:
-        """El mismo aviso partido en (antes, run_id, después), para no cortar el identificador."""
-        if self.run is None or self.run.aviso is None:
-            return None
-        before, after = _DUPLICATES.split("{run_id}")
-        return before, self.run.run_id, after
 
 
 def _problem(title: str, availability: models_v2.Availability) -> M3Problem:
     return M3Problem(
-        title, availability.detail or "No hay evidencia M3.", availability.reason_code or ""
+        title, availability.detail or "No hay evaluación publicada.", availability.reason_code or ""
     )
+
+
+_METADATA_MISSING = "La evaluación publicada no trae la lista de productos excluidos."
+_NOT_PUBLISHED = "La evaluación no está publicada."
 
 
 def _unavailable_evidence(availability: models_v2.Availability) -> M3Problem:
     """Por qué una corrida M3 resuelta no entrega evidencia (sin metadatos o no publicada)."""
-    title = (
-        "La publicación M3 no tiene sus metadatos de exclusión."
-        if availability.reason_code == "metadata_missing"
-        else "La corrida M3 no está publicada."
-    )
+    title = _METADATA_MISSING if availability.reason_code == "metadata_missing" else _NOT_PUBLISHED
     return _problem(title, availability)
 
 
 def _read_problem(exc: InvalidQuery | DataLayerError) -> M3Problem:
     """El problema visible de una lectura M3 que falló: consulta inválida o error de datos."""
     if isinstance(exc, InvalidQuery):
-        return M3Problem("La consulta M3 no es válida.", str(exc), "invalid")
-    return M3Problem("No fue posible leer la evidencia M3.", str(exc), exc.code)
+        return M3Problem("La consulta no es válida.", str(exc), "invalid")
+    return M3Problem("No fue posible leer la evaluación.", str(exc), exc.code)
 
 
 def _resolve(
@@ -110,8 +143,9 @@ def _resolve(
         mine = {item.run_id_m2 for item in runs.items}
         if run is None or run.run_id_m2 not in mine:
             return M3Problem(
-                "La corrida M3 pedida no corresponde a esta ejecución.",
-                f"La corrida M3 {wanted} no es una evaluación de la ejecución #{m2_run_id}.",
+                "La evaluación pedida no corresponde a esta ejecución.",
+                f"Es de otra ejecución. Sin elegir una evaluación, Resultados muestra la "
+                f"publicada más reciente de la ejecución #{m2_run_id}.",
                 "no_data",
             )
         return run
@@ -120,22 +154,26 @@ def _resolve(
             # El listado dice que ninguna corrida coincide con su consulta; aquí se dice cuándo
             # aparece la evaluación.
             return M3Problem(
-                "Esta ejecución todavía no tiene evaluación M3.",
-                "M3 publica la evaluación al final de la ejecución, en la etapa L4; entonces "
-                "aparecen el campeón y el veredicto de cada SKU.",
+                "Esta ejecución todavía no tiene evaluación final.",
+                "La evaluación final se publica cuando la ejecución termina su última etapa; "
+                "entonces aparecen el modelo campeón y el veredicto de cada producto.",
                 runs.availability.reason_code or "",
             )
         newest = runs.items[0]
         return M3Problem(
-            "Esta ejecución todavía no tiene una corrida M3 PUBLICADA.",
-            f"La corrida M3 más reciente, {newest.run_id}, está {newest.estado}.",
+            "Esta ejecución todavía no tiene una evaluación publicada.",
+            f"La evaluación más reciente está {evaluation_state_label(newest.estado)}.",
             "not_published",
         )
     # Resolved over every run of the execution, not only the first page of the list. Only the
     # run's metadata: its progress would count every unit of the run on each page.
     run = repository.get_m3_run(runs.selected_run_id)
     if run is None:
-        return M3Problem("La corrida M3 ya no está disponible.", NO_RUN, "no_data")
+        return M3Problem(
+            "La evaluación ya no está disponible.",
+            "La evaluación publicada de esta ejecución ya no se encuentra en la base de datos.",
+            "no_data",
+        )
     return run
 
 
@@ -152,20 +190,15 @@ def decision(
         resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
         if isinstance(resolved, M3Problem):
             return M3Decision(problem=resolved)
-        others = tuple(r for r in resolved.publicadas_misma_identidad if r != resolved.run_id)
+        others = other_publications(repository, resolved)
         evidence = repository.get_m3_evidence(
             resolved.run_id, skus=list(skus), size=max(1, min(len(skus), 500))
         )
     except (InvalidQuery, DataLayerError) as exc:
         return M3Decision(problem=_read_problem(exc))
     if evidence.availability.status != "available":
-        title = (
-            "La publicación M3 no tiene sus metadatos de exclusión."
-            if evidence.availability.reason_code == "metadata_missing"
-            else "La corrida M3 no está publicada."
-        )
         return M3Decision(
-            run=resolved, problem=_problem(title, evidence.availability), others=others
+            run=resolved, problem=_unavailable_evidence(evidence.availability), others=others
         )
     # Se resuelve una vez para la corrida, compartido por todos los SKU de esta decisión.
     try:
@@ -174,12 +207,14 @@ def decision(
         blocks = None
     late = evidence.late_launches
     eligibility = evidence.eligibility_exclusions
-    excluded = [*(late.items if late else []), *(eligibility.items if eligibility else [])]
+    excluded = {row.sku: Exclusion(_LATE_LAUNCH, row.causa) for row in (late.items if late else [])}
+    for item in eligibility.items if eligibility else []:
+        excluded[item.sku] = Exclusion(mensajes.titulo(item.codigo), item.causa)
     return M3Decision(
         run=resolved,
         blocks=blocks,
         verdicts={row.sku: row for row in evidence.items},
-        excluded={row.sku: row.causa for row in excluded},
+        excluded=excluded,
         late_launched=frozenset(row.sku for row in late.items) if late else frozenset(),
         t_star=late.t_star if late else None,
         others=others,
@@ -342,7 +377,7 @@ def _champions(
     if read.page.total != len(read.items):
         return None, M3Problem(
             "La distribución de campeones llegó incompleta.",
-            f"M3 publicó {read.page.total} filas y se leyeron {len(read.items)}.",
+            f"La evaluación publicó {read.page.total} filas y se leyeron {len(read.items)}.",
             "incomplete",
         )
     return champion_distribution(read.items, funnel.tras_exclusiones), None
@@ -391,7 +426,7 @@ def eligibility_rows(
         return None
     counts = Counter(item.codigo for item in exclusions.items)
     return [
-        (code, mensajes.titulo(code) if code in mensajes.CATALOGO else code, count)
+        (code, mensajes.titulo(code), count)
         for code, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     ]
 
@@ -478,8 +513,8 @@ class M3Export:
 
 
 _CHANGED = M3Problem(
-    "La evidencia cambió durante la exportación.",
-    "La corrida M3 dejó de coincidir entre dos páginas. No se entregó un archivo parcial; "
+    "La evaluación cambió durante la exportación.",
+    "La evaluación dejó de coincidir entre dos páginas. No se entregó un archivo parcial; "
     "vuelva a exportar.",
     "changed",
 )
@@ -542,11 +577,7 @@ class M3Profiles:
 
 # Las métricas de la cartera (contrato v2, sin sMAPE); r va primero porque es la escala común.
 PROFILE_METRICS: dict[str, str] = {
-    "razon_sn": "r frente a Seasonal Naive",
-    "mae": "MAE",
-    "rmse": "RMSE",
-    "mase": "MASE",
-    "me": "ME",
+    name: metric_label(name) for name in ("razon_sn", "mae", "rmse", "mase", "me")
 }
 
 
@@ -751,7 +782,7 @@ def _direction(row: models_v2.M3Verdict) -> str | None:
 def significance_text(row: models_v2.M3Verdict) -> str:
     """La lectura corta de la HLN-DM de un SKU, con el sentido de una diferencia significativa."""
     if row.dm_causa is not None:
-        return f"Sin prueba: {row.dm_causa}"
+        return f"Sin prueba: {cause_text(row.dm_causa)}"
     if not row.dm_significativa:
         return "No significativa"
     direction = _direction(row)
@@ -762,7 +793,7 @@ def significance_items(row: models_v2.M3Verdict) -> list[tuple[str, str]]:
     """La columna Significancia (HLN-DM y BH), separada del veredicto; la causa si no hay prueba."""
     if row.dm_causa is not None:
         return [
-            ("Prueba HLN-DM", f"sin prueba: {row.dm_causa}"),
+            ("Prueba HLN-DM", f"sin prueba: {cause_text(row.dm_causa)}"),
             ("Ventanas de la prueba", format_count(row.dm_n_ventanas)),
             ("Horizonte", format_count(row.dm_horizonte)),
         ]
@@ -777,6 +808,122 @@ def significance_items(row: models_v2.M3Verdict) -> list[tuple[str, str]]:
         ("Ventanas de la prueba", format_count(row.dm_n_ventanas)),
         ("Horizonte", format_count(row.dm_horizonte)),
     ]
+
+
+# El motor anota en la justificación cuando un SKU no tenía modelo de la campeona de su clase.
+_FALLBACK = re.compile(r"fallback de familia (\w+) a (\w+)")
+
+
+def verdict_reason(row: models_v2.M3Verdict) -> str:
+    """Por qué este SKU recibió su veredicto, en una frase y con las cifras que publicó M3.
+
+    Sigue las reglas del motor (veredictos.py), en su orden; no decide nada nuevo. El texto que
+    escribió el motor (``justificacion``) se sigue mostrando como detalle.
+    """
+    verdict = row.veredicto
+    ratio = ratio_text(row.razon_sn)
+    if verdict == "FALLO_TECNICO":
+        text = "Ni el modelo campeón ni los demás modelos produjeron un pronóstico de prueba."
+    elif verdict == "NO_EVALUABLE":
+        text = "El periodo de prueba no tiene demanda observada con la que comparar."
+    elif verdict == "EVIDENCIA_INSUFICIENTE":
+        text = (
+            f"Tuvo {format_count(row.n_ventanas)} ventanas de prueba válidas y se necesitan al "
+            f"menos {format_count(row.n_min)}."
+            if row.n_ventanas < row.n_min
+            else "La demanda del periodo de prueba fue siempre cero."
+        )
+    elif verdict == "VALIDADO":
+        text = (
+            f"Se equivocó menos que la línea base (r = {ratio}) en "
+            f"{format_count(row.n_ventanas)} ventanas de prueba, con datos reales."
+        )
+    else:
+        parts = []
+        if row.razon_sn is None:
+            parts.append("no se pudo calcular r")
+        elif row.razon_sn >= 1:
+            parts.append(f"no se equivocó menos que la línea base (r = {ratio})")
+        if row.comparacion_incompleta:
+            parts.append("la comparación quedó incompleta porque algún modelo falló")
+        # Con r < 1 y la comparación completa, solo queda el origen de los datos.
+        text = "; ".join(parts) or "los datos no se declararon reales"
+        text = text[0].upper() + text[1:] + "."
+    fallback = _FALLBACK.search(row.justificacion)
+    if fallback:
+        wanted, used = fallback.groups()
+        text += (
+            f" La familia campeona de su clase ({family_label(wanted)}) no tenía modelo para "
+            f"este producto; se usó {family_label(used)}."
+        )
+    return text
+
+
+def published_funnel(
+    repository: DataRepository, m2_run_id: str, m3_run_id: str | None = None
+) -> models_v2.M3Funnel | None:
+    """El embudo de la evaluación publicada de una ejecución (``m3_run_id`` o la más nueva)."""
+    try:
+        if m3_run_id is None:
+            m3_run_id = repository.list_m3_runs(run_id_m2=m2_run_id).selected_run_id
+        if m3_run_id is None:
+            return None
+        evidence = repository.get_m3_evidence(m3_run_id, size=1)
+    except (InvalidQuery, DataLayerError):
+        return None
+    return evidence.funnel if evidence.availability.status == "available" else None
+
+
+def run_outcome(
+    repository: DataRepository,
+    run: Ejecucion,
+    task_counts: Mapping[EstadoTarea, int] | None,
+    m3_run_id: str | None = None,
+    funnel: models_v2.M3Funnel | None = None,
+) -> str | None:
+    """Qué dejó una ejecución terminada, en palabras: cuántas tareas fallaron y cuántos productos
+    tienen veredicto. ``None`` mientras no termina.
+
+    Una ejecución «completada con fallos» terminó: algunas tareas de un modelo fallaron, y la
+    evaluación final igual dio veredicto a los productos que pudo comparar. ``funnel`` es el
+    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada.
+    """
+    if run.estado not in ("completada", "completada_con_fallos"):
+        return None
+    counts = dict(task_counts or {})
+    failed = counts.get("fallida", 0)
+    total = sum(counts.values())
+    parts = []
+    if failed:
+        verb = "Falló" if failed == 1 else "Fallaron"
+        parts.append(f"{verb} {format_count(failed)} de {format_count(total)} tareas de modelos.")
+    elif total:
+        parts.append("Ninguna tarea falló.")
+    if funnel is None:
+        funnel = published_funnel(repository, run.id, m3_run_id)
+    if funnel is None:
+        parts.append("Todavía no hay veredictos publicados.")
+        return " ".join(parts)
+    lead = "Aun así, " if failed else ""
+    products, with_verdict = funnel.total_productos, funnel.tras_exclusiones
+    if with_verdict == products:
+        sentence = f"{lead}los {format_count(products)} productos tienen veredicto."
+    else:
+        rest = products - with_verdict
+        sentence = (
+            f"{lead}{format_count(with_verdict)} de {format_count(products)} productos tienen "
+            f"veredicto; {'el otro' if rest == 1 else f'los otros {format_count(rest)}'} "
+            f"{'se excluyó' if rest == 1 else 'se excluyeron'} antes de evaluar, con su causa."
+        )
+    parts.append(sentence[0].upper() + sentence[1:])
+    technical = funnel.conteos.FALLO_TECNICO
+    if technical:
+        parts.append(
+            f"{format_count(technical)} {'tiene' if technical == 1 else 'tienen'} el veredicto "
+            f"«{verdict_label('FALLO_TECNICO')}»: ningún modelo "
+            f"{'lo' if technical == 1 else 'los'} pronosticó."
+        )
+    return " ".join(parts)
 
 
 def funnel_rows(funnel: models_v2.M3Funnel) -> list[tuple[str, str, int]]:
@@ -804,12 +951,23 @@ CONFIRMATION_STATES: dict[str, str] = {
     "no_aplica": "No aplica",
 }
 
-# Las causas sin argumento que escribe la confirmación del motor (confirmacion.py).
+# Las causas sin argumento que publica la evaluación del motor: la confirmación del campeón
+# (confirmacion.py), la prueba HLN-DM (veredictos.py, diebold_mariano), las familias fuera de una
+# clase (seleccion.py) y una métrica no calculable en una ventana (calculo_errores).
 _CAUSES: dict[str, str] = {
     "campeon_es_linea_base": "la campeona es la línea base",
     "origen_desconocido": "origen de los datos desconocido",
     "datos_sinteticos": "datos sintéticos",
     "sin_familias_competidoras": "sin familias competidoras",
+    "pocas_ventanas": "muy pocas ventanas para la prueba",
+    "varianza_no_positiva": "las diferencias de error no varían y la prueba no se puede calcular",
+    "sin_ventanas_comunes": "el campeón y la línea base no comparten ventanas",
+    "no_entregada": "no entregó resultados",
+    "no_elegible": "no está admitida para esta clase",
+    "rmse_linea_base_cero": "la línea base no tuvo error (RMSE 0)",
+    "sin_ventanas_comunes_con_linea_base": "sin ventanas comunes con la línea base",
+    "escala_cero": "la escala de MASE es cero",
+    "escala_no_calculable": "la escala de MASE no se pudo calcular",
 }
 
 # Los valores que una pérdida cero deja sin definir (``perdida_cero:<campos>``).
@@ -838,6 +996,12 @@ def _cause_part(code: str) -> str:
     name, _, argument = code.partition(":")
     if name in _CAUSES and not argument:
         return _CAUSES[name]
+    if name == "veredicto" and argument:
+        return f"el veredicto es «{verdict_label(argument)}», que no lleva prueba"
+    if name == "sin_razon_calculable" and argument:
+        return f"sin r calculable para {_families(argument)}"
+    if name == "pocas_ventanas" and argument:
+        return f"pocas ventanas válidas para {_families(argument)}"
     if name == "pocos_skus" and "<" in argument:
         n, minimum = argument.split("<", 1)
         return f"{n} SKU (mínimo {minimum})"
@@ -854,8 +1018,9 @@ def _cause_part(code: str) -> str:
 
 
 def cause_text(code: str) -> str:
-    """Una causa de la confirmación del motor en español: ``pocos_skus:7<10`` es «7 SKU (mínimo
-    10)». Las causas unidas por ``; `` se traducen una a una; una causa desconocida queda igual."""
+    """Una causa que publicó la evaluación, en español: ``pocos_skus:7<10`` es «7 SKU (mínimo
+    10)» y ``veredicto:NO_EVALUABLE``, «el veredicto es «No evaluable», que no lleva prueba». Las
+    causas unidas por ``; `` se traducen una a una; una causa desconocida queda igual."""
     return "; ".join(_cause_part(part) for part in code.split("; "))
 
 

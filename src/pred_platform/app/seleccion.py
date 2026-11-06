@@ -13,7 +13,12 @@ from typing import Any
 from urllib.parse import urlencode
 
 from pred_platform import mensajes
-from pred_platform.app.presentation import format_decimal
+from pred_platform.app.presentation import (
+    family_label,
+    format_decimal,
+    metric_label,
+    sku_class_label,
+)
 from pred_platform.contract.models import (
     Capabilities,
     EvidenciaClasica,
@@ -25,17 +30,6 @@ from pred_platform.contract.models import (
 )
 from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
 
-FAMILY_ORDER: tuple[str, ...] = ("classical", "ml", "dl", "foundation")
-
-_FAMILY_LABELS: dict[str, str] = {
-    "classical": "Clásica",
-    "ml": "ML",
-    "dl": "DL",
-    "foundation": "Fundacional",
-    # La línea base de M3, que también puede ser la familia campeona de un SKU.
-    "seasonal_naive": "Seasonal Naive",
-}
-
 _PROFILE_LABELS: dict[str, str] = {
     "dense_stable": "denso y estable",
     "dense_variable": "denso y variable",
@@ -43,16 +37,9 @@ _PROFILE_LABELS: dict[str, str] = {
     "sparse_variable": "disperso y variable",
 }
 
-_EXCLUSION_TEXT: dict[str, str] = {
-    "not_in_policy_matrix": "La política de selección no asigna esta familia a la clase del SKU.",
-    "not_configured": "La corrida se configuró sin esta familia.",
-    "series_too_short": "La serie del SKU es demasiado corta para ejecutarla.",
-    "execution_failed": "El motor no pudo ejecutar el SKU.",
-}
-
 # Qué necesita la acción «Ejecutar selección» (contrato, sección 7.8) y cómo se llama cada cosa.
 _ACTION_REQUIREMENTS: tuple[tuple[str, str], ...] = (
-    ("parquet_read", "Lectura del Parquet"),
+    ("parquet_read", "Lectura del panel de datos"),
     ("family_comparison", "Comparación común entre familias"),
     ("selection_results_persisted", "Resultados de selección guardados"),
 )
@@ -63,25 +50,26 @@ _REASONS: dict[str, str] = {
 }
 
 
-def family_label(code: str) -> str:
-    return _FAMILY_LABELS.get(code, code)
-
-
 def profile_label(code: str) -> str:
     return _PROFILE_LABELS.get(code, code)
 
 
-# Exclusiones cuyo `detail` ya las explica completas (el motor nombra la política o las familias).
-_SELF_EXPLAINED = frozenset({"not_in_policy_matrix", "not_configured"})
+def exclusion_text(reason_code: str, family: str, sku_class: str | None) -> str:
+    """Por qué una familia no compitió en un SKU, en una frase de la plataforma.
 
-
-def exclusion_text(reason_code: str, detail: str | None) -> str:
-    """La razón de una exclusión: el detalle del motor si la explica sola; si no, la frase de la
-    plataforma seguida de la causa del motor."""
-    base = _EXCLUSION_TEXT.get(reason_code, reason_code)
-    if not detail:
-        return base
-    return detail if reason_code in _SELF_EXPLAINED else f"{base} {detail}"
+    El detalle del motor (con sus códigos y cifras) se muestra aparte, como detalle técnico.
+    """
+    name = family_label(family)
+    if reason_code == "not_in_policy_matrix":
+        demand = f" de demanda {sku_class_label(sku_class).lower()}" if sku_class else ""
+        return f"La política de selección no usa la familia {name} para productos{demand}."
+    if reason_code == "not_configured":
+        return f"La ejecución se lanzó sin la familia {name}."
+    if reason_code == "series_too_short":
+        return "La historia de este producto es demasiado corta para esta familia."
+    if reason_code == "execution_failed":
+        return "El motor no pudo ejecutar esta familia para este producto."
+    return "Esta familia no compitió en este producto."
 
 
 def error_title(
@@ -229,12 +217,12 @@ def evidence_items(entry: FamilyEntry) -> list[tuple[str, str]]:
             items.append(("Orden estacional (P, D, Q, m)", _tuple(evidence.seasonal_order)))
         elif isinstance(evidence, EvidenciaML) or hasattr(evidence, "hiperparametros"):
             items.append(("Hiperparámetros", compact_config(evidence.hiperparametros)))  # type: ignore[union-attr]
-        items.append(("Métrica objetivo", evidence.metrica_objetivo))
+        items.append(("Métrica objetivo", metric_label(evidence.metrica_objetivo)))
         items.append(("Valor en la búsqueda", format_decimal(evidence.valor, 3)))
         items.append(("Ventanas de la búsqueda", str(evidence.n_ventanas)))
         items.append(("Semilla", str(evidence.seed)))
         if evidence.estudio_hpo:
-            items.append(("Estudio HPO", evidence.estudio_hpo))
+            items.append(("Estudio de la búsqueda", evidence.estudio_hpo))
     if entry.forecast_config:
         items.append(("Configuración de pronóstico", compact_config(entry.forecast_config)))
     if entry.forecast_seed is not None:
@@ -263,6 +251,41 @@ def trial_counts(trials: list[TrialRow]) -> TrialCounts:
         podados=states.count("podado"),
         fallidos=states.count("fallido"),
     )
+
+
+_TRIAL_REASONS: dict[str, str] = {
+    "ajuste_fallido": "El modelo no pudo ajustarse",
+    "configuracion_invalida": "Configuración no válida para esta serie",
+    "poda_semantica": "Detenido: el pronóstico no servía",
+    "escalon": "Detenido: no estaba entre los mejores",
+}
+_TRIAL_DETAILS: dict[str, str] = {
+    "prediccion_nula": "Detenido: el pronóstico salió nulo",
+}
+
+
+def trial_reason(motivo: str | None) -> str | None:
+    """El motivo de un ensayo en una frase corta; el texto del motor queda como detalle.
+
+    El motor escribe, por ejemplo, ``ventana=3 ajuste_fallido: AjusteModeloError: ...`` o
+    ``escalon=4 valor=4.9 umbral_top_4=4.2``. Un motivo de forma desconocida se muestra tal cual.
+    """
+    if not motivo:
+        return None
+    where = ""
+    for part in motivo.split():
+        name, _, value = part.partition("=")
+        if name == "ventana" and value:
+            where = f" (ventana {value})"
+        elif name == "escalon" and value:
+            where = f" (escalón {value})"
+    for part in motivo.replace(":", " ").split():
+        if part in _TRIAL_DETAILS:
+            return _TRIAL_DETAILS[part] + where
+    for part in motivo.replace(":", " ").replace("=", " ").split():
+        if part in _TRIAL_REASONS:
+            return _TRIAL_REASONS[part] + where
+    return motivo
 
 
 def window_metric_names(windows: list[WindowResult]) -> list[str]:

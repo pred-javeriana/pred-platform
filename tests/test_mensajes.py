@@ -102,7 +102,10 @@ def test_los_marcadores_se_rellenan_con_los_datos_del_error() -> None:
         mensajes.titulo("ingest.schema_barrier", row_index=41, column="lead_time_days")
         == "La fila 43 tiene un valor inválido en lead_time_days."
     )
-    assert mensajes.titulo("pipeline.stage_failed", stage="L3") == "La etapa L3 falló."
+    # The stage reads by its name, not by its engine code.
+    assert mensajes.titulo("pipeline.stage_failed", stage="L3") == (
+        "La etapa «Validación con ventanas» falló."
+    )
 
 
 def test_sin_los_datos_se_usa_el_titulo_generico_y_nunca_un_marcador() -> None:
@@ -110,9 +113,9 @@ def test_sin_los_datos_se_usa_el_titulo_generico_y_nunca_un_marcador() -> None:
     assert mensajes.titulo("ingest.schema_barrier", row_index=3) == (
         "El archivo tiene un valor inválido."
     )
-    assert mensajes.titulo("pipeline.stage_failed") == "Una etapa de la corrida falló."
+    assert mensajes.titulo("pipeline.stage_failed") == "Una etapa de la ejecución falló."
     assert mensajes.titulo("pipeline.stage_failed", stage="platform") == (
-        "Una etapa de la corrida falló."
+        "Una etapa de la ejecución falló."
     )
     assert all("{" not in mensajes.titulo(codigo) for codigo in mensajes.CATALOGO)
 
@@ -192,7 +195,7 @@ def test_un_sku_con_menos_de_dos_familias_queda_fuera_y_no_se_reintenta() -> Non
         "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables."
     )
     assert descripcion.accion == (
-        "Revise por qué fallaron sus otras familias o agregue otra familia a la corrida."
+        "Revise por qué fallaron sus otras familias o agregue otra familia a la ejecución."
     )
     assert descripcion.reintentable is False
 

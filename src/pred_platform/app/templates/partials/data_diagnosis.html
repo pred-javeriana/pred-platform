@@ -13,7 +13,7 @@
     <div>
       <p class="pred-eyebrow">Archivo seleccionado</p>
       <h2 class="pred-file-summary__name" id="estado-archivo">{{ report.source_file.name }}</h2>
-      <p class="pred-meta">{{ format_count(report.source_file.row_count) }} filas · Ingesta <span class="mono" title="{{ report.ingest_id }}">{{ abbreviate_id(report.ingest_id) }}</span></p>
+      <p class="pred-meta" title="Ingesta {{ report.ingest_id }}">{{ format_count(report.source_file.row_count) }} filas en el archivo</p>
     </div>
     <p class="pred-file-summary__status">{{ status_indicator(ingest_status) }}</p>
   </header>
@@ -54,7 +54,7 @@
         {% if described.ubicacion %}{{ " · " if report.error.field else "" }}{{ described.ubicacion|capitalize }}{% endif %}
       </p>
       {% endif %}
-      <p class="pred-meta"><span class="mono">{{ report.error.code }}</span></p>
+      <p class="pred-meta">Código <span class="mono">{{ report.error.code }}</span></p>
       </details>
     </div>
     {% if report.error.retryable %}
@@ -86,6 +86,7 @@
       <dt>Filas publicadas</dt><dd class="mono">{{ format_count(report.published.rows) }}</dd>
       <dt>SKU publicados</dt><dd class="mono">{{ format_count(report.published.n_skus) }}</dd>
       <dt>Columnas</dt><dd>{{ report.published.columns | join(", ") }}</dd>
+      <dt>Identificador de la ingesta (SHA-256)</dt><dd class="mono">{{ report.ingest_id }}</dd>
     </dl>
   {% endif %}
 
@@ -110,12 +111,11 @@
     <details class="pred-details" id="bitacora-calidad">
     <summary>Bitácora de calidad · {{ format_count(report.quality_log | length) }} registros</summary>
     <div class="pred-evidence-scroll">
-    {{ table_start(["Severidad", "Código", "Mensaje", "Fila", "Columna"], "Registros de calidad de la ingesta") }}
+    {{ table_start(["Severidad", "Mensaje", "Fila", "Columna"], "Registros de calidad de la ingesta") }}
     {% for entry in report.quality_log %}
     <tr>
       <td>{{ status_indicator(describe_status("severity", entry.severity)) }}</td>
-      <td><span class="mono">{{ entry.code }}</span></td>
-      <td>
+      <td title="Código {{ entry.code }}">
         {% if entry.code in CATALOGO_ERRORES %}
         {{ error_title(entry.code, none, entry.row_index, entry.column) }}
         {% if entry.message %}<br><span class="pred-meta">{{ entry.message }}</span>{% endif %}

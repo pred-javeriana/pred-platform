@@ -85,6 +85,19 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
         assert f'<span class="mono">{column}</span>' in html
 
 
+def test_the_expected_columns_are_open_both_as_first_upload_and_as_another_file(
+    tmp_path: Path,
+) -> None:
+    client, _ = _client(tmp_path)
+    first = client.get("/datos").text
+    another = client.get(f"/datos?ingest_id={ACCEPTED}#carga").text
+    assert 'id="titulo-carga">Cargar un archivo<' in first
+    assert "Cargar otro archivo" in another
+    # Folded, the list left the right half of the upload card empty.
+    for html in (first, another):
+        assert re.search(r'<details [^>]*id="columnas-csv" open>', html)
+
+
 def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text
@@ -110,7 +123,7 @@ def test_accepted_upload_delegates_and_exposes_ingest_id(tmp_path: Path) -> None
     assert "Datos válidos" in html
     assert "Filas validadas" in html
     assert ACCEPTED[:12] in html
-    assert "Topología de demanda" in html
+    assert "Clases de demanda" in html
     assert "Continuar a Ejecución" in html
     assert 'href="/ejecucion"' in html
 
@@ -122,7 +135,7 @@ def test_rejected_history_shows_actionable_diagnosis_without_topology(tmp_path: 
     assert "demand_qty" in html
     assert "Renombre la columna" in html
     assert "Corrige el archivo" in html or "Corrija el archivo" in html
-    assert "Topología de demanda" not in html
+    assert "Clases de demanda" not in html
     assert repo.topology_calls == []
 
 
@@ -136,7 +149,7 @@ def test_needs_confirmation_then_confirm_overwrite(tmp_path: Path) -> None:
     assert "Se requiere confirmación" in html
     assert "Confirmar carga" in html
     assert "Cancelar" in html
-    assert "Topología de demanda" not in html
+    assert "Clases de demanda" not in html
     assert repo.submit_calls[0]["confirm_overwrite"] is False
 
     confirmed = client.post(
@@ -152,7 +165,7 @@ def test_needs_confirmation_then_confirm_overwrite(tmp_path: Path) -> None:
     # El error sale en español con la fila y la columna, y con lo que hay que hacer (G6).
     assert "La fila 43 tiene un valor inválido en lead_time_days." in failed
     assert "Corríjalo en el archivo y vuelva a cargarlo." in failed
-    assert "Topología de demanda" not in failed
+    assert "Clases de demanda" not in failed
 
 
 def test_cancel_drops_the_pending_upload_so_it_can_no_longer_be_confirmed(
@@ -239,7 +252,7 @@ def test_topology_filters_are_delegated(tmp_path: Path) -> None:
     assert call["sort"] == "adi"
     assert call["descending"] is True
     assert "FIL-0001" in html
-    assert "Smooth (Suave)" in html
+    assert "Suave" in html
     assert 'role="img"' in html
     assert "<title>" in html
     assert "<desc>" in html

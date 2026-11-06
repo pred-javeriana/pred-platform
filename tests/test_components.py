@@ -25,17 +25,18 @@ def _catalog_html() -> str:
 
 def test_catalog_renders_every_task_and_trial_label() -> None:
     html = _catalog_html()
-    for label in ("Pendiente", "Ejecutando", "Exitosa", "Fallida", "No Ejecutable"):
+    for label in ("Pendiente", "Ejecutando", "Exitosa", "Fallida", "No ejecutable"):
         assert label in html
     assert "Podada" in html
     assert html.count("Podada") >= 1
     assert "i-prune" in html
+    # The five verdicts read by their Spanish label; the contract code stays out of sight.
     for verdict in (
-        "VALIDADO",
-        "EXPLORATORIO",
-        "EVIDENCIA_INSUFICIENTE",
-        "NO_EVALUABLE",
-        "FALLO_TECNICO",
+        "Validado",
+        "Exploratorio",
+        "Evidencia insuficiente",
+        "No evaluable",
+        "Error técnico",
     ):
         assert verdict in html
     assert "se sostiene" not in html

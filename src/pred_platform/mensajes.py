@@ -14,6 +14,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final, Protocol
 
+from pred_platform.app.presentation import stage_label
+
 
 @dataclass(frozen=True, slots=True)
 class Mensaje:
@@ -135,39 +137,39 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     ),
     "selection.unregistered_family": Mensaje(
         "La familia solicitada no está registrada.",
-        "Quite esa familia de la configuración de la corrida.",
+        "Quite esa familia de la configuración de la ejecución.",
     ),
     "selection.unknown_class": Mensaje(
         "La clase de demanda del SKU no es válida.",
         "Vuelva a cargar el archivo para clasificar de nuevo la demanda.",
     ),
     "selection.router_config": Mensaje(
-        "La configuración del enrutador no es válida.",
+        "La configuración de la política de selección no es válida.",
         _REVISAR_REGISTRO,
     ),
     "run.incompatible_config": Mensaje(
-        "La configuración no coincide con la corrida guardada.",
-        "Lance una corrida nueva con la configuración actual.",
+        "La configuración no coincide con la ejecución guardada.",
+        "Lance una ejecución nueva con la configuración actual.",
     ),
     "run.failed_terminal": Mensaje(
-        "La corrida anterior falló y no puede reanudarse.",
-        "Lance una corrida nueva.",
+        "La ejecución anterior falló y no puede reanudarse.",
+        "Lance una ejecución nueva.",
     ),
     "run.invalid_transition": Mensaje(
-        "La corrida no admite esa operación en su estado actual.",
-        "Actualice la pantalla y revise el estado de la corrida.",
+        "La ejecución no admite esa operación en su estado actual.",
+        "Actualice la pantalla y revise el estado de la ejecución.",
     ),
     "run.manifest_missing": Mensaje(
-        "No se pudo leer el manifiesto de la corrida.",
+        "No se pudo leer el registro interno de la ejecución.",
         _REVISAR_REGISTRO,
     ),
     "run.manifest_corrupt": Mensaje(
-        "No se pudo leer el manifiesto de la corrida.",
+        "No se pudo leer el registro interno de la ejecución.",
         _REVISAR_REGISTRO,
     ),
     "run.manifest_version": Mensaje(
-        "No se pudo leer el manifiesto de la corrida.",
-        "Lance una corrida nueva con esta versión del motor.",
+        "No se pudo leer el registro interno de la ejecución.",
+        "Lance una ejecución nueva con esta versión del motor.",
     ),
     "eligibility.no_admissible_history": Mensaje(
         "La serie no tiene historia antes del corte.",
@@ -187,16 +189,16 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     ),
     "eligibility.insufficient_history": Mensaje(
         "La historia es demasiado corta para entrenar y evaluar.",
-        "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento (min_train).",
+        "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento.",
     ),
     "eligibility.fewer_than_two_families": Mensaje(
         "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables.",
-        "Revise por qué fallaron sus otras familias o agregue otra familia a la corrida.",
+        "Revise por qué fallaron sus otras familias o agregue otra familia a la ejecución.",
     ),
     # --- L2/L3: modelos, búsqueda y evaluación
     "model.series_too_short": Mensaje(
         "La serie es demasiado corta para esta familia.",
-        "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento (min_train).",
+        "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento.",
     ),
     "model.fit_failed": Mensaje(
         "El modelo no pudo ajustarse.",
@@ -213,7 +215,7 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     ),
     "hpo.invalid_space": Mensaje(
         "La búsqueda de configuraciones no pudo completarse.",
-        "Revise el espacio de búsqueda en la configuración de la corrida.",
+        "Revise el espacio de búsqueda en la configuración de la ejecución.",
     ),
     "hpo.study_failed": Mensaje(
         "La búsqueda de configuraciones no pudo completarse.",
@@ -221,14 +223,14 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         reintentable=True,
     ),
     "evaluation.failed": Mensaje(
-        "La evaluación Walk-Forward no pudo completarse.",
+        "La validación con ventanas no pudo completarse.",
         "Reduzca el horizonte o el paso de validación, o pruebe otra familia.",
     ),
     # --- pipeline
     "pipeline.stage_failed": Mensaje(
-        "La etapa {stage} falló.",
+        "La etapa «{stage}» falló.",
         _REVISAR_REGISTRO,
-        generico="Una etapa de la corrida falló.",
+        generico="Una etapa de la ejecución falló.",
         reintentable=True,
     ),
     "pipeline.stage_unavailable": Mensaje(
@@ -255,7 +257,7 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     # --- plataforma
     "platform.contract_invalid": Mensaje(
         "Los datos recibidos no tienen el formato esperado.",
-        "Vuelva a lanzar la corrida; si persiste, avise al equipo.",
+        "Vuelva a lanzar la ejecución; si persiste, avise al equipo.",
     ),
     "platform.schema_version_unsupported": Mensaje(
         "La versión del documento no es compatible.",
@@ -271,7 +273,7 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         reintentable=True,
     ),
     "platform.database_busy": Mensaje(
-        "La base de datos estaba ocupada y no se pudo registrar la corrida.",
+        "La base de datos estaba ocupada y no se pudo registrar la ejecución.",
         "Espere un momento y reanude la ejecución.",
         reintentable=True,
     ),
@@ -306,7 +308,8 @@ def titulo(
     datos: dict[str, Any] = {
         "row_index": None if row_index is None else fila_en_archivo(row_index),
         "column": column,
-        "stage": None if stage == "platform" else stage,  # not an engine stage to name
+        # «platform» no es una etapa del motor que se pueda nombrar.
+        "stage": None if stage is None or stage == "platform" else stage_label(stage),
     }
     usados = [nombre for nombre in datos if "{" + nombre + "}" in entrada.titulo]
     if any(datos[nombre] is None for nombre in usados):

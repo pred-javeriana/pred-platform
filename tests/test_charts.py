@@ -21,10 +21,10 @@ def test_scatter_includes_accessible_title_desc_and_thresholds() -> None:
     assert "0,49" in svg
     assert "FIL-0001" in svg
     for label in (
-        "Smooth (Suave)",
-        "Erratic (Errática)",
-        "Intermittent (Intermitente)",
-        "Lumpy (Grumosa)",
+        "Suave",
+        "Errática",
+        "Intermitente",
+        "Grumosa",
     ):
         assert label in svg
     assert "circle" in svg
@@ -63,10 +63,10 @@ def test_legend_separates_canonical_labels_into_two_rows_below_the_axis() -> Non
     ns = {"svg": "http://www.w3.org/2000/svg"}
     labels = root.findall('.//svg:g[@class="pred-chart__legend"]/svg:text', ns)
     assert [label.text for label in labels] == [
-        "Smooth (Suave)",
-        "Erratic (Errática)",
-        "Intermittent (Intermitente)",
-        "Lumpy (Grumosa)",
+        "Suave",
+        "Errática",
+        "Intermitente",
+        "Grumosa",
     ]
     rows = sorted({float(label.attrib["y"]) for label in labels})
     assert len(rows) == 2 and rows[1] - rows[0] >= 20

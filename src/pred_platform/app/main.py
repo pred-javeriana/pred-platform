@@ -7,9 +7,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from pred_platform.app.datos import PendingUploads
 from pred_platform.app.routers import catalog, data, execution, exportar, group_results, results
@@ -118,6 +120,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.get("/")
     def index() -> RedirectResponse:
         return RedirectResponse(url="/datos", status_code=307)
+
+    # Una dirección que no existe se lee como una página de PRED en un navegador; un cliente que
+    # no pide HTML (una sonda, un script) sigue recibiendo el JSON de siempre.
+    @application.exception_handler(StarletteHTTPException)
+    async def not_found(request: Request, exc: StarletteHTTPException) -> Response:
+        if exc.status_code == 404 and "text/html" in request.headers.get("accept", ""):
+            return application.state.templates.TemplateResponse(
+                request, "pages/not_found.html", {}, status_code=404
+            )
+        return await http_exception_handler(request, exc)
 
     application.include_router(data.router)
     application.include_router(execution.router)

@@ -46,7 +46,7 @@ figura de la tesis cuenta al menos como 3, porque la defensa se presenta con est
 - Linear: encabezado de un objeto con el nombre primero y el estado como etiqueta, y una lista
   con varias lecturas en lugar de varias listas.
 - Stripe Dashboard: el contexto arriba y a lo ancho, las acciones en el encabezado, las cifras
-  clave primero y las tablas al ancho de su contenido.
+  clave primero y el ancho usado con cuadrículas equilibradas.
 - GitHub Actions y Vercel: las etapas de un proceso como pasos numerados, con la etapa en curso
   marcada.
 - Sherwin (2014), Nielsen Norman Group: un texto de ejemplo dentro del campo se confunde con un
@@ -89,7 +89,7 @@ Resultados y el detalle de SKU tenían un área principal y un lateral de contex
 repetía datos de la página y empujaba las tablas a un desplazamiento horizontal: en Por clase,
 las columnas «SKU comparados» y «p IUT» quedaban fuera de vista a 1280 px (#89). Referente:
 Stripe Dashboard y Linear. Corrección: una sola columna; el contexto pasa a una barra arriba y a
-lo ancho, y cada tabla ocupa el ancho de su contenido.
+lo ancho, y cada tabla ocupa el ancho de su contenedor (N6).
 
 **T2. El detalle se navegaba con un menú vertical.** H8, severidad 2. El menú, con una
 descripción bajo cada opción, ocupaba una columna propia y repetía el título de cada panel.
@@ -125,7 +125,7 @@ los filtros.
 
 **T8. Las horas no dicen su zona.** H2, severidad 2. El motor y la plataforma guardan las horas
 en UTC, pero «23:20» se leía como hora local. Referente: ISO 8601 y la zona explícita de Stripe.
-Corrección: toda hora se escribe con «UTC».
+Corrección: toda hora se escribe con «UTC», en la forma de N7.
 
 **T9. La pestaña del navegador no identifica a PRED.** H6, severidad 1. Corrección: un icono
 propio en el color primario.
@@ -171,9 +171,9 @@ la raíz de datos.
 
 **D6. El historial no marca la ingesta mostrada ni las que no se pueden lanzar.** H1 y H5,
 severidad 3. Una ingesta declarada sintética aparecía como lanzable (#88). Referente: la fila
-actual marcada de Linear. Corrección: la fila mostrada dice «la que se muestra» con su
-identificador; una ingesta sintética dice «Declara datos sintéticos: no ejecutable», y en el
-formulario de lanzamiento su opción está deshabilitada.
+actual marcada de Linear. Corrección: la fila mostrada dice «La que se muestra arriba», con la
+huella de la ingesta en `title`; una ingesta sintética dice «Declara datos sintéticos: no
+ejecutable», y en el formulario de lanzamiento su opción está deshabilitada.
 
 ## Ejecución
 
@@ -190,22 +190,24 @@ sola familia admitida y otra clase conserva dos, el motor ejecuta la corrida y d
 esa clase fuera de la comparación, sin campeón. Si ninguna clase conserva dos, ningún SKU tiene
 campeón: la etapa L2 no produce candidatos y la corrida se detiene, o termina sin nada evaluado.
 Si una clase queda sin ninguna familia, la etapa L2 falla para toda la corrida. Un SKU con menos
-historia que entrenamiento + horizonte + 3 pasos queda fuera con cualquier familia. El formulario
-aceptaba todos estos casos sin avisar. Referente: H5. Corrección: la ayuda dice qué familias
-admite cada clase. Si una clase con SKU evaluables queda sin familia, el formulario no lanza,
-dice qué familias agregar y avisa también de las clases que quedarían con una sola. Si una clase
-queda con una sola, el formulario nombra sus SKU (plegados cuando son muchos), aparte los que
-la historia ya deja fuera, dice qué familia agregar y deja lanzar de todos modos; si ninguna
-clase conserva dos, el aviso dice que la corrida no elige campeón. Reanudar no se ofrece cuando
-la corrida fallaría igual (casos en `docs/features/ejecucion/README.md`).
+historia que entrenamiento + horizonte + 3 pasos queda fuera con cualquier familia. El
+formulario aceptaba todos estos casos sin avisar. Referente: H5. Corrección: la ayuda dice qué
+familias admite cada clase, en una lista (N8). Si una clase con SKU evaluables queda sin
+familia, el formulario no lanza, dice qué familias agregar y avisa también de las clases que
+quedarían con una sola. Si una clase queda con una sola, el formulario nombra sus SKU (plegados
+cuando son muchos), aparte los que la historia ya deja fuera, dice qué familia agregar y deja
+lanzar de todos modos; si ninguna clase conserva dos, el aviso dice que la corrida no elige
+campeón. Reanudar no se ofrece cuando la corrida fallaría igual (casos en
+`docs/features/ejecucion/README.md`).
 
 **E3. El estado de la corrida no muestra en qué etapa va ni cuánto lleva.** H1, severidad 3.
 «Ejecutando» era un título de 36 px, la etapa era una línea suelta bajo el anillo y no se veían
 las etapas restantes; el anillo decía `1.0 %` (#93). Referente: GitHub Actions y Vercel.
 Corrección: el encabezado de la corrida lleva su número, su estado y sus acciones; debajo, los
-hechos (iniciada, duración o tiempo transcurrido, ingesta, semilla), las etapas L1 a L4 como
-pasos numerados con la etapa en curso marcada, y el anillo, que escribe por ejemplo `57,1 %` y
-`1.284 / 2.000 tareas`.
+hechos (iniciada, duración, archivo de datos, semilla), las etapas L1 a L4 como pasos numerados
+(«Preparación de los datos», «Ajuste de modelos», «Validación con ventanas», «Evaluación final»)
+con la etapa en curso marcada, y el anillo, que escribe por ejemplo `57,1 %` y
+`1.284 / 2.000 tareas`. Mientras la corrida trabaja, el tiempo transcurrido va en la línea de N5.
 
 **E4. Tras Detener, la página muestra conteos viejos.** H1, severidad 3 (#83). El sondeo se
 detenía con la corrida `detenida`, antes de que el worker cerrara sus tareas. Corrección: la
@@ -218,7 +220,8 @@ etiquetas junto al anillo y cada una lleva a sus tareas filtradas; Detener, Rean
 resultados están en el encabezado de la corrida.
 
 **E6. La tabla de tareas parte las palabras.** H8, severidad 2. En la columna Estado se leía
-«Ejecutan do» y «Pendient e». Corrección: la tabla usa todo el ancho y el estado no se parte.
+«Ejecutan do» y «Pendient e». Corrección: la tabla usa todo el ancho y el estado no se corta a
+mitad de palabra; un rótulo de varias palabras pasa a otra línea entre palabras (N9).
 
 **E7. Hay tareas `no_ejecutable` de familias que la clase no usa.** H1 y H2, severidad 2 (#98).
 Un SKU excluido recibía una tarea por cada familia de la corrida, incluidas las que su clase
@@ -250,12 +253,12 @@ eran cinco: «Por SKU» (la selección de M2) y «Consulta» (los veredictos de 
 listaban los mismos SKU con filtros distintos, y la vista por defecto era «Por SKU». Referente:
 Shneiderman, la vista general primero, y las lecturas de una lista en Linear. Corrección: cuatro
 pestañas, Resumen, Por clase, SKU y Perfiles de error; con evidencia, la página abre en Resumen.
-La pestaña SKU tiene dos lecturas con un control segmentado, «Veredictos de M3» y «Familias de
-M2», y `?vista=consulta` sigue abriendo la primera.
+La pestaña SKU tiene dos lecturas con un control segmentado, «Veredictos» y «Resultados por
+familia», y `?vista=consulta` sigue abriendo la primera.
 
-**R3. La lista de SKU no filtra por veredicto.** H7, severidad 2 (#96). Corrección: «Veredictos
-de M3» filtra por clase, familia campeona y veredicto; `/resultados?vista=sku&veredicto=EXPLORATORIO`
-abre esa lista filtrada.
+**R3. La lista de SKU no filtra por veredicto.** H7, severidad 2 (#96). Corrección:
+«Veredictos» filtra por clase, familia campeona y veredicto;
+`/resultados?vista=sku&veredicto=EXPLORATORIO` abre esa lista filtrada.
 
 **R4. La acción primaria de una página de lectura lleva a otra superficie.** H8, severidad 2.
 «Configurar nueva ejecución» era el botón primario del lateral. Referente: las acciones
@@ -267,22 +270,24 @@ página dice «No existe la ejecución «N»» y ofrece el selector.
 
 **R6. Una ejecución sin evaluación M3 deja las pestañas vacías.** H1 y H9, severidad 2. Con una
 corrida en curso, Resumen, Por clase y Perfiles de error no explicaban por qué no tenían datos.
-Corrección: cada vista dice «Esta ejecución todavía no tiene evaluación M3» y que M3 publica en
-la etapa L4; la página abre en la pestaña SKU, que ya muestra lo que dejó M2.
+Corrección: cada vista dice «Esta ejecución todavía no tiene evaluación final» y que se publica
+cuando la ejecución termina su última etapa; la página abre en la pestaña SKU, que ya muestra lo
+que dejó el ajuste de modelos.
 
 **R7. El embudo de Resumen no se lee como embudo y nombra mal las exclusiones.** H2 y H8,
 severidad 3 (#91). Era una lista de pares seguida de una tabla con los mismos conteos, y la fila
 de exclusiones decía «menos de dos familias evaluables» para todas las causas de elegibilidad.
 Referente: Tufte, una sola representación, y los embudos de producto, donde cada paso resta del
 anterior. Corrección: una fila de cifras clave y un embudo con filas que restan (−) y grupos
-(Evaluados, No evaluados y sus veredictos); las exclusiones se llaman «Excluidos por
-elegibilidad (M2)» y se desglosan por el código publicado, el más frecuente primero.
+(Evaluados, No evaluados y sus veredictos); las exclusiones se llaman «Excluidos antes de
+evaluar» y se desglosan por su causa en español, la más frecuente primero, con el código
+publicado en `title`.
 
 **R8. La prueba Diebold-Mariano es una lista de pares.** H8, severidad 1. Referente: Few.
 Corrección: una fila de cifras clave.
 
 **R9. Las tablas de Por clase no caben a 1280 px.** H8, severidad 3 (#89). Corrección: la
-composición de una columna y las tablas al ancho de su contenido; a 1280 px se ven todas las
+composición de una columna y las tablas al ancho de su contenedor; a 1280 px se ven todas las
 columnas sin desplazamiento.
 
 **R10. Algunas cifras de Por clase se leen iguales a un umbral.** H2, severidad 2. α se
@@ -308,10 +313,10 @@ la columna de significancia partía cada fila en cuatro líneas, «197 de 30» s
 fracción cuando 30 es el mínimo de ventanas, el encabezado «r» no decía frente a qué, y las dos
 exportaciones tenían estilos distintos. Corrección: la significancia dice «Significativa, a
 favor de la campeona» con su p ajustado; las ventanas dicen «197» y «mínimo 30»; el encabezado
-dice «r frente a SN»; las dos exportaciones son botones iguales.
+dice «r frente a la línea base»; las dos exportaciones son botones iguales.
 
-**R14. El campeón no dice su modelo.** H6, severidad 1. Corrección: «Fundacional · chronos2»,
-la familia y el modelo publicados del candidato campeón.
+**R14. El campeón no dice su modelo.** H6, severidad 1. Corrección: «Fundacional · Chronos-2»,
+la familia y el modelo publicados del candidato campeón, con sus nombres de N2.
 
 ## Detalle de un SKU
 
@@ -333,7 +338,7 @@ negativo favorece a la campeona.
 **S5. La decisión es una lista larga de pares.** H8, severidad 2. Las cifras que deciden el
 veredicto tenían el mismo peso que el resto, y el lateral repetía el contexto de la corrida.
 Referente: el detalle de un pago en Stripe, las cifras clave primero. Corrección: r frente a
-Seasonal Naive, ventanas válidas, cobertura y significancia en una fila de cifras clave; el
+la línea base, ventanas válidas, cobertura y significancia en una fila de cifras clave; el
 contexto pasa a la barra de arriba y las secciones se enlazan al comienzo de la hoja.
 
 **S6. La campeona no se distingue en «Modelos evaluados».** H6, severidad 1. Corrección: su fila
@@ -349,13 +354,171 @@ severidad 1 (#71). Corrección: las vistas solo ordenan filas publicadas y dan f
 publicadas, por ejemplo un porcentaje desde conteos publicados; no filtran filas ni recalculan
 estadísticos.
 
+## Segunda revisión: lenguaje llano, ancho y estado de trabajo
+
+Después de #107 se recorrió de nuevo cada pantalla con los datos publicados de una ejecución real
+de 3.622 SKU, y el seguimiento con una ejecución real corta en curso, a 1280, 1440 y 390 px. Los
+hallazgos usan las mismas heurísticas y la misma escala. Se encontraron 10: 5 de severidad 3, 4
+de severidad 2 y 1 de severidad 1. Este cambio corrige los 10.
+
+**N1. Una ejecución con tareas fallidas se lee como un fallo aunque sus productos tengan
+veredicto.** H1 y H2, severidad 3. «Completada con fallos», con un ícono de advertencia, encabezaba
+la ejecución 3 aunque 3.510 de sus 3.622 productos tenían veredicto. Referente: GOV.UK, decir qué
+pasó y qué significa. Corrección: la ejecución se lee «Completada», con su marca de terminada, y
+una frase calculada con los conteos publicados dice qué pasó: «Fallaron 876 de 13.795 tareas de
+modelos. Aun así, 3.510 de 3.622 productos tienen veredicto; los otros 112 se excluyeron antes de
+evaluar, con su causa.» La frase sale en Ejecución, en Resultados y en el detalle de un SKU. El
+estado guardado sigue siendo `completada_con_fallos`.
+
+**N2. La interfaz muestra códigos del motor y términos en inglés.** H2, severidad 3. Veredictos,
+clases, familias, modelos, etapas, causas, motivos de ensayos, huellas e identificadores de
+evaluación se escribían tal como los guarda el motor. Referente: GOV.UK, lenguaje llano.
+Corrección: `app/presentation.py` es el único dueño de cada etiqueta y de su explicación de una
+línea; las vistas, los gráficos y los mensajes las toman de ahí. Un identificador que se conserva
+para la trazabilidad va después de la etiqueta: en `title`, en «Detalle técnico» o en la sección
+Trazabilidad. Los valores guardados, las respuestas, las columnas CSV y los atributos `data-*` y
+`aria-*` no cambian. La tabla de auditoría de abajo lista cada término.
+
+**N3. Los veredictos no dicen qué significan.** H2 y H6, severidad 3. Corrección: cada veredicto
+lleva una explicación de una línea. En las cifras clave, el embudo y la decisión de un SKU, la
+explicación va junto a la etiqueta. En las listas, una leyenda arriba explica una vez los cinco
+veredictos y cada fila lleva su explicación en `title`. El detalle de un SKU dice además por qué
+recibió su veredicto, con las cifras publicadas y en el orden de las reglas del motor; el texto
+del motor queda plegado en «Texto del motor».
+
+**N4. En una ejecución en curso, la lista de tareas tapa el avance.** H1 y H8, severidad 3. Bajo
+el anillo se listaban todas las tareas, 50 por página. Referente: GitHub Actions, el avance
+primero y el detalle a pedido. Corrección: mientras la ejecución avanza, la página muestra
+primero las etapas y el avance; debajo, solo las 5 tareas que conviene mirar (las fallidas; si
+no hay, las que corren), con «Ver las N tareas» y «Ver las N fallidas». Un filtro elegido o
+`?tareas=todas` muestra la lista completa por páginas.
+
+**N5. Una ejecución en curso parece detenida.** H1, severidad 3. El sondeo cada 2 s cambiaba las
+cifras a saltos y nada se movía entre lecturas: una etapa larga, como la evaluación final, se veía
+congelada. Referente: GitHub Actions y Vercel, el paso en curso animado; WCAG 2.2, criterio 2.3.3,
+y `prefers-reduced-motion`. Corrección: la etapa en curso gira un arco alrededor de su número y
+dice «En curso»; dentro del anillo gira un arco corto; una línea con un punto que late dice
+«Trabajando en Evaluación final · 2 de 5 SKU terminados en esta etapa» y «Lleva 2 min 15 s ·
+avance leído hace 1 s», con el tiempo contado cada segundo. Si el servidor no responde por más
+de 12 s, o si la persona pausa la actualización, el punto se detiene y la línea lo dice. Una
+página que no sondea (datos de ejemplo o una copia de solo lectura) no dice cuándo leyó el avance,
+porque no lo vuelve a leer. El
+anillo y las cifras pasan de su valor anterior al nuevo en menos de un segundo, y las animaciones
+toman su fase del reloj, así que cada sondeo no las reinicia. Con movimiento reducido nada gira
+ni late: la etapa en curso lleva un halo quieto, las cifras cambian sin transición y el texto dice
+lo mismo.
+
+**N6. El contenido deja vacía la mitad derecha de la página.** H8, severidad 3. A 1280 px, la
+carga de Datos terminaba cerca de 700 px, las barras de clases cerca de 770 px, el formulario de
+lanzamiento cerca de 830 px, y las tablas y el embudo de Resultados ocupaban el 60 % izquierdo.
+Referente: Stripe Dashboard, cuadrículas equilibradas. Corrección: cada tabla ocupa el ancho de
+su contenedor; las cifras clave son columnas iguales; las secciones cortas de Resumen van de a
+dos (embudo y campeones por familia; campeones por clase y prueba Diebold-Mariano); la carga pone
+el archivo junto a las columnas esperadas; el formulario pone los datos junto a la ventana de
+evaluación y las familias junto a lo que admite cada clase; el detalle de cada clase va de a dos.
+El texto largo conserva un ancho de lectura de 80 caracteres. A 390 px todo vuelve a una columna.
+
+**N7. Las fechas y horas se leen como datos crudos.** H2, severidad 2. Corrección: un instante se
+escribe en la hora de Bogotá (America/Bogota), la de quienes usan PRED, por ejemplo «2 nov 2026,
+9:02 p. m.», y un día se escribe «11 sept 2016», también en los gráficos. El instante exacto en UTC
+queda en `title`, por ejemplo «2026-11-03 02:02:38 UTC (hora universal coordinada)». Esto reemplaza
+la corrección de T8: el motor y la plataforma siguen guardando las horas en UTC, pero la página las
+convierte a la hora local y ya no escribe «UTC». Una hora poco después de la medianoche UTC cae en
+el día anterior de Bogotá, como en el ejemplo. Los valores guardados y los CSV no cambian.
+
+**N8. Lo que admite cada clase de demanda es una frase larga.** H6 y H8, severidad 2. Corrección:
+junto a las casillas de familia, una lista con una clase por fila y sus familias como etiquetas.
+
+**N9. Un estado largo invade la columna vecina en la tabla de tareas.** H8, severidad 1.
+«Terminó configuración con HPO, esperando evaluación retrospectiva» no se partía y tapaba
+«Tiempo (s)». Corrección: el estado se llama «Por evaluar», con su explicación en `title`, y un
+estado en una celda pasa a otra línea entre palabras en vez de salirse.
+
+**N10. Quedan espacios en blanco grandes dentro de las tarjetas.** H8, severidad 2. Se revisó
+cada tarjeta de cada pantalla real a 1280 y 1440 px, con los estados de error y vacíos y una
+ejecución en curso: se midió el rectángulo vacío más grande dentro de cada tarjeta y se miró cada
+captura. Referente: Stripe Dashboard, cuadrículas equilibradas. Corrección, por tarjeta:
+
+- Datos, archivo seleccionado: la explicación de cada clase ocupa lo que mide su texto y la barra
+  el resto; antes quedaba un hueco entre la explicación y el conteo.
+- Datos, Clases y SKU: el mapa ADI–CV² ocupa el ancho de la tarjeta; antes medía 640 px y dejaba
+  vacía la mitad derecha. En un teléfono se desplaza en vez de encoger su texto.
+- Datos, Cargar otro archivo: las columnas que debe tener el archivo se ven abiertas, como en la
+  primera carga; plegadas dejaban vacía la mitad derecha.
+- Ejecución, la ejecución mostrada (terminada, en curso o detenida): la fecha, la duración, los
+  datos y la semilla son columnas iguales, alineadas con las etapas; los seis estados de tarea van
+  en dos filas de tres, en vez de cinco y uno suelto.
+- Ejecución, Nueva ejecución: la métrica, el mínimo de entrenamiento y el horizonte van en una
+  fila; el horizonte quedaba solo.
+- Resultados, barra de contexto: los hechos de la ejecución mostrada son columnas iguales.
+- Resultados, Por clase: la confirmación del campeón deja a la vista la frase que hace falta para
+  leer la tabla y pliega el método en «Cómo se decide la confirmación»; diez líneas de 80
+  caracteres dejaban vacía la mitad derecha.
+- Resultados, SKU: la barra de filtros cabe en una fila a 1280 px; «Limpiar filtros» pasaba solo a
+  una segunda fila.
+- Detalle de un SKU: «Pierde frente a la línea base» y «Comparación incompleta» van en la fila de
+  números decisivos, y las siete cifras de la significancia en una fila a lo ancho; las dos listas
+  angostas dejaban vacía la mitad derecha. El gráfico de demanda y pronóstico ocupa el ancho de la
+  hoja; a 1440 px dejaba vacío el borde derecho. El patrón de demanda reparte sus cuatro cifras en
+  columnas iguales.
+- Estados de error y vacíos: «no disponible» y «no existe» se centran como los estados vacíos, en
+  vez de quedar pegados a la izquierda de una página o tarjeta vacía. Una ejecución que no existe
+  se nombra por su número en Ejecución y en Resultados; Resultados ofrece la lista de ejecuciones
+  con resultados, que el aviso anterior mencionaba sin mostrar, y Ejecución un botón a la más
+  reciente. Una dirección que no existe muestra una página de PRED en lugar de un texto JSON.
+
+Se conserva el ancho de lectura de 80 caracteres (WCAG 2.2, 1.4.8), así que una introducción corta
+deja espacio a su derecha. En Resumen, los bloques de a dos ya terminaban a menos de 100 px uno del
+otro.
+
+### Auditoría de textos
+
+| Texto anterior | Dónde | Texto nuevo |
+| --- | --- | --- |
+| `Completada con fallos`, con advertencia | Ejecución y Resultados | «Completada» y la frase de N1 |
+| `VALIDADO` | Resultados y detalle de SKU | «Validado»: «Se equivoca menos que la línea base, con datos reales y evidencia suficiente.» |
+| `EXPLORATORIO` | Resultados y detalle de SKU | «Exploratorio»: «Sin validar: no mejora a la línea base o la comparación quedó incompleta.» |
+| `EVIDENCIA_INSUFICIENTE` | Resultados y detalle de SKU | «Evidencia insuficiente»: «Muy pocas ventanas de prueba, o demanda siempre en cero, para concluir.» |
+| `NO_EVALUABLE` | Resultados y detalle de SKU | «No evaluable»: «No hay demanda observada en el periodo de prueba.» |
+| `FALLO_TECNICO` | Resultados y detalle de SKU | «Error técnico»: «Ningún modelo produjo un pronóstico para este producto.» |
+| `Smooth (Suave)`, `Erratic (Errática)`, `Intermittent (Intermitente)`, `Lumpy (Grumosa)` | Datos, Por clase, filtros y detalle de SKU | «Suave», «Errática», «Intermitente» y «Grumosa», cada una con su explicación, por ejemplo «Vende casi todos los días, en cantidades parecidas.» |
+| `ML`, `DL`, `seasonal_naive` | Resultados y ensayos | «Aprendizaje automático», «Aprendizaje profundo», «Línea base estacional» |
+| `classical:sarima`, `ml:lightgbm`, `dl:mlp`, `foundation:chronos2` | Tareas, modelos evaluados y campeón | «SARIMA», «LightGBM», «MLP», «Chronos-2»; el identificador en `title` |
+| `Seasonal Naive`, `r frente a Seasonal Naive` | Resultados y detalle de SKU | «línea base», «r frente a la línea base»; el modelo, «Ingenuo estacional» |
+| `M2`, `M3`, `Corrida M3`, `Decisión publicada por M3` | Resultados y detalle de SKU | «ajuste de modelos», «evaluación final», «Decisión de la evaluación final» |
+| `Veredictos de M3`, `Familias de M2` | Pestaña SKU | «Veredictos», «Resultados por familia» |
+| `m3-11767f31df7d616b` | Contexto de Resultados | «Evaluación final: Publicada · 3 nov 2026, 6:34 a. m.»; el identificador en `title` y en Trazabilidad |
+| `ab4d31bd5879…`, huella de la ingesta | Ejecución, Resultados y Datos | el nombre del archivo, por ejemplo «panel_m1_fraccion_97.8.csv»; la huella en `title` y en Diagnóstico |
+| `L1` a `L4`, `Etapa L2` | Ejecución y mensajes de error | «Preparación de los datos», «Ajuste de modelos», «Validación con ventanas», «Evaluación final» |
+| `Walk-Forward` | Ejecución y Resultados | «validación con ventanas» |
+| `Estudio HPO`, `Ensayos de ML` | Detalle de SKU | «Estudio de la búsqueda», «Ensayos de Aprendizaje automático» |
+| `ventana=1 ajuste_fallido: AjusteModeloError: …` | Ensayos de un SKU | «El modelo no pudo ajustarse (ventana 1)»; el texto del motor en `title` |
+| `escalon=4 valor=… umbral_top_4=…` | Ensayos de un SKU | «Detenido: no estaba entre los mejores (escalón 4)» |
+| `ventana=8 valor=… poda_semantica:prediccion_nula` | Ensayos de un SKU | «Detenido: el pronóstico salió nulo (ventana 8)» |
+| `configuracion_invalida:…` | Ensayos de un SKU | «Configuración no válida para esta serie» |
+| `mínimo n_min 30` | Lista de veredictos | «mínimo 30» |
+| `Terminó configuración con HPO, esperando evaluación retrospectiva` | Estados de tarea | «Por evaluar» |
+| `worker`, `PRED_WORKER=off` | Ejecución | «procesador de ejecuciones»; «Esta instalación no procesa ejecuciones por sí sola» |
+| `2026-11-03 02:02 UTC` | Toda hora visible | «2 nov 2026, 9:02 p. m.», en la hora de Bogotá; el instante exacto en UTC en `title` |
+| `2016-09-11` | Todo día visible, también en gráficos | «11 sept 2016»; la fecha ISO en `title` |
+| `No se encontró el resultado esperado.` y `No existe la ejecución '99'` | Ejecución con un número que no existe | «No existe la ejecución «99».» y «Puede abrir la ejecución más reciente o lanzar una nueva.» |
+| `Elija otra ejecución en la lista de arriba…`, sin lista | Resultados con un número que no existe | «Elija una ejecución con resultados.» y la lista debajo |
+| `{"detail":"Not Found"}` | Una dirección que no existe, en un navegador | «Página no encontrada» y «Ir a Datos» |
+| `selection.no_viable_trial` y otros códigos de error | Tareas y detalle de SKU | el título del catálogo de mensajes; el código en «Detalle técnico» |
+| `Se muestra m3-real-1.` y enlaces con identificadores | Aviso de varias evaluaciones publicadas | «Se muestra la publicada el 27 oct 2026, 5:00 a. m.»; cada otra evaluación, «la publicada el …»; el identificador en `title` |
+| `veredicto:EVIDENCIA_INSUFICIENTE`, `datos_sinteticos`, `rmse_linea_base_cero` | Significancia, prueba HLN-DM y ventanas de la reserva | «el veredicto es «Evidencia insuficiente», que no lleva prueba», «datos sintéticos», «la línea base no tuvo error (RMSE 0)»; la causa publicada en `title` |
+| `eligibility.fewer_than_two_families`, `lanzado despues del corte` | Embudo, lista de SKU y detalle de SKU | el título del catálogo de mensajes o «Empezó a venderse después de la fecha de corte…»; la causa del motor en `title` o en «Detalle técnico» |
+| `Lectura del Parquet` | Motivos de una acción deshabilitada | «Lectura del panel de datos» |
+| «Detenida» y su aviso en rojo, aunque la página ofrece Reanudar | Ejecución y contexto de Resultados | «Detenida» en ámbar mientras se puede reanudar; en rojo solo si reanudar fallaría igual (#126) |
+| `2.2.0-initial:configured:…` | Trazabilidad de un SKU | se conserva, con el rótulo «Versión de la política de selección» |
+
 ## Capacidades del módulo 4 que se conservan
 
 | Capacidad | Dónde está ahora |
 | --- | --- |
 | Demanda y pronóstico del campeón (4.4) | Detalle de SKU, sección «Demanda y pronóstico» |
-| Consulta de veredictos: filtros, orden y páginas (4.5) | Pestaña SKU, lectura «Veredictos de M3»; `?vista=consulta` sigue funcionando |
-| Exportación CSV de veredictos y de exclusiones (4.5) | Botones de la lista «Veredictos de M3»; las rutas no cambian |
+| Consulta de veredictos: filtros, orden y páginas (4.5) | Pestaña SKU, lectura «Veredictos»; `?vista=consulta` sigue funcionando |
+| Exportación CSV de veredictos y de exclusiones (4.5) | Botones de la lista «Veredictos»; las rutas no cambian |
 | Exportación de la configuración en JSON (4.5) | Ejecución, pestaña Configuración |
 | Importación de la configuración (4.5) | Ejecución, panel «Nueva ejecución», «Reproducir una ejecución anterior» |
 | Distribución de campeones por familia y por clase (4.5) | Resultados, pestaña Resumen |
@@ -371,6 +534,10 @@ plataforma no recalcula métricas, campeones ni pruebas.
   confirmación, comparaciones con intervalos de Wilson y significancia por clase (#68).
 - El flujo completo, cargar, lanzar, seguir el avance y leer los resultados, se recorrió en un
   navegador con una corrida real pequeña, a 1280 px y a 390 px.
+- La segunda revisión se comprobó en un navegador a 1280, 1440 y 390 px sobre los datos
+  publicados de la ejecución de 3.622 SKU, y con una ejecución real de 8 SKU en curso, con y sin
+  movimiento reducido. La revisión de tarjetas (N10) capturó cada tarjeta de 36 pantallas, con
+  los estados de error, los vacíos y una ejecución en curso, a 1280 y 1440 px, antes y después.
 
 ## Referencias
 

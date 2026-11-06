@@ -1,7 +1,21 @@
-{# status es un StatusPresentation (icon, label, modifier). Nunca solo color. #}
-{% macro status_indicator(status) %}
-<span class="pred-status pred-status--{{ status.modifier }}">
+{# status es un StatusPresentation (icon, label, modifier, hint). Nunca solo color. La explicación
+   va como title, salvo que se muestre al lado (explain=true). #}
+{% macro status_indicator(status, explain=false) %}
+<span class="pred-status pred-status--{{ status.modifier }}"{% if status.hint and not explain %} title="{{ status.hint }}"{% endif %}>
   <svg class="pred-status__icon" aria-hidden="true"><use href="#{{ status.icon }}"></use></svg>
   <span class="pred-status__label">{{ status.label }}</span>
-</span>
+</span>{% if explain and status.hint %}<span class="pred-status-hint">{{ status.hint }}</span>{% endif %}
+{% endmacro %}
+
+{# Un veredicto con su explicación de una línea al lado, en todas las vistas. #}
+{% macro verdict_status(code) %}{{ status_indicator(describe_status("verdict", code), explain=true) }}{% endmacro %}
+
+{# Qué significa cada veredicto, una sola vez sobre una lista que repite los veredictos por fila. #}
+{% macro verdict_legend() %}
+<p class="pred-sr-only">Qué significa cada veredicto:</p>
+<dl class="pred-legend">
+  {% for code in VERDICT_ORDER %}{% set shown = describe_status("verdict", code) %}
+  <div><dt>{{ status_indicator(shown) }}</dt><dd>{{ shown.hint }}</dd></div>
+  {% endfor %}
+</dl>
 {% endmacro %}
