@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -592,3 +593,60 @@ def test_an_unreadable_draft_is_an_empty_one(cookie: str) -> None:
     response = client.get("/corridas/nueva/revisar")
     assert response.status_code == 200
     assert "Primero elija los datos" in response.text
+
+
+def test_copiar_de_with_fixture_source_warns_it_cannot_copy() -> None:
+    client = _fixture_client()
+    response = client.get("/corridas/nueva/ajustes?copiar_de=1")
+    assert response.status_code == 200
+    html = response.text
+    assert "pred-alert--warning" in html
+    assert "No se pudieron copiar los ajustes de la corrida #1" in html
+    assert "la plataforma funciona con datos de prueba" in html
+
+
+def test_copiar_de_with_nonexistent_run_warns_it_does_not_exist(env: Env) -> None:
+    client = _dal_client(env)
+    response = client.get("/corridas/nueva/ajustes?copiar_de=999")
+    assert response.status_code == 200
+    html = response.text
+    assert "pred-alert--warning" in html
+    assert "No se pudieron copiar los ajustes de la corrida #999" in html
+    assert "no existe esa corrida" in html
+
+
+def test_copiar_de_with_corrupt_config_warns_with_reason(env: Env) -> None:
+    client = _dal_client(env)
+    client.post(
+        "/ejecucion/lanzar",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "23"},
+        follow_redirects=False,
+    )
+    with sqlite3.connect(env.db) as conn:
+        conn.execute("UPDATE configuraciones SET parametros = 'not-valid-json' WHERE id = 1")
+        conn.commit()
+    response = client.get("/corridas/nueva/ajustes?copiar_de=1")
+    assert response.status_code == 200
+    html = response.text
+    assert "pred-alert--warning" in html
+    assert "No se pudieron copiar los ajustes de la corrida #1" in html
+    assert "Los ajustes guardados de la ejecución no son JSON" in html
+
+
+def test_copiar_de_valid_run_populates_ajustes_and_informs_user(env: Env) -> None:
+    client = _dal_client(env)
+    launched = client.post(
+        "/ejecucion/lanzar",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "47", "metric": "rmse"},
+        follow_redirects=False,
+    )
+    assert launched.status_code == 303
+    response = client.get("/corridas/nueva/ajustes?copiar_de=1")
+    assert response.status_code == 200
+    html = response.text
+    assert "pred-alert--info" in html
+    assert "Ajustes copiados de la corrida #1. Cambie la semilla y continúe." in html
+    assert re.search(r'name="seed"[^>]*value="47"', html)
+    assert '<option value="rmse" selected>' in html
+    revisar = client.get("/corridas/nueva/revisar").text
+    assert '<input type="hidden" name="seed" value="47">' in revisar
