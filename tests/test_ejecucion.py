@@ -7,11 +7,13 @@ import os
 import re
 import signal
 import sqlite3
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +31,7 @@ from pred_platform.app.ejecucion import (
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract import models
-from pred_platform.contract.errors import InvalidQuery
+from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker.candado import WorkerLock
@@ -283,15 +285,16 @@ def test_a_working_run_shows_what_it_is_doing_and_that_it_is_still_alive() -> No
     html = client.get("/ejecucion").text
 
     pulse = re.search(
-        r'<div class="pred-run__pulse" id="pulso-ejecucion"[^>]*>(.*?)</div>', html, re.S
+        r'<div class="pred-run__pulse is-fija" id="pulso-ejecucion"[^>]*>(.*?)</div>', html, re.S
     )
     assert pulse is not None
-    assert 'data-pred-started="' in pulse.group(0)
+    assert 'data-pred-started="' not in pulse.group(0)
+    assert "no se actualiza sola; recárguela para ver el avance" in _text(pulse.group(1))
     text = _text(pulse.group(1))
     assert text.strip().startswith("Trabajando")
     assert re.search(r"Lleva \S+", text)
-    # The ring and the counts carry the hooks that let them move instead of jump.
-    assert "pred-progress__sweep" in html and 'data-pred-tween="avance-pct"' in html
+    # Una vista sin sondeo no simula actividad con el anillo ni con las etapas.
+    assert "pred-progress__sweep" not in html and 'data-pred-tween="avance-pct"' in html
 
 
 def test_execution_state_in_stage_l3_uses_stage_qualified_skus_terminados_tween(
@@ -361,7 +364,7 @@ FORM: dict[str, Any] = {
     "metric": "mae",
     "min_train": "40",
     "horizon": "2",
-    "step": "14",
+    "step": "7",
     "seasonality": "7",
     "trials": "1",
     "seed": "17",
@@ -407,7 +410,7 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     assert (parsed["min_train"], parsed["horizon"], parsed["step"], parsed["metric"]) == (
         40,
         2,
-        14,
+        7,
         "mae",
     )
     page = client.get(response.headers["location"]).text
@@ -415,6 +418,134 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     # No worker in this app: the page says who must start it, without an environment variable.
     assert "Pendiente" in _text(page) and "make worker" in page and "PRED_WORKER" not in page
     assert "no procesa ejecuciones por sí sola" in _text(page)
+
+
+@pytest.mark.parametrize("state", ["detenida", "completada_con_fallos"])
+def test_launching_identical_settings_does_not_resume_a_published_run(env: Env, state: str) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = ?, finalizada_en = '2026-11-01T12:00:00+00:00'",
+            (state,),
+        )
+    before = env.rows("SELECT * FROM ejecuciones")
+    again = _launch(client, env)
+    assert again.headers["location"] == "/corridas/1/ejecucion?aviso=existente"
+    assert env.rows("SELECT * FROM ejecuciones") == before
+
+
+@pytest.mark.parametrize("state", ["ejecutando", "completada"])
+def test_resumed_elapsed_time_is_labelled_from_first_start(env: Env, state: str) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = ?, intento = 2, "
+            "iniciada_en = '2026-11-01T12:00:00+00:00'",
+            (state,),
+        )
+    text = _text(client.get("/ejecucion?ejecucion=1").text)
+    assert "Desde el primer inicio" in text
+    assert "Duración" not in text
+
+
+@pytest.mark.parametrize("seconds, polling", [(119, True), (120, False), (180, False)])
+def test_stopped_open_tasks_stop_polling_after_two_minutes(
+    env: Env, seconds: int, polling: bool
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        dal.task_started(
+            conn,
+            run.id,
+            sku="FIL-0001",
+            modelo="ml:lightgbm",
+            corte=run.t_star,
+            seed=run.seed,
+            iniciada_en=dal.now_iso(),
+        )
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?",
+            ((datetime.now(UTC) - timedelta(seconds=seconds)).isoformat(),),
+        )
+    response = client.get("/ejecucion/estado?ejecucion=1")
+    assert response.status_code == (200 if polling else 286)
+    if not polling:
+        note = "Las tareas abiertas se cerrarán cuando vuelva el procesador de ejecuciones."
+        assert note in response.text
+    assert env.rows("SELECT estado FROM tareas") == [("ejecutando",)]
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_engine_terminal_state_keeps_polling_until_worker_finishes(env: Env, state: str) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ejecuciones SET estado = ?, pid = 12345", (state,))
+    response = client.get("/ejecucion/estado?ejecucion=1")
+    assert response.status_code == 200
+    assert 'data-pred-poll="true"' in response.text
+    with closing(dal.connect(env.db)) as conn:
+        dal.finish_run(conn, 1, estado=state)
+    settled = client.get("/ejecucion/estado?ejecucion=1")
+    assert settled.status_code == 286
+    assert f'data-pred-run-state="{state}"' in settled.text
+
+
+@pytest.mark.parametrize("parameter", ["estado", "family"])
+def test_unknown_filter_keeps_the_run_and_all_tasks(parameter: str) -> None:
+    client, _ = _fixture_client()
+    response = client.get(f"/ejecucion?{parameter}=bogus")
+    assert "Ese filtro no existe; se muestran todas las tareas." in response.text
+    assert "Ejecución #1" in _text(response.text)
+    assert "7 tareas coinciden con la consulta." in _text(response.text)
+    assert "Valor desconocido" not in response.text
+
+
+def test_failed_focus_read_falls_back_to_complete_task_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo = _fixture_client("errores")
+    original = repo.get_run_status
+
+    def read(run_id: str, **kwargs: Any) -> models.RunStatus:
+        if kwargs.get("size") == 5 and kwargs.get("estado"):
+            raise ArtifactMissing("lectura temporalmente no disponible")
+        return original(run_id, **kwargs)
+
+    monkeypatch.setattr(repo, "get_run_status", read)
+    html = client.get("/ejecucion").text
+    assert "tareas fallaron hasta ahora" not in _text(html)
+    assert "5 tareas coinciden con la consulta." in _text(html)
+    assert "Tareas de la ejecución filtrada" in html
+
+
+def test_origin_timeout_does_not_expose_command(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _dal_client(env)
+
+    def timeout(*args: Any, **kwargs: Any) -> None:
+        raise subprocess.TimeoutExpired(["/private/engine", "origen"], 60)
+
+    monkeypatch.setattr("pred_platform.worker.engine.subprocess.run", timeout)
+    response = _launch(client, env)
+    message = (
+        "No se pudo consultar al motor el origen de los datos. Intente de nuevo en unos minutos."
+    )
+    assert message in response.text
+    assert "Command" not in response.text and "/private/engine" not in response.text
+
+
+def test_launch_refuses_when_no_sku_has_enough_history(env: Env) -> None:
+    response = _launch(_dal_client(env), env, min_train="400", step="14")
+    assert response.status_code == 200
+    assert "Con estos ajustes ningún SKU tiene historia suficiente" in response.text
+    assert "se necesitan 444 días antes del corte" in response.text
+    assert 'id="min_train"' in response.text and 'aria-invalid="true"' in response.text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
 def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
@@ -583,8 +714,7 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
-# Each SKU of the test ingest has 72 days, 54 before the cut. The engine needs min_train +
-# horizon + 3 steps before the cut: 84 with FORM (every SKU too short), 43 with these.
+# Each SKU of the test ingest has 72 days. These settings need 43 days before the cut.
 LONG_ENOUGH = {"min_train": "20", "step": "7"}
 
 
@@ -610,9 +740,37 @@ def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
 def test_a_class_without_family_whose_skus_are_all_too_short_does_not_block_the_launch(
     env: Env,
 ) -> None:
-    # With FORM every SKU is shorter than the 84 days the engine needs: it excludes them with any
-    # family before L2, so a class without family does not make L2 fail.
-    response = _launch(_dal_client(env), env, families=["ml", "dl"])
+    # Solo la clase suave alcanza 84 días; las demás quedan fuera antes de L2.
+    ingest = _ingest_with(
+        env,
+        [
+            {
+                "sku_id": "FIL-0001",
+                "n_periods": 200,
+                "n_positive": 200,
+                "adi": 1.0,
+                "cv2": 0.1,
+                "sku_class": "smooth",
+            },
+            {
+                "sku_id": "FIL-0002",
+                "n_periods": 72,
+                "n_positive": 36,
+                "adi": 2.0,
+                "cv2": 0.1,
+                "sku_class": "intermittent",
+            },
+            {
+                "sku_id": "FIL-0003",
+                "n_periods": 72,
+                "n_positive": 36,
+                "adi": 2.0,
+                "cv2": 1.0,
+                "sku_class": "lumpy",
+            },
+        ],
+    )
+    response = _launch(_dal_client(env), env, ingest_id=ingest, families=["ml", "dl"], step="14")
     text = _text(response.text)
 
     assert "queda sin modelo" not in text
@@ -641,7 +799,30 @@ def test_one_family_for_a_class_warns_which_skus_lose_the_comparison(env: Env) -
 
 
 def test_a_sku_too_short_for_any_family_is_not_told_to_add_one(env: Env) -> None:
-    response = _launch(_dal_client(env), env, families=["classical", "ml"])
+    ingest = _ingest_with(
+        env,
+        [
+            {
+                "sku_id": "FIL-0001",
+                "n_periods": 200,
+                "n_positive": 200,
+                "adi": 1.0,
+                "cv2": 0.1,
+                "sku_class": "smooth",
+            },
+            {
+                "sku_id": "FIL-0003",
+                "n_periods": 72,
+                "n_positive": 36,
+                "adi": 2.0,
+                "cv2": 1.0,
+                "sku_class": "lumpy",
+            },
+        ],
+    )
+    response = _launch(
+        _dal_client(env), env, ingest_id=ingest, families=["classical", "ml"], step="14"
+    )
     text = _text(response.text)
 
     assert (

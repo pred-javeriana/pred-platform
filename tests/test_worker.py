@@ -190,7 +190,9 @@ def test_una_consulta_agotada_no_encola(env: Env, monkeypatch):
         raise subprocess.TimeoutExpired(args[0], 60)
 
     monkeypatch.setattr(engine.subprocess, "run", timeout)
-    with pytest.raises(RunRequestError, match="No se pudo consultar el origen al motor.*60"):
+    with pytest.raises(
+        RunRequestError, match="No se pudo consultar al motor el origen de los datos"
+    ):
         enqueue_run(env.settings, env.ingest_id)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
@@ -891,7 +893,9 @@ def test_resuming_a_stopped_run_reuses_its_rows(env: Env, monkeypatch: pytest.Mo
 
     _scenario(monkeypatch, "ok")
     again = enqueue_run(env.settings, env.ingest_id, SMALL)
-    assert (again.ejecucion_id, again.queued) == (first.ejecucion_id, True)
+    assert (again.ejecucion_id, again.queued) == (first.ejecucion_id, False)
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, first.ejecucion_id)
     env.worker().run_next()
 
     ((estado, intento),) = env.rows("SELECT estado, intento FROM ejecuciones")

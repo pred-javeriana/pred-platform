@@ -279,8 +279,10 @@ make worker                                     # follow the queue in its own pr
   `fallida` or `no_ejecutable`; `detenida` when the engine process died, the operator stopped it or a
   stage left no results (see the table in section 7.4 of the contract).
 - **Resume.** The run id derives from the ingestion and the settings (not the number of
-  processes, nor the order in which the families are given), so launching the same run again
-  resumes it with the same task rows. Successful tasks retain their state; historical progress is not replayed as live work. Graceful app shutdown
+  processes, nor the order in which the families are given). Launching the same settings again
+  only opens the existing run and never changes its state. Use Reanudar or Reintentar las tareas
+  con fallos to queue it again with the same task rows. Successful tasks retain their state;
+  historical progress is not replayed as live work. Graceful app shutdown
   queues interrupted work, and a crash is recovered on startup. Ctrl-C stops the worker's engine
   and leaves the run `ejecutando`; the next worker that takes the database, `--once` included,
   queues it again. Closing a browser tab leaves the server worker running. The accompanying engine checkpoint change also skips successful L2/L3
@@ -327,6 +329,13 @@ make format      # apply ruff fixes and formatting
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
 runtime dependencies only and requests `/health` and `/` (the Corridas home).
+
+The test suite also runs `pred.js` and HTMX in real headless Chromium through Node's built-in
+runner. Install Chromium and Node >= 22 to run `uv run pytest tests/test_browser.py` locally;
+`CHROME_BIN` selects the browser executable. Without either executable the browser test is
+skipped locally. CI sets `PRED_BROWSER_REQUIRED=1`, so a missing executable fails the suite.
+The browser checks fixed demo pages, pause/resume, connection loss, request timeout and recovery.
+
 Run the tests as a regular user, as CI does: root may write a file without write permission, so
 the read-only database tests fail under root.
 CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches

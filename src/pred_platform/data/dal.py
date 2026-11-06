@@ -119,15 +119,23 @@ def _missing(capability: CapabilityId, what: str) -> Never:
     )
 
 
+def _run_state(run: lectura.RunDetail) -> str:
+    return (
+        "ejecutando"
+        if run.pid is not None and run.estado in ("completada", "completada_con_fallos")
+        else run.estado
+    )
+
+
 def _ejecucion(run: lectura.RunDetail) -> models.Ejecucion:
     return models.Ejecucion(
         id=str(run.id),
         ingest_id=run.ingest_sha256,
         configuracion_id=str(run.configuracion_id),
         seed=run.seed,
-        estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+        estado=_run_state(run),  # type: ignore[arg-type]  # CHECK-constrained in the DAL
         iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
-        finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
+        finalizada_en=run.finalizada_en if _run_state(run) != "ejecutando" else None,  # type: ignore[arg-type]
     )
 
 
@@ -415,8 +423,9 @@ class DalRepository(M3DalSource):
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
+        estado_run = _run_state(run)
         etapa, skus_total, skus_terminados = None, None, None
-        if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
+        if estado_run == "ejecutando" and run.ruta_corrida and self.data_root is not None:
             etapa, skus_total, skus_terminados = _avance_en_curso(
                 self.data_root / run.ruta_corrida / "progreso.jsonl"
             )

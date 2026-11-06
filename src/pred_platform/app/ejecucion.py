@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -664,18 +664,26 @@ def run_actions(
 
 
 def should_poll(
-    estado: str | None, counts: Mapping[EstadoTarea, int], *, reason: str | None
+    estado: str | None,
+    counts: Mapping[EstadoTarea, int],
+    *,
+    reason: str | None,
+    stopped_at: datetime | None = None,
 ) -> bool:
     """Si la página sigue preguntando por el avance.
 
     Mientras la corrida está en cola o en curso y, después de Detener, hasta que el worker cierra
-    las tareas que quedaron abiertas: antes de eso los conteos todavía cambian.
+    las tareas que quedaron abiertas, hasta dos minutos: antes de eso los conteos todavía cambian.
     """
     if reason is not None or estado is None:
         return False
     if estado in ACTIVE_STATES:
         return True
-    return estado == "detenida" and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
+    return (
+        estado == "detenida"
+        and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
+        and (stopped_at is None or (datetime.now(UTC) - stopped_at).total_seconds() < 120)
+    )
 
 
 # Las etapas del motor, en orden (contrato 1.2.0, ``Progress.etapa_actual``); sus nombres son los

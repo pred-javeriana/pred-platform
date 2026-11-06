@@ -98,7 +98,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --extra dev --frozen
-      - name: pytest
+      - name: pytest (incluye pred.js en Chromium real)
+        env:
+          PRED_BROWSER_REQUIRED: "1"
+          CHROME_BIN: google-chrome
         run: uv run --frozen pytest -ra
 
   # Boots the real server with runtime dependencies only (no dev extras), so a runtime import of
