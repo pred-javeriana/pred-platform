@@ -477,6 +477,11 @@ def _publish_for_the_run(env: Env, **options: Any) -> str:
         ),
         ((0.0, None, None), "[0,000; +∞)", "[0,0; +∞)"),
         ((0.2, 0.8, 1.4), "[0,200; 0,800] o [1,400; +∞)", "[0,2; 0,8] o [1,4; +∞)"),
+        (
+            (0.0, 1.23441, 1.23449),
+            "[0,000; 1,2344] o [1,2345; +∞)",
+            "[0,0; 1,23441] o [1,23449; +∞)",
+        ),
     ],
 )
 def test_sku_shows_the_published_interval_beside_r(
@@ -498,6 +503,10 @@ def test_sku_shows_the_published_interval_beside_r(
     html = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1").text
     kpis = html.split('id="numeros-decisivos"', 1)[1].split("</dl>", 1)[0]
     assert "r frente a Seasonal Naive" in kpis and "0,800" in kpis
+    assert re.search(
+        r'<dt>r frente a Seasonal Naive</dt>\s*<dd>\s*<span title="0,8">\s*0,800\s*</span>\s*<span',
+        kpis,
+    )
     assert f"Intervalo de r {shown}" in _text(kpis)
     assert f'title="{exact}"' in kpis
     assert (
@@ -554,6 +563,85 @@ def test_invalid_interval_does_not_hide_the_sku_decision(
     assert response.status_code == 200
     assert "No fue posible leer el intervalo de r." in response.text
     assert "Intervalo de r no publicado." not in response.text
+    assert "VALIDADO" in response.text and "0,800" in response.text
+
+
+def test_database_error_reading_intervals_does_not_fail_the_sku_page(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute("DROP TABLE m3_intervalos_r")
+        conn.execute("CREATE TABLE m3_intervalos_r (run_id TEXT, sku TEXT)")
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    assert "No fue posible leer el intervalo de r." in response.text
+    assert "Intervalo de r no publicado." not in response.text
+    assert "VALIDADO" in response.text and "0,800" in response.text
+
+
+def test_non_finite_bound_in_intervals_is_rejected(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute("PRAGMA ignore_check_constraints = ON")
+        conn.execute(
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior) "
+            "VALUES ('m3-real-1', 'FIL-0001', 0.95, 0.5, 9e999)"
+        )
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    assert "No fue posible leer el intervalo de r." in response.text
+    assert "Intervalo de r no publicado." not in response.text
+    assert "VALIDADO" in response.text and "0,800" in response.text
+
+
+def test_sku_interval_pins_the_m3_run(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.m3_publicada import publish
+
+    _run(env, monkeypatch)
+    run_id_m2 = _publish_for_the_run(env)
+    publish(
+        env.db,
+        ingesta_sha256=env.ingest_id,
+        run_id_m2=run_id_m2,
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+        run_id="m3-real-2",
+    )
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "INSERT INTO m3_intervalos_r (run_id, sku, nivel, inferior, superior) "
+            "VALUES ('m3-real-1', 'FIL-0001', 0.95, 0.2, 0.8)"
+        )
+        conn.commit()
+    client = _dal_client(env)
+    response_b = client.get("/resultados/sku/FIL-0001?m3=m3-real-2")
+    assert response_b.status_code == 200
+    assert "Intervalo de r no publicado." in response_b.text
+    assert "[0,200; 0,800]" not in response_b.text
+
+    response_a = client.get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response_a.status_code == 200
+    assert "Intervalo de r [0,200; 0,800]" in _text(response_a.text)
+
+
+def test_sku_page_with_absent_intervals_table_shows_not_published(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute("DROP TABLE m3_intervalos_r")
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    assert "Intervalo de r no publicado." in response.text
+    assert "No fue posible leer el intervalo de r." not in response.text
     assert "VALIDADO" in response.text and "0,800" in response.text
 
 

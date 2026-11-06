@@ -14,7 +14,7 @@ Bound = Annotated[float, Field(ge=0, strict=True)]
 class M3Interval(BaseModel):
     """One product's unadjusted set, using the names from ``m3_intervalos_r``."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     sku: Annotated[str, StringConstraints(min_length=1, strict=True)]
     inferior: Bound
