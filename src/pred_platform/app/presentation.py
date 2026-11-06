@@ -9,9 +9,11 @@ el código; solo cambia lo que la persona lee. No calcula métricas ni decide ca
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta, timezone
-from typing import Literal
+from typing import Any, Literal
 
 StatusKind = Literal["task", "family", "trial", "verdict", "run", "ingest", "severity"]
 StatusModifier = Literal["neutral", "info", "ok", "err", "warn", "pruned"]
@@ -487,7 +489,7 @@ def _local(value: datetime) -> datetime:
     return value.astimezone(LOCAL_TIMEZONE)
 
 
-def format_when(value: datetime | None) -> str:
+def format_when(value: datetime | None, *, with_seconds: bool = False) -> str:
     """Fecha y hora de Bogotá para leer de un vistazo: «4 nov 2026, 4:36 p. m.».
 
     El motor y la plataforma guardan las horas en UTC; la página las muestra en la hora local y
@@ -498,9 +500,128 @@ def format_when(value: datetime | None) -> str:
     local = _local(value)
     hour = local.hour % 12 or 12
     period = "a. m." if local.hour < 12 else "p. m."
-    return (
-        f"{local.day} {_MONTHS[local.month - 1]} {local.year}, {hour}:{local.minute:02d} {period}"
+    time_part = (
+        f"{hour}:{local.minute:02d}:{local.second:02d}"
+        if with_seconds
+        else f"{hour}:{local.minute:02d}"
     )
+    return f"{local.day} {_MONTHS[local.month - 1]} {local.year}, {time_part} {period}"
+
+
+def group_option_label(
+    option: Any,
+    options_for_seed: Sequence[Any],
+    index: int = 1,
+) -> str:
+    """Etiqueta para una opción de semilla: «Publicada el 27 oct 2026, 5:00 a. m.».
+
+    Si dos opciones de la misma semilla caen en el mismo minuto (su etiqueta sin segundos se
+    repite), muestra también los segundos (p. ej. «5:00:40 a. m.»). Si no tiene fecha, usa
+    «Publicación {index}».
+    """
+    if option.creado_en is None:
+        return f"Publicación {index}"
+    base_labels = [
+        format_when(opt.creado_en)
+        for opt in options_for_seed
+        if getattr(opt, "creado_en", None) is not None
+    ]
+    my_label = format_when(option.creado_en)
+    if base_labels.count(my_label) > 1:
+        time_text = format_when(option.creado_en, with_seconds=True)
+    else:
+        time_text = my_label
+    return f"Publicada el {time_text}"
+
+
+_GROUP_PROBLEM_MAP: dict[str, str] = {
+    "Las corridas no comparten la ingesta.": "Las evaluaciones elegidas no usan los mismos datos.",
+    "Las corridas difieren en algo distinto de la semilla.": (
+        "Las evaluaciones elegidas difieren en algo más que la semilla."
+    ),
+    "Falta alfa_dm en la política publicada.": (
+        "La política publicada no tiene un nivel de significancia válido."
+    ),
+    "alfa_dm no es válido.": ("La política publicada no tiene un nivel de significancia válido."),
+    "Cada semilla debe tener una corrida distinta.": (
+        "Cada semilla debe tener una publicación distinta."
+    ),
+    "Las corridas no comparten los productos y sus clases.": (
+        "Las evaluaciones elegidas no comparten los productos y sus clases."
+    ),
+    "Una prueba no usa el alfa de la política.": (
+        "Una prueba no usa el nivel de significancia de la política."
+    ),
+    "Un producto aparece más de una vez en una corrida.": (
+        "Un producto aparece más de una vez en una evaluación."
+    ),
+    "Seleccione una corrida distinta por semilla.": "Elija una publicación distinta por semilla.",
+    "Falta elegir una corrida publicada para cada semilla.": (
+        "Falta elegir una publicación para cada semilla."
+    ),
+    "Falta elegir una evaluación publicada para cada semilla.": (
+        "Falta elegir una publicación para cada semilla."
+    ),
+}
+
+_DYNAMIC_GROUP_PROBLEMS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"^Seleccione una corrida PUBLICADA de la semilla (\d+)\.?$"),
+        r"Elija una publicación de la semilla \1.",
+    ),
+    (
+        re.compile(r"^La corrida (.+) no está PUBLICADA\.?$"),
+        r"La evaluación \1 no está publicada.",
+    ),
+    (
+        re.compile(r"^La corrida (.+) no declara datos reales\.?$"),
+        r"La evaluación \1 no declara datos reales.",
+    ),
+    (
+        re.compile(r"^La corrida (.+) no tiene una semilla entera publicada\.?$"),
+        r"La evaluación \1 no tiene una semilla entera publicada.",
+    ),
+    (
+        re.compile(r"^La corrida (.+) no publica los bloques de la reserva\.?$"),
+        r"La evaluación \1 no publica los bloques de la reserva.",
+    ),
+    (
+        re.compile(r"^Se requieren las semillas (.+); no se reemplazan corridas\.?$"),
+        r"Se requieren las semillas \1; no se reemplazan evaluaciones.",
+    ),
+)
+
+
+def group_problem_text(problem: str) -> str:
+    """Traduce un aviso del cálculo del grupo al lenguaje llano de la interfaz."""
+    if problem in _GROUP_PROBLEM_MAP:
+        return _GROUP_PROBLEM_MAP[problem]
+    for pattern, replacement in _DYNAMIC_GROUP_PROBLEMS:
+        if pattern.match(problem):
+            return pattern.sub(replacement, problem)
+    return (
+        problem.replace("corridas", "evaluaciones")
+        .replace("corrida", "evaluación")
+        .replace("PUBLICADA", "publicada")
+        .replace("ingesta", "datos")
+        .replace("alfa_dm", "nivel de significancia")
+    )
+
+
+_GROUP_LUMPY_CAUSES: dict[str, str] = {
+    "No hay productos lumpy en el grupo.": "No hay productos de demanda grumosa en el grupo.",
+    "Falta la confirmación publicada de lumpy.": (
+        "Falta la confirmación publicada de la demanda grumosa."
+    ),
+    "La campeona de lumpy no es Fundacional en todas las corridas.": (
+        "La campeona de la demanda grumosa no es Fundacional en todas las evaluaciones."
+    ),
+}
+
+
+def group_lumpy_cause_text(cause: str) -> str:
+    """Traduce la causa descriptiva de lumpy al español llano de la página."""
+    return _GROUP_LUMPY_CAUSES.get(cause, cause)
 
 
 def exact_when(value: datetime | None) -> str:
