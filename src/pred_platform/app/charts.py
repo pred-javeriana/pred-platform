@@ -7,6 +7,7 @@ La serie del campeón conserva los valores publicados y los bloques ya resueltos
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from datetime import date
 from xml.sax.saxutils import escape
@@ -19,6 +20,7 @@ from pred_platform.app.presentation import (
     sku_class_label,
 )
 from pred_platform.app.resultados_pronostico import ChampionForecastSeries, ForecastPoint
+from pred_platform.contract import models_v2
 from pred_platform.contract.models import TopologyMetrics, TopologyReport
 
 # Tan ancho como una tarjeta a 1280 px: el texto de 11 px se lee a su tamaño y el mapa no deja
@@ -191,7 +193,7 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
     """Dibuja fechas, valores y bloques recibidos; no resuelve cortes ni agrega pronósticos."""
     if series.problem or not series.observed or not series.forecast:
         return ""
-    points = (*series.observed, *series.forecast)
+    points = (*series.observed, *series.forecast, *series.alt_forecast)
     dates = sorted({p.fecha for p in points})
     # El medio día de margen dibuja completos los extremos de las fechas inclusivas.
     first = date.fromisoformat(dates[0]).toordinal() - 0.5
@@ -274,6 +276,8 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
             f'class="pred-chart__tick">{escape(format_date(fecha))}</text>'
         )
     parts.append(_forecast_line(series.observed, "observed", x, y))
+    if series.alt_forecast:
+        parts.append(_forecast_line(series.alt_forecast, "alt_forecast", x, y))
     parts.append(_forecast_line(series.forecast, "forecast", x, y))
     parts.append("</svg>")
     return "".join(parts)
@@ -302,6 +306,11 @@ def _forecast_line(
         title += "</title>"
         if kind == "observed":
             mark = f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="3">{title}</circle>'
+        elif kind == "alt_forecast":
+            mark = (
+                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="2.5" '
+                f'class="pred-forecast__alt-point">{title}</circle>'
+            )
         else:
             mark = f'<rect x="{cx - 3:.2f}" y="{cy - 3:.2f}" width="6" height="6">{title}</rect>'
         markers.append(mark)
@@ -374,3 +383,428 @@ def _champion_bar(top: float, length: float, tip: str) -> str:
         f"{x1 - radius:.1f},{y1:.1f} H{x0} Z"
     )
     return f'<path d="{path}" class="pred-champion__bar"><title>{escape(tip)}</title></path>'
+
+
+# ----------------------------------------------------------- gráficos del paso 5: resultados
+
+FAMILY_COLORS: dict[str, str] = {
+    "foundation": "#6250d6",
+    "dl": "#e87ba4",
+    "ml": "#eda100",
+    "classical": "#008300",
+    "seasonal_naive": "#8d9198",
+}
+
+_MON_ES = (
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sept",
+    "oct",
+    "nov",
+    "dic",
+)
+_DEMAND_COLOR = "#6b6f76"
+
+
+def product_forecast_svg(series: ChampionForecastSeries) -> str:
+    """Demanda real frente al pronóstico del campeón (y del mejor modelo alternativo si existe)."""
+    if series.problem or not series.observed or not series.forecast:
+        return ""
+
+    obs_valid = [p for p in series.observed if p.valor is not None]
+    if not obs_valid:
+        return ""
+
+    t0 = date.fromisoformat(obs_valid[0].fecha).toordinal()
+    t1 = date.fromisoformat(obs_valid[-1].fecha).toordinal()
+    if t1 <= t0:
+        return ""
+
+    width, height = 900, 300
+    left, right, top, bottom = 62, 170, 30, 44
+
+    def sx(iso: str) -> float:
+        val = date.fromisoformat(iso).toordinal()
+        return left + (val - t0) / (t1 - t0) * (width - right - left)
+
+    all_vals = [
+        p.valor
+        for p in (*series.observed, *series.forecast, *series.alt_forecast)
+        if p.valor is not None
+    ]
+    max_val = max(all_vals) if all_vals else 1.0
+    ymax = max_val * 1.08 if max_val > 0 else 1.0
+
+    def sy(val: float) -> float:
+        return (height - bottom) - (val / ymax) * (height - bottom - top)
+
+    fcol = FAMILY_COLORS.get(series.family or "", "#6250d6")
+    acol = FAMILY_COLORS.get(series.alt_family or "", "#8d9198") if series.alt_family else None
+
+    title = f"Demanda real y pronóstico del producto {series.sku}"
+    parts = [
+        f'<svg role="img" viewBox="0 0 {width} {height}" width="100%" class="wz-svg" '
+        'xmlns="http://www.w3.org/2000/svg" '
+        f'aria-label="{escape(title)}">',
+        f"<title>{escape(title)}</title>",
+    ]
+
+    # Rectángulos sombreados de bloques de reserva
+    if series.blocks is not None:
+        b_sel = (series.blocks.selection_dates.start, series.blocks.selection_dates.end)
+        b_test = (series.blocks.test_dates.start, series.blocks.test_dates.end)
+        if b_sel[0] and b_sel[1]:
+            x_s0 = max(left, sx(b_sel[0]))
+            x_s1 = min(width - right, sx(b_sel[1]))
+            if x_s1 > x_s0:
+                parts.extend(
+                    [
+                        f'<rect x="{x_s0:.1f}" y="{top}" width="{x_s1 - x_s0:.1f}" '
+                        f'height="{height - bottom - top}" fill="#f1f2ef"/>',
+                        f'<text x="{x_s0 + 6:.1f}" y="{top - 8}" class="t-muted">'
+                        "Bloque de selección</text>",
+                    ]
+                )
+        if b_test[0] and b_test[1]:
+            x_t0 = max(left, sx(b_test[0]))
+            x_t1 = min(width - right, sx(b_test[1]))
+            if x_t1 > x_t0:
+                parts.extend(
+                    [
+                        f'<rect x="{x_t0:.1f}" y="{top}" width="{x_t1 - x_t0:.1f}" '
+                        f'height="{height - bottom - top}" fill="#ebeaf6"/>',
+                        f'<text x="{x_t0 + 6:.1f}" y="{top - 8}" class="t-strong">'
+                        "Bloque de prueba: aquí se decide el veredicto</text>",
+                    ]
+                )
+
+    # Rejilla y marcas de escala vertical
+    for v in (0.0, ymax / 2.0, ymax):
+        y_pos = sy(v)
+        parts.extend(
+            [
+                f'<line x1="{left}" y1="{y_pos:.1f}" x2="{width - right}" y2="{y_pos:.1f}" '
+                'class="grid"/>',
+                f'<text x="{left - 6}" y="{y_pos + 4:.1f}" class="t-num t-muted" '
+                f'text-anchor="end">{escape(format_decimal(v, 0))}</text>',
+            ]
+        )
+
+    # Líneas de demanda y pronósticos
+    def _path(
+        pts: Sequence[ForecastPoint], stroke: str, stroke_width: float, dash: str = ""
+    ) -> str:
+        cmds: list[str] = []
+        move = True
+        for p in pts:
+            if p.valor is None:
+                move = True
+                continue
+            cx, cy = sx(p.fecha), sy(p.valor)
+            cmds.append(f"{'M' if move else 'L'}{cx:.1f},{cy:.1f}")
+            move = False
+        if not cmds:
+            return ""
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        return (
+            f'<path d="{" ".join(cmds)}" fill="none" stroke="{stroke}" '
+            f'stroke-width="{stroke_width}" stroke-linejoin="round"{dash_attr}/>'
+        )
+
+    parts.append(_path(series.observed, _DEMAND_COLOR, 1.2))
+    if series.alt_forecast and acol:
+        parts.append(_path(series.alt_forecast, acol, 2.0, dash="6 3"))
+    parts.append(_path(series.forecast, fcol, 2.0))
+
+    # Etiquetas directas a la derecha
+    last_obs_val = obs_valid[-1].valor if obs_valid[-1].valor is not None else 0.0
+    fc_valid = [p for p in series.forecast if p.valor is not None]
+    last_fc_val = fc_valid[-1].valor if fc_valid and fc_valid[-1].valor is not None else 0.0
+    champ_lbl = family_label(series.family or "")
+
+    class _LabelLine:
+        def __init__(self, y: float, h: float, draw: Callable[[float, float], str]):
+            self.y = y
+            self.h = h
+            self.draw = draw
+
+    def _draw_obs(yy: float, kx: float) -> str:
+        return (
+            f'<line x1="{kx}" y1="{yy - 4:.1f}" x2="{kx + 14}" y2="{yy - 4:.1f}" '
+            f'stroke="{_DEMAND_COLOR}" stroke-width="2"/>'
+            f'<text x="{kx + 20}" y="{yy:.1f}" class="t-strong">Demanda real</text>'
+        )
+
+    def _draw_fc(yy: float, kx: float) -> str:
+        sub_text = f"({escape(champ_lbl)}, campeona)"
+        return (
+            f'<line x1="{kx}" y1="{yy - 4:.1f}" x2="{kx + 14}" y2="{yy - 4:.1f}" '
+            f'stroke="{fcol}" stroke-width="3"/>'
+            f'<text x="{kx + 20}" y="{yy:.1f}" class="t-strong">Pronóstico</text>'
+            f'<text x="{kx + 20}" y="{yy + 15:.1f}" class="t-muted">{sub_text}</text>'
+        )
+
+    labs: list[_LabelLine] = [
+        _LabelLine(y=sy(last_obs_val) + 4, h=20, draw=_draw_obs),
+        _LabelLine(y=sy(last_fc_val) + 4, h=34, draw=_draw_fc),
+    ]
+
+    alt_valid = [p for p in series.alt_forecast if p.valor is not None]
+    if alt_valid and acol and series.alt_family:
+        last_alt_val = alt_valid[-1].valor if alt_valid[-1].valor is not None else 0.0
+        alt_lbl = family_label(series.alt_family)
+
+        def _draw_alt(yy: float, kx: float) -> str:
+            return (
+                f'<line x1="{kx}" y1="{yy - 4:.1f}" x2="{kx + 14}" y2="{yy - 4:.1f}" '
+                f'stroke="{acol}" stroke-width="2" stroke-dasharray="5 3"/>'
+                f'<text x="{kx + 20}" y="{yy:.1f}" class="t-strong">Pronóstico</text>'
+                f'<text x="{kx + 20}" y="{yy + 15:.1f}" class="t-muted">({escape(alt_lbl)})</text>'
+            )
+
+        labs.append(_LabelLine(y=sy(last_alt_val) + 4, h=34, draw=_draw_alt))
+
+    labs.sort(key=lambda item: item.y)
+    for i in range(1, len(labs)):
+        labs[i].y = max(labs[i].y, labs[i - 1].y + labs[i - 1].h)
+    over = labs[-1].y + labs[-1].h - 14 - (height - bottom)
+    if over > 0:
+        for item in labs:
+            item.y -= over
+    for item in labs:
+        parts.append(item.draw(item.y, width - right + 8))
+
+    # Título vertical de eje Y
+    parts.append(
+        f'<text class="t-axis" text-anchor="middle" '
+        f'transform="translate(12 {(top + height - bottom) / 2:.1f}) rotate(-90)">'
+        "Unidades vendidas por día</text>"
+    )
+
+    # Fechas mensuales a lo largo del eje X
+    d_start = date.fromisoformat(obs_valid[0].fecha)
+    d_end = date.fromisoformat(obs_valid[-1].fecha)
+    cur_year, cur_month = d_start.year, d_start.month + 1
+    if cur_month > 12:
+        cur_year += 1
+        cur_month -= 12
+    while True:
+        m_date = date(cur_year, cur_month, 1)
+        if m_date > d_end:
+            break
+        m_lbl = f"{_MON_ES[m_date.month - 1]} {str(m_date.year)[2:]}"
+        parts.append(
+            f'<text x="{sx(m_date.isoformat()):.1f}" y="{height - bottom + 18}" '
+            f'class="t-num t-muted" text-anchor="middle">{m_lbl}</text>'
+        )
+        cur_month += 2
+        if cur_month > 12:
+            cur_year += 1
+            cur_month -= 12
+
+    # Título horizontal de eje X
+    parts.append(
+        f'<text x="{(left + width - right) / 2:.1f}" y="{height - 3}" class="t-axis" '
+        'text-anchor="middle">Fecha (el pronóstico de cada día se hizo el día anterior)</text>'
+    )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def product_forecast_key_svg(champion_family: str, alt_family: str | None = None) -> str:
+    """Clave de marcas sobre el gráfico de demanda y pronóstico."""
+    champ_col = FAMILY_COLORS.get(champion_family, "#6250d6")
+    champ_lbl = family_label(champion_family)
+    alt_item = ""
+    if alt_family:
+        alt_col = FAMILY_COLORS.get(alt_family, "#8d9198")
+        alt_lbl = family_label(alt_family)
+        alt_item = (
+            '<li><svg width="24" height="14" aria-hidden="true">'
+            f'<line x1="1" y1="7" x2="23" y2="7" stroke="{alt_col}" stroke-width="2" '
+            'stroke-dasharray="5 3"/></svg>'
+            f"pronóstico de {escape(alt_lbl)} (mejor modelo aquí)</li>"
+        )
+    return (
+        '<ul class="wz-legend wz-key" aria-label="Qué es cada marca">'
+        f'<li><svg width="24" height="14" aria-hidden="true"><line x1="1" y1="7" x2="23" y2="7" '
+        f'stroke="{_DEMAND_COLOR}" stroke-width="2"/></svg>demanda real</li>'
+        f'<li><svg width="24" height="14" aria-hidden="true"><line x1="1" y1="7" x2="23" y2="7" '
+        f'stroke="{champ_col}" stroke-width="2"/></svg>'
+        f"pronóstico de {escape(champ_lbl)} (campeona)</li>"
+        f"{alt_item}"
+        '<li><svg width="16" height="14" aria-hidden="true">'
+        '<rect x="0" y="1" width="16" height="12" fill="#f1f2ef"/></svg>'
+        "bloque de selección</li>"
+        '<li><svg width="16" height="14" aria-hidden="true">'
+        '<rect x="0" y="1" width="16" height="12" fill="#ebeaf6"/></svg>'
+        "bloque de prueba</li>"
+        "</ul>"
+    )
+
+
+def product_models_svg(
+    verdict: models_v2.M3Verdict,
+    champion_candidate: str | None,
+    interval: tuple[float, float | None, float | None] | None = None,
+) -> str:
+    """Gráfico de puntos en escala logarítmica para todos los modelos de un producto."""
+    if not verdict.modelos_evaluados:
+        return ""
+
+    ms = sorted(
+        verdict.modelos_evaluados,
+        key=lambda m: (m.razon_sn if m.razon_sn is not None else float("inf"), m.candidato_id),
+    )
+    valid_r = [m.razon_sn for m in ms if m.razon_sn is not None]
+    if not valid_r:
+        return ""
+
+    lo = max(0.3, min(0.5, *valid_r) * 0.95)
+    hi = max(1.6, *valid_r) * 1.1
+    if interval and interval[0] > 0:
+        lo = min(lo, interval[0] * 0.95)
+    if interval and interval[1] is not None:
+        hi = max(hi, interval[1] * 1.1)
+
+    width = 760
+    left = 230
+    right = 150
+    row_h = 26
+    top = 24
+    height = top + len(ms) * row_h + 42
+
+    def sx(val: float) -> float:
+        clamped = max(lo, min(hi, val))
+        return left + (math.log(clamped) - math.log(lo)) / (math.log(hi) - math.log(lo)) * (
+            width - right - left
+        )
+
+    title = "Razón de error de cada modelo evaluado en este producto"
+    parts = [
+        f'<svg role="img" viewBox="0 0 {width} {height}" width="100%" class="wz-svg" '
+        'xmlns="http://www.w3.org/2000/svg" '
+        f'aria-label="{escape(title)}">',
+        f"<title>{escape(title)}</title>",
+        f'<text x="{sx(1.0) + 6:.1f}" y="14" class="t-muted">1 = igual que la línea base</text>',
+        '<text x="0" y="14" class="t-axis">Modelo</text>',
+        f'<text x="{width}" y="14" class="t-axis" text-anchor="end">r</text>',
+    ]
+
+    candidate_ticks = (0.5, 1.0, 10.0, 100.0, 1000.0) if hi > 4 else (0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+    ticks = [v for v in candidate_ticks if lo <= v <= hi]
+    for v in ticks:
+        tick_x = sx(v)
+        lbl = format_decimal(v, 2) if v < 10 else str(int(v))
+        parts.extend(
+            [
+                f'<line x1="{tick_x:.1f}" y1="{top - 4}" x2="{tick_x:.1f}" y2="{height - 38}" '
+                'class="grid"/>',
+                f'<text x="{tick_x:.1f}" y="{height - 23}" class="t-num t-muted" '
+                f'text-anchor="middle">{lbl}</text>',
+            ]
+        )
+
+    ref_x = sx(1.0)
+    parts.append(
+        f'<line x1="{ref_x:.1f}" y1="{top - 6}" x2="{ref_x:.1f}" y2="{height - 38}" class="ref"/>'
+    )
+    parts.append(
+        f'<text x="{(left + width - right) / 2:.1f}" y="{height - 3}" class="t-axis" '
+        'text-anchor="middle">Razón de error frente a la línea base (r, escala logarítmica)</text>'
+    )
+
+    for i, m in enumerate(ms):
+        y = top + i * row_h + row_h / 2
+        is_champ = m.candidato_id == champion_candidate
+        col = FAMILY_COLORS.get(m.familia, "#14161a")
+        f_lbl = family_label(m.familia)
+        m_lbl = "referencia" if m.familia == "seasonal_naive" else model_label(m.modelo)
+        strong_cls = ' class="t-strong"' if is_champ else ""
+        parts.append(
+            f'<text x="0" y="{y + 4:.1f}"{strong_cls}>{escape(f_lbl)} '
+            f'<tspan class="t-muted">({escape(m_lbl)})</tspan></text>'
+        )
+
+        if is_champ and interval and interval[0] is not None:
+            x_lo = sx(max(lo, interval[0]))
+            x_hi = sx(min(hi, interval[1] if interval[1] is not None else hi))
+            parts.append(
+                f'<line x1="{x_lo:.1f}" y1="{y:.1f}" x2="{x_hi:.1f}" y2="{y:.1f}" class="ci" '
+                f'stroke="{col}"/>'
+            )
+
+        if m.razon_sn is not None:
+            if m.razon_sn > hi:
+                parts.extend(
+                    [
+                        f'<path class="mk" d="M{sx(hi) - 9:.1f},{y - 6:.1f} l9,6 l-9,6 z" '
+                        f'fill="{col}"/>',
+                        f'<text x="{sx(hi) - 14:.1f}" y="{y + 4:.1f}" class="t-muted" '
+                        'text-anchor="end" style="font-size:11px">fuera de escala</text>',
+                    ]
+                )
+            else:
+                rad = 7.0 if is_champ else 5.5
+                stroke_c = "#14161a" if is_champ else "#fff"
+                stroke_w = 2.0 if is_champ else 1.5
+                parts.append(
+                    f'<circle class="mk" cx="{sx(m.razon_sn):.1f}" cy="{y:.1f}" r="{rad}" '
+                    f'fill="{col}" stroke="{stroke_c}" stroke-width="{stroke_w}"/>'
+                )
+            val_text = f"{format_decimal(m.razon_sn, 3)}{' · campeona' if is_champ else ''}"
+            val_cls = "t-num-strong" if is_champ else "t-num"
+            parts.append(
+                f'<text x="{width}" y="{y + 4:.1f}" class="{val_cls}" text-anchor="end">'
+                f"{escape(val_text)}</text>"
+            )
+
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def product_models_legend_svg() -> str:
+    """Leyenda de colores por familia para el gráfico de modelos."""
+    items = (
+        ("foundation", "Fundacional", "Chronos-2"),
+        ("dl", "Aprendizaje profundo", "MLP"),
+        ("ml", "Aprendizaje automático", "LightGBM"),
+        ("classical", "Clásica", "SARIMA"),
+        ("seasonal_naive", "Línea base estacional", ""),
+    )
+    chunks = ['<ul class="wz-legend wz-legend--fam" aria-label="Familias">']
+    for fam_key, label, model_hint in items:
+        col = FAMILY_COLORS[fam_key]
+        hint = f' <span class="wz-muted">({model_hint})</span>' if model_hint else ""
+        chunks.append(
+            f'<li tabindex="0"><span class="wz-fk" style="background:{col}" aria-hidden="true">'
+            f"</span>{escape(label)}{hint}</li>"
+        )
+    chunks.append("</ul>")
+    return "".join(chunks)
+
+
+def product_models_key_svg() -> str:
+    """Clave de marcas sobre el gráfico de modelos."""
+    return (
+        '<ul class="wz-legend wz-key" aria-label="Qué es cada marca">'
+        '<li><svg width="14" height="14" aria-hidden="true">'
+        '<circle cx="7" cy="7" r="5" fill="#14161a"/></svg>'
+        "razón de cada modelo</li>"
+        '<li><svg width="16" height="16" aria-hidden="true">'
+        '<circle cx="8" cy="8" r="6" fill="#fff" stroke="#14161a" stroke-width="2"/></svg>'
+        "campeona</li>"
+        '<li><svg width="24" height="14" aria-hidden="true">'
+        '<line x1="1" y1="7" x2="23" y2="7" stroke="#14161a" stroke-width="2.5"/></svg>'
+        "intervalo de 95 % de la campeona</li>"
+        '<li><svg width="10" height="16" aria-hidden="true">'
+        '<line x1="5" y1="1" x2="5" y2="15" stroke="#4a4e55" stroke-width="1.25" '
+        'stroke-dasharray="4 3"/></svg>1 = mismo error que la línea base</li>'
+        "</ul>"
+    )

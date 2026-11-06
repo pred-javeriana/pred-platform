@@ -538,6 +538,73 @@ def paso_ajustes(
         linked = request.query_params.get("ingest_id") or None
         runnable = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
         save = read_draft(request).with_ingest(linked) if linked and linked in runnable else None
+
+        copiar_de = (request.query_params.get("copiar_de") or "").strip().lstrip("#")
+        if copiar_de:
+            settings = request.app.state.settings
+            if settings.data_source == "fixture":
+                notice = (
+                    "warning",
+                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: "
+                    "la plataforma funciona con datos de prueba.",
+                )
+                return _render_ajustes(
+                    request, repository, ingest_id=linked, imported=notice, save=save
+                )
+            detail = lectura.get_run(settings.db_path, copiar_de)
+            if detail is None:
+                notice = (
+                    "warning",
+                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: "
+                    "no existe esa corrida.",
+                )
+                return _render_ajustes(
+                    request, repository, ingest_id=linked, imported=notice, save=save
+                )
+            versions = {
+                "plataforma": package_version("pred-platform"),
+                "contrato_v1": CONTRACT_VERSION,
+                "contrato_v2": M3_CONTRACT_VERSION,
+                "formato_parametros": PARAMETERS_SCHEMA_VERSION,
+            }
+            try:
+                document = export_config(detail, versions)
+                imported = parse_config(json.dumps(document).encode("utf-8"))
+            except ConfigExportError as exc:
+                motivo = str(exc).rstrip(".")
+                notice = (
+                    "warning",
+                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: {motivo}.",
+                )
+                return _render_ajustes(
+                    request, repository, ingest_id=linked, imported=notice, save=save
+                )
+            if imported.values is not None:
+                form = FormResult(imported.values, None, {})
+                form.values["ingest_id"] = imported.ingest_sha256 or ""
+                notice = (
+                    "info",
+                    f"Ajustes copiados de la corrida #{copiar_de}. Cambie la semilla y continúe.",
+                )
+                save_copy = read_draft(request).with_values(
+                    form.values["ingest_id"] or None, form.values
+                )
+                return _render_ajustes(
+                    request, repository, form=form, imported=notice, save=save_copy
+                )
+            motivo = (
+                " ".join(imported.errors).rstrip(".")
+                if imported.errors
+                else "la configuración no es válida"
+            )
+            notice = (
+                "warning",
+                f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: {motivo}.",
+            )
+            return _render_ajustes(
+                request, repository, ingest_id=linked, imported=notice, save=save
+            )
+
         return _render_ajustes(request, repository, ingest_id=linked, save=save)
     facts = run_facts(repository, corrida)
     if facts is None:

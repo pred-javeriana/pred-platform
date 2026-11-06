@@ -30,18 +30,22 @@
   {% else %}
   {{ tabs(
     [
-      {"id": "resumen", "label": "Resumen", "href": "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "clase", "label": "Por clase", "href": "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "sku", "label": "SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "errores", "label": "Perfiles de error", "href": "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")}
+      {"id": "resumen", "label": "Resumen", "href": "/corridas/" ~ reference ~ "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "clase", "label": "Por clase", "href": "/corridas/" ~ reference ~ "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "sku", "label": "SKU", "href": "/corridas/" ~ reference ~ "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "errores", "label": "Perfiles de error", "href": "/corridas/" ~ reference ~ "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "exportar", "label": "Exportar y reproducir", "href": "/corridas/" ~ reference ~ "/resultados/exportar"}
     ] if champion_capability.available else [
-      {"id": "sku", "label": "SKU", "href": "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")}
+      {"id": "sku", "label": "SKU", "href": "/corridas/" ~ reference ~ "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
+      {"id": "exportar", "label": "Exportar y reproducir", "href": "/corridas/" ~ reference ~ "/resultados/exportar"}
     ],
     vista
   ) }}
 
   <div class="pred-sheet pred-sheet--tabbed">
-  {% if vista == "sku" %}
+  {% if vista == "exportar" %}
+    {% include "partials/results_exportar.html" %}
+  {% elif vista == "sku" %}
     {% if champion_capability.available %}
     <nav class="pred-segmented" aria-label="Lectura de la lista de SKU">
       <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}"{% if lista == "veredictos" %} aria-current="page"{% endif %}>Veredictos</a>
