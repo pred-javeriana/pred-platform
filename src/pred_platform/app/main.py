@@ -37,6 +37,11 @@ def _migrate(settings: Settings) -> None:
     try:
         migrate(settings.db_path)
     except sqlite3.OperationalError as exc:
+        if settings.db_path.is_dir():
+            raise DatabaseUnavailable(
+                f"PRED_DB_PATH nombra la carpeta {settings.db_path}: indique el archivo de la "
+                "base de datos, por ejemplo pred.db dentro de esa carpeta."
+            ) from None
         if not is_read_only_error(exc):
             raise
         raise DatabaseUnavailable(

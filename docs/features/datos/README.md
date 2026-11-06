@@ -48,6 +48,9 @@ already has a file with that name and other content (G5): confirming repeats the
 
 - On a database the app cannot write (`worker/solo_lectura.py`), "Cargar y validar" is disabled with
   the reason and a posted file is refused before the engine runs, so nothing lands in the data root.
+  If the database becomes read-only while the engine runs, the page gives that reason too. The
+  engine's report stays in `ingestas/` and the app imports it at its next start with a writable
+  database.
 - A missing or crashing engine, or one that takes more than 15 minutes, is an `unavailable` state
   with a retry button, never a 500. Files must be `.csv` and at most 256 MiB; only the base name of
   the uploaded file is used.
