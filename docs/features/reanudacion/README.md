@@ -13,7 +13,8 @@ trabajo actual y la importación final marcaba temporalmente tareas exitosas com
 | --- | --- |
 | Cerrar la pestaña del navegador | El worker del servidor continúa; volver a `/ejecucion` permite seguirlo. |
 | Cerrar normalmente la aplicación | Se termina el proceso del motor y la ejecución queda pendiente para el siguiente worker. |
-| Caída abrupta del servidor | Al iniciar, se limpia el proceso registrado y se vuelve a encolar la misma ejecución. |
+| Caída abrupta del servidor | Al iniciar, se detiene el motor registrado de esta base y se vuelve a encolar la misma ejecución. Un pid que ahora usa otro proceso no se detiene. |
+| Servir una copia tomada durante una corrida | El motor de la base original sigue: su `PRED_DB_PATH` nombra otra base, así que el worker de la copia no lo detiene ni relanza la corrida, que en la copia queda `ejecutando`. |
 | Interrumpir el worker con Ctrl-C | El worker detiene el motor y la ejecución queda `ejecutando`; el siguiente worker la vuelve a encolar, también con `--once`. |
 | Iniciar un segundo worker sobre la misma base | No toca ninguna ejecución. `make worker` y el worker de la aplicación esperan a que el primero termine y luego siguen la cola; `--once` sale y deja la cola al primero. |
 | Detener desde la interfaz | Permanece detenida hasta que el operador solicita reanudar. |

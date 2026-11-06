@@ -233,7 +233,8 @@ make worker                                     # follow the queue in its own pr
   with a readable error and the app keeps working.
 - **One worker per database.** A worker holds an exclusive lock on `<database>.worker.lock`
   (beside `PRED_DB_PATH`) for as long as it runs; the operating system frees it when the worker
-  exits or crashes. A second `make worker` or app worker waits without touching any run and takes
+  exits or crashes. A worker that cannot create that file, as in a read-only folder, logs why and
+  runs nothing. A second `make worker` or app worker waits without touching any run and takes
   over when the first stops. `--once` next to a running worker exits and leaves the queue to it,
   so `make launch ARGS="... --once"` while the app runs only queues the run. Do not delete the
   lock file while a worker runs.

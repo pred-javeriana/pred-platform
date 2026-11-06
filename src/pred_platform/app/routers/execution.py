@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from importlib.metadata import version as package_version
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -77,15 +77,19 @@ def _control(request: Request) -> RunControl:
     return request.app.state.run_control  # type: ignore[no-any-return]
 
 
-def _worker_active(request: Request) -> bool:
-    """Whether a worker follows the queue: this app's, or another process that holds the database
-    (otherwise a launched run waits for ``make worker``)."""
+def _worker_state(request: Request) -> Literal["active", "off", "stopped"]:
+    """Whether a worker follows the queue: this app's live thread, or another process that holds
+    the database. Otherwise a launched run waits for ``make worker``: ``off`` when this app runs
+    no worker, ``stopped`` when its thread ended (the app log says why)."""
     settings = request.app.state.settings
     if settings.data_source != "dal":
-        return False
-    return bool(
-        settings.worker == "embedded" or WorkerLock.for_database(settings.db_path).held_elsewhere()
-    )
+        return "off"
+    thread = getattr(request.app.state, "worker_thread", None)
+    if thread is not None and thread.is_alive():
+        return "active"
+    if WorkerLock.for_database(settings.db_path).held_elsewhere():
+        return "active"
+    return "stopped" if settings.worker == "embedded" else "off"
 
 
 def _nothing_to_compare(
@@ -218,7 +222,7 @@ def _context(
             nothing_to_compare=_nothing_to_compare(repository, run, status),
         ),
         "control_reason": control.reason,
-        "worker_active": _worker_active(request),
+        "worker": _worker_state(request),
         "poll": poll,
         "finished": estado in FINISHED_STATES,
         "results_href": f"/resultados?ejecucion={run.id}" if run is not None else None,

@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import psutil
 
@@ -170,6 +170,28 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
             env=env,
             start_new_session=True,
         )
+
+
+# Which database a live process is an engine for (``engine_owner``).
+EngineOwner = Literal["this", "other", "none"]
+
+
+def engine_owner(pid: int, db_path: Path) -> EngineOwner:
+    """Which database the live process ``pid`` is an engine for, read from its ``PRED_DB_PATH``.
+
+    ``launch`` sets that variable for every engine. ``"this"``: an engine of ``db_path``.
+    ``"other"``: an engine of another database, such as the original of a copy served here.
+    ``"none"``: no such process, or a process that is not a platform engine (a reused pid, or
+    one this user cannot inspect).
+    """
+    try:
+        served = psutil.Process(pid).environ().get("PRED_DB_PATH")
+    except psutil.Error:
+        return "none"
+    if not served:
+        return "none"
+    same = os.path.normcase(Path(served).resolve()) == os.path.normcase(db_path.resolve())
+    return "this" if same else "other"
 
 
 def is_alive(pid: int) -> bool:

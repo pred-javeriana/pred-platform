@@ -70,7 +70,9 @@ fingerprint (`run.incompatible_config`).
   is `hx-preserve`d so typing is not lost. The launch form folds away once there is a run to show.
 - **One worker, one run at a time.** A second launch waits in the queue and the screen says so; with
   `PRED_WORKER=off` and no other worker holding the database lock (`WorkerLock.held_elsewhere`) it
-  also says the run waits for `make worker`.
+  also says the run waits for `make worker`. If the app's own worker thread has ended, for example
+  because it could not create its lock file in a read-only folder, the screen says that worker
+  stopped and the app log says why.
 
 ## Where
 
