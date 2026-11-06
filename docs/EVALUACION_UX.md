@@ -400,7 +400,9 @@ y `prefers-reduced-motion`. Corrección: la etapa en curso gira un arco alrededo
 dice «En curso»; dentro del anillo gira un arco corto; una línea con un punto que late dice
 «Trabajando en Evaluación final · 2 de 5 SKU terminados en esta etapa» y «Lleva 2 min 15 s ·
 avance leído hace 1 s», con el tiempo contado cada segundo. Si el servidor no responde por más
-de 12 s, o si la persona pausa la actualización, el punto se detiene y la línea lo dice. El
+de 12 s, o si la persona pausa la actualización, el punto se detiene y la línea lo dice. Una
+página que no sondea (datos de ejemplo o una copia de solo lectura) no dice cuándo leyó el avance,
+porque no lo vuelve a leer. El
 anillo y las cifras pasan de su valor anterior al nuevo en menos de un segundo, y las animaciones
 toman su fase del reloj, así que cada sondeo no las reinicia. Con movimiento reducido nada gira
 ni late: la etapa en curso lleva un halo quieto, las cifras cambian sin transición y el texto dice

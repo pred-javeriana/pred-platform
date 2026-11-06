@@ -275,9 +275,22 @@ def test_a_working_run_shows_what_it_is_doing_and_that_it_is_still_alive() -> No
     assert 'data-pred-started="' in pulse.group(0)
     text = _text(pulse.group(1))
     assert text.strip().startswith("Trabajando")
-    assert "avance leído ahora" in text
+    assert re.search(r"Lleva \S+", text)
     # The ring and the counts carry the hooks that let them move instead of jump.
     assert "pred-progress__sweep" in html and 'data-pred-tween="avance-pct"' in html
+
+
+def test_a_page_that_does_not_poll_does_not_say_when_it_read_the_progress() -> None:
+    # Fixtures (and a read-only copy) never read the progress again: a «read now» line would
+    # turn into «the server does not answer» after 12 s, about a server that is fine.
+    client, _ = _fixture_client("normal")
+    html = client.get("/ejecucion").text
+
+    assert 'hx-trigger="none"' in html and 'id="pulso-ejecucion"' in html
+    assert 'id="pulso-lectura"' not in html and "avance leído" not in html
+    time_line = re.search(r'<p class="pred-run__pulse-time">(.*?)</p>', html, re.S)
+    assert time_line is not None
+    assert not _text(time_line.group(1)).strip().endswith("·")
 
 
 def test_the_launch_form_lists_the_families_each_class_admits() -> None:
@@ -854,6 +867,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
 
     live = client.get("/ejecucion")
     assert "every 2s" in live.text and "Ejecutando" in _text(live.text)
+    assert '<span id="pulso-lectura">avance leído ahora</span>' in live.text  # it polls
     assert client.get("/ejecucion/estado").status_code == 200  # keep polling
     assert re.search(
         r'<button class="pred-btn pred-btn--secondary"[^>]*>\s*<svg[^>]*><use href="#i-stop"',

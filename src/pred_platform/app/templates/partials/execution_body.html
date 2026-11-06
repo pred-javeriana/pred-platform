@@ -9,11 +9,13 @@
 
 {# Mientras el motor trabaja: qué hace ahora, cuánto lleva y cuándo se leyó el avance. pred.js
    cuenta el tiempo cada segundo y dice si el servidor deja de responder; sin JS, el texto del
-   servidor sigue siendo cierto. El punto late; con movimiento reducido queda quieto. #}
-{% macro run_pulse(run, progress) %}
+   servidor sigue siendo cierto. El punto late; con movimiento reducido queda quieto. Sin sondeo
+   (datos de ejemplo o una copia de solo lectura) la página no vuelve a leer el avance, así que
+   no dice cuándo lo leyó: pred.js tomaría la falta de lecturas por un servidor que no responde. #}
+{% macro run_pulse(run, progress, poll) %}
 <div class="pred-run__pulse" id="pulso-ejecucion"{% if run.iniciada_en %} data-pred-started="{{ run.iniciada_en.isoformat() }}"{% endif %}>
   <p class="pred-run__pulse-now"><span class="pred-run__pulse-dot" aria-hidden="true"></span><span>Trabajando{% if current_stage %} en <strong>{{ current_stage }}</strong>{% endif %}{% if progress and progress.skus_total is not none %} · <span data-pred-tween="skus-terminados">{{ format_count(progress.skus_terminados) }}</span> de {{ format_count(progress.skus_total) }} SKU terminados en esta etapa{% endif %}</span></p>
-  <p class="pred-run__pulse-time">{% if elapsed %}Lleva <span id="pulso-transcurrido">{{ elapsed }}</span> · {% endif %}<span id="pulso-lectura">avance leído ahora</span></p>
+  {% if elapsed or poll %}<p class="pred-run__pulse-time">{% if elapsed %}Lleva <span id="pulso-transcurrido">{{ elapsed }}</span>{% endif %}{% if poll %}{% if elapsed %} · {% endif %}<span id="pulso-lectura">avance leído ahora</span>{% endif %}</p>{% endif %}
 </div>
 {% endmacro %}
 
@@ -102,7 +104,7 @@
     {% endfor %}
   </ol>
   {% endif %}
-  {% if run.estado == "ejecutando" and not progress %}{{ run_pulse(run, none) }}{% endif %}
+  {% if run.estado == "ejecutando" and not progress %}{{ run_pulse(run, none, poll) }}{% endif %}
 
   {% if progress %}
   {% set counts = progress.tareas_por_estado %}
@@ -119,7 +121,7 @@
   <div class="pred-run__progress">
     {{ progress_bar(done, progress.tareas_total, pct, bar_label, circular=true, working=run.estado == "ejecutando") }}
     <div class="pred-run__states">
-      {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress) }}{% endif %}
+      {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress, poll) }}{% endif %}
       <p class="pred-meta" id="tareas-por-estado">Tareas por estado. Elija uno para ver sus tareas.</p>
       <ul class="pred-statelist" aria-labelledby="tareas-por-estado">
         {% for code, count in state_counts %}
