@@ -1042,11 +1042,19 @@ def cause_text(code: str) -> str:
     return "; ".join(_cause_part(part) for part in code.split("; "))
 
 
+_GROUP_CAUSES: dict[str, str] = {
+    "sin_productos_comparables": "Sin productos comparables en las tres semillas",
+    "perdida_cero:mediana": "La mediana no se define: los valores centrales tienen pérdida cero",
+}
+
+
 def source_cause(cause: str) -> Term:
     """La causa de una fuente sin prueba en el grupo de semillas, leída como en el resto de
     Resultados: una exclusión («código: causa del motor») por el título del catálogo de mensajes,
     con la causa del motor en title; una causa de la prueba, en español (:func:`cause_text`), con
     la causa publicada en title."""
+    if cause in _GROUP_CAUSES:
+        return Term(cause, _GROUP_CAUSES[cause], cause)
     code, separator, detail = cause.partition(": ")
     if separator and code in mensajes.CATALOGO:
         return Term(cause, mensajes.titulo(code), detail)

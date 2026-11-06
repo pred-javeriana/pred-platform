@@ -23,7 +23,7 @@
       <select class="pred-field__control" id="semilla{{ seed }}" name="semilla{{ seed }}">
         <option value="">Elegir publicación</option>
         {% for option in options[seed] %}
-        <option value="{{ option.run_id }}" title="Evaluación final {{ option.run_id }} · huella de los datos {{ option.ingesta_sha256 }}"{% if selected[seed] == option.run_id %} selected{% endif %}>{% if option.creado_en %}Publicada el {{ format_when(option.creado_en) }}{% else %}Publicación {{ loop.index }}{% endif %}</option>
+        <option value="{{ option.run_id }}" title="Evaluación final {{ option.run_id }} · huella de los datos {{ option.ingesta_sha256 }}{% if option.creado_en %} · {{ exact_when(option.creado_en) }}{% endif %}"{% if selected[seed] == option.run_id %} selected{% endif %}>{{ group_option_label(option, options[seed], loop.index) }}</option>
         {% endfor %}
       </select>
     </div>
@@ -32,7 +32,7 @@
   </form>
   {% if problem %}{{ alert(problem, variant="warning") }}{% endif %}
   {% if not group and not problem %}
-  <p class="pred-note"><strong>El grupo final requiere tres evaluaciones publicadas.</strong> Las semillas 0 y 1 solas no constituyen evidencia final del grupo. Elija las tres publicaciones para consultarlo.</p>
+  <p class="pred-note"><strong>El grupo final requiere tres evaluaciones publicadas.</strong> Elija una publicación para cada semilla. Dos semillas no forman el grupo final.</p>
   {% endif %}
 </section>
 {% if group %}
@@ -50,18 +50,18 @@
   </tr>
   {% endfor %}
   {{ table_end() }}
-  <p class="pred-meta">Regla: ADR-03-012, decisión 10, «Grupo final de corridas». La corrección {{ gloss("BH") }} mantiene los supuestos de independencia o dependencia positiva de las pruebas por evaluación. Una diferencia no significativa no prueba equivalencia.</p>
+  <p class="pred-meta"><span title="ADR-03-012">Regla del grupo final de evaluaciones (decisión 10)</span>. La corrección {{ gloss("BH") }} mantiene los supuestos de independencia o dependencia positiva de las pruebas por evaluación. Una diferencia no significativa no prueba equivalencia.</p>
   <p><a href="{{ download_url }}">Descargar valores y fuentes (JSON)</a></p>
   <details class="pred-details">
     <summary>Evaluaciones y fuentes de cada número</summary>
     <ul>{% for run in significance.runs %}<li>Semilla {{ run.seed }}: evaluación final <span class="mono">{{ run.run_id }}</span>, ajuste de modelos <span class="mono">{{ run.run_id_m2 }}</span>, huella de los datos <span class="mono">{{ run.ingesta_sha256 }}</span>.</li>{% endfor %}</ul>
-    <p class="pred-meta">El archivo incluye p y dirección de cada SKU por evaluación, exclusiones y causas, p máximo y p ajustado. Para la demanda {{ sku_class_label("lumpy") | lower }} incluye el candidato, los orígenes y las sumas de pérdidas, que remiten a las métricas publicadas (tabla <span class="mono">m3_metricas</span>). Las medianas completas remiten a la confirmación del campeón publicada (tablas <span class="mono">m3_confirmaciones</span> y <span class="mono">m3_comparaciones</span>).</p>
+    <p class="pred-meta">El archivo incluye p y dirección de cada SKU por evaluación, exclusiones y causas, p máximo y p ajustado. Para la clase {{ sku_class_label("lumpy") }} incluye el candidato, los orígenes y las sumas de pérdidas, que remiten a las métricas, las confirmaciones y las comparaciones de origen.</p>
   </details>
 </section>
 <section class="pred-section" id="lumpy-del-grupo">
   <h2>{{ sku_class_label("lumpy") }}: población completa y común</h2>
-  {% if group.lumpy.cause %}<p class="pred-note">{{ group.lumpy.cause }}</p>{% else %}
-  <p>Compiten en las tres evaluaciones {{ format_count(group.lumpy.common_competing | length) }} productos de demanda {{ sku_class_label("lumpy") | lower }}. La población común de cada comparación conserva solo los que tienen suficientes ventanas comunes de prueba en las tres.</p>
+  {% if group.lumpy.cause %}<p class="pred-note">{{ group_lumpy_cause_text(group.lumpy.cause) }}</p>{% else %}
+  <p>Compiten en las tres evaluaciones {{ format_count(group.lumpy.common_competing | length) }} productos de la clase {{ sku_class_label("lumpy") }}. La población común de cada comparación conserva solo los que tienen suficientes ventanas comunes de prueba en las tres.</p>
   <p class="pred-meta">Se compara la mediana de confirmación en todos los productos de cada evaluación y en una población común fija. La mediana se calcula en logaritmos y vuelve a la escala de razones. Menos de 1 favorece a Fundacional. Los rangos son descriptivos: no se restan ni se aplica un umbral de estabilidad.</p>
   {% for comparison in ["seasonal_naive", "classical"] %}
   {% set rival = "la línea base" if comparison == "seasonal_naive" else "SARIMA" %}

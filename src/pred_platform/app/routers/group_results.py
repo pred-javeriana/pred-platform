@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from pred_platform.app.presentation import group_problem_text
 from pred_platform.data.deps import get_repository
 from pred_platform.data.repository import DataRepository
 from pred_platform.evidence.export import document
@@ -31,7 +32,7 @@ def _read(
 ):
     for seed, run_id in enumerate(selected):
         if run_id not in {r.run_id for r in by_seed[seed]}:
-            raise EvidenceInvalid(f"Elija una evaluación publicada para la semilla {seed}.")
+            raise EvidenceInvalid(f"Seleccione una corrida PUBLICADA de la semilla {seed}.")
     return repository.get_m3_group(selected)
 
 
@@ -65,9 +66,11 @@ def group_results(
                 (p for p in group.significance.products if p.sku == context["sku"]), None
             )
         elif any(request.query_params.get(f"semilla{s}") for s in range(3)):
-            context["problem"] = "Falta elegir una evaluación publicada para cada semilla."
+            context["problem"] = group_problem_text(
+                "Falta elegir una corrida publicada para cada semilla."
+            )
     except (EvidenceInvalid, ValueError) as exc:
-        context["problem"] = str(exc)
+        context["problem"] = group_problem_text(str(exc))
     return request.app.state.templates.TemplateResponse(
         request, "pages/group_results.html", context
     )
