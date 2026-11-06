@@ -73,8 +73,27 @@ def _facts(
     run = status.ejecucion
     assert run is not None
     ingest = ingests.get(run.ingest_id or "")
-    progress = status.progress
-    settings = status.settings
+    return facts_from_status(
+        status,
+        file_name=ingest.name if ingest else None,
+        n_skus=ingest.n_skus if ingest else None,
+        published=run.id in published,
+        resumable=run_resumable(repository, status),
+    )
+
+
+def facts_from_status(
+    status: RunStatus,
+    *,
+    published: bool,
+    resumable: bool,
+    file_name: str | None = None,
+    n_skus: int | None = None,
+) -> RunFacts:
+    """Reuse an already-read status for navigation without another repository call."""
+    run = status.ejecucion
+    assert run is not None
+    progress, settings = status.progress, status.settings
     return RunFacts(
         id=run.id,
         seed=run.seed,
@@ -82,13 +101,13 @@ def _facts(
         iniciada_en=run.iniciada_en,
         finalizada_en=run.finalizada_en,
         ingest_id=run.ingest_id,
-        file_name=ingest.name if ingest else None,
-        n_skus=ingest.n_skus if ingest else None,
+        file_name=file_name,
+        n_skus=n_skus,
         families=len(settings.families) if settings and settings.families else None,
         etapa=progress.etapa_actual if progress else None,
         avance_pct=progress.avance_pct if progress else None,
-        published=run.id in published,
-        resumable=run_resumable(repository, status),
+        published=published,
+        resumable=resumable,
     )
 
 
@@ -100,14 +119,7 @@ def run_facts(
     if run_number(corrida) is None:
         return None
     status = _status(repository, corrida)
-    return None if status is None else status_facts(repository, status, published)
-
-
-def status_facts(
-    repository: DataRepository, status: RunStatus, published: frozenset[str] | None = None
-) -> RunFacts | None:
-    """Los hechos de una corrida cuyo estado quien llama ya leyó (el sondeo de Ejecución)."""
-    if status.ejecucion is None:
+    if status is None:
         return None
     if published is None:
         published = published_runs(repository)

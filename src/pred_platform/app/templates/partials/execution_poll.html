@@ -1,8 +1,13 @@
-{# La respuesta del sondeo de Ejecución: el cuerpo de la página y, fuera de él, la barra de pasos y
-   su resumen angosto, para que sigan el avance que el cuerpo muestra. #}
+{# La respuesta del sondeo de Ejecución: el cuerpo de la página y, fuera de él, la barra de pasos,
+   su resumen angosto y, al terminar, el pie y «Después», para que sigan el avance que el cuerpo
+   muestra. Se arman con el estado que el sondeo ya leyó, sin otra consulta. #}
 {% include "partials/execution_body.html" %}
 {% if wizard %}
 {% set swap_oob = true %}
 {% include "partials/wizard_rail.html" %}
 {% include "partials/wizard_compact.html" %}
+{% if finished %}
+{% include "partials/wizard_footer.html" %}
+{% include "partials/wizard_after.html" %}
+{% endif %}
 {% endif %}

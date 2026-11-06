@@ -36,9 +36,8 @@ from pred_platform.contract.models import (
 from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import DEFAULT_SIZE
-from pred_platform.evidence.models import GroupEvidence, GroupRunOption
-
 from pred_platform.data.run_status import CauseSnapshot, StageReference
+from pred_platform.evidence.models import GroupEvidence, GroupRunOption
 
 
 @dataclass(frozen=True, slots=True)

@@ -278,6 +278,7 @@ def test_the_bogota_offset_matches_the_time_zone_database() -> None:
             instant.astimezone(LOCAL_TIMEZONE).utcoffset() == instant.astimezone(bogota).utcoffset()
         )
 
+
 def test_hover_preserves_the_exact_fractional_utc_instant() -> None:
     stamp = datetime.fromisoformat("2026-11-04T16:36:12.123456-05:00")
     assert exact_when(stamp) == "2026-11-04 21:36:12.123456 UTC (hora universal coordinada)"

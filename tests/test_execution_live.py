@@ -15,6 +15,8 @@ import pytest
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal import lectura
 from pred_platform.data import run_history
+from pred_platform.data.dal import DalRepository
+from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.data.run_status import StageReference, StageTiming
 from tests.test_ejecucion import _dal_client, _fixture_client, _launch, _text
 from tests.test_worker import Env, _escribir_progreso
@@ -35,6 +37,74 @@ def _running(env: Env):
         assert run is not None
         dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
     return client, run
+
+
+def _navigation(body: str, element_id: str) -> str:
+    found = re.search(rf'<nav\b[^>]*\bid="{element_id}".*?</nav>', body, re.S)
+    assert found is not None
+    return _text(found[0])
+
+
+def test_polled_navigation_moves_from_queue_to_published_without_reloading(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    queued = client.get("/corridas/1/ejecucion").text
+    assert "En cola" in _navigation(queued, "barra-pasos")
+    assert "Parciales" in _navigation(queued, "navegacion-pasos")
+    first = client.get("/ejecucion/estado?ejecucion=1")
+    assert first.status_code == 200
+    assert 'id="barra-pasos"' in first.text and 'hx-swap-oob="true"' in first.text
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+    assert env.worker().run_next()
+    unpublished = client.get("/ejecucion/estado?ejecucion=1")
+    assert unpublished.status_code == 286
+    assert "Sin evaluación final publicada" in _navigation(unpublished.text, "barra-pasos")
+    assert "Parciales" not in _navigation(unpublished.text, "navegacion-pasos")
+    # The engine double announces publication but does not write M3 rows. Supply the
+    # published repository documents separately, as when the real engine commits its evidence.
+    publication = FixtureRepository()
+    runs = publication.list_m3_runs()
+    runs = runs.model_copy(
+        update={"items": [item.model_copy(update={"run_id_m2": "1"}) for item in runs.items]}
+    )
+    monkeypatch.setattr(DalRepository, "list_m3_runs", lambda self, **kwargs: runs)
+    monkeypatch.setattr(
+        DalRepository,
+        "get_m3_evidence",
+        lambda self, *a, **kw: publication.get_m3_evidence(*a, **kw),
+    )
+    final = client.get("/ejecucion/estado?ejecucion=1")
+    assert final.status_code == 286
+    assert "Terminó en" in _navigation(final.text, "barra-pasos")
+    assert "Terminó en" in _navigation(final.text, "resumen-paso")
+    assert "Publicados" in _navigation(final.text, "barra-pasos")
+    assert "Parciales" not in _navigation(final.text, "navegacion-pasos")
+    assert 'id="paso-despues"' in final.text and "Ya están publicados." in final.text
+    assert "pred-topbar" not in final.text
+
+
+def test_polled_navigation_tracks_each_stage_without_reading_navigation_again(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, run = _running(env)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Polling must reuse its status, not reread run navigation")
+
+    monkeypatch.setattr("pred_platform.app.routers.execution.run_facts", forbidden)
+    monkeypatch.setattr(lectura, "task_causes", forbidden)
+    monkeypatch.setattr(lectura, "list_runs", forbidden)
+    for code, number in (("L2", 2), ("L3", 3), ("L4", 4)):
+        _escribir_progreso(env, run.run_id, {"event": "stage_started", "stage": code})
+        response = client.get("/ejecucion/estado?ejecucion=1")
+        assert response.status_code == 200
+        assert f"Etapa {number} de 4" in _navigation(response.text, "barra-pasos")
+        assert f"Etapa {number} de 4" in _navigation(response.text, "resumen-paso")
+        assert 'id="paso-datos"' in response.text and 'hx-preserve="true"' in response.text
 
 
 def test_step_four_keeps_one_poll_and_no_new_repository_reads() -> None:

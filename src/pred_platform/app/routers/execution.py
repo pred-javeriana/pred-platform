@@ -32,10 +32,10 @@ from pred_platform.app.configuracion import (
 )
 from pred_platform.app.corridas import (
     draft_facts,
+    facts_from_status,
     ingests_by_id,
     resolve_run_id,
     run_facts,
-    status_facts,
 )
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
@@ -88,7 +88,7 @@ from pred_platform.app.pasos import (
     step_href,
 )
 from pred_platform.app.presentation import describe_run
-from pred_platform.app.resultados_m3 import run_outcome
+from pred_platform.app.resultados_m3 import run_outcome_details
 from pred_platform.app.routers.corridas import (
     Locked,
     redirect_with_query,
@@ -219,6 +219,7 @@ def _context(
         nothing_to_compare=run_compares_nothing(repository, run, status),
     )
     now = datetime.now(UTC)
+    outcome = run_outcome_details(repository, run, counts) if run is not None else None
     return {
         **execution_display(status, now),
         "capabilities": capabilities,
@@ -250,7 +251,8 @@ def _context(
         "focus": focus,
         "focus_estado": focus_estado,
         "focus_total": tasks.page.total if focus and tasks and tasks.page else 0,
-        "outcome": run_outcome(repository, run, counts) if run is not None else None,
+        "outcome": outcome.text if outcome else None,
+        "published": outcome.published if outcome else False,
         "run_ingest": ingest_name(repository, run.ingest_id) if run is not None else None,
         "run_error": error,
         "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
@@ -350,8 +352,13 @@ def ejecucion_estado(
     que deje de preguntar."""
     context = _context(request, repository)
     status = context["status"]
-    facts = status_facts(repository, status) if status is not None else None
-    if facts is not None:
+    if status is not None and status.ejecucion is not None:
+        facts = facts_from_status(
+            status,
+            published=context["published"],
+            resumable=context["actions"].offers_resume,
+            file_name=context["run_ingest"].file_name if context["run_ingest"] else None,
+        )
         context["wizard"] = run_wizard("ejecucion", facts)
     return _render(
         request, "partials/execution_poll.html", context, 200 if context["poll"] else 286

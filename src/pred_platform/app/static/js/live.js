@@ -128,8 +128,10 @@
   function enUso(raiz) {
     if (!raiz) return false;
     const seleccion = window.getSelection();
-    return raiz.contains(document.activeElement) ||
-      Boolean(seleccion && !seleccion.isCollapsed && raiz.contains(seleccion.anchorNode));
+    return [raiz, document.getElementById("barra-pasos"), document.getElementById("resumen-paso"), document.getElementById("navegacion-pasos")].some(function (zona) {
+      return zona && (zona.contains(document.activeElement) ||
+        Boolean(seleccion && !seleccion.isCollapsed && zona.contains(seleccion.anchorNode)));
+    });
   }
 
   function actualizarSondeo() {

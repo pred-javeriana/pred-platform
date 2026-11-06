@@ -8,7 +8,7 @@
   <ol>
     {% for step in wizard.steps %}
     {% set inner %}<span class="pred-rail__col"><span class="pred-rail__mark" aria-hidden="true">{% if step.state == "done" %}<svg aria-hidden="true"><use href="#i-check"></use></svg>{% elif step.state == "locked" %}<svg aria-hidden="true"><use href="#i-lock"></use></svg>{% else %}{{ step.number }}{% endif %}</span><span class="pred-rail__mini" aria-hidden="true">{{ step.short }}</span></span><span class="pred-rail__text"><span class="pred-rail__num">Paso {{ step.number }}</span><span class="pred-rail__label">{{ step.label }}{% if step.current %}<span class="pred-rail__now">Aquí</span>{% elif step.state == "live" %}<span class="pred-rail__now">En curso</span>{% endif %}</span><span class="pred-rail__sub">{{ step_sub(step) }}</span></span><span class="pred-sr-only">: {{ step.state_text }}</span>{% endset %}
-    <li class="is-{{ step.state }}{% if step.current %} is-current{% endif %}">
+    <li class="is-{{ step.state }}{% if step.current %} is-current{% endif %}" id="paso-{{ step.key }}"{% if swap_oob and (step.number < 4 or (step.key == "resultados" and not finished)) %} hx-preserve="true"{% endif %}>
       {% if step.href %}<a class="pred-rail__item" href="{{ step.href }}"{% if step.current %} aria-current="step"{% endif %}>{{ inner }}</a>{% else %}<span class="pred-rail__item"{% if step.current %} aria-current="step"{% endif %}>{{ inner }}</span>{% endif %}
     </li>
     {% endfor %}
