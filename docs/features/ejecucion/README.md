@@ -76,8 +76,13 @@ fingerprint (`run.incompatible_config`).
 - **Stages and causes.** `data/run_status.py` adds local display fields without modifying the
   packaged contract. Durations use recorded stage timestamps from the current attempt, never
   an estimate. The parsed progress summary is reused while the log is unchanged. One task
-  aggregate query returns both state counts and causes for the whole run, independent of filters
-  and paging. The full task list and configuration remain in a disclosure below the causes.
+  page-load query reads causes for the whole run, independent of filters and paging. Its
+  timestamped snapshot stays across swaps; “Actualizar causas” reloads it explicitly. Polling
+  uses the original state-count query and never aggregates causes. Initial page load also reads
+  cached stage references for up to two comparable
+  completed seeds (same data and evaluation settings). The browser retains those references
+  across polling swaps; polling never reads history. Missing history leaves only the current
+  run's bars. The full task list and configuration remain in a disclosure below the causes.
 - **Returning to a run.** The browser stores its last visible snapshot locally. After at least a
   minute away, “Desde su última visita” reports observed stage, task and product-count changes.
   No previous snapshot means no comparison. Storage failure does not stop progress updates.

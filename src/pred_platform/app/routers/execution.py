@@ -13,6 +13,7 @@ corresponde con la misma consulta.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -70,7 +71,11 @@ from pred_platform.app.ejecucion import (
     should_poll,
     single_family_classes,
 )
-from pred_platform.app.execution_display import execution_display
+from pred_platform.app.execution_display import (
+    add_cause_snapshot,
+    add_stage_references,
+    execution_display,
+)
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
     NEW,
@@ -281,6 +286,13 @@ def _render_execution(
         return render_missing_run(request, corrida)
     context = _context(request, repository, ejecucion=facts.id, action_error=action_error)
     context["wizard"] = run_wizard("ejecucion", facts)
+    try:
+        references = repository.get_run_stage_history(facts.id)
+    except DataLayerError:
+        references = []
+    add_stage_references(context, references)
+    with suppress(DataLayerError):
+        add_cause_snapshot(context, repository.get_run_causes(facts.id))
     return _render(request, "pages/execution.html", context, status_code)
 
 

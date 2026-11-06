@@ -7,11 +7,15 @@ import json
 import os
 import re
 from contextlib import closing
+from datetime import datetime
 from typing import Any
 
 import pytest
 
 from pred_platform.dal import ejecuciones as dal
+from pred_platform.dal import lectura
+from pred_platform.data import run_history
+from pred_platform.data.run_status import StageReference, StageTiming
 from tests.test_ejecucion import _dal_client, _fixture_client, _launch, _text
 from tests.test_worker import Env, _escribir_progreso
 from tests.test_worker import env as env  # noqa: F401
@@ -46,14 +50,90 @@ def test_step_four_keeps_one_poll_and_no_new_repository_reads() -> None:
     fragment = client.get("/ejecucion/estado?ejecucion=1")
     assert fragment.status_code == 286  # fixture mode never polls a worker
     assert len(repo.status_calls) == 2  # original status and the existing focused list
-    assert repo.status_calls[1] == ("1", {"estado": "fallida", "size": 5})
+    assert repo.status_calls[1] == ("1", {"estado": "ejecutando", "size": 5})
     assert "pred-topbar" not in fragment.text
     repo.status_calls.clear()
     assert client.get("/ejecucion/estado?ejecucion=1&tareas=todas").status_code == 286
     assert len(repo.status_calls) == 1
 
 
-def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(env: Env) -> None:
+def test_stage_history_is_loaded_once_per_page_and_never_by_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo = _fixture_client()
+    calls = []
+
+    def history(run_id: str):
+        calls.append(run_id)
+        return [
+            StageReference(
+                id="8",
+                seed=0,
+                timings=[
+                    StageTiming(
+                        code="L2",
+                        started_at=datetime.fromisoformat("2026-11-04T20:00:00Z"),
+                        finished_at=datetime.fromisoformat("2026-11-04T20:10:00Z"),
+                    )
+                ],
+            )
+        ]
+
+    monkeypatch.setattr(repo, "get_run_stage_history", history)
+    page = client.get("/corridas/1/ejecucion")
+    assert page.status_code == 200 and calls == ["1"]
+    assert "Semilla 0" in page.text and "Antes: 10 min" in page.text
+    assert "pred-stage-reference" in page.text
+    calls.clear()
+    for _ in range(3):
+        assert client.get("/ejecucion/estado?ejecucion=1").status_code == 286
+    assert calls == []
+
+
+def test_history_is_cached_and_excludes_runs_with_other_settings(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(run_history, "monotonic", lambda: 1000)
+    client, _ = _running(env)
+    for seed, metric in ((18, "mae"), (19, "rmse")):
+        assert _launch(client, env, seed=str(seed), metric=metric).status_code == 303
+    with closing(dal.connect(env.db)) as conn:
+        refs = conn.execute("SELECT id, run_id FROM ejecuciones WHERE id IN (2,3)").fetchall()
+        for run_id, engine_id in refs:
+            conn.execute(
+                "UPDATE ejecuciones SET estado='completada', ruta_corrida=?, finalizada_en=? "
+                "WHERE id=?",
+                (f"runs/{engine_id}", "2026-11-04T20:10:00Z", run_id),
+            )
+            _escribir_progreso(
+                env,
+                engine_id,
+                {"event": "stage_started", "stage": "L2", "t": "2026-11-04T20:00:00Z"},
+                {"event": "stage_finished", "stage": "L2", "t": "2026-11-04T20:10:00Z"},
+            )
+        conn.commit()
+    original = lectura.list_runs
+    reads = []
+
+    def listing(path):
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(lectura, "list_runs", listing)
+    for _ in range(2):
+        body = client.get("/corridas/1/ejecucion").text
+        assert "Semilla 18" in body and "Semilla 19" not in body
+    assert len(reads) == 1
+    reads.clear()
+    assert client.get("/ejecucion/estado?ejecucion=1").status_code == 200
+    assert reads == []
+
+
+def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client, run = _running(env)
     with closing(dal.connect(env.db)) as conn:
         for n, (model, code) in enumerate(
@@ -75,7 +155,7 @@ def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(env: 
                 error={"code": code, "stage": "L2", "severity": "error"},
             )
     for query in ("", "&estado=fallida&family=dl&size=1", "&page=2&size=2"):
-        response = client.get("/ejecucion/estado?ejecucion=1" + query)
+        response = client.get("/corridas/1/ejecucion?ejecucion=1" + query)
         assert response.status_code == 200
         group_table = response.text.split('aria-label="Causas de las tareas sin pronóstico"')[
             1
@@ -90,6 +170,16 @@ def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(env: 
     full = client.get("/corridas/1/ejecucion?tareas=todas&size=25")
     assert '<details class="pred-details" id="lista-tareas" open>' in full.text
     assert all(f"sku-{n:02}" in full.text for n in range(12))
+    assert 'id="causas-corrida" hx-preserve="true"' in full.text
+    assert "Causas leídas" in full.text and "Actualizar causas" in full.text
+
+    def no_cause_query(*args):
+        pytest.fail("Polling must not aggregate causes")
+
+    monkeypatch.setattr(lectura, "task_causes", no_cause_query)
+    fragment = client.get("/ejecucion/estado?ejecucion=1")
+    assert fragment.status_code == 200
+    assert "selection.no_viable_trial" not in fragment.text.split('id="lista-tareas"')[0]
 
 
 def test_stage_durations_and_product_progress_follow_the_log_and_retry(env: Env) -> None:

@@ -47,7 +47,14 @@ from pred_platform.data.query import (
     paginate,
 )
 from pred_platform.data.repository import ArtifactDownload
-from pred_platform.data.run_status import DisplayRunStatus, TaskCause, read_run_progress
+from pred_platform.data.run_history import read_stage_references
+from pred_platform.data.run_status import (
+    CauseSnapshot,
+    DisplayRunStatus,
+    StageReference,
+    TaskCause,
+    read_run_progress,
+)
 from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -322,6 +329,19 @@ class DalRepository(M3DalSource):
     def list_runs(self) -> list[models.Ejecucion]:
         return [_ejecucion(run) for run in lectura.list_runs(self.db_path)]
 
+    def get_run_causes(self, run_id: str) -> CauseSnapshot:
+        run = lectura.get_run(self.db_path, run_id)
+        causes = lectura.task_causes(self.db_path, run.id) if run else []
+        return CauseSnapshot(
+            read_at=_now(),
+            causes=[TaskCause(code=code, family=family, count=n) for code, family, n in causes],
+        )
+
+    def get_run_stage_history(self, run_id: str) -> list[StageReference]:
+        if self.data_root is None:
+            return []
+        return read_stage_references(self.db_path, self.data_root, run_id)
+
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         # Written by the worker (``worker/errores.py``); one that is not an ErrorInfo is not shown.
         detail = lectura.get_run(self.db_path, run_id)
@@ -371,7 +391,7 @@ class DalRepository(M3DalSource):
             offset=(request.number - 1) * request.size,
             limit=request.size,
         )
-        counts, causes = lectura.task_summary(self.db_path, run.id)
+        counts = lectura.task_state_counts(self.db_path, run.id)
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
@@ -384,9 +404,7 @@ class DalRepository(M3DalSource):
         parametros = json.loads(run.parametros)
         return DisplayRunStatus(
             stage_timings=timings,
-            task_causes=[
-                TaskCause(code=code, family=family, count=n) for code, family, n in causes
-            ],
+            last_stage=etapa,
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ejecucion=_ejecucion(run),
             settings=models.RunSettings(
@@ -406,9 +424,9 @@ class DalRepository(M3DalSource):
                 tareas_total=total_tasks,
                 tareas_por_estado=by_state,  # type: ignore[arg-type]
                 avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
-                etapa_actual=etapa,  # type: ignore[arg-type]  # lo escribe el motor (L1 a L4)
-                skus_total=skus_total,
-                skus_terminados=skus_terminados,
+                etapa_actual=etapa if run.estado == "ejecutando" else None,  # type: ignore[arg-type]
+                skus_total=skus_total if run.estado == "ejecutando" else None,
+                skus_terminados=skus_terminados if run.estado == "ejecutando" else None,
             ),
             tasks=[
                 models.Tarea(

@@ -29,6 +29,7 @@ from pred_platform.contract.models import IngestSummary, RunStatus
 from pred_platform.dal.lectura import run_number
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository
+from pred_platform.data.run_status import comparison_key
 
 # El grupo final de la tesis: tres corridas con los mismos datos y ajustes que solo cambian la
 # semilla. La estabilidad de la campeona se lee cuando las tres publican.
@@ -229,15 +230,7 @@ def _group_key(status: RunStatus) -> tuple[object, ...] | None:
     run, settings = status.ejecucion, status.settings
     if run is None or settings is None:
         return None
-    return (
-        run.ingest_id,
-        tuple(sorted(settings.families or ())),
-        settings.metric,
-        settings.min_train,
-        settings.horizon,
-        settings.step,
-        settings.seasonality,
-    )
+    return comparison_key(run.ingest_id, settings.model_dump())
 
 
 def _thesis_group(

@@ -35,20 +35,27 @@
 }
 .pred-live-stages__name { font-size: 15px; font-weight: 650; color: var(--ink-soft); }
 .pred-live-stages__name small { display: block; font-size: 13px; font-weight: 400; color: var(--muted-text); }
-.pred-live-stages__bar { height: 8px; overflow: hidden; background: var(--border); border-radius: 3px; }
+.pred-live-stages__bars { display: grid; gap: 4px; }
+.pred-live-stages__bar { display: block; height: 8px; overflow: hidden; background: var(--border); border-radius: 3px; }
 .pred-live-stages__bar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
 .pred-live-stages__duration { text-align: right; font: 13px var(--font-mono); color: var(--ink-soft); }
 .pred-live-stages__duration small { display: block; color: var(--info); font-family: var(--font-body); }
+.pred-live-stages__duration .pred-stage-before { color: var(--muted-text); font-size: 12px; }
+.pred-stage-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
+.pred-stage-legend li { display: flex; align-items: center; gap: 6px; margin: 0; }
+.pred-stage-legend i { width: 14px; height: 10px; background: var(--ok); }
+.pred-stage-legend .is-reference-0, .pred-live-stages__bar.is-reference-0 i { background: #a9ada7; }
+.pred-stage-legend .is-reference-1, .pred-live-stages__bar.is-reference-1 i { background: #d3d5d1; }
 .pred-live-stages .is-hecha .pred-steps__mark { background: var(--ok); border-color: var(--ok); color: white; }
 .pred-live-stages .is-en_curso .pred-steps__mark { border: 2px solid var(--info); color: var(--info); }
 .pred-live-stages .is-detenida .pred-steps__mark { border-color: var(--warn); color: var(--warn-text); }
 .pred-live-stages .is-detenida .pred-live-stages__duration small { color: var(--warn-text); }
-.pred-live-stages .is-en_curso .pred-live-stages__bar i {
+.pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i {
   position: relative;
   overflow: hidden;
   background: var(--info);
 }
-.pred-live-stages .is-en_curso .pred-live-stages__bar i::after {
+.pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -63,6 +70,10 @@
 .pred-close-page h2,
 .pred-live-tasks h2 { font-size: 18px; }
 .pred-live-tasks .pred-statelist { margin: 12px 0; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap .pred-table { min-width: 0; table-layout: fixed; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap th:first-child { width: 58%; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap th:nth-child(2) { width: 28%; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap .wrap { overflow-wrap: anywhere; }
 .pred-live-tasks > .pred-details { margin-top: 12px; }
 .pred-live-tasks .pred-evidence-area { margin-top: 16px; }
 .pred-since { padding: 12px 16px; margin-bottom: 20px; border-left: 4px solid var(--info); background: var(--info-soft); }
@@ -75,11 +86,21 @@
   .pred-live__ring .pred-progress--circular { flex-direction: row; }
   .pred-live__ring .pred-progress__reading { text-align: left; }
   .pred-live-stages > li { grid-template-columns: 26px minmax(0, 1fr); gap: 4px 12px; }
-  .pred-live-stages__bar,
+  .pred-live-stages__bars,
   .pred-live-stages__duration { grid-column: 2; text-align: left; }
 }
 
+@media (max-width: 600px) {
+  .pred-live-tasks #causas-corrida > .pred-table-wrap thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) 52px; border-bottom: 1px solid var(--border); padding: 8px 0; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody th:first-child { width: auto; grid-column: 1; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody td:nth-child(2) { grid-column: 1; padding-top: 0; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody td:nth-child(2)::before { content: "Familias: "; font-weight: 600; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody .num { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody :is(th, td) { border: 0; max-width: none; overflow-wrap: normal; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .pred-live-stages .is-en_curso .pred-live-stages__bar i::after { animation: none; display: none; }
+  .pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i::after { animation: none; display: none; }
   .pred-progress__arc { transition: none; }
 }

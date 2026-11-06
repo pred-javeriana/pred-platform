@@ -103,9 +103,13 @@
     const lectura = document.getElementById("pulso-lectura");
     if (!lectura) return;
     const edad = Date.now() - ultimaLectura;
-    const atrasado = pausado || edad > SIN_RESPUESTA_MS;
-    pulso.classList.toggle("is-stale", atrasado);
-    if (pausado) {
+    const estado = cuerpo() && cuerpo().querySelector("[data-pred-poll]");
+    const automatico = estado && estado.dataset.predPoll === "true";
+    const atrasado = automatico && (pausado || edad > SIN_RESPUESTA_MS);
+    pulso.classList.toggle("is-stale", Boolean(atrasado));
+    if (!automatico) {
+      lectura.textContent = "actualización automática no activa";
+    } else if (pausado) {
       lectura.textContent = "actualización pausada: el avance mostrado puede estar atrasado";
     } else if (edad > SIN_RESPUESTA_MS) {
       lectura.textContent = enUso(cuerpo())
@@ -192,6 +196,57 @@
     const ayuda = document.getElementById("actualizacion-ayuda");
     if (ayuda) ayuda.textContent = "No se pudo actualizar la ejecución. Recargue la página para reintentar.";
   });
+
+  // Las referencias llegaron con la página; los fragmentos no vuelven a leer ese historial.
+  let referencias = [];
+  function pintarEtapas() {
+    const raiz = cuerpo();
+    if (!raiz || !referencias.length) return;
+    const filas = Array.from(raiz.querySelectorAll("[data-stage-code]"));
+    const valores = filas.map(function (fila) { return Number(fila.dataset.stageSeconds) || 0; });
+    referencias.forEach(function (ref) {
+      Object.values(ref.stages).forEach(function (etapa) { valores.push(etapa.seconds); });
+    });
+    const maximo = Math.max.apply(null, valores);
+    const leyenda = raiz.querySelector(".pred-stage-legend");
+    if (leyenda) {
+      leyenda.replaceChildren();
+      ["Esta corrida"].concat(referencias.map(function (ref) { return "Semilla " + ref.seed; })).forEach(function (texto, i) {
+        const item = document.createElement("li");
+        const marca = document.createElement("i");
+        if (i) marca.className = "is-reference-" + (i - 1);
+        item.append(marca, document.createTextNode(texto));
+        leyenda.appendChild(item);
+      });
+    }
+    filas.forEach(function (fila) {
+      const barras = fila.querySelector(".pred-live-stages__bars");
+      if (!barras) return;
+      const actual = barras.querySelector(".pred-live-stages__bar i");
+      if (actual) actual.style.width = (maximo ? 100 * Number(fila.dataset.stageSeconds) / maximo : 0) + "%";
+      barras.querySelectorAll(".pred-stage-reference").forEach(function (e) { e.remove(); });
+      const anterior = fila.querySelector(".pred-stage-before");
+      if (anterior) anterior.remove();
+      const duraciones = [];
+      referencias.forEach(function (ref, i) {
+        const etapa = ref.stages[fila.dataset.stageCode];
+        if (!etapa) return;
+        const barra = document.createElement("span");
+        barra.className = "pred-live-stages__bar pred-stage-reference is-reference-" + i;
+        const relleno = document.createElement("i");
+        relleno.style.width = (maximo ? 100 * etapa.seconds / maximo : 0) + "%";
+        barra.appendChild(relleno);
+        barras.appendChild(barra);
+        duraciones.push(etapa.duration);
+      });
+      if (duraciones.length) {
+        const texto = document.createElement("small");
+        texto.className = "pred-stage-before";
+        texto.textContent = "Antes: " + duraciones.join(" · ");
+        fila.querySelector(".pred-live-stages__duration").appendChild(texto);
+      }
+    });
+  }
 
   function abrirDestino() {
     let id;
@@ -291,6 +346,10 @@
   window.addEventListener("pagehide", function () { guardarVisita(instantanea()); });
 
   document.addEventListener("DOMContentLoaded", function () {
+    const raiz = cuerpo();
+    try { referencias = JSON.parse(raiz.dataset.predHistory || "[]"); }
+    catch (_) { referencias = []; }
+    pintarEtapas();
     abrirDestino();
     const vista = instantanea();
     if (vista) desdeLaVisita(leerVisita(vista), vista);
@@ -308,6 +367,7 @@
         if (aperturas.has(detalle.id)) detalle.open = aperturas.get(detalle.id);
       });
       ultimaLectura = Date.now();
+      pintarEtapas();
       guardarVisita(instantanea());
       if (!movimientoReducido.matches) {
         animarAnillo(evento.target);

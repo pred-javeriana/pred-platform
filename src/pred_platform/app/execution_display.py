@@ -9,7 +9,39 @@ from pred_platform.app.ejecucion import FINISHED_STATES, STAGES, error_action
 from pred_platform.app.presentation import family_label, format_duration, stage_term
 from pred_platform.app.seleccion import error_title
 from pred_platform.contract.models import RunStatus
-from pred_platform.data.run_status import DisplayRunStatus
+from pred_platform.data.run_status import CauseSnapshot, DisplayRunStatus, StageReference
+
+
+def add_stage_references(context: dict[str, Any], references: list[StageReference]) -> None:
+    history = []
+    for reference in references:
+        stages = {}
+        for timing in reference.timings:
+            if timing.finished_at is None:
+                continue
+            seconds = max(0, (timing.finished_at - timing.started_at).total_seconds())
+            stages[timing.code] = {"seconds": seconds, "duration": format_duration(seconds)}
+        if stages:
+            history.append({"id": reference.id, "seed": reference.seed, "stages": stages})
+    context["stage_history"] = history
+    maximum = max(
+        [row["seconds"] or 0 for row in context["stage_rows"]]
+        + [stage["seconds"] for reference in history for stage in reference["stages"].values()],
+        default=0,
+    )
+    for row in context["stage_rows"]:
+        row["width"] = 100 * (row["seconds"] or 0) / maximum if maximum else 0
+        row["references"] = [
+            {
+                "seed": reference["seed"],
+                "duration": reference["stages"][row["code"]]["duration"],
+                "width": 100 * reference["stages"][row["code"]]["seconds"] / maximum
+                if maximum
+                else 0,
+            }
+            for reference in history
+            if row["code"] in reference["stages"]
+        ]
 
 
 def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]:
@@ -17,10 +49,11 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
         return {"live_snapshot": None, "stage_rows": [], "cause_groups": []}
     run, progress = status.ejecucion, status.progress
     timings = status.stage_timings if isinstance(status, DisplayRunStatus) else []
-    causes = status.task_causes if isinstance(status, DisplayRunStatus) else []
     by_code = {item.code: item for item in timings}
     codes = [code for code, _ in STAGES]
     current = progress.etapa_actual if progress else None
+    if run.estado == "detenida" and isinstance(status, DisplayRunStatus):
+        current = status.last_stage
     index = codes.index(current) if current in codes else -1
     stage_rows = []
     for i, (code, label) in enumerate(STAGES):
@@ -52,8 +85,26 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
     maximum = max((row["seconds"] or 0 for row in stage_rows), default=0)
     for row in stage_rows:
         row["width"] = round(100 * (row["seconds"] or 0) / maximum, 2) if maximum else 0
+    return {
+        "stage_rows": stage_rows,
+        "live_snapshot": {
+            "version": 1,
+            "id": run.id,
+            "identity": run.configuracion_id,
+            "state": run.estado,
+            "stateLabel": "Completada" if run.estado in FINISHED_STATES else None,
+            "started": run.iniciada_en.isoformat() if run.iniciada_en else None,
+            "stage": current,
+            "stages": stage_rows,
+            "counts": dict(progress.tareas_por_estado) if progress else {},
+            "skus": progress.skus_terminados if progress else None,
+        },
+    }
+
+
+def add_cause_snapshot(context: dict[str, Any], snapshot: CauseSnapshot) -> None:
     groups: dict[str | None, dict[str, Any]] = {}
-    for cause in causes:
+    for cause in snapshot.causes:
         title = error_title(cause.code) if cause.code else "Sin causa informada"
         if title == cause.code:
             title = "La tarea no terminó; consulte el detalle técnico."
@@ -71,19 +122,7 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
         group["families"].add(family_label(cause.family))
     for group in groups.values():
         group["families"] = ", ".join(sorted(group["families"]))
-    return {
-        "stage_rows": stage_rows,
-        "cause_groups": sorted(groups.values(), key=lambda item: (-item["count"], item["title"])),
-        "live_snapshot": {
-            "version": 1,
-            "id": run.id,
-            "identity": run.configuracion_id,
-            "state": run.estado,
-            "stateLabel": "Completada" if run.estado in FINISHED_STATES else None,
-            "started": run.iniciada_en.isoformat() if run.iniciada_en else None,
-            "stage": current,
-            "stages": stage_rows,
-            "counts": dict(progress.tareas_por_estado) if progress else {},
-            "skus": progress.skus_terminados if progress else None,
-        },
-    }
+    context["cause_groups"] = sorted(
+        groups.values(), key=lambda item: (-item["count"], item["title"])
+    )
+    context["cause_snapshot_at"] = snapshot.read_at

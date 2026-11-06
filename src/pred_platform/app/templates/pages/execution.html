@@ -28,7 +28,7 @@
   <p class="pred-sr-only" id="ejecucion-anuncio" role="status" aria-live="polite" aria-atomic="true"></p>
   {% set poll_query = query_string %}
   <noscript><p class="pred-meta">Recargue la página para consultar el avance actualizado.</p></noscript>
-  <div id="ejecucion-cuerpo"
+  <div id="ejecucion-cuerpo" data-pred-history='{{ stage_history | default([]) | tojson }}'
        hx-get="/ejecucion/estado{% if poll_query %}?{{ poll_query }}{% endif %}"
        hx-trigger="{% if poll %}every 2s, pred:refresh{% else %}none{% endif %}"
        hx-swap="innerHTML"

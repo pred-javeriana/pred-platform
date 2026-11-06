@@ -368,29 +368,20 @@ def task_state_counts(db_path: Path, ejecucion_id: int) -> dict[str, int]:
     return {estado: int(n) for estado, n in rows}
 
 
-def task_summary(
-    db_path: Path, ejecucion_id: int
-) -> tuple[dict[str, int], list[tuple[str | None, str, int]]]:
-    """State totals and failure causes in one scan, independent of task-list filters."""
+def task_causes(db_path: Path, ejecucion_id: int) -> list[tuple[str | None, str, int]]:
+    """Whole-run causes for a timestamped page-load snapshot; never called by polling."""
     with _open_readonly(db_path) as conn:
         if conn is None:
-            return {}, []
+            return []
         rows = conn.execute(
-            "SELECT estado, "
-            "CASE WHEN estado IN ('fallida', 'no_ejecutable') "
-            "AND json_valid(detalle_error) THEN json_extract(detalle_error, '$.code') END AS code, "
-            "CASE WHEN estado IN ('fallida', 'no_ejecutable') "
-            "THEN substr(modelo, 1, instr(modelo, ':') - 1) END AS family, COUNT(*) "
-            "FROM tareas WHERE ejecucion_id = ? GROUP BY estado, code, family",
+            "SELECT CASE WHEN json_valid(detalle_error) "
+            "THEN json_extract(detalle_error, '$.code') END AS code, "
+            "substr(modelo, 1, instr(modelo, ':') - 1) AS family, COUNT(*) "
+            "FROM tareas WHERE ejecucion_id = ? AND estado IN ('fallida', 'no_ejecutable') "
+            "GROUP BY code, family",
             (ejecucion_id,),
         ).fetchall()
-    counts: dict[str, int] = {}
-    causes = []
-    for state, code, family, count in rows:
-        counts[state] = counts.get(state, 0) + int(count)
-        if family is not None:
-            causes.append((code if isinstance(code, str) else None, family, int(count)))
-    return counts, causes
+    return [(code if isinstance(code, str) else None, family, int(n)) for code, family, n in rows]
 
 
 def list_tasks(

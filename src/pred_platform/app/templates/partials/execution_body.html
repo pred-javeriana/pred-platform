@@ -114,13 +114,14 @@
   {% if progress %}</div></div>{% endif %}
   {% if stage_rows %}
   <p class="pred-meta pred-stage-key">Duración por etapa del intento actual · barras desde cero, en la misma escala. No es una estimación de lo que falta.</p>
+  <ul class="pred-stage-legend" aria-label="Referencia de las barras"><li><i></i>Esta corrida</li>{% for reference in stage_history | default([]) %}<li><i class="is-reference-{{ loop.index0 }}"></i>Semilla {{ reference.seed }}</li>{% endfor %}</ul>
   <ol class="pred-live-stages" aria-label="Etapas del motor">
     {% for step in stage_rows %}
-    <li class="is-{{ step.state }}" data-stage-code="{{ step.code }}">
+    <li class="is-{{ step.state }}" data-stage-code="{{ step.code }}" data-stage-seconds="{{ step.seconds if step.seconds is not none else '' }}">
       <span class="pred-steps__mark" aria-hidden="true">{% if step.state == "hecha" %}<svg><use href="#i-check"></use></svg>{% else %}{{ loop.index }}{% endif %}</span>
       <span class="pred-live-stages__name">{{ step.label }}<small>{{ step.hint }}</small><span class="pred-sr-only">: {{ {"hecha": "terminada", "en_curso": "en curso", "detenida": "detenida", "pendiente": "pendiente"}[step.state] }}</span></span>
-      <span class="pred-live-stages__bar" aria-hidden="true"><i style="width:{{ step.width }}%"></i></span>
-      <span class="pred-live-stages__duration">{% if step.duration %}{{ step.duration }}{% else %}{{ "Pendiente" if step.state == "pendiente" else "Sin registro de duración" }}{% endif %}{% if step.state in ("en_curso", "detenida") %}<small>{{ "En curso" if step.state == "en_curso" else "Detenida" }}</small>{% endif %}</span>
+      <span class="pred-live-stages__bars" aria-hidden="true"><span class="pred-live-stages__bar"><i style="width:{{ step.width }}%"></i></span>{% for reference in step.references | default([]) %}<span class="pred-live-stages__bar pred-stage-reference is-reference-{{ loop.index0 }}"><i style="width:{{ reference.width }}%"></i></span>{% endfor %}</span>
+      <span class="pred-live-stages__duration">{% if step.duration %}{{ step.duration }}{% else %}{{ "Pendiente" if step.state == "pendiente" else "Sin registro de duración" }}{% endif %}{% if step.state in ("en_curso", "detenida") %}<small>{{ "En curso" if step.state == "en_curso" else "Detenida" }}</small>{% endif %}{% if step.references %}<small class="pred-stage-before">Antes: {% for reference in step.references %}{{ reference.duration }}{% if not loop.last %} · {% endif %}{% endfor %}</small>{% endif %}</span>
     </li>
     {% endfor %}
   </ol>
@@ -145,15 +146,18 @@
     {% endfor %}
   </ul>
   {% endif %}
+  <div id="causas-corrida" hx-preserve="true">
+  {% if cause_snapshot_at %}<p class="pred-meta">Causas leídas {{ when(cause_snapshot_at) }}. Este resumen no cambia automáticamente. <a href="/corridas/{{ run.id }}/ejecucion#titulo-causas">Actualizar causas</a></p>{% endif %}
   {% if cause_groups %}
   {{ table_start(["Causa", "Familias", "Tareas"], "Causas de las tareas sin pronóstico") }}
   {% for cause in cause_groups %}
-  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action %}<span class="pred-subvalue">{{ cause.action }}</span>{% endif %}{% if cause.code %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><span class="mono">{{ cause.code }}</span></details>{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
+  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action %}<span class="pred-subvalue pred-cause">{{ cause.action }}</span>{% endif %}{% if cause.code %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><span class="mono">{{ cause.code }}</span></details>{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
   {% endfor %}
   {{ table_end() }}
   {% elif progress and not progress.tareas_por_estado.get("fallida", 0) and not progress.tareas_por_estado.get("no_ejecutable", 0) %}
   <p class="pred-meta">Ninguna tarea ha fallado ni ha quedado sin ejecutar.</p>
-  {% else %}<p class="pred-meta">El registro de causas no está disponible. Consulte las tareas para ver el detalle.</p>{% endif %}
+  {% else %}<p class="pred-meta">Las causas agrupadas se leen al abrir este paso. Consulte las tareas para ver el detalle.</p>{% endif %}
+  </div>
   <details class="pred-details" id="lista-tareas"{% if query.explicit %} open{% endif %}>
     <summary>Ver tareas, con filtros, y configuración</summary>
 
