@@ -2177,3 +2177,21 @@ def test_a_diagnostic_that_never_arrives_fails_the_outage_drive_in_time_and_clea
     with closing(sqlite3.connect(env.db, timeout=0)) as conn:
         conn.execute("BEGIN IMMEDIATE")  # no writer lock is left behind
         conn.rollback()
+
+
+def test_missing_input_parquet_records_platform_input_missing(env: Env) -> None:
+    run = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(sqlite3.connect(env.db)) as conn:
+        [(ruta_parquet,)] = conn.execute(
+            "SELECT ruta_parquet FROM ingestas WHERE sha256 = ?", (env.ingest_id,)
+        ).fetchall()
+    parquet = (env.settings.data_root / ruta_parquet).resolve()
+    assert parquet.is_file()
+    parquet.unlink()
+    worker = env.worker()
+    worker.run_next()
+    assert env.rows("SELECT estado FROM ejecuciones WHERE id = ?", run.ejecucion_id) == [
+        ("detenida",)
+    ]
+    err = env.repo().get_run_error(str(run.ejecucion_id))
+    assert err is not None and err.code == "platform.input_missing"

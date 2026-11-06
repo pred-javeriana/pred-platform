@@ -74,10 +74,14 @@
   {% if run_error and run.estado not in ("pendiente", "ejecutando") %}
   {# El tono sigue a lo que se puede hacer: advertencia si Reanudar se ofrece, error si no (#126). #}
   <div class="pred-callout pred-callout--{{ 'warn' if actions.offers_resume else 'err' }}" id="error-ejecucion">
-    <p><strong>{{ run_error.title }}</strong>{% if run_error.detail %} {{ run_error.detail }}{% endif %}</p>
-    {% if run_error.action %}<p>{{ run_error.action }}</p>{% endif %}
+    <p><strong>{{ run_error.title }}</strong>{% if run_error.detail and not run_error.cataloged %} {{ run_error.detail }}{% endif %}</p>
+    {% if run_error.action and not actions.nothing_to_compare %}<p>{{ run_error.action }}</p>{% endif %}
     {% if not actions.offers_resume and run.estado == "detenida" and not actions.nothing_to_compare %}<p class="pred-meta">Reanudar no se ofrece: la ejecución fallaría igual. Corrija la causa y lance una ejecución nueva.</p>{% endif %}
-    <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Código <span class="mono">{{ run_error.code }}</span></p></details>
+    <details class="pred-details pred-details--inline">
+      <summary>Detalle técnico</summary>
+      {% if run_error.detail and run_error.cataloged %}<p class="pred-meta">{{ run_error.detail }}</p>{% endif %}
+      <p class="pred-meta">Código <span class="mono">{{ run_error.code }}</span></p>
+    </details>
   </div>
   {% endif %}
   {% if actions.nothing_to_compare %}
@@ -86,11 +90,12 @@
   {% if run.estado == "pendiente" and worker == "stopped" and not control_reason %}
   <p class="pred-note">En cola: el procesador de ejecuciones de esta instalación se detuvo, así que nadie atiende la cola. El registro de la aplicación dice por qué.</p>
   {% elif run.estado == "pendiente" and worker == "off" and not control_reason %}
-  <p class="pred-note">En cola: esta instalación no procesa ejecuciones por sí sola. Para que empiece, quien administra PRED debe iniciar el procesador de ejecuciones con <span class="mono">make worker</span>.</p>
+  <p class="pred-note">En cola: esta instalación no procesa ejecuciones por sí sola. Para que empiece, quien administra PRED debe iniciar el procesador de ejecuciones.</p>
+  <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Comando: <span class="mono">make worker</span></p></details>
   {% elif run.estado == "pendiente" and not control_reason %}
   <p class="pred-note">En cola: empezará cuando termine la ejecución anterior.</p>
   {% endif %}
-  {% if run.estado == "detenida" and not (progress and progress.tareas_total) %}
+  {% if run.estado == "detenida" and not (progress and progress.tareas_total) and not actions.offers_resume %}
   <p class="pred-note pred-note--muted">La ejecución se detuvo antes de crear tareas. Revise el registro del motor (<span class="mono">motor.log</span> en la carpeta de la ejecución) y vuelva a lanzar.</p>
   {% endif %}
 
@@ -185,7 +190,7 @@
       <td class="wrap">
         {% if item.error %}
         <strong>{{ item.error.title }}</strong>
-        {% if item.error.action %}<span class="pred-subvalue pred-cause">{{ item.error.action }}</span>{% endif %}
+        {% if item.error.action and not actions.nothing_to_compare %}<span class="pred-subvalue pred-cause">{{ item.error.action }}</span>{% endif %}
         <details class="pred-details pred-details--inline">
           <summary>Detalle técnico</summary>
           {% if item.error.detail %}<p>{{ item.error.detail }}</p>{% endif %}

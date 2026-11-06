@@ -47,7 +47,7 @@
           {% for code, label in family_choices %}
           <label class="pred-field__check" for="fam-{{ code }}">
             <input id="fam-{{ code }}" type="checkbox" name="families" value="{{ code }}"{% if form_errors.get('families') %} aria-invalid="true"{% endif %}{% if code in form.families %} checked{% endif %}>
-            <span>{{ label }}{% if code == "foundation" %}<span class="pred-subvalue">Necesita el modelo Chronos-2 instalado en el equipo del motor; si falta, sus tareas fallan con un aviso.</span>{% endif %}</span>
+            <span>{{ label }}{% if code == "foundation" %}<span class="pred-subvalue">Necesita el modelo Chronos-2 instalado en el equipo del motor; si falta, la ejecución se detiene al empezar y ninguna familia se ejecuta.</span>{% endif %}</span>
           </label>
           {% endfor %}
           {% if form_errors.get("families") %}<p class="pred-field__error" id="families-error"><svg aria-hidden="true"><use href="#i-x-circle"></use></svg><span>{{ form_errors["families"] }}</span></p>{% endif %}

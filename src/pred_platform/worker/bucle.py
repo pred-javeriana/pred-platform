@@ -226,7 +226,7 @@ class Worker:
                 run.id,
                 estado="detenida",
                 error=platform_error(
-                    "platform.artifact_missing",
+                    "platform.input_missing",
                     "La ingesta no tiene Parquet publicado ni corte t*; vuelva a ingerirla.",
                 ),
             )
@@ -239,7 +239,7 @@ class Worker:
                 conn,
                 run.id,
                 estado="detenida",
-                error=platform_error("platform.artifact_missing", f"No existe {parquet}."),
+                error=platform_error("platform.input_missing", f"No existe {parquet}."),
             )
             return
 

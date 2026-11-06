@@ -159,7 +159,7 @@ def test_an_engine_without_the_file_leaves_the_run_unaffected(
     assert doc.availability.status == "unavailable"
     assert "no la entrega" in (doc.availability.detail or "")
     assert doc.run_id == "1" and doc.items == []
-    with pytest.raises(ArtifactMissing, match="No hay selección del SKU 'FIL-0001'"):
+    with pytest.raises(ArtifactMissing, match="No hay selección del SKU «FIL-0001»"):
         env.repo().get_sku_selection(RUN, "FIL-0001")
 
 
@@ -426,10 +426,10 @@ def test_unknown_runs_and_skus_are_missing_and_no_run_is_an_empty_state(env: Env
         "unavailable",
         "no_data",
     )
-    with pytest.raises(ArtifactMissing, match="No existe la ejecución '9'"):
+    with pytest.raises(ArtifactMissing, match="No existe la ejecución «9»"):
         repo.get_sku_selection("9", "FIL-0001")
     enqueue_run(env.settings, env.ingest_id, WITHOUT_FOUNDATION)
-    with pytest.raises(ArtifactMissing, match="No existe la ejecución '9'"):
+    with pytest.raises(ArtifactMissing, match="No existe la ejecución «9»"):
         repo.list_sku_selections("9")
 
 

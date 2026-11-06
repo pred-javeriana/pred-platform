@@ -288,3 +288,19 @@ def test_durations_read_at_a_glance() -> None:
     assert format_duration(3600 + 5 * 60) == "1 h 05 min"
     assert format_duration(2 * 86400 + 3 * 3600) == "2 d 3 h"
     assert format_duration(-3) == "0 s"
+
+
+def test_ayudas_de_estado_en_lenguaje_llano() -> None:
+    # Issue #228
+    assert describe_status("task", "no_ejecutable").hint == (
+        "El motor no ejecutó o no comparó este modelo para este producto; la causa de la fila dice "
+        "por qué."
+    )
+    # Issue #174
+    assert describe_status("run", "completada_con_fallos").hint == (
+        "Terminó; algunas tareas de modelos fallaron o no se pudieron ejecutar."
+    )
+    # Issue #173
+    assert describe_status("verdict", "FALLO_TECNICO").hint == (
+        "El modelo campeón o todos los modelos candidatos no dieron un pronóstico de prueba."
+    )

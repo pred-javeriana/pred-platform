@@ -247,7 +247,7 @@ def test_a_file_from_another_ingestion_imports_the_settings_but_chooses_no_data(
 
     text = _text(page.text)
     assert page.status_code == 200
-    assert "no están cargados en esta plataforma" in text and "aaaaaaaaaaaa" in text
+    assert "no están cargados en esta plataforma" in text and "aaaaaaaaaaaa" not in text
     assert re.search(r'name="horizon"[^>]*value="2"', page.text)  # los ajustes sí se importan
     # Ninguna ingesta queda elegida: hay que escoger y la opción vacía lo dice.
     assert '<option value="" selected disabled>Elija un archivo de datos</option>' in page.text

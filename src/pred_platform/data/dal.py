@@ -28,7 +28,12 @@ from pydantic import ValidationError
 
 from pred_platform.config import DataSource
 from pred_platform.contract import CONTRACT_VERSION, models
-from pred_platform.contract.errors import ArtifactMissing, EngineUnavailable, InvalidQuery
+from pred_platform.contract.errors import (
+    ArtifactMissing,
+    EngineUnavailable,
+    InvalidQuery,
+    NotFound,
+)
 from pred_platform.contract.models import CapabilityId
 from pred_platform.dal import lectura
 from pred_platform.dal.importacion import PANEL_COLUMNS, declares_synthetic
@@ -395,7 +400,7 @@ class DalRepository(M3DalSource):
                     ),
                     tasks=[],
                 )
-            raise ArtifactMissing(f"No existe la ejecución {run_id!r}")
+            raise NotFound(f"No existe la ejecución «{run_id}»")
 
         rows, total = lectura.list_tasks(
             self.db_path,
@@ -497,7 +502,7 @@ class DalRepository(M3DalSource):
                     items=[],
                     page=empty_page,
                 )
-            raise ArtifactMissing(f"No existe la ejecución {run_id!r}")
+            raise NotFound(f"No existe la ejecución «{run_id}»")
 
         rows, total = lectura.list_selections(
             self.db_path,
@@ -521,8 +526,12 @@ class DalRepository(M3DalSource):
                         detail=(
                             "La selección por SKU estará disponible cuando termine la ejecución."
                             if pending
-                            else "La ejecución no dejó la selección por SKU: el motor que la "
-                            "corrió no la entrega o su archivo no se pudo importar."
+                            else (
+                                "La ejecución se detuvo antes de dejar la selección por SKU."
+                                if run.estado == "detenida"
+                                else "La ejecución no dejó la selección por SKU: el motor que la "
+                                "corrió no la entrega o su archivo no se pudo importar."
+                            )
                         ),
                     )
                 ),
@@ -552,12 +561,12 @@ class DalRepository(M3DalSource):
     ) -> models.SkuSelection:
         run = lectura.get_run(self.db_path, run_id)
         if run is None:
-            raise ArtifactMissing(f"No existe la ejecución {run_id!r}")
+            raise NotFound(f"No existe la ejecución «{run_id}»")
         detail = lectura.get_selection(
             self.db_path, run.id, sku_id, include_windows=include_windows
         )
         if detail is None:
-            raise ArtifactMissing(f"No hay selección del SKU {sku_id!r} en la ejecución {run_id!r}")
+            raise NotFound(f"No hay selección del SKU «{sku_id}» en la ejecución «{run_id}»")
         topology = lectura.get_topology_row(self.db_path, run.ingest_sha256, sku_id)
         return models.SkuSelection(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]

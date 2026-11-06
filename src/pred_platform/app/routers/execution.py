@@ -225,7 +225,7 @@ def _context(
         # Un número de ejecución que no existe se dice con ese número, no con el error genérico.
         "missing_run": query.ejecucion
         if status_error is not None
-        and status_error["code"] == "platform.artifact_missing"
+        and status_error["code"] in ("platform.not_found", "platform.artifact_missing")
         and query.ejecucion != LATEST
         else None,
         "run": run,
@@ -755,7 +755,7 @@ def exportar_configuracion(request: Request) -> Response:
     detail = lectura.get_run(settings.db_path, reference)
     if detail is None:
         return PlainTextResponse(
-            f"No existe la ejecución {reference!r}: no hay una configuración que exportar.\n",
+            f"No existe la ejecución «{reference}»: no hay una configuración que exportar.\n",
             status_code=404,
         )
     versions = {
@@ -789,20 +789,19 @@ def importar_configuracion(
         return _render_ajustes(request, repository, import_error=problem, status_code=400)
     known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
     form = FormResult(imported.values, None, {})
-    origin = f" de la ejecución {imported.source_run_id}" if imported.source_run_id else ""
     if imported.ingest_sha256 in known:
         form.values["ingest_id"] = imported.ingest_sha256
         notice = (
             "success",
-            f"Configuración importada{origin}. Revise los valores y continúe para lanzarla.",
+            "Configuración importada. Revise los valores y continúe para lanzarla.",
         )
     else:
         form.values["ingest_id"] = ""
         notice = (
             "warning",
-            f"Configuración importada{origin}, pero sus datos no están cargados en esta "
-            f"plataforma (ingesta {(imported.ingest_sha256 or '')[:12]}…). Elija otro archivo "
-            "antes de lanzar: los resultados solo son comparables sobre los mismos datos.",
+            "Configuración importada, pero sus datos no están cargados en esta plataforma. "
+            "Cargue ese archivo en Datos o elija otro antes de lanzar: los resultados solo son "
+            "comparables sobre los mismos datos.",
         )
     # El borrador guarda lo importado: salir de Ajustes no lo pierde (Revisar lo valida).
     save = read_draft(request).with_values(form.values["ingest_id"] or None, form.values)
