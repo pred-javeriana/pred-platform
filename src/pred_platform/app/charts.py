@@ -652,7 +652,7 @@ def product_forecast_key_svg(champion_family: str, alt_family: str | None = None
 def product_models_svg(
     verdict: models_v2.M3Verdict,
     champion_candidate: str | None,
-    interval: tuple[float, float, float | None] | None = None,
+    interval: tuple[float, float | None, float | None] | None = None,
 ) -> str:
     """Gráfico de puntos en escala logarítmica para todos los modelos de un producto."""
     if not verdict.modelos_evaluados:

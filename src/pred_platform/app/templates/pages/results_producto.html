@@ -5,14 +5,19 @@
 {% from "components/terms.html" import day, gloss, when %}
 {% from "components/tables.html" import table_start, table_end %}
 
+{% macro r_interval(row, exact=false) -%}
+{% set d = gap_digits(row.superior, row.inferior_cola) if (row.inferior_cola is not none and row.superior is not none) else 3 -%}
+[{{ exact_text(row.inferior) if exact else ratio_text(row.inferior) }}; {% if row.superior is none %}+∞){% else %}{{ exact_text(row.superior) if exact else (format_decimal(row.superior, d) if row.inferior_cola is not none else ratio_text(row.superior)) }}]{% endif %}{% if row.inferior_cola is not none %} o [{{ exact_text(row.inferior_cola) if exact else format_decimal(row.inferior_cola, d) }}; +∞){% endif %}
+{%- endmacro %}
+
 {% block title %}Producto {{ sku_id }} · Resultados · PRED{% endblock %}
 
 {% block content %}
-  <nav class="pred-breadcrumb wz-crumb" aria-label="Ruta">
+  <nav class="pred-breadcrumb" aria-label="Ruta">
     <ol>
       <li><a href="{{ results_href }}">Resultados</a></li>
       <li><a href="{{ list_href }}">SKU</a></li>
-      <li aria-current="page"><span class="wz-mono">{{ sku_id }}</span></li>
+      <li aria-current="page"><span class="mono">{{ sku_id }}</span></li>
     </ol>
   </nav>
 
@@ -38,8 +43,9 @@
     {% if verdict %}
     <section class="wz-answer pred-decision" id="campeon" aria-label="Respuesta para este producto" aria-labelledby="titulo-decision">
       <div class="wz-answer__top">
-        <p class="wz-answer__q">Producto <span class="wz-mono">{{ sku_id }}</span> · {{ class_label }}: {{ class_hint }}</p>
+        <p class="wz-answer__q">Producto <span class="mono wz-mono">{{ sku_id }}</span>{% if selection %} · <span title="Perfil de demanda: {{ profile_label(selection.profile) }}">Clase de demanda: {{ sku_class_label(selection.sku_class) }}</span>. {{ sku_class_term(selection.sku_class).hint }}{% else %} · {{ class_label }}: {{ class_hint }}{% endif %}</p>
       </div>
+      <p class="pred-eyebrow">Decisión de la evaluación final</p>
       <div class="pred-decision__head" style="margin-bottom: var(--space-2);">
         <h2 id="titulo-decision" title="{{ family_term(verdict.familia_campeona).hint }}">{{ family_label(verdict.familia_campeona) }}</h2>
         {{ status_indicator(describe_status("verdict", verdict.veredicto), explain=true) }}
@@ -88,20 +94,34 @@
       <details class="pred-details pred-details--inline" style="margin-top: 12px;"><summary>Detalle técnico del veredicto</summary>
         <p class="pred-meta">{{ verdict.justificacion }}</p>
         <dl class="pred-kpis pred-kpis--metrics" id="numeros-decisivos">
-          <div class="pred-kpis__item"><dt>{{ gloss("r") }} frente a la línea base</dt><dd{% if verdict.razon_sn is not none %} title="{{ exact_text(verdict.razon_sn) }}"{% endif %}>{% if verdict.razon_sn is not none %}{{ ratio_text(verdict.razon_sn) }}{% else %}no calculable{% endif %}</dd><p class="pred-kpis__note">Menos de 1: menos error que la línea base.</p></div>
+          <div class="pred-kpis__item">
+            <dt>{{ gloss("r") }} frente a la línea base</dt>
+            <dd>
+              {% if verdict.razon_sn is not none %}<span title="{{ exact_text(verdict.razon_sn) }}">{{ ratio_text(verdict.razon_sn) }}</span>{% else %}no calculable{% endif %}
+              <span class="pred-kpis__note" id="intervalo-r">
+                {% if interval %}
+                Intervalo de r <span title="{{ r_interval(interval, exact=true) }}">{{ r_interval(interval) }}</span>
+                {% elif interval_error %}
+                No fue posible leer el intervalo de r.
+                {% else %}
+                Intervalo de r no publicado.
+                {% endif %}
+              </span>
+            </dd>
+            <dd class="pred-kpis__note">Menos de 1: menos error que la línea base.</dd>
+          </div>
           <div class="pred-kpis__item"><dt>Ventanas de prueba válidas</dt><dd>{{ format_count(verdict.n_ventanas) }} <span class="pred-kpis__note">mínimo {{ format_count(verdict.n_min) }}</span></dd></div>
-          <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd><p class="pred-kpis__note">Parte del periodo de prueba con pronóstico.</p></div>
+          <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd><dd class="pred-kpis__note">Parte del periodo de prueba con pronóstico.</dd></div>
           <div class="pred-kpis__item"><dt>Significancia</dt><dd class="pred-kpis__text">{{ significance_text(verdict) }}</dd></div>
+          <div class="pred-kpis__item"><dt>Pierde frente a la línea base</dt><dd class="pred-kpis__text">{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd></div>
+          <div class="pred-kpis__item"><dt>Comparación incompleta</dt><dd class="pred-kpis__text">{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd></div>
         </dl>
-        <dl class="pred-kv">
-          <dt>Pierde frente a la línea base</dt><dd>{% if verdict.pierde_frente_a_linea_base is none %}no informado{% elif verdict.pierde_frente_a_linea_base %}sí{% else %}no{% endif %}</dd>
-          <dt>Comparación incompleta</dt><dd>{{ "sí" if verdict.comparacion_incompleta else "no" }}</dd>
-        </dl>
+        {% if interval %}<p class="pred-meta" id="intervalo-r-explicacion">El intervalo de r reúne los valores compatibles con los datos de este producto según la prueba {{ gloss("HLN-DM") }}, sin el ajuste {{ gloss("BH") }}. La significancia de arriba sí aplica ese ajuste, así que las dos lecturas pueden no coincidir.</p>{% endif %}
         <h3>Significancia</h3>
         <p class="pred-meta">Prueba {{ gloss("HLN-DM") }} del campeón frente a la línea base, con el ajuste {{ gloss("BH") }} dentro de cada clase de demanda. Un estadístico negativo favorece a la campeona. Se informa aparte del veredicto: «{{ verdict_label("VALIDADO") }}» no equivale a significativo.</p>
-        <dl class="pred-kv" id="significancia">
+        <dl class="pred-facts pred-decision__test" id="significancia">
           {% for label, value in significance_items(verdict) %}
-          <dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>
+          <div><dt>{{ label }}</dt><dd class="mono">{{ value }}</dd></div>
           {% endfor %}
         </dl>
       </details>
@@ -117,9 +137,12 @@
     <section class="wz-panel pred-decision" id="campeon" aria-labelledby="titulo-decision">
       <div class="pred-decision__head">
         <h2 id="titulo-decision">Sin veredicto</h2>
-        {{ status_indicator(describe_status("verdict", "pendiente"), explain=true) }}
+        {{ status_indicator(describe_status("task", "pendiente"), explain=true) }}
         <span class="pred-meta">Esta ejecución todavía no tiene evaluación final.</span>
       </div>
+      {% if selection %}
+      <p title="Perfil de demanda: {{ profile_label(selection.profile) }}">Clase de demanda: {{ sku_class_label(selection.sku_class) }}. {{ sku_class_term(selection.sku_class).hint }}</p>
+      {% endif %}
       <p class="pred-note pred-note--muted">{% if m3 and m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}La evaluación final no publicó un veredicto para este producto.{% endif %} Abajo está la evidencia de cada familia.</p>
     </section>
     {% endif %}
@@ -165,7 +188,7 @@
     {% if demand_blocks and topology %}
     <section class="wz-panel">
       <h2>Demanda del producto por bloque</h2>
-      <p class="wz-muted wz-rule">Antes de la fecha de corte: {{ format_count(topology.n_periods) }} días, {{ format_decimal((topology.n_periods - topology.n_positive) / topology.n_periods * 100, 1) }} % sin venta · ADI {{ format_decimal(topology.adi, 2) }} · CV² {{ format_decimal(topology.cv2, 2) }}</p>
+      <p class="wz-muted wz-rule">Antes de la fecha de corte: {{ format_count(topology.n_periods) }} días, {{ format_decimal(((topology.n_periods - topology.n_positive) / topology.n_periods * 100) if topology.n_periods else 0.0, 1) }} % sin venta · ADI {{ format_decimal(topology.adi, 2) }} · CV² {{ format_decimal(topology.cv2, 2) }}</p>
       <div class="pred-table-wrap" role="region" aria-label="Demanda del producto por bloque" tabindex="0">
         <table class="wz-ptable wz-blocks">
           <thead>
@@ -188,13 +211,13 @@
             </tr>
             <tr>
               <td>Venta diaria promedio</td>
-              <td class="wz-num">{{ format_decimal(demand_blocks.selection.mean_demand, 1) }} u/día</td>
-              <td class="wz-num">{{ format_decimal(demand_blocks.test.mean_demand, 1) }} u/día</td>
+              <td class="wz-num">{{ format_decimal(demand_blocks.selection.mean_demand, 1) if demand_blocks.selection.mean_demand is not none else "—" }} u/día</td>
+              <td class="wz-num">{{ format_decimal(demand_blocks.test.mean_demand, 1) if demand_blocks.test.mean_demand is not none else "—" }} u/día</td>
             </tr>
             <tr>
               <td>Venta máxima en un día</td>
-              <td class="wz-num">{{ format_decimal(demand_blocks.selection.max_demand, 0) }} unidades</td>
-              <td class="wz-num">{{ format_decimal(demand_blocks.test.max_demand, 0) }} unidades</td>
+              <td class="wz-num">{{ format_decimal(demand_blocks.selection.max_demand, 0) if demand_blocks.selection.max_demand is not none else "—" }} unidades</td>
+              <td class="wz-num">{{ format_decimal(demand_blocks.test.max_demand, 0) if demand_blocks.test.max_demand is not none else "—" }} unidades</td>
             </tr>
             <tr>
               <td>Pronóstico promedio (campeona)</td>

@@ -57,6 +57,34 @@ class DemandBlockStats:
     fc: float | None
     alt_fc: float | None = None
 
+    @property
+    def n_days(self) -> int:
+        return self.n
+
+    @property
+    def n_zero_days(self) -> int:
+        return self.zero
+
+    @property
+    def zero_share(self) -> float:
+        return (self.zero / self.n) if self.n > 0 else 0.0
+
+    @property
+    def mean_demand(self) -> float | None:
+        return self.mean
+
+    @property
+    def max_demand(self) -> float | None:
+        return self.max
+
+    @property
+    def mean_forecast_champ(self) -> float | None:
+        return self.fc
+
+    @property
+    def mean_forecast_alt(self) -> float | None:
+        return self.alt_fc
+
 
 @dataclass(frozen=True, slots=True)
 class ProductDemandBlocks:

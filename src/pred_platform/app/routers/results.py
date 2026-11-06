@@ -677,9 +677,7 @@ def _producto_detalle_page(
     forecast_svg = champion_forecast_svg(forecast) if (forecast and not forecast.problem) else ""
 
     models_svg = (
-        product_models_svg(verdict, verdict.candidato_campeon, interval_tuple)
-        if verdict
-        else ""
+        product_models_svg(verdict, verdict.candidato_campeon, interval_tuple) if verdict else ""
     )
     models_legend = product_models_legend_svg() if verdict else ""
     models_key = product_models_key_svg() if verdict else ""
