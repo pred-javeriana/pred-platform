@@ -3,12 +3,13 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, test } from "node:test";
 
 let chrome, socket, profile;
 let sequence = 0;
 const pending = new Map();
 const listeners = new Map();
+const browserErrors = [];
 
 function event(name) {
   return new Promise(resolve => {
@@ -79,12 +80,16 @@ before(async () => {
       if (message.error) callback.reject(new Error(JSON.stringify(message.error)));
       else callback.resolve(message.result);
     } else {
+      if (message.method === "Runtime.exceptionThrown") {
+        browserErrors.push(message.params.exceptionDetails);
+      }
       const callbacks = listeners.get(message.method) || [];
       listeners.delete(message.method);
       callbacks.forEach(resolve => resolve(message.params));
     }
   });
   await command("Page.enable");
+  await command("Runtime.enable");
   await command("Network.enable");
   await command("Emulation.setVirtualTimePolicy", { policy: "pause", initialVirtualTime: Date.now() / 1000 });
 }, { timeout: 15000 });
@@ -97,6 +102,10 @@ after(async () => {
     await exited;
   }
   if (profile) await rm(profile, { recursive: true, force: true });
+});
+
+afterEach(() => {
+  assert.deepEqual(browserErrors.splice(0), [], "La página no debe lanzar errores de JavaScript");
 });
 
 test("La vista de prueba permanece fija y no inventa un fallo del servidor", { timeout: 15000 }, async () => {
