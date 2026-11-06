@@ -217,7 +217,8 @@ uv run python -m pred_platform.evidence --db path/to/pred.db \
 ```
 
 For a provisional two-seed check, pass only seeds 0 and 1 and add `--preview`.
-The result then carries `complete: false` and is not a final-group result.
+The result then carries a top-level `complete: false`, which covers every number in the file;
+it is not a final-group result.
 
 ## Importing ingest reports
 
