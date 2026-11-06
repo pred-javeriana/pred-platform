@@ -587,6 +587,12 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
         ("trials", "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
         ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
+        ("seed", "+" + "9" * 4301, "Semilla: el número es demasiado grande."),
+        ("seed", "\u0669" * 4301, "Semilla: el número es demasiado grande."),
+        ("trials", "+" + "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        ("trials", "\u0669" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        ("seed", "-" + "9" * 4301, "Semilla: debe ser cero o más."),
+        ("trials", "-" + "9" * 4301, "Ensayos por estudio: debe ser mayor que cero."),
     ],
 )
 def test_a_number_sqlite_cannot_store_is_a_field_error_not_a_server_error(
@@ -600,6 +606,17 @@ def test_a_number_sqlite_cannot_store_is_a_field_error_not_a_server_error(
     assert message in _text(response.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
     assert _launch(client, env, **{field: str(2**63 - 1)}).status_code == 303
+
+
+def test_leading_zeros_do_not_make_a_number_too_big(env: Env) -> None:
+    response = _launch(_dal_client(env), env, seed="0" * 20 + "42", trials="0" * 20 + "3")
+
+    assert response.status_code == 303
+    ((seed, parametros),) = env.rows(
+        "SELECT e.seed, c.parametros FROM ejecuciones e "
+        "JOIN configuraciones c ON c.id = e.configuracion_id"
+    )
+    assert (seed, json.loads(parametros)["trials"]) == (42, 3)
 
 
 @pytest.mark.parametrize("ingest_id", ["deadbeef", "z" * 64, "../" * 3])

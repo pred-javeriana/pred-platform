@@ -170,9 +170,16 @@ class FormResult:
     errors: dict[str, str]
 
 
-def _too_many_digits(raw: str) -> bool:
-    """ASCII digits longer than ``SQLITE_MAX_INTEGER``: ``int`` refuses more than 4300 digits."""
-    return raw.isascii() and raw.isdigit() and len(raw) > len(str(SQLITE_MAX_INTEGER))
+def _form_int(raw: str) -> int:
+    """``int(raw)``, but an integer with more significant digits than ``SQLITE_MAX_INTEGER`` is
+    one past that limit, with its sign, because ``int`` refuses more than 4300 digits."""
+    text = raw.strip()
+    digits = text[1:] if text.startswith(("+", "-")) else text
+    if not (digits.startswith("_") or digits.endswith("_") or "__" in digits):
+        significant = digits.replace("_", "").lstrip("0")
+        if significant.isdecimal() and len(significant) > len(str(SQLITE_MAX_INTEGER)):
+            return -(SQLITE_MAX_INTEGER + 1) if text.startswith("-") else SQLITE_MAX_INTEGER + 1
+    return int(raw)
 
 
 def parse_launch_form(
@@ -192,11 +199,8 @@ def parse_launch_form(
     for name, label, minimum in _INT_FIELDS:
         raw = (fields.get(name) or "").strip()
         values[name] = raw
-        if _too_many_digits(raw):
-            errors[name] = f"{label}: el número es demasiado grande."
-            continue
         try:
-            number = int(raw)
+            number = _form_int(raw)
         except ValueError:
             errors[name] = f"{label}: escriba un número entero."
             continue
@@ -208,11 +212,9 @@ def parse_launch_form(
             continue
         numbers[name] = number
     trials: int | None = None
-    if _too_many_digits(values["trials"]):
-        errors["trials"] = "Ensayos por estudio: el número es demasiado grande."
-    elif values["trials"]:
+    if values["trials"]:
         try:
-            trials = int(values["trials"])
+            trials = _form_int(values["trials"])
         except ValueError:
             errors["trials"] = "Ensayos por estudio: escriba un número entero o déjelo vacío."
         else:
