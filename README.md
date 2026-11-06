@@ -186,6 +186,39 @@ precalculated verdicts, metrics, HLN-DM/BH, observed reserve demand and champion
 (`m3_campeones`, including whole-portfolio rows); it does not evaluate models. See
 [the M3 data interface](docs/features/evaluacion/README.md).
 
+### Final seed-group evidence
+
+**Resultados → Grupo de semillas** (`/resultados/grupo`) combines explicitly selected
+PUBLICADA runs for seeds 0, 1 and 2. A seed with more than one publication requires a choice.
+The reader checks real-data provenance, ingestion, product classes, code, policy and reserve
+blocks before combining the runs. It rejects differences other than the seed.
+
+The calculation follows `pred-docs/memoria/tesis/sections/diseñoSolucion.tex`,
+«Grupo final de corridas», and ADR-03-012 decision 10: the largest raw bilateral HLN-DM
+p per product, then one BH correction per demand class at the published `alfa_dm`.
+All valid tests enter BH regardless of direction. A significant improvement additionally
+requires a negative differential in every seed. Missing tests retain their source causes.
+
+Lumpy shows the published confirmation medians on the full population and the same medians
+recomputed on a fixed common population, against Seasonal Naive and SARIMA. Each comparison
+requires the policy's minimum common test windows in every run. Medians follow confirmation's
+log scale, including zero-loss limits. Both ranges are descriptive, without subtraction or a
+stability threshold. The reader reconciles full-population calculations with the published
+confirmation before reporting the common-population comparison.
+
+The calculation runs on read in one read-only snapshot. It adds no table, migration or file,
+does not start the engine, and leaves schema version 12 unchanged. The page links to a JSON
+download with source run IDs, raw p-values and directions, and candidate/window keys for lumpy.
+To read the group without starting the server, after seed 2 publishes:
+
+```bash
+uv run python -m pred_platform.evidence --db path/to/pred.db \
+  --run <M3-seed-0> --run <M3-seed-1> --run <M3-seed-2>
+```
+
+For a provisional two-seed check, pass only seeds 0 and 1 and add `--preview`.
+The result then carries `complete: false` and is not a final-group result.
+
 ## Importing ingest reports
 
 M1 ingestion remains a file-based handoff. Every ingestion (`pred-engine classify`/`ingest`/`run`) leaves

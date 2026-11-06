@@ -12,6 +12,7 @@
       <p>Lo que M3 decidió para cada producto, de la vista general al detalle de un SKU.</p>
     </div>
     <div class="pred-page-header__actions">
+      {{ button("Grupo de semillas", variant="subtle", href="/resultados/grupo") }}
       {% if run and run.ejecucion %}{{ button("Ver la ejecución", variant="subtle", href="/ejecucion?ejecucion=" ~ run.ejecucion.id) }}{% endif %}
       {% include "partials/results_action.html" %}
     </div>

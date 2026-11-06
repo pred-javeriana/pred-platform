@@ -100,12 +100,20 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
 - **Speed.** On a local SQLite the 1,000-SKU export took about 0.03 s and the 3,499-SKU one about 0.1
   to 0.2 s (in-process, three runs each; the formal measurement is task B1).
 
+**Grupo de semillas** is a separate compact view at `/resultados/grupo`, linked from the
+Resultados header. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2.
+It shows group significance by class, full/common-population lumpy medians and ranges, a query
+for one SKU's three source tests, and a JSON download with all values and source row keys.
+Until all three publications are selected, it shows no final-group numbers. The calculation
+runs on read without new tables or an engine change. See [the seed-group rules and command](../../../README.md#final-seed-group-evidence).
+
 ## How
 
 Views call only `DataRepository` (`list_sku_selections`, `get_sku_selection`, `get_run_status` for the
 run header, `list_m3_runs`, `get_m3_run` and `get_m3_evidence` for M3's decision,
 `get_m3_categories` and `get_m3_confirmation` for Por clase,
-`get_capabilities` for the action). Filters, sort and paging are **delegated** to the
+`get_capabilities` for the action, and `list_m3_group_runs` / `get_m3_group` for the seed group).
+Filters, sort and paging are **delegated** to the
 repository and the page shows whatever it returned. The views only order published rows to show
 them (classes, competitors, evaluated models) and format published numbers, for example a share or a
 win percentage from published counts; they never filter rows or recompute a statistic, and the

@@ -33,6 +33,7 @@ from pred_platform.data.m3_query import M3Query
 from pred_platform.data.query import DEFAULT_SIZE
 from pred_platform.data.repository import M3DateRange, M3ReserveBlocks
 from pred_platform.data.scenarios import Scenario
+from pred_platform.evidence.models import EvidenceInvalid, GroupEvidence, GroupRunOption
 
 
 @cache
@@ -70,6 +71,12 @@ class M3FixtureSource:
     def get_m3_intervals(self, run_id: str, skus: Sequence[str]) -> list[M3Interval]:
         """The contract's fixture publications contain no per-product interval rows."""
         return []
+
+    def list_m3_group_runs(self) -> tuple[GroupRunOption, ...]:
+        return ()
+
+    def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
+        raise EvidenceInvalid("Los datos de prueba no contienen un grupo final de semillas.")
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """Los ejemplos v2 no tienen la confirmación del campeón: el contrato no la describe."""
