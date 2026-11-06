@@ -171,6 +171,17 @@ def _read_only_copy(tmp_path: Path, journal: str) -> Settings:
     return Settings(data_root=tmp_path / "data", db_path=copy)
 
 
+def test_a_database_path_that_names_a_folder_stops_startup_saying_so(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "data", db_path=tmp_path)
+
+    with (
+        pytest.raises(DatabaseUnavailable, match="nombra la carpeta") as raised,
+        TestClient(create_app(settings)),
+    ):
+        pass
+    assert "journal_mode" not in str(raised.value)
+
+
 def test_a_wal_copy_in_a_read_only_folder_stops_startup_with_what_to_do(tmp_path: Path) -> None:
     settings = _read_only_copy(tmp_path, "WAL")
     try:

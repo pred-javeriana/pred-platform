@@ -525,6 +525,26 @@ def test_a_class_larger_than_a_topology_page_is_named_whole_and_folded(env: Env)
     assert "INT-0000" in text and "INT-0550" in text and " más" not in text
 
 
+def test_the_refusal_counts_only_the_skus_long_enough_to_reach_l2(env: Env) -> None:
+    row = {"n_periods": 200, "n_positive": 50, "adi": 3.0, "cv2": 2.0, "sku_class": "lumpy"}
+    metrics = [
+        {**row, "sku_id": "LIS-0001", "cv2": 0.0, "adi": 1.0, "sku_class": "smooth"},
+        {**row, "sku_id": "GRU-0001"},
+        {**row, "sku_id": "GRU-0002"},
+        {**row, "sku_id": "GRU-0003", "n_periods": 24},  # shorter than the 43 days needed
+    ]
+    ingest = _ingest_with(env, metrics)
+
+    response = _launch(
+        _dal_client(env), env, ingest_id=ingest, families=["ml", "dl"], **LONG_ENOUGH
+    )
+    text = _text(response.text)
+
+    assert "2 SKU Lumpy (Grumosa) quedan sin modelo: agregue Clásica y Fundacional." in text
+    assert "3 SKU Lumpy" not in text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
 def test_the_operator_launches_anyway_after_the_warning(env: Env) -> None:
     client = _dal_client(env)
     warned = _launch(client, env, families=["classical", "ml"], **LONG_ENOUGH)
@@ -955,8 +975,54 @@ def test_a_failed_stage_is_named_and_can_be_resumed(
 
     page = client.get("/ejecucion?ejecucion=1").text
 
-    assert "La etapa L3 falló." in _text(page) and "etapa platform" not in page
+    text = _text(page)
+    assert "La etapa L3 falló." in text and "etapa platform" not in page
+    assert text.count("La etapa L3 falló") == 1 and "ninguna unidad evaluó" in text
     assert _resume_button(page) == "enabled"
+
+
+def _stopped_in_l2(env: Env, monkeypatch: pytest.MonkeyPatch, message: str) -> TestClient:
+    """A run stopped because its whole L2 stage failed with the engine's ``message``."""
+    _scenario(monkeypatch, "stage_fails")
+    client = _dal_client(env)
+    _launch(client, env)
+    env.worker().run_next()
+    error = {
+        "code": "pipeline.stage_failed",
+        "stage": "L2",
+        "severity": "error",
+        "detail": message,
+        "retryable": False,
+    }
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ejecuciones SET estado='detenida', error_json=?", (json.dumps(error),))
+    return client
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "RouterConfigurationError: la politica '2.2.0-initial' no produjo decisiones",
+        "L2 sin resultados (0 unidades, 3 SKU excluidos): FIL-0001: historia insuficiente",
+    ],
+)
+def test_an_l2_failure_that_a_resume_repeats_is_not_offered_again(
+    env: Env, monkeypatch: pytest.MonkeyPatch, message: str
+) -> None:
+    page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
+
+    assert 'id="accion-reanudar"' not in page
+    assert "Reanudar no se ofrece: la corrida fallaría igual." in _text(page)
+
+
+def test_an_l2_failure_of_some_units_can_still_be_resumed(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    message = "L2 sin resultados (6 unidades, 0 SKU excluidos): FIL-0001/ml: MemoryError"
+    page = _stopped_in_l2(env, monkeypatch, message).get("/ejecucion?ejecucion=1").text
+
+    assert _resume_button(page) == "enabled"
+    assert "fallaría igual" not in page
 
 
 def test_a_run_whose_families_compare_nothing_is_not_offered_again(

@@ -106,6 +106,11 @@ def _submit(
     try:
         report = repository.submit_ingest(file_name, content, confirm_overwrite=confirm_overwrite)
     except DataLayerError as exc:
+        if upload_blocked(request) is not None:
+            # The database became read-only while the engine ran, so its report could not be
+            # saved: the page gives that reason. The report stays under the data root and is
+            # imported at the next start with a writable database.
+            return _render_page(request, repository)
         return _render_page(request, repository, layer_error=error_view(exc))
     except InvalidQuery as exc:
         return _render_page(request, repository, form_error=str(exc))

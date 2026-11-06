@@ -208,13 +208,16 @@ def finalize(
 
     if failed:
         stage = failed[0]
-        error = platform_error(
-            "pipeline.stage_failed",
-            f"La etapa {stage.get('id')} falló: {stage.get('message', '')}".strip(),
-        )
-        # The page titles the error with its stage («La etapa L2 falló.»), not with "platform".
+        message = str(stage.get("message") or "").strip()
         if stage.get("id") in _ENGINE_STAGES:
+            # The page titles the error with its stage («La etapa L2 falló.»), so the detail is
+            # the engine's message alone.
+            error = platform_error("pipeline.stage_failed", message or "Sin mensaje del motor.")
             error["stage"] = stage["id"]
+        else:
+            error = platform_error(
+                "pipeline.stage_failed", f"La etapa {stage.get('id')} falló: {message}".strip()
+            )
         return _stop(conn, run, reserve, error)
     if not counts:
         return _stop(

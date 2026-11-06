@@ -690,7 +690,8 @@ def test_a_stage_without_results_stops_the_run(env: Env, monkeypatch: pytest.Mon
     estado, error_json = _run_state(env)
     assert estado == "detenida"
     error = json.loads(error_json or "{}")
-    assert error["code"] == "pipeline.stage_failed" and "L3" in error["detail"]
+    assert (error["code"], error["stage"]) == ("pipeline.stage_failed", "L3")
+    assert error["detail"] == "ninguna unidad evaluó"  # the stage is in the title, not repeated
 
 
 def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
@@ -704,8 +705,8 @@ def test_a_fatal_l4_stops_the_run_but_keeps_tasks_and_selection(
     estado, error_json = _run_state(env)
     assert estado == "detenida"
     error = json.loads(error_json or "{}")
-    assert error["code"] == "pipeline.stage_failed"
-    assert "L4" in error["detail"]
+    assert (error["code"], error["stage"]) == ("pipeline.stage_failed", "L4")
+    assert error["detail"] == "evaluación M3 falló: timeout"
     # M3 did not finish: the tasks that completed L2/L3 stay in finalizo_m2, not failed.
     counts = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
     assert counts == {"finalizo_m2": 12}  # 3 SKU × 4 families

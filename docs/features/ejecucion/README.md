@@ -65,6 +65,9 @@ fingerprint (`run.incompatible_config`).
   New attempts follow only new progress events; importing a final trace records its original
   timestamps without presenting it as live work.
   Launching a run identical to an existing one returns that one.
+  The page does not offer Reanudar when a resume would fail the same way: an incompatible
+  identity, families that give no class two to compare, or an L2 stage that failed because the
+  engine's policy gave no decisions or no unit was left to run.
 - **Live view.** The body (`partials/execution_body.html`) polls `/ejecucion/estado` every 2 s while
   the run is in progress; the server answers 286 when it is not, so htmx stops. The task filter form
   is `hx-preserve`d so typing is not lost. The launch form folds away once there is a run to show.

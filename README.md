@@ -137,7 +137,8 @@ To look at the results of a saved database without changing it, serve a copy wit
 permission. The app then shows launching, stopping, resuming and uploading disabled, with the
 reason. It checks the permissions on every request, so a change takes effect without a restart;
 to make the copy writable again, give write permission to its `-wal` and `-shm` files too
-(`chmod 0644 copia/pred.db*`), because reading the copy leaves them read-only as well.
+(`chmod 0644 copia/pred.db*`), because reading the copy leaves them read-only as well. Serve the
+copy as a regular user: root writes a file without write permission.
 
 ```bash
 sqlite3 pred.db ".backup copia/pred.db"   # never cp: the last writes can still be in pred.db-wal

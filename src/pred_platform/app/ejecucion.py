@@ -7,6 +7,7 @@ el contrato ya trae (estados, errores). Las escrituras salen de ``app.state.run_
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -265,8 +266,8 @@ _WINDOW_STEPS = 3
 def history_needed(settings: LaunchSettings) -> int:
     """Los días de historia que el motor exige a un SKU antes del corte con estos ajustes.
 
-    Un SKU con menos días en toda su serie queda excluido con cualquier familia
-    (``eligibility.insufficient_history``): la historia antes del corte es aún más corta.
+    Un SKU con menos días de historia hasta el corte t* (``n_periods``) queda excluido con
+    cualquier familia (``eligibility.insufficient_history``).
     """
     return settings.min_train + settings.horizon + _WINDOW_STEPS * settings.step
 
@@ -320,11 +321,23 @@ def classes_without_family(
     return found
 
 
-def refusal_text(classes: Sequence[SkuClass], by_class: Mapping[SkuClass, int]) -> str:
-    """Por qué el formulario no lanza (:func:`classes_without_family`) y qué familias agregar."""
+def refusal_text(
+    classes: Sequence[SkuClass],
+    by_class: Mapping[SkuClass, int],
+    skus: Mapping[SkuClass, Sequence[TopologyMetrics]],
+    needed: int,
+) -> str:
+    """Por qué el formulario no lanza (:func:`classes_without_family`) y qué familias agregar.
+
+    Cuenta solo los SKU que llegarían a L2: los más cortos que ``needed`` quedan excluidos de
+    todos modos, si se leyeron todas las filas de la clase (``skus``).
+    """
     parts = []
     for sku_class in classes:
         count = by_class.get(sku_class, 0)
+        rows = skus.get(sku_class, ())
+        if len(rows) >= count:
+            count -= len(_short(rows, needed))
         names = [family_label(f) for f in FAMILIES_BY_SKU_CLASS.get(sku_class, ())]
         verb = "queda" if count == 1 else "quedan"
         add = _both(names) if len(names) == 2 else f"dos de {_either(names)}"
@@ -455,6 +468,7 @@ class RunError:
     action: str | None
     code: str
     retryable: bool
+    stage: str | None = None
 
 
 def run_error(info: ErrorInfo | None) -> RunError | None:
@@ -467,6 +481,22 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
         action=error_action(info.code),
         code=info.code,
         retryable=info.retryable,
+        stage=info.stage,
+    )
+
+
+# Fallas de L2 que dependen solo de la política del motor, de la ingesta y de los ajustes, así
+# que reanudar las repite: la política no da decisiones para una clase, o no quedó ninguna unidad
+# que correr (``_no_results_message`` del motor con 0 unidades).
+_L2_SAME_ON_RESUME = re.compile(r"no produjo decisiones|L2 sin resultados \(0 unidades")
+
+
+def _same_on_resume(error: RunError | None) -> bool:
+    return (
+        error is not None
+        and error.code == "pipeline.stage_failed"
+        and error.stage == "L2"
+        and _L2_SAME_ON_RESUME.search(error.detail or "") is not None
     )
 
 
@@ -492,9 +522,10 @@ def run_actions(
 ) -> RunActions:
     """``reason`` es por qué las escrituras están apagadas (``RunControl.reason``).
 
-    Reanudar no se ofrece en dos casos que reintentar no corrige: una identidad incompatible
-    (la misma regla que aplica la cola, ``dal.ejecuciones._resume``) y una corrida cuyas
-    familias no dan a ninguna clase dos que comparar (``nothing_to_compare``). Un error con
+    Reanudar no se ofrece en tres casos que reintentar no corrige: una identidad incompatible
+    (la misma regla que aplica la cola, ``dal.ejecuciones._resume``), una corrida cuyas
+    familias no dan a ninguna clase dos que comparar (``nothing_to_compare``) y una falla de L2
+    que solo depende de la política y de los datos (``_same_on_resume``). Un error con
     ``retryable`` falso no basta: el motor marca así cualquier etapa que falla, también por una
     causa pasajera que reanudar sí corrige.
     """
@@ -504,6 +535,7 @@ def run_actions(
         estado in RESUMABLE_STATES
         and (error is None or error.code != INCOMPATIBLE_CONFIG)
         and not nothing_to_compare
+        and not _same_on_resume(error)
     )
     return RunActions(
         can_stop=reason is None and estado in ACTIVE_STATES,

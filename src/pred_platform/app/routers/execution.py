@@ -359,7 +359,7 @@ def lanzar(
         refusal = classes_without_family(by_class, chosen, skus, needed)
         key = exclusion_confirmation(ingest_id, chosen)
         if refusal:
-            form.errors["families"] = refusal_text(refusal, by_class)
+            form.errors["families"] = refusal_text(refusal, by_class, skus, needed)
         # Con un rechazo, el aviso dice además lo que quedaría por corregir, sin lanzar igual.
         if single and (refusal or confirmar != key):
             warning = exclusion_warning(chosen, by_class, skus, needed)

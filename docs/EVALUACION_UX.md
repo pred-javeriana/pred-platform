@@ -197,7 +197,7 @@ dice qué familias agregar y avisa también de las clases que quedarían con una
 queda con una sola, el formulario nombra sus SKU (plegados cuando son muchos), aparte los que
 la historia ya deja fuera, dice qué familia agregar y deja lanzar de todos modos; si ninguna
 clase conserva dos, el aviso dice que la corrida no elige campeón. Reanudar no se ofrece cuando
-la corrida fallaría igual: una identidad incompatible o familias que no dan dos a ninguna clase.
+la corrida fallaría igual (casos en `docs/features/ejecucion/README.md`).
 
 **E3. El estado de la corrida no muestra en qué etapa va ni cuánto lleva.** H1, severidad 3.
 «Ejecutando» era un título de 36 px, la etapa era una línea suelta bajo el anillo y no se veían

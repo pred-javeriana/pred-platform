@@ -11,7 +11,9 @@ import inspect
 import io
 import os
 import re
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,7 +25,7 @@ from pred_platform.contract.errors import EngineUnavailable, InvalidQuery
 from pred_platform.data.factory import build_repository
 from pred_platform.worker import ingesta
 from pred_platform.worker.ingesta import IngestLaunchError, safe_name, submit_csv
-from tests.test_worker import Env
+from tests.test_worker import _FAKE, Env
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 HEADER = b"sku_id,timestamp,demand_qty,lead_time_days\n"
@@ -253,6 +255,37 @@ def test_an_oversized_file_is_refused_before_the_engine_runs(
 
     assert response.status_code == 200 and "límite" in response.text
     assert env.rows("SELECT COUNT(*) FROM ingestas") == [(2,)]  # nothing new was ingested
+
+
+def test_a_database_made_read_only_during_an_upload_is_the_reason_shown(
+    env: Env, tmp_path: Path
+) -> None:
+    # The engine runs while the operator makes the copy read-only: its report cannot be saved.
+    engine = tmp_path / "engine_then_read_only.py"
+    engine.write_text(
+        "import os, runpy, sys\n"
+        f"os.chmod({str(env.db)!r}, 0o444)\n"
+        f"sys.argv = [{str(_FAKE)!r}, *sys.argv[1:]]\n"
+        f"runpy.run_path({str(_FAKE)!r}, run_name='__main__')\n"
+    )
+    settings = replace(env.settings, engine_command=(sys.executable, str(engine)))
+    app = create_app(replace(settings, worker="off"))
+    app.state.repository = build_repository(settings)
+    content = _csv("ok")
+    try:
+        response = _upload(TestClient(app), content)
+    finally:  # writable again the way the README says: with its -wal and -shm files
+        for path in env.db.parent.glob(env.db.name + "*"):
+            path.chmod(0o644)
+
+    assert response.status_code == 200
+    assert "La base de datos es de solo lectura" in response.text
+    assert "El motor no está disponible" not in response.text
+    # The engine's report waits under the data root; the next start imports it.
+    assert env.rows("SELECT COUNT(*) FROM ingestas WHERE sha256=?", _sha(content)) == [(0,)]
+    with TestClient(create_app(replace(settings, worker="off"))):
+        pass
+    assert env.rows("SELECT estado FROM ingestas WHERE sha256=?", _sha(content)) == [("accepted",)]
 
 
 def test_on_a_read_only_database_uploading_is_off_and_never_runs_the_engine(env: Env) -> None:
