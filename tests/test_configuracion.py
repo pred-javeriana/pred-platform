@@ -315,6 +315,10 @@ def _with(**changes: Any) -> bytes:
         (_with(velocidad=1), "Parámetros desconocidos: velocidad."),
         (_with(seed=-1), "Semilla: debe ser cero o más."),
         (_with(seed=2**63), "Semilla: el número es demasiado grande."),
+        (
+            _with(seed="SEED").replace(b'"SEED"', b"1" * 4301),
+            "El archivo no es JSON válido en UTF-8.",
+        ),
     ],
 )
 def test_wrong_parameters_are_refused_by_the_same_rule_as_a_launch(

@@ -579,19 +579,22 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
 
 
 @pytest.mark.parametrize(
-    ("field", "message"),
+    ("field", "value", "message"),
     [
-        ("seed", "Semilla: el número es demasiado grande."),
-        ("trials", "Ensayos por estudio: el número es demasiado grande."),
-        ("workers", "Procesos en paralelo: el número es demasiado grande."),
+        ("seed", str(2**63), "Semilla: el número es demasiado grande."),
+        ("trials", str(2**63), "Ensayos por estudio: el número es demasiado grande."),
+        ("workers", str(2**63), "Procesos en paralelo: el número es demasiado grande."),
+        ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
+        ("trials", "9" * 4301, "Ensayos por estudio: el número es demasiado grande."),
+        ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
     ],
 )
 def test_a_number_sqlite_cannot_store_is_a_field_error_not_a_server_error(
-    env: Env, field: str, message: str
+    env: Env, field: str, value: str, message: str
 ) -> None:
     client = TestClient(_dal_client(env).app, raise_server_exceptions=False)
 
-    response = _launch(client, env, **{field: str(2**63)})
+    response = _launch(client, env, **{field: value})
 
     assert response.status_code == 200
     assert message in _text(response.text)

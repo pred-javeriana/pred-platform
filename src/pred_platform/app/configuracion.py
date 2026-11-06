@@ -148,7 +148,7 @@ def parse_config(raw: bytes) -> ConfigImport:
         return ConfigImport(errors=[f"El archivo pesa más de {MAX_BYTES // 1024} KB."])
     try:
         document = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except ValueError:
         return ConfigImport(errors=["El archivo no es JSON válido en UTF-8."])
     if not isinstance(document, dict):
         return ConfigImport(errors=["El archivo debe contener un objeto JSON."])

@@ -170,6 +170,11 @@ class FormResult:
     errors: dict[str, str]
 
 
+def _too_many_digits(raw: str) -> bool:
+    """ASCII digits longer than ``SQLITE_MAX_INTEGER``: ``int`` refuses more than 4300 digits."""
+    return raw.isascii() and raw.isdigit() and len(raw) > len(str(SQLITE_MAX_INTEGER))
+
+
 def parse_launch_form(
     *,
     families: Sequence[str],
@@ -187,6 +192,9 @@ def parse_launch_form(
     for name, label, minimum in _INT_FIELDS:
         raw = (fields.get(name) or "").strip()
         values[name] = raw
+        if _too_many_digits(raw):
+            errors[name] = f"{label}: el número es demasiado grande."
+            continue
         try:
             number = int(raw)
         except ValueError:
@@ -200,7 +208,9 @@ def parse_launch_form(
             continue
         numbers[name] = number
     trials: int | None = None
-    if values["trials"]:
+    if _too_many_digits(values["trials"]):
+        errors["trials"] = "Ensayos por estudio: el número es demasiado grande."
+    elif values["trials"]:
         try:
             trials = int(values["trials"])
         except ValueError:
