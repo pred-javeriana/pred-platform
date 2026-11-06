@@ -301,13 +301,13 @@ def ejecucion(
     if params.get("ingest_id"):
         return redirect_with_query(step_href(NEW, "ajustes"), items, drop=("lanzar", "ejecucion"))
     if params.get("lanzar"):
-        return redirect_with_query(step_href(NEW, "datos"), [])
+        return redirect_with_query(step_href(NEW, "datos"), items, drop=("lanzar", "ejecucion"))
     wanted = (params.get("ejecucion") or "").strip()
     target = resolve_run_id(repository, wanted or LATEST)
     if target is None and wanted not in ("", LATEST):
         target = wanted  # Una referencia desconocida conserva la página 404.
     if target is None:
-        return redirect_with_query(step_href(NEW, "datos"), [])
+        return redirect_with_query(step_href(NEW, "datos"), items, drop=("ejecucion",))
     return redirect_with_query(step_href(target, "ejecucion"), items, drop=("ejecucion",))
 
 
@@ -469,6 +469,7 @@ def _render_ajustes(
             "ajustes", draft_facts(repository, draft, chosen), can_continue=bool(ingests)
         ),
         "source": repository.source,
+        "record": False,
         "ingests": ingests,
         "selected_ingest": selected,
         "form": values,
@@ -585,6 +586,7 @@ def _render_record(
         "form": values,
         "record_error": record_error,
         "family_choices": FAMILY_CHOICES,
+        "metric_choices": METRIC_CHOICES,
         "families_hint": families_hint(),
         "class_counts": by_class,
         **_duration_context(request, facts.ingest_id or ""),

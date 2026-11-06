@@ -37,33 +37,6 @@
 <form method="post" action="/corridas/nueva/ajustes" class="pred-launch pred-settings-form" id="{{ launch_form_id }}"
       hx-post="/corridas/nueva/ajustes/comprobar" hx-trigger="change" hx-target="#matriz-familias" hx-select="#matriz-familias" hx-swap="outerHTML" hx-sync="this:replace">
   {% include "partials/families_matrix.html" %}
-  <section class="pred-panel" aria-labelledby="titulo-evaluacion">
-    <h2 id="titulo-evaluacion">Evaluación</h2>
-    <div class="pred-settings-grid">
-      {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, hint="Métrica con que se compara el error de los modelos.", error=form_errors.get("metric", "")) }}
-      {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", error=form_errors.get("min_train", "")) }}
-      {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", error=form_errors.get("horizon", "")) }}
-      {{ field("seed", "Semilla", value=form.seed, input_type="number", hint="El grupo de la tesis usa 0, 1 y 2.", error=form_errors.get("seed", "")) }}
-    </div>
-    <details class="pred-details pred-launch__advanced"{% if not selected_ingest or form_errors | select("in", ["ingest_id", "step", "seasonality", "trials", "workers"]) | list %} open{% endif %}>
-      <summary>Ajustes de búsqueda y reproducibilidad</summary>
-      <div class="pred-settings-grid">
-        {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
-        {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
-        {{ field("trials", "Configuraciones a probar por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", error=form_errors.get("trials", "")) }}
-        {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
-      </div>
-      <div class="pred-field pred-settings-data{% if form_errors.get('ingest_id') %} is-error{% endif %}">
-        <label class="pred-field__label" for="ingest_id">Datos</label>
-        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if form_errors.get('ingest_id') %} ingest_id-error{% endif %}">
-          {% if not selected_ingest %}<option value="" selected disabled>Elija un archivo de datos</option>{% endif %}
-          {% for choice in ingests %}{% set item = choice.item %}<option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}{% if item.published_at %} title="{{ exact_when(item.published_at) }}"{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU{% if item.published_at %} · cargado el {{ format_when(item.published_at) }}{% endif %}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>{% endfor %}
-        </select>
-        <p class="pred-field__hint" id="ingest_id-hint">Solo se ofrecen archivos aceptados en Datos; uno que declara datos sintéticos no se puede ejecutar.</p>
-        {% if form_errors.get('ingest_id') %}<p class="pred-field__error" id="ingest_id-error">{{ form_errors['ingest_id'] }}</p>{% endif %}
-      </div>
-    </details>
-    {% if control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se podrá lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
-  </section>
+  {% include "partials/settings_evaluation.html" %}
 </form>
 {% endif %}

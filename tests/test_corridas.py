@@ -105,6 +105,10 @@ def _main(html: str) -> str:
         ("/ejecucion?ejecucion=99", "/corridas/99/ejecucion"),
         ("/ejecucion?lanzar=1", "/corridas/nueva/datos"),
         (
+            "/ejecucion?lanzar=1&q=keep&families=ml&families=dl",
+            "/corridas/nueva/datos?q=keep&families=ml&families=dl",
+        ),
+        (
             f"/ejecucion?ingest_id={SOME_INGEST}&lanzar=1&families=ml&families=dl",
             f"/corridas/nueva/ajustes?ingest_id={SOME_INGEST}&families=ml&families=dl",
         ),
@@ -163,6 +167,10 @@ def test_without_runs_the_old_addresses_start_a_new_run() -> None:
     client = _fixture_client("vacio")
     for old, new in (
         ("/ejecucion", "/corridas/nueva/datos"),
+        (
+            "/ejecucion?estado=fallida&page=2",
+            "/corridas/nueva/datos?estado=fallida&page=2",
+        ),
         ("/resultados", "/corridas/nueva/resultados"),
     ):
         response = client.get(old, follow_redirects=False)

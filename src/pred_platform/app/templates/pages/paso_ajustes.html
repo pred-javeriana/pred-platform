@@ -12,7 +12,10 @@
   {% endif %}
 
   {% if record %}
-  {% if form %}{% include "partials/families_matrix.html" %}{% endif %}
+  {% if form %}
+  {% include "partials/families_matrix.html" %}
+  {% include "partials/settings_evaluation.html" %}
+  {% else %}
   <section class="pred-panel" aria-labelledby="titulo-ajustes">
     <h2 id="titulo-ajustes">Ajustes de esta corrida</h2>
     {% if record_error %}{{ alert(record_error, variant="error") }}{% endif %}
@@ -27,6 +30,7 @@
     <p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>
     {% endif %}
   </section>
+  {% endif %}
   {% else %}
   {% include "partials/execution_launch.html" %}
   {% endif %}

@@ -30,7 +30,7 @@
       {% set count = summary.by_class.get(code, 0) %}
       <tr{% if not count %} class="is-zero"{% endif %}>
         <th scope="row">{{ sku_class_label(code) }}<span class="pred-subvalue">{{ sku_class_term(code).hint }}</span></th>
-        <td class="pred-types-table__families">{% for family in families_hint.get(code, ()) %}<span>{{ family_label(family) }}</span>{% endfor %}</td>
+        <td class="pred-types-table__families">{% for family in families_hint.get(code, ()) %}<span class="pred-family-key" data-family="{{ family }}">{{ family_label(family) }}</span>{% endfor %}</td>
         <td class="num">{{ format_count(count) }}<span class="pred-subvalue">{{ format_decimal(100 * count / summary.n_skus, 1) if summary.n_skus else 0 }} %</span></td>
       </tr>
       {% endfor %}

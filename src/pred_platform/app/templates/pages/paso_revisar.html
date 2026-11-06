@@ -17,14 +17,24 @@
     <dl class="pred-check">
       {% if record %}
       <div><dt>Datos</dt><dd>{{ facts.file_name or abbreviate_id(facts.ingest_id or "") }}{% if facts.n_skus is not none %}<span class="pred-subvalue">{{ format_count(facts.n_skus) }} productos</span>{% endif %}</dd></div>
-      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
-      {% if not form %}<div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>{% endif %}
-      <div><dt>Lanzada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
       {% else %}
       <div><dt>Datos</dt><dd><span>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}{% if ingest and ingest.n_skus is not none %}<span class="pred-subvalue">{{ format_count(ingest.n_skus) }} productos</span>{% endif %}{% if form_errors.get("ingest_id") %}<span class="pred-subvalue pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}</span> <a href="/corridas/nueva/datos">Cambiar</a></dd></div>
-      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd><span>{{ value }}</span> <a href="/corridas/nueva/ajustes">Cambiar</a></dd></div>{% endfor %}
+      {% endif %}
+      {% for label, value in review_rows if not form or label not in ('Mínimo de entrenamiento', 'Horizonte', 'Paso entre ventanas', 'Estacionalidad', 'Configuraciones a probar por familia') %}
+      <div><dt>{{ label }}</dt><dd><span>{{ value }}</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>
+      {% if form and label == 'Métrica de selección' %}<div><dt>Ventana</dt><dd><span>Entrena con al menos {{ form.min_train }} días y pronostica {{ form.horizon }} días; una ventana cada {{ form.step }} días.</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>{% endif %}
+      {% endfor %}
+      {% if record %}
+      {% if not form %}<div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>{% endif %}
+      <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
       {% endif %}
     </dl>
+    {% if form %}
+    <details class="pred-details" id="detalle-ajustes-revisados">
+      <summary>Ajustes de búsqueda y reproducibilidad</summary>
+      <dl class="pred-check">{% for label, value in review_rows if label in ('Estacionalidad', 'Configuraciones a probar por familia') %}<div><dt>{{ label }}</dt><dd><span>{{ value }}</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>{% endfor %}</dl>
+    </details>
+    {% endif %}
     {% if record_error %}{{ alert(record_error, variant="error") }}{% endif %}
     {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
     {% if duplicate %}

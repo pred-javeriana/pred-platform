@@ -21,7 +21,8 @@
 .pred-family-matrix :is(thead, tfoot) th:first-child { text-align: left; }
 .pred-family-matrix small { display: block; color: var(--muted-text); font-size: 12.5px; font-weight: 400; }
 .pred-family-matrix th[scope="row"] { text-align: left; font-weight: 500; }
-.pred-family-matrix label { display: flex; gap: 10px; align-items: flex-start; margin: 0; cursor: pointer; }
+.pred-family-matrix label, .pred-matrix-family { display: flex; gap: 10px; align-items: flex-start; margin: 0; }
+.pred-family-matrix label { cursor: pointer; }
 .pred-family-matrix input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--primary); }
 .pred-family-key { color: var(--ink); font-weight: 650; }
 .pred-family-key::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 7px; background: var(--family-color); }
@@ -64,6 +65,7 @@ label.pred-file-choice { display: grid; grid-template-columns: 22px minmax(0, 1f
 .pred-types-table thead th { font-size: 12px; color: var(--muted-text); vertical-align: bottom; }
 .pred-types-table__families { font-size: 12px; color: var(--ink-soft); }
 .pred-types-table__families span { display: block; }
+.pred-types-table .pred-family-key { font-weight: 400; }
 .pred-types-table .num { white-space: nowrap; }
 .pred-duration-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; margin: 12px 0; list-style: none; }
 .pred-duration-legend li { color: var(--muted-text); font-size: 12.5px; list-style: none; margin: 0; }

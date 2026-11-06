@@ -68,6 +68,7 @@ def demand_scatter_svg(report: TopologyReport) -> str:
             f'<text x="{left - 8}" y="{py + 4:.2f}" text-anchor="end" '
             f'class="pred-chart__tick">{format_decimal(tick, digits)}</text>'
         )
+    annotations: list[str] = []
     if report.thresholds:
         px, py = x(report.thresholds.adi), y(report.thresholds.cv2)
         parts.extend(
@@ -78,13 +79,23 @@ def demand_scatter_svg(report: TopologyReport) -> str:
                 'class="pred-chart__threshold"/>',
             ]
         )
+        annotations.extend(
+            [
+                f'<text x="{px + 7:.2f}" y="{height - bottom - 30}" '
+                'class="pred-scatter-class">ADI = '
+                f"{format_decimal(report.thresholds.adi, 2)}</text>",
+                f'<text x="{width - right - 6}" y="{py - 8:.2f}" text-anchor="end" '
+                'class="pred-scatter-class">CV² = '
+                f"{format_decimal(report.thresholds.cv2, 2)}</text>",
+            ]
+        )
         for code, lx, ly, anchor in (
             ("erratic", left + 8, top + 17, "start"),
             ("lumpy", width - right - 8, top + 17, "end"),
             ("smooth", left + 8, height - bottom - 12, "start"),
             ("intermittent", width - right - 8, height - bottom - 12, "end"),
         ):
-            parts.append(
+            annotations.append(
                 f'<text x="{lx}" y="{ly}" text-anchor="{anchor}" '
                 f'class="pred-scatter-class">{sku_class_label(code)}</text>'
             )
@@ -98,6 +109,7 @@ def demand_scatter_svg(report: TopologyReport) -> str:
             f'class="pred-scatter-point" data-label={quoteattr(label)}>'
             f"<title>{escape(label)}</title></circle>"
         )
+    parts.extend(annotations)
     parts.extend(
         [
             f'<text x="{(left + width - right) / 2}" y="{height - 26}" text-anchor="middle" '

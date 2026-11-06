@@ -1,0 +1,36 @@
+{% from "components/forms.html" import field %}
+{% from "components/buttons.html" import button %}
+{% from "components/terms.html" import day %}
+{% set evaluation_errors = form_errors | default({}) %}
+  <section class="pred-panel" aria-labelledby="titulo-evaluacion">
+    <h2 id="titulo-evaluacion">Evaluación</h2>
+    <div class="pred-settings-grid">
+      {{ field("metric", "Métrica de selección", value=form.metric, input_type="select", options=metric_choices, hint="Métrica con que se compara el error de los modelos.", disabled=record, error=evaluation_errors.get("metric", "")) }}
+      {{ field("min_train", "Mínimo de entrenamiento (días)", value=form.min_train, input_type="number", disabled=record, error=evaluation_errors.get("min_train", "")) }}
+      {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", disabled=record, error=evaluation_errors.get("horizon", "")) }}
+      {{ field("seed", "Semilla", value=form.seed, input_type="number", hint="El grupo de la tesis usa 0, 1 y 2.", disabled=record, error=evaluation_errors.get("seed", "")) }}
+    </div>
+    <details class="pred-details pred-launch__advanced"{% if not record and not selected_ingest or evaluation_errors | select("in", ["ingest_id", "step", "seasonality", "trials", "workers"]) | list %} open{% endif %}>
+      <summary>Ajustes de búsqueda y reproducibilidad</summary>
+      <div class="pred-settings-grid">
+        {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", disabled=record, error=evaluation_errors.get("step", "")) }}
+        {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", disabled=record, error=evaluation_errors.get("seasonality", "")) }}
+        {{ field("trials", "Configuraciones a probar por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", disabled=record, error=evaluation_errors.get("trials", "")) }}
+        {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", disabled=record, error=evaluation_errors.get("workers", "")) }}
+      </div>
+      {% if not record %}
+      <div class="pred-field pred-settings-data{% if evaluation_errors.get('ingest_id') %} is-error{% endif %}">
+        <label class="pred-field__label" for="ingest_id">Datos</label>
+        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if evaluation_errors.get('ingest_id') %} ingest_id-error{% endif %}">
+          {% if not selected_ingest %}<option value="" selected disabled>Elija un archivo de datos</option>{% endif %}
+          {% for choice in ingests %}{% set item = choice.item %}<option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}{% if item.published_at %} title="{{ exact_when(item.published_at) }}"{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU{% if item.published_at %} · cargado el {{ format_when(item.published_at) }}{% endif %}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>{% endfor %}
+        </select>
+        <p class="pred-field__hint" id="ingest_id-hint">Solo se ofrecen archivos aceptados en Datos; uno que declara datos sintéticos no se puede ejecutar.</p>
+        {% if evaluation_errors.get('ingest_id') %}<p class="pred-field__error" id="ingest_id-error">{{ evaluation_errors['ingest_id'] }}</p>{% endif %}
+      </div>
+      {% endif %}
+    </details>
+    {% if not record and control_reason %}<details class="pred-details"><summary>{{ "Lanzamiento no disponible en modo de prueba" if source == "fixture" else "Por qué no se podrá lanzar" }}</summary><p class="pred-meta">Lanzar está deshabilitado. {{ control_reason }}</p></details>{% endif %}
+    {% if record and reserve %}<p class="pred-meta">Fecha de corte: {{ day(reserve.t_star) }}. Después de esta fecha, {{ format_count(reserve.reserved_days) }} días quedan reservados para probar.</p>{% endif %}
+    {% if record and source != 'fixture' %}<p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>{% endif %}
+  </section>

@@ -6,12 +6,16 @@ import json
 import re
 import sqlite3
 from contextlib import closing
+from datetime import datetime
 from html import unescape
 from typing import Any
 
 import pytest
 
+from pred_platform.data.fixtures import FixtureRepository
+from tests.test_corridas import _fixture_client
 from tests.test_ejecucion import FORM, _dal_client, _launch, _review, _text
+from tests.test_ui_review import Markup
 from tests.test_worker import Env
 from tests.test_worker import env as env  # noqa: F401
 
@@ -181,15 +185,39 @@ def test_records_include_trials_workers_and_seed_without_edit_or_launch_controls
     for step in ("ajustes", "revisar"):
         html = client.get(f"/corridas/1/{step}").text
         assert "Esta corrida ya se lanzó" in _text(html)
-        for label, value in (
-            ("Semilla", "2"),
-            ("Procesos en paralelo", "7"),
-            ("Configuraciones a probar por familia", "6"),
+        for name, label, value in (
+            ("seed", "Semilla", "2"),
+            ("workers", "Procesos en paralelo", "7"),
+            ("trials", "Configuraciones a probar por familia", "6"),
         ):
-            assert re.search(rf"<dt>{label}</dt><dd[^>]*>{value}</dd>", html), (step, label)
+            if step == "ajustes":
+                assert re.search(rf'name="{name}"[^>]*value="{value}"[^>]* disabled', html)
+            else:
+                assert re.search(rf"<dt>{label}</dt><dd[^>]*>{value}</dd>", html), (step, label)
+        markup = Markup(html)
+        ids = {attrs["id"] for _, attrs in markup.tags if "id" in attrs}
+        assert all(attrs["for"] in ids for attrs in markup.select("label") if "for" in attrs)
         assert 'type="checkbox"' not in html
         assert 'action="/ejecucion/lanzar"' not in html
         assert 'href="/ejecucion/configuracion.json?ejecucion=1"' in html
+
+
+def test_file_timestamps_keep_fractional_seconds_in_the_exact_utc_hover() -> None:
+    class FractionalIngest(FixtureRepository):
+        def list_ingests(self, **kwargs: Any):
+            result = super().list_ingests(**kwargs)
+            stamp = datetime.fromisoformat("2026-11-02T03:23:49.610830+00:00")
+            return result.model_copy(
+                update={
+                    "items": [
+                        item.model_copy(update={"published_at": stamp}) for item in result.items
+                    ]
+                }
+            )
+
+    html = _fixture_client(repo=FractionalIngest("normal")).get("/corridas/nueva/datos").text
+    assert "1 nov 2026, 10:23 p. m." in _text(html)
+    assert 'title="2026-11-02 03:23:49.610830 UTC (hora universal coordinada)"' in html
 
 
 def _event(kind: str, stage: str, time: str) -> str:
@@ -276,6 +304,7 @@ def test_data_step_offers_validated_files_and_its_summary_keeps_all_four_types(e
     assert "Fecha de corte" in _text(page.text)
     assert "Total" in _text(page.text)
     assert "Distribución ADI–CV² de la demanda" in page.text
+    assert "ADI = 1,32" in page.text and "CV² = 0,49" in page.text
     assert 'action="/datos/cargar"' in page.text
     for label in ("Suave", "Errática", "Intermitente", "Grumosa"):
         assert label in _text(page.text)

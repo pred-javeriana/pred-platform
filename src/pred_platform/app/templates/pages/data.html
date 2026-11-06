@@ -113,7 +113,7 @@
   {% endif %}
 
   {% if not record %}
-  <details class="pred-details" id="archivos-cargados"{% if request.query_params.get('history_page') or not report %} open{% endif %}>
+  <details class="pred-details" id="archivos-cargados"{% if request.query_params.get('history_page') or not report and (not listing or not listing.items) %} open{% endif %}>
   <summary>Todos los archivos cargados y su diagnóstico</summary>
   {% call evidence_panel("historial", "Historial de archivos cargados", "Los archivos ya cargados. Abra uno para revisar su diagnóstico y sus clases de demanda.", active=request.query_params.get("history_page")) %}
     {% if list_error %}
