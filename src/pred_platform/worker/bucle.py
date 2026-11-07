@@ -26,7 +26,7 @@ from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker import engine
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.errores import platform_error, run_stopped_error
-from pred_platform.worker.importacion import finalize
+from pred_platform.worker.importacion import finalize, fresh_summary
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.solo_lectura import database_read_only
 
@@ -339,10 +339,23 @@ class Worker:
             engine.terminate(process.pid)
             process.wait()
             raise
+        except Exception:
+            # An unexpected supervision error, such as a progress record without its keys. An
+            # attempt the engine already finished (it exited, or sent run_finished after its
+            # final files) is imported from those files. Any other attempt is settled by
+            # run_next; a run the engine already published keeps its process for recovery.
+            finished = process.poll() is not None or follower.finished is not None
+            engine.terminate(process.pid)
+            process.wait()
+            if not (finished and fresh_summary(folder, previous_summary)):
+                raise
+            _logger.exception(
+                "Corrida %s: falló la supervisión; se importan los archivos finales del motor",
+                run.run_id,
+            )
         except BaseException:
-            # An interrupt, a shutdown or an unexpected error: the engine runs in its own
-            # session, so stop it here. Interrupts leave the run `ejecutando` for recovery;
-            # run_next settles unexpected errors before claiming more work.
+            # An interrupt or a shutdown: the engine runs in its own session, so stop it here.
+            # The run stays `ejecutando` for recovery.
             engine.terminate(process.pid)
             process.wait()
             raise

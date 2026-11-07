@@ -45,6 +45,21 @@ def _read_units(path: Path) -> list[dict[str, Any]]:
     return units
 
 
+def fresh_summary(run_dir: Path, previous_summary: os.stat_result | None) -> bool:
+    """Whether ``corrida.json`` is this attempt's own, not one an earlier attempt left."""
+    corrida_path = run_dir / "corrida.json"
+    if not corrida_path.is_file():
+        return False
+    if previous_summary is None:
+        return True
+    current = corrida_path.stat()
+    return (current.st_ino, current.st_mtime_ns, current.st_size) != (
+        previous_summary.st_ino,
+        previous_summary.st_mtime_ns,
+        previous_summary.st_size,
+    )
+
+
 def finalize(
     conn: sqlite3.Connection,
     run: Ejecucion,
@@ -64,14 +79,7 @@ def finalize(
     skipped = platform_error(
         "pipeline.stage_failed", "La unidad no llegó a empezar: una etapa anterior falló."
     )
-    current_summary = corrida_path.stat() if corrida_path.is_file() else None
-    unchanged = (
-        current_summary is not None
-        and previous_summary is not None
-        and (current_summary.st_ino, current_summary.st_mtime_ns, current_summary.st_size)
-        == (previous_summary.st_ino, previous_summary.st_mtime_ns, previous_summary.st_size)
-    )
-    if current_summary is None or unchanged:
+    if not fresh_summary(run_dir, previous_summary):
         # El motor rechaza reanudar una corrida cuya identidad guardada (entrada, ajustes o huella
         # del código) ya no coincide: no es un artefacto perdido y reintentarla no sirve.
         incompatible = INCOMPATIBLE_RUN in log_tail(log_path)

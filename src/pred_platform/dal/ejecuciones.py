@@ -296,27 +296,18 @@ def stop_claimed(
     """Stop the claim (``intento``) a worker could not settle and close its tasks, in one step.
 
     A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
-    the meantime keeps its own error and time. One the engine already published (``completada``
-    or ``completada_con_fallos`` with its process still recorded) keeps its state and result: only
-    the reaped process is released and the end time set. A later attempt or a fully settled run
-    is left alone.
+    the meantime keeps its own error and time; both release the recorded process, which the worker
+    has already reaped. One the engine already published (``completada`` or
+    ``completada_con_fallos``) before the worker imported its final files is left as it is: its
+    recorded process marks it for ``interrupted_runs``, so the next worker start runs it again
+    and imports it. A later attempt or a fully settled run is left alone too.
     """
     with conn:
         _begin_immediate(conn)
         row = conn.execute(
-            "SELECT estado, error_json, intento, pid FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+            "SELECT estado, error_json, intento FROM ejecuciones WHERE id = ?", (ejecucion_id,)
         ).fetchone()
-        if row is None or row[2] != intento:
-            return
-        published_claim = row[0] in ("completada", "completada_con_fallos") and row[3] is not None
-        if published_claim:
-            conn.execute(
-                "UPDATE ejecuciones SET pid = NULL, finalizada_en = COALESCE(finalizada_en, ?) "
-                "WHERE id = ?",
-                (now_iso(), ejecucion_id),
-            )
-            return
-        if row[0] not in ("ejecutando", "detenida"):
+        if row is None or row[2] != intento or row[0] not in ("ejecutando", "detenida"):
             return
         if row[0] == "ejecutando":
             conn.execute(

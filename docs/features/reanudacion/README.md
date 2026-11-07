@@ -56,6 +56,10 @@ Esta carrera también corresponde al diagnóstico de
   la ruta y reintenta hasta el cierre. `--once` informa el error y termina con código 1.
 - Un error inesperado de supervisión detiene el motor y deja la corrida `detenida` con su causa,
   sin abandonar un reclamo `ejecutando`. El worker continúa con las demás corridas de la cola.
+  Si el motor ya había terminado el intento (salió o emitió `run_finished` después de sus archivos
+  finales), el worker importa esos archivos. Si el motor ya registró la corrida como `completada`
+  y la importación no se completa, la corrida conserva su PID: el siguiente arranque del worker la
+  vuelve a ejecutar con el mismo `run_id` y la importa.
 - Conservar la base central, el Parquet y el directorio `runs/{run_id}`, incluidos `identidad.json`,
   `hpo/`, `checkpoints/` y los artefactos M3. Borrar esos archivos elimina evidencia necesaria.
 - Los checkpoints validan su integridad y su contexto. La CLI protege la identidad de entrada,

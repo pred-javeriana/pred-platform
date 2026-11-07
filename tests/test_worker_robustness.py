@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import logging
 import os
 import signal
@@ -21,20 +22,26 @@ from pred_platform.worker import engine
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.service import enqueue_run
+from tests.fake_engine import RESERVE
 from tests.test_worker import SMALL, Env, _wait
 from tests.test_worker import env as env
+
+
+def _cli_env(env: Env, scenario: str, **extra: str) -> dict[str, str]:
+    return {
+        **os.environ,
+        "PRED_DATA_ROOT": str(env.settings.data_root),
+        "PRED_DB_PATH": str(env.db),
+        "PRED_ENGINE_CMD": " ".join(env.settings.engine_command),
+        "FAKE_ENGINE_SCENARIO": scenario,
+        **extra,
+    }
 
 
 def _cli(env: Env, *args: str) -> subprocess.Popen[bytes]:
     return subprocess.Popen(
         [sys.executable, "-m", "pred_platform.worker", *args],
-        env={
-            **os.environ,
-            "PRED_DATA_ROOT": str(env.settings.data_root),
-            "PRED_DB_PATH": str(env.db),
-            "PRED_ENGINE_CMD": " ".join(env.settings.engine_command),
-            "FAKE_ENGINE_SCENARIO": "slow",
-        },
+        env=_cli_env(env, "slow"),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -120,25 +127,23 @@ def test_malformed_progress_stops_the_claim_and_the_loop_runs_the_next_run(
     thread.start()
     try:
         _wait(
-            lambda: (
-                bool(children)
-                and children[0].poll() is not None
-                and env.rows("SELECT estado, pid FROM ejecuciones")[0]
-                in (("detenida", None), ("completada", None))
-            ),
+            lambda: bool(children) and children[0].poll() is not None and "KeyError" in caplog.text,
             timeout=8,
-            what="the claim to settle",
+            what="the supervision error",
         )
-        assert "KeyError" in caplog.text
-        ((estado, error),) = env.rows("SELECT estado, error_json FROM ejecuciones")
-        if scenario == "malformed_after_publication":
-            # The engine already published the run: settling the claim keeps its result.
-            assert (estado, error) == ("completada", None)
-        else:
-            assert estado == "detenida" and "sku_id" in error
         monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "ok")
         enqueue_run(env.settings, env.ingest_id, replace(SMALL, seed=18))
         _wait(lambda: env.rows("SELECT estado FROM ejecuciones ORDER BY id")[-1][0] == "completada")
+        # The loop settled the first claim before it claimed the second run.
+        ((estado, pid, error),) = env.rows(
+            "SELECT estado, pid, error_json FROM ejecuciones ORDER BY id LIMIT 1"
+        )
+        if scenario == "malformed_after_publication":
+            # The engine had published the run but left no final files: the run keeps its state
+            # and its process, so the next worker start runs it again and imports it.
+            assert (estado, pid, error) == ("completada", children[0].pid, None)
+        else:
+            assert estado == "detenida" and pid is None and "sku_id" in error
     finally:
         stop.set()
         thread.join(timeout=15)
@@ -285,6 +290,59 @@ def test_two_fast_interrupts_with_reload_do_not_leave_an_engine(env: Env):
             engine.terminate(pid, grace=0.1)
 
 
+def _assert_imported(env: Env, *, intento: int) -> None:
+    ((estado, attempt, pid, error, reserve),) = env.rows(
+        "SELECT estado, intento, pid, error_json, reserva_json FROM ejecuciones"
+    )
+    assert (estado, attempt, pid, error) == ("completada", intento, None, None)
+    assert json.loads(reserve) == RESERVE
+    assert env.rows("SELECT estado, tiempo_pared_s, COUNT(*) FROM tareas GROUP BY 1, 2") == [
+        ("exitosa", 2.0, 12)
+    ]
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(3,)]
+    assert env.rows(
+        "SELECT COUNT(*) FROM seleccion_familias f JOIN tareas t ON t.id = f.tarea_id "
+        "WHERE t.estado = 'exitosa'"
+    ) == [(12,)]
+
+
+@pytest.mark.parametrize("units", ["ok", "bad_line"])
+def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_recovery(
+    env: Env, monkeypatch, units: str
+):
+    # The engine records M3 as completada, writes valid final files and run_finished, then a
+    # progress record without keys breaks the supervision. With units=bad_line the import of
+    # those files fails too.
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    cli = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "m3_published_then_malformed", FAKE_ENGINE_UNITS=units),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert cli.returncode == 0, cli.stderr
+    assert "KeyError" in cli.stderr
+    if units == "ok":
+        _assert_imported(env, intento=1)
+    else:
+        # Nothing was imported: the run keeps its process as the mark for the next recovery.
+        ((estado, pid, error, reserve),) = env.rows(
+            "SELECT estado, pid, error_json, reserva_json FROM ejecuciones"
+        )
+        assert (estado, error, reserve) == ("completada", None, None)
+        assert pid is not None and not engine.is_alive(pid)
+        assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(0,)]
+        assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+
+    # A restart of the worker in this process: an imported run stays as it is, and a kept one
+    # is run again on the same run_id and imported.
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+    Worker(env.settings).drain()
+    _assert_imported(env, intento=1 if units == "ok" else 2)
+
+
 def test_settling_a_claim_keeps_a_run_the_engine_already_published(env: Env):
     from pred_platform.dal import ejecuciones as dal
     from pred_platform.worker.errores import run_stopped_error
@@ -296,11 +354,11 @@ def test_settling_a_claim_keeps_a_run_the_engine_already_published(env: Env):
         with conn:
             conn.execute("UPDATE ejecuciones SET estado='completada', pid=55555")
         dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
-    ((estado, pid, error, finished),) = env.rows(
-        "SELECT estado, pid, error_json, finalizada_en FROM ejecuciones"
-    )
-    assert (estado, pid, error) == ("completada", None, None)
-    assert finished is not None
+        # Its recorded process is the mark the next worker start recovers it by.
+        assert [r.id for r in dal.interrupted_runs(conn)] == [run.id]
+    assert env.rows("SELECT estado, pid, error_json FROM ejecuciones") == [
+        ("completada", 55555, None)
+    ]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
