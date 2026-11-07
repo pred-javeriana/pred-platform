@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "summary": "Conserva la última configuración elegida, actualiza el recorrido y recupera la inspección y los registros de ajustes.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/static/js/wizard_steps.js",
+      "summary": "Coordina los guardados del borrador con la navegación, la copia y la importación.",
+      "annotations": [
+        {
+          "newRange": [20, 73],
+          "summary": "La copia e importación esperan al guardado anterior y cancelan cualquier guardado pendiente del formulario anterior.",
+          "rationale": "Las respuestas escriben una sola cookie, por eso una respuesta anterior podía descartar la elección posterior. Nueve pruebas en Chromium comprueban el orden, la barra de pasos y la navegación durante el guardado.",
+          "author": "fm/pred-platform-wizard-steps"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/partials/data_diagnosis.html",
+      "summary": "Abre el formulario de carga desde los enlaces de recuperación.",
+      "annotations": [
+        {
+          "newRange": [37, 37],
+          "summary": "El enlace pide al servidor abrir la carga antes de desplazarse al selector de archivo.",
+          "rationale": "Una ancla no abre el elemento details. La consulta conserva el archivo elegido y permite mostrar el selector incluso con los scripts bloqueados, como comprueban las pruebas del navegador.",
+          "author": "fm/pred-platform-wizard-steps"
+        }
+      ]
+    }
+  ]
+}
