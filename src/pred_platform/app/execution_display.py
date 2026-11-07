@@ -17,7 +17,7 @@ def add_stage_references(context: dict[str, Any], references: list[StageReferenc
     for reference in references:
         stages = {}
         for timing in reference.timings:
-            if timing.finished_at is None:
+            if timing.finished_at is None or timing.finish_state == "failed":
                 continue
             seconds = max(0, (timing.finished_at - timing.started_at).total_seconds())
             stages[timing.code] = {"seconds": seconds, "duration": format_duration(seconds)}
@@ -58,11 +58,20 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
     stage_rows = []
     for i, (code, label) in enumerate(STAGES):
         timing = by_code.get(code)
+        failed = bool(timing and timing.finish_state == "failed")
         done = bool(timing and timing.finished_at) or run.estado in FINISHED_STATES or i < index
         active = code == current and run.estado == "ejecutando" and not done
         stopped = code == current and run.estado == "detenida" and not done
         state = (
-            "hecha" if done else "en_curso" if active else "detenida" if stopped else "pendiente"
+            "fallida"
+            if failed
+            else "hecha"
+            if done
+            else "en_curso"
+            if active
+            else "detenida"
+            if stopped
+            else "pendiente"
         )
         seconds = None
         if timing and (timing.finished_at or code == current):

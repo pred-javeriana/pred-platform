@@ -385,3 +385,39 @@ def test_finished_and_stopped_pages_do_not_claim_to_be_working(
         assert "pulso-ejecucion" not in body and "pred-progress__sweep" not in body
         assert "Puede cerrar esta página" not in body
         assert ("Reanudar" if state == "detenida" else "Ver resultados") in body
+
+
+@pytest.mark.parametrize("state", ["ejecutando", "detenida", "completada_con_fallos"])
+@pytest.mark.parametrize("code", ["L3", "L4"])
+def test_failed_stage_never_appears_successful(env: Env, state: str, code: str) -> None:
+    client, run = _running(env)
+    _escribir_progreso(
+        env,
+        run.run_id,
+        {"event": "stage_started", "stage": "L1", "t": "2026-11-04T20:00:00Z"},
+        {
+            "event": "stage_finished",
+            "stage": "L1",
+            "state": "completed",
+            "t": "2026-11-04T20:01:00Z",
+        },
+        {"event": "stage_started", "stage": code, "t": "2026-11-04T20:01:00Z"},
+        {
+            "event": "stage_finished",
+            "stage": code,
+            "state": "failed",
+            "t": "2026-11-04T20:03:00Z",
+        },
+    )
+    _set_run(env, state, None)
+    for route in ("/corridas/1/ejecucion", "/ejecucion/estado?ejecucion=1"):
+        response = client.get(route)
+        assert response.status_code in (200, 286)
+        stages = {row["code"]: row for row in _snapshot(response.text)["stages"]}
+        assert stages["L1"]["state"] == "hecha"
+        assert stages[code]["state"] == "fallida"
+        assert stages[code]["duration"] == "2 min"
+        row = re.search(rf'<li[^>]*data-stage-code="{code}".*?</li>', response.text, re.S)
+        assert row is not None
+        assert "Falló" in _text(row[0]) and ": fallida" in _text(row[0])
+        assert "terminada" not in row[0] and "#i-check" not in row[0]

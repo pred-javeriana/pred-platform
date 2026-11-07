@@ -119,9 +119,9 @@
     {% for step in stage_rows %}
     <li class="is-{{ step.state }}" data-stage-code="{{ step.code }}" data-stage-seconds="{{ step.seconds if step.seconds is not none else '' }}">
       <span class="pred-steps__mark" aria-hidden="true">{% if step.state == "hecha" %}<svg><use href="#i-check"></use></svg>{% else %}{{ loop.index }}{% endif %}</span>
-      <span class="pred-live-stages__name">{{ step.label }}<small>{{ step.hint }}</small><span class="pred-sr-only">: {{ {"hecha": "terminada", "en_curso": "en curso", "detenida": "detenida", "pendiente": "pendiente"}[step.state] }}</span></span>
+      <span class="pred-live-stages__name">{{ step.label }}<small>{{ step.hint }}</small><span class="pred-sr-only">: {{ {"hecha": "terminada", "fallida": "fallida", "en_curso": "en curso", "detenida": "detenida", "pendiente": "pendiente"}[step.state] }}</span></span>
       <span class="pred-live-stages__bars" aria-hidden="true"><span class="pred-live-stages__bar"><i style="width:{{ step.width }}%"></i></span>{% for reference in step.references | default([]) %}<span class="pred-live-stages__bar pred-stage-reference is-reference-{{ loop.index0 }}"><i style="width:{{ reference.width }}%"></i></span>{% endfor %}</span>
-      <span class="pred-live-stages__duration">{% if step.duration %}{{ step.duration }}{% else %}{{ "Pendiente" if step.state == "pendiente" else "Sin registro de duración" }}{% endif %}{% if step.state in ("en_curso", "detenida") %}<small>{{ "En curso" if step.state == "en_curso" else "Detenida" }}</small>{% endif %}{% if step.references %}<small class="pred-stage-before">Antes: {% for reference in step.references %}{{ reference.duration }}{% if not loop.last %} · {% endif %}{% endfor %}</small>{% endif %}</span>
+      <span class="pred-live-stages__duration">{% if step.duration %}{{ step.duration }}{% else %}{{ "Pendiente" if step.state == "pendiente" else "Sin registro de duración" }}{% endif %}{% if step.state in ("en_curso", "detenida", "fallida") %}<small>{{ {"en_curso": "En curso", "detenida": "Detenida", "fallida": "Falló"}[step.state] }}</small>{% endif %}{% if step.references %}<small class="pred-stage-before">Antes: {% for reference in step.references %}{{ reference.duration }}{% if not loop.last %} · {% endif %}{% endfor %}</small>{% endif %}</span>
     </li>
     {% endfor %}
   </ol>

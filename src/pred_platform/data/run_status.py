@@ -20,6 +20,7 @@ class StageTiming(BaseModel):
     code: str
     started_at: AwareDatetime
     finished_at: AwareDatetime | None = None
+    finish_state: str | None = None
 
 
 class StageReference(BaseModel):
@@ -119,6 +120,8 @@ def _read_progress(
             if stamp is not None:
                 timings[code] = StageTiming(code=code, started_at=stamp)
         elif kind == "stage_finished" and isinstance(code, str) and code in timings:
+            state = event.get("state")
+            timings[code].finish_state = state if isinstance(state, str) else None
             stamp = _timestamp(event.get("t"))
             if stamp is not None and stamp >= timings[code].started_at:
                 timings[code].finished_at = stamp

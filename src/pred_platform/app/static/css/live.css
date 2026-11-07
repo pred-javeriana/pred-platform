@@ -50,6 +50,9 @@
 .pred-live-stages .is-en_curso .pred-steps__mark { border: 2px solid var(--info); color: var(--info); }
 .pred-live-stages .is-detenida .pred-steps__mark { border-color: var(--warn); color: var(--warn-text); }
 .pred-live-stages .is-detenida .pred-live-stages__duration small { color: var(--warn-text); }
+.pred-live-stages .is-fallida .pred-steps__mark { border-color: var(--err); color: var(--err); }
+.pred-live-stages .is-fallida .pred-live-stages__duration small { color: var(--err); }
+.pred-live-stages .is-fallida .pred-live-stages__bar:not(.pred-stage-reference) i { background: var(--err); }
 .pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i {
   position: relative;
   overflow: hidden;
