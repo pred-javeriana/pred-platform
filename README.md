@@ -257,8 +257,13 @@ data contract), so tasks move from `pendiente` to `ejecutando` to `exitosa`/`fal
 make import                                     # ingest reports -> DAL (needs an accepted ingestion)
 make launch ARGS="--ingest <sha256> --min-train 40 --horizon 7 --trials 2 --once"
 make worker ARGS=--status                       # runs and how many tasks per state
+make worker ARGS="--resume 1 --once"             # explicitly resume run #1 and process the queue
 make worker                                     # follow the queue in its own process
 ```
+
+Repeating `make launch` with the same input and settings only returns the existing run. Use
+`--resume <id>` to queue a stopped run or one completed with failures, preserving its saved studies
+and tasks. Without `--once`, the command only queues the run for the worker.
 
 - **Where it runs.** With `PRED_DATA_SOURCE=dal` and `PRED_WORKER=embedded` (the default) the app
   starts the worker as a thread, so one `make run` is enough; `PRED_WORKER=off` leaves it to
