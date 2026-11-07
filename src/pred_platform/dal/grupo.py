@@ -188,10 +188,12 @@ def _lumpy(conn: sqlite3.Connection, runs: Sequence[RunEvidence]) -> LumpyEviden
         ).fetchone()
         if confirmation is not None:
             champions[run.run_id] = confirmation["familia_campeona"]
-            published[run.run_id, "seasonal_naive"] = (
-                confirmation["efecto_n_skus"],
-                confirmation["efecto_mediana_r"],
-            )
+            # A baseline champion has no published effect (efecto_n_skus is NULL).
+            if confirmation["efecto_n_skus"] is not None:
+                published[run.run_id, "seasonal_naive"] = (
+                    confirmation["efecto_n_skus"],
+                    confirmation["efecto_mediana_r"],
+                )
         comparison = conn.execute(
             "SELECT n_skus,mediana_razon FROM m3_comparaciones "
             "WHERE run_id=? AND sku_class='lumpy' AND competidora='classical'",

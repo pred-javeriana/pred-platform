@@ -356,6 +356,30 @@ def test_champion_change_keeps_each_published_seed_effect(lumpy_db: Path) -> Non
         assert [e["full_count"] for e in baseline] == [3, 2, 3]
 
 
+def test_baseline_champion_without_a_published_effect_keeps_the_page_and_download(
+    lumpy_db: Path,
+) -> None:
+    # The engine writes this row when the lumpy champion is the baseline: no effect and no
+    # comparison against SARIMA.
+    sql(
+        lumpy_db,
+        "UPDATE m3_confirmaciones SET familia_campeona='seasonal_naive',estado='no_aplica',"
+        "causa='campeon_es_linea_base',p_iut=NULL,p_holm=NULL,efecto_n_skus=NULL,"
+        "efecto_mediana_r=NULL,contendiente=NULL WHERE run_id='seed-2'",
+    )
+    sql(lumpy_db, "DELETE FROM m3_comparaciones WHERE run_id='seed-2'")
+    with client(lumpy_db) as browser:
+        page = browser.get("/resultados/grupo", params=CHOICES)
+        assert page.status_code == 200
+        assert "Significancia del grupo por clase" in page.text
+        assert "la clase no es estable" in page.text
+        download = browser.get("/resultados/grupo.json", params=CHOICES)
+        assert download.status_code == 200
+        lumpy = download.json()["lumpy"]
+        assert {e["seed"] for e in lumpy["effects"]} == {0, 1}
+        assert download.json()["significance"]["complete"] is True
+
+
 def test_sources_list_all_publications_and_mark_the_selected_one(lumpy_db: Path) -> None:
     sql(
         lumpy_db,
