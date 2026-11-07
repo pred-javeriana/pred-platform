@@ -231,6 +231,11 @@ def paso_resultados(
     if facts is None:
         return render_missing_run(request, corrida)
     wizard = run_wizard("resultados", facts)
+    # Un capítulo que no existe vuelve a la entrada del paso, que elige el capítulo o lo cierra.
+    if capitulo is not None and capitulo not in CHAPTER_VIEWS:
+        return redirect_with_query(
+            step_href(corrida, "resultados"), request.query_params.multi_items()
+        )
     # Una dirección anterior con ?vista= va a su capítulo, que decide si está cerrado.
     if capitulo is None and "vista" in request.query_params:
         return _chapter_redirect(request, corrida, _legacy_chapter(dict(request.query_params)))
@@ -254,8 +259,6 @@ def paso_resultados(
         )
     if capitulo is None:
         return _chapter_redirect(request, corrida, "resumen" if facts.published else "productos")
-    if capitulo not in CHAPTER_VIEWS:
-        return render_missing_run(request, corrida)
     return _resultados_page(
         request, repository, facts.id, wizard, executions, capitulo, seed=facts.seed
     )

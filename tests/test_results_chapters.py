@@ -184,6 +184,20 @@ def test_old_bookmarks_keep_every_filter_and_repeated_query_value(
     )
 
 
+def test_an_unknown_chapter_returns_to_the_step_entry_with_its_query(
+    published: tuple[TestClient, str],
+) -> None:
+    client, number = published
+    response = client.get(
+        f"/corridas/{number}/resultados/nada?m3=m3-ui-0&tag=a&tag=b", follow_redirects=False
+    )
+    assert response.status_code == 307
+    assert response.headers["location"] == f"/corridas/{number}/resultados?m3=m3-ui-0&tag=a&tag=b"
+    page = client.get(response.headers["location"])
+    assert page.url.path == f"/corridas/{number}/resultados/resumen"
+    assert "No existe la corrida" not in _text(page.text)
+
+
 def test_export_is_the_last_chapter_with_one_footer_and_links_bound_to_the_evaluation(
     published: tuple[TestClient, str],
 ) -> None:
