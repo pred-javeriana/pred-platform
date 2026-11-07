@@ -24,6 +24,9 @@
 {% macro unread_note(found) -%}
 {% if found.confirmation is none and found.confirmation_problem %}<p class="pred-note">{{ found.confirmation_problem.title }} {{ found.confirmation_problem.detail }}</p>{% endif %}
 {%- endmacro %}
+{% macro missing_confirmation_note(found) -%}
+{% if found.confirmation is none and not found.confirmation_problem and found.run %}<p class="pred-note">Esta evaluación se publicó sin la confirmación por clase. Las pruebas por producto salen de los veredictos publicados; los conteos BY y el nivel FCR no se publicaron.</p>{% endif %}
+{%- endmacro %}
 {% macro answer(question, sentence, label, tone="neutral") -%}
 <section class="pred-results-answer"><div class="pred-results-answer__top"><p>{{ question }}</p>{{ claim(label, tone) }}</div><p class="pred-results-answer__sentence">{{ sentence }}</p>{{ caller() }}</section>
 {%- endmacro %}

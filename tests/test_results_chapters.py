@@ -55,7 +55,19 @@ def _publish(env: Env, client: TestClient, seed: int, *, only_smooth: bool = Fal
     assert launched.status_code == 303
     env.worker().run_next()
     [(number, engine_run)] = env.rows("SELECT id, run_id FROM ejecuciones ORDER BY id DESC LIMIT 1")
-    run_id = f"m3-ui-{seed}"
+    _publish_evaluation(env, engine_run, f"m3-ui-{seed}", seed, only_smooth=only_smooth)
+    return str(number)
+
+
+def _publish_evaluation(
+    env: Env,
+    engine_run: str,
+    run_id: str,
+    seed: int,
+    *,
+    only_smooth: bool = False,
+    creado_en: str = "2026-10-27 10:00:00",
+) -> None:
     verdicts = {
         "FIL-0001": ("smooth", "VALIDADO"),
         "FIL-0002": ("smooth", "VALIDADO"),
@@ -73,6 +85,7 @@ def _publish(env: Env, client: TestClient, seed: int, *, only_smooth: bool = Fal
         verdicts=verdicts,
         significant=("FIL-0001",),
         seed=seed,
+        creado_en=creado_en,
     )
     with closing(sqlite3.connect(env.db)) as conn, conn:
         conn.execute(
@@ -127,7 +140,6 @@ def _publish(env: Env, client: TestClient, seed: int, *, only_smooth: bool = Fal
             )
         ],
     )
-    return str(number)
 
 
 @pytest.fixture
@@ -769,3 +781,90 @@ def test_a_baseline_kept_by_default_is_not_called_the_best_forecast(
     assert not re.search(r"pronostica mejor (los|\d)", text)
     assert wording in text
     assert "Respaldada en esta corrida" not in text
+
+
+def _second_evaluation(
+    env: Env, number: str, run_id: str, *, seed: int, code: str | None = None
+) -> None:
+    """A newer published evaluation of the same execution; ``code`` makes it another version."""
+    [(engine_run,)] = env.rows("SELECT run_id FROM ejecuciones WHERE id = ?", int(number))
+    _publish_evaluation(
+        env, engine_run, run_id, seed, only_smooth=True, creado_en="2026-10-30 10:00:00"
+    )
+    if code is not None:
+        _set_code(env, run_id, code)
+
+
+def _set_code(env: Env, run_id: str, code: str) -> None:
+    _sql(
+        env,
+        "UPDATE m3_corridas SET identidad = json_set(identidad, '$.codigo_version', ?) "
+        "WHERE run_id = ?",
+        code,
+        run_id,
+    )
+
+
+def _group_status(client: TestClient, *runs: str) -> int:
+    choices = {f"semilla{seed}": run for seed, run in enumerate(runs)}
+    return client.get("/resultados/grupo.json", params=choices).status_code
+
+
+def test_stability_picks_the_accepted_publication_when_a_newer_one_of_the_seed_is_not(
+    env: Env,
+) -> None:
+    client = _dal_client(env)
+    first, second, _ = _three_seeds(env, client)
+    _second_evaluation(env, second, "m3-ui-1-newer", seed=1, code="0000000")
+    assert _group_status(client, "m3-ui-0", "m3-ui-1", "m3-ui-2") == 200
+    assert _group_status(client, "m3-ui-0", "m3-ui-1-newer", "m3-ui-2") == 400
+    text = _text(client.get(f"/corridas/{first}/resultados/estabilidad").text)
+    assert "La misma campeona gana y se confirma en las tres semillas" in text
+    assert "3 de 3 confirmadas" in text and "Pendiente" not in text
+    summary = _text(client.get(f"/corridas/{first}/resultados/resumen").text)
+    assert "Semillas con resultados 3 de 3" in summary
+
+
+def test_stability_picks_the_newest_accepted_publication_of_a_seed(env: Env) -> None:
+    client = _dal_client(env)
+    first, second, _ = _three_seeds(env, client)
+    _second_evaluation(env, second, "m3-ui-1-newer", seed=1)
+    _set_code(env, "m3-ui-1", "0000000")
+    assert _group_status(client, "m3-ui-0", "m3-ui-1", "m3-ui-2") == 400
+    assert _group_status(client, "m3-ui-0", "m3-ui-1-newer", "m3-ui-2") == 200
+    text = _text(client.get(f"/corridas/{first}/resultados/estabilidad").text)
+    assert "La misma campeona gana y se confirma en las tres semillas" in text
+    assert "3 de 3 confirmadas" in text
+
+
+def test_an_older_publication_without_class_confirmation_keeps_its_product_tests(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    # The engine fixed the class confirmation with the protocol's reserve blocks.
+    _sql(
+        env,
+        "UPDATE m3_protocolos SET protocolo = json_remove(protocolo, '$.bloques') "
+        "WHERE run_id = 'm3-ui-0'",
+    )
+    summary = _text(client.get(f"/corridas/{number}/resultados/resumen").text)
+    verification_html = client.get(f"/corridas/{number}/resultados/p2").text
+    verification = _text(verification_html)
+    for text in (summary, verification):
+        assert "no publicó pruebas" not in text
+        assert "1 de 4 productos probados (25,0 %)" in text
+    assert (
+        "Suave 3 1 1 — — — 1 Errática 1 0 0 — — — 0" in verification
+    )  # BY and FCR were never published
+    assert "sin la confirmación por clase" in verification
+    assert "1 con mejora verificada" in verification
+    assert "2 sin diferencia demostrada" in verification
+    assert "1 peores que la línea base" in verification
+    # The filtered Productos page and the CSV list exactly the products the chapters count.
+    for result, count in (("mejora", 1), ("sin_diferencia", 2), ("peor", 1)):
+        page = client.get(f"/corridas/{number}/resultados/productos?prueba={result}").text
+        assert len(re.findall(r'aria-label="Ver evidencia del SKU ([^"]+)"', page)) == count
+        csv_text = client.get(
+            f"/resultados/exportar.csv?ejecucion={number}&m3=m3-ui-0&prueba={result}"
+        ).text
+        assert len(list(csv.DictReader(io.StringIO(csv_text.lstrip("﻿"))))) == count

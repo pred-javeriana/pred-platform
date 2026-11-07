@@ -22,6 +22,7 @@ from pred_platform.app.presentation import (
     sku_class_label,
 )
 from pred_platform.app.resultados_m3 import (
+    ClassTests,
     interval_text,
     p_text,
     percent_text,
@@ -32,7 +33,7 @@ from pred_platform.app.resultados_m3 import (
 from pred_platform.app.resultados_pronostico import ChampionForecastSeries, ForecastPoint
 from pred_platform.contract import models_v2
 from pred_platform.contract.models import TopologyMetrics, TopologyReport
-from pred_platform.data.m3_confirmation import M3ClassConfirmation, M3ClassSignificance
+from pred_platform.data.m3_confirmation import M3ClassConfirmation
 from pred_platform.data.repository import M3ReserveBlocks
 
 FAMILY_COLORS = {
@@ -1123,7 +1124,7 @@ def reserve_timeline_svg(blocks: M3ReserveBlocks, cut: str | None) -> str:
 
 
 def significance_svg(
-    rows: Sequence[models_v2.M3Category], significance: Sequence[M3ClassSignificance]
+    rows: Sequence[models_v2.M3Category], significance: Sequence[ClassTests]
 ) -> str:
     """Cuatro partes sobre todos los productos con veredicto, incluida la ausencia de prueba."""
     width, left, right = 820, 120, 650

@@ -23,11 +23,13 @@ from pred_platform.app.resultados_m3 import (
     M3Problem,
     classes,
     percent_text,
+    product_tests,
 )
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import RunStatus
 from pred_platform.data.m3_confirmation import M3ClassConfirmation
+from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository
 from pred_platform.evidence.models import EvidenceInvalid
 
@@ -174,9 +176,10 @@ def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> A
         and confirmations[row.sku_class].familia_campeona == row.familia_campeona
     )
     types = len(found.rows)
-    tested = sum(row.n_probados for row in found.significance)
-    better = sum(row.n_mejores for row in found.significance)
-    worse = sum(row.n_peores for row in found.significance)
+    tests = product_tests(found, verdicts)
+    tested = sum(row.n_probados for row in tests)
+    better = sum(row.n_mejores for row in tests)
+    worse = sum(row.n_peores for row in tests)
     selection = _selection_text(found, verdicts)
     if unread:
         verification = "No se pudieron leer las pruebas por producto de esta evaluación."
@@ -245,32 +248,33 @@ def seed_evidence(
     if active.seed in THESIS_SEEDS:
         choices[active.seed] = SeedEvidence(active.seed, active.id, found)
     reference = found.run.run_id if found.run and found.run.estado == "PUBLICADA" else None
-    candidates: list[SeedEvidence] = []
+    if reference is None:
+        return tuple(choices.get(seed, SeedEvidence(seed)) for seed in THESIS_SEEDS)
+    # Every published evaluation of every other execution of the group is a candidate, newest
+    # execution first and newest evaluation first, because one execution can publish several.
+    offered: list[tuple[int, str, str]] = []
     for run in sorted(runs, key=lambda r: (len(r.id), r.id), reverse=True):
-        if reference is None or run.seed not in THESIS_SEEDS or run.seed == active.seed:
+        if run.seed not in THESIS_SEEDS or run.seed == active.seed:
             continue
         try:
-            status = repository.get_run_status(run.id, size=1)
+            if group_key(repository.get_run_status(run.id, size=1)) != key:
+                continue
+            published = repository.list_m3_runs(
+                run_id_m2=run.id, estado="PUBLICADA", size=MAX_SIZE
+            ).items
         except (DataLayerError, InvalidQuery):
             continue
-        if group_key(status) != key:
+        offered += [(run.seed, run.id, item.run_id) for item in published]
+    try:
+        accepted = repository.comparable_m3_runs(reference, [m3 for _, _, m3 in offered])
+    except EvidenceInvalid:
+        accepted = frozenset()
+    for seed, execution, m3_run in offered:
+        if seed in choices or m3_run not in accepted:
             continue
-        evidence = classes(repository, run.id)
-        if evidence.run is None or evidence.run.estado != "PUBLICADA" or evidence.problem:
-            continue
-        candidates.append(SeedEvidence(run.seed, run.id, evidence))
-    if candidates and reference is not None:
-        try:
-            accepted = repository.comparable_m3_runs(
-                reference,
-                [c.evidence.run.run_id for c in candidates if c.evidence and c.evidence.run],
-            )
-        except EvidenceInvalid:
-            accepted = frozenset()
-        for candidate in candidates:
-            run = candidate.evidence.run if candidate.evidence else None
-            if run and run.run_id in accepted:
-                choices.setdefault(candidate.seed, candidate)
+        evidence = classes(repository, execution, m3_run)
+        if evidence.run is not None and evidence.run.estado == "PUBLICADA" and not evidence.problem:
+            choices[seed] = SeedEvidence(seed, execution, evidence)
     return tuple(choices.get(seed, SeedEvidence(seed)) for seed in THESIS_SEEDS)
 
 

@@ -84,6 +84,7 @@ from pred_platform.app.resultados_m3 import (
     decision,
     default_execution,
     other_publications,
+    product_tests,
     profiles,
     publication_time,
     published_executions,
@@ -337,6 +338,7 @@ def _resultados_page(
         confirmation_svgs={},
         profile_svgs={},
         significance_svg="",
+        product_tests=[],
         histograms={},
         reserve_svg="",
         stability_svgs=[],
@@ -536,8 +538,9 @@ def _fill_charts(context: dict[str, Any]) -> None:
         )
         for code in SKU_CLASS_ORDER
     }
-    context["significance_svg"] = charts.significance_svg(found.rows, found.significance)
     summary: M3Summary = context["m3_summary"]
+    context["product_tests"] = tests = product_tests(found, summary.verdicts)
+    context["significance_svg"] = charts.significance_svg(found.rows, tests)
     if context["vista"] == "prueba":
         context["histograms"] = {
             code: charts.histogram_svg(summary.verdicts, code) for code in SKU_CLASS_ORDER

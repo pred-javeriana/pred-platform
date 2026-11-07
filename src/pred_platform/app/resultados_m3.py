@@ -731,6 +731,55 @@ def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = Non
     return M3Classes(run=resolved, rows=rows, confirmation=confirmation)
 
 
+@dataclass(frozen=True, slots=True)
+class ClassTests:
+    """Los productos probados de una clase y cuántos mejoran o empeoran frente a la línea base.
+
+    Con la confirmación publicada salen de ``m3_significancia``, con sus conteos BY y el nivel FCR.
+    Una evaluación anterior no los publicó por clase: sus conteos salen de las pruebas HLN-DM de
+    los veredictos publicados, sin recalcular nada, y BY y FCR quedan ausentes (``None``).
+    """
+
+    sku_class: str
+    n_probados: int
+    n_mejores: int
+    n_peores: int
+    n_mejores_by: int | None = None
+    n_peores_by: int | None = None
+    nivel_fcr: float | None = None
+
+
+def product_tests(
+    found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()
+) -> list[ClassTests]:
+    """Las pruebas por producto de cada clase, de la confirmación o de los veredictos publicados.
+
+    Si la confirmación existe pero no se pudo leer, no hay nada que afirmar y la lista queda vacía.
+    """
+    if found.confirmation is not None:
+        return [
+            ClassTests(
+                row.sku_class,
+                row.n_probados,
+                row.n_mejores,
+                row.n_peores,
+                row.n_mejores_by,
+                row.n_peores_by,
+                row.nivel_fcr,
+            )
+            for row in found.significance
+        ]
+    if found.confirmation_problem is not None:
+        return []
+    result = []
+    for code in SKU_CLASS_ORDER:
+        outcomes = Counter(test_result(row) for row in verdicts if row.sku_class == code)
+        tested = sum(n for outcome, n in outcomes.items() if outcome != "sin_prueba")
+        if tested:
+            result.append(ClassTests(code, tested, outcomes["mejora"], outcomes["peor"]))
+    return result
+
+
 def verdict_counts(row: models_v2.M3Category) -> list[tuple[str, int]]:
     """Los cinco conteos de veredictos de una clase, en el orden de los grupos del contrato."""
     return [(v, getattr(row.conteos, v)) for veredictos in GROUPS.values() for v in veredictos]
