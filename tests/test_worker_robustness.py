@@ -322,7 +322,8 @@ def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_
         timeout=60,
         check=False,
     )
-    assert cli.returncode == 0, cli.stderr
+    # A final import that fails is a failed command, as on a worker without recovery.
+    assert cli.returncode == (0 if units == "ok" else 1), cli.stderr
     assert "KeyError" in cli.stderr
     if units == "ok":
         _assert_imported(env, intento=1)
@@ -341,6 +342,31 @@ def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_
     monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
     Worker(env.settings).drain()
     _assert_imported(env, intento=1 if units == "ok" else 2)
+
+
+def test_a_failed_final_import_exits_non_zero_and_a_restart_imports_the_files(
+    env: Env, monkeypatch
+):
+    # The engine publishes the run and exits normally, but a unit of its final files lacks its
+    # keys: nothing is imported, the command fails and the run stays recoverable.
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    cli = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "publishes_before_exit", FAKE_ENGINE_UNITS="bad_line"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert cli.returncode == 1, cli.stderr
+    ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+    assert (estado, error) == ("completada", None)
+    assert pid is not None and not engine.is_alive(pid)
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(0,)]
+
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+    assert Worker(env.settings).drain()
+    _assert_imported(env, intento=2)
 
 
 def test_settling_a_claim_keeps_a_run_the_engine_already_published(env: Env):

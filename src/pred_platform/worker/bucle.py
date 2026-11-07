@@ -52,6 +52,8 @@ class Worker:
         self._lock = lock or WorkerLock.for_database(settings.db_path)
         # The run this worker claimed but could not record as stopped, with the error to record.
         self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
+        # The runs whose final result import failed after the engine had finished.
+        self._import_failed: list[str] = []
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
@@ -78,8 +80,11 @@ class Worker:
         finally:
             self._lock.release()
 
-    def drain(self) -> None:
+    def drain(self) -> bool:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``).
+
+        Returns whether every final result import succeeded; a failed import leaves its run
+        recoverable and the caller exits non-zero.
 
         While another worker holds the database, this one exits without running anything;
         queued work waits for that worker or the next one. A read-only database is left alone.
@@ -89,7 +94,7 @@ class Worker:
                 "La base %s es de solo lectura: no se ejecuta ninguna corrida",
                 self.settings.db_path,
             )
-            return
+            return True
         try:
             locked = self._lock.acquire()
         except OSError as exc:
@@ -101,7 +106,7 @@ class Worker:
                 "para ese worker o para el siguiente que arranque",
                 self.settings.db_path,
             )
-            return
+            return True
         try:
             self.recover()
             while self.run_next() or self._unsettled is not None:
@@ -109,6 +114,7 @@ class Worker:
                     time.sleep(self.poll_interval)  # the database still fails: wait, then retry
         finally:
             self._lock.release()
+        return not self._import_failed
 
     def _log_unlockable(self, exc: OSError) -> None:
         _logger.error(
@@ -375,14 +381,18 @@ class Worker:
                 dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
             return
 
-        estado = finalize(
-            conn,
-            run,
-            run_dir=folder,
-            returncode=process.returncode,
-            corte=corte,
-            families=follower.families,
-            log_path=log_path,
-            previous_summary=previous_summary,
-        )
+        try:
+            estado = finalize(
+                conn,
+                run,
+                run_dir=folder,
+                returncode=process.returncode,
+                corte=corte,
+                families=follower.families,
+                log_path=log_path,
+                previous_summary=previous_summary,
+            )
+        except Exception:
+            self._import_failed.append(run.run_id)
+            raise
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)
