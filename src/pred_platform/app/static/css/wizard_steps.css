@@ -58,7 +58,7 @@ label.pred-file-choice { display: grid; grid-template-columns: 22px minmax(0, 1f
 .pred-data-details > .pred-details { border-bottom: 1px solid var(--border); padding: 14px 0; }
 .pred-data-details > .pred-details > .pred-evidence-panel { box-shadow: none; border: 0; padding: 16px 0 0; }
 .pred-data-split .pred-types-table { width: 100%; margin: 0; table-layout: fixed; }
-.pred-types-table :is(th, td) { padding: 10px; background: transparent; }
+.pred-types-table :is(th, td) { padding: 10px; background: transparent; white-space: normal; overflow-wrap: anywhere; }
 .pred-types-table th { width: auto; }
 .pred-types-table thead th:nth-child(1), .pred-types-table thead th:nth-child(2) { width: 40%; }
 .pred-types-table thead th:nth-child(3) { width: 20%; }

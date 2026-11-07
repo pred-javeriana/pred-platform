@@ -20,13 +20,25 @@
     let pending = false;
     let inFlight = null;
     let timer = 0;
+    let replacing = false;
+    let submitting = false;
     const save = function () {
       clearTimeout(timer);
-      if (!pending || inFlight) return;
+      if (!pending || inFlight || replacing) return;
       pending = false;
       const data = new FormData(ajustes);
       data.set("destino", "ajustes");
-      inFlight = fetch(ajustes.action, { method: "POST", body: data, redirect: "manual", credentials: "same-origin", keepalive: true })
+      inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true" }, credentials: "same-origin", keepalive: true })
+        .then(function (response) { return response.ok ? response.text() : null; })
+        .then(function (html) {
+          if (!html || pending || replacing || submitting) return;
+          const saved = new DOMParser().parseFromString(html, "text/html");
+          ["barra-pasos", "resumen-paso"].forEach(function (id) {
+            const current = document.getElementById(id);
+            const updated = saved.getElementById(id);
+            if (current && updated) current.replaceWith(updated);
+          });
+        })
         .catch(function () {})
         .finally(function () { inFlight = null; save(); });
     };
@@ -34,12 +46,27 @@
     ajustes.addEventListener("change", function () { pending = true; save(); });
     ajustes.addEventListener("submit", function (event) {
       // El envío del formulario lleva todo lo escrito: no hace falta otro guardado.
+      // Conserva también el botón de la barra que requestSubmit volverá a usar al terminar.
+      submitting = true;
       pending = false;
       clearTimeout(timer);
       if (!inFlight) return;
       event.preventDefault();
       const submitter = event.submitter;
       inFlight.then(function () { pending = false; ajustes.requestSubmit(submitter); });
+    });
+    document.addEventListener("submit", function (event) {
+      const form = event.target;
+      if (!form.matches("[data-replaces-draft]")) return;
+      // La copia o importación es la última elección. Ningún guardado de este formulario
+      // puede escribir su cookie después, tampoco al salir de la página.
+      replacing = true;
+      pending = false;
+      clearTimeout(timer);
+      if (!inFlight) return;
+      event.preventDefault();
+      const submitter = event.submitter;
+      inFlight.then(function () { form.requestSubmit(submitter); });
     });
     window.addEventListener("pagehide", save);
   }

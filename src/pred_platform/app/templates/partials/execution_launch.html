@@ -9,7 +9,7 @@
   </div>
   <div class="pred-action-card__do pred-copy-actions">
     {% if copy_runs %}
-    <form method="post" action="/corridas/nueva/copiar" class="pred-copy-form" data-auto-choice>
+    <form method="post" action="/corridas/nueva/copiar" class="pred-copy-form" data-auto-choice data-replaces-draft>
       <label class="pred-sr-only" for="copiar">Copiar una corrida</label>
       <select id="copiar" name="copiar" class="pred-field__control" required>
         <option value="">Elija una corrida para copiar sus ajustes</option>
@@ -22,7 +22,7 @@
       <summary>Importar un archivo de configuración</summary>
       {% if import_error %}{{ alert(import_error, variant="error") }}{% endif %}
       <p class="pred-meta">Reproducir una ejecución anterior no lanza nada: primero se revisan sus ajustes.</p>
-      <form method="post" action="/ejecucion/configuracion" enctype="multipart/form-data" id="importar-configuracion">
+      <form method="post" action="/ejecucion/configuracion" enctype="multipart/form-data" id="importar-configuracion" data-replaces-draft>
         {{ field("archivo", "Configuración exportada (.json)", input_type="file", accept=".json,application/json", hint="Rellena este formulario con los ajustes de otra ejecución; no lanza nada.") }}
         {{ button("Importar", variant="secondary", type="submit", icon="i-upload") }}
       </form>

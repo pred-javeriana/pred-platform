@@ -83,7 +83,7 @@
       <p class="pred-actions">{{ button("Ver archivo elegido", variant="secondary", type="submit") }}</p>
     </form>
     {% endif %}
-    <details class="pred-details" id="carga"{% if form_error or not report and not listing.items %} open{% endif %}>
+    <details class="pred-details" id="carga"{% if form_error or request.query_params.get('carga') == '1' or not report and not listing.items %} open{% endif %}>
       <summary>Cargar un archivo nuevo</summary>
       {{ upload_form(false) }}
     </details>

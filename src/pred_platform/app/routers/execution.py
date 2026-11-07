@@ -714,8 +714,11 @@ def guardar_ajustes(
     if destino in STEP_KEYS and destino != "revisar":
         draft = read_draft(request)
         typed = {"families": families or [], "metric": metric, **fields}
+        saved = draft.with_values(ingest_id or draft.ingest_id, typed)
+        if destino == "ajustes" and request.headers.get("X-Pred-Autosave") == "true":
+            return _render_ajustes(request, repository, save=saved)
         response = RedirectResponse(step_href(NEW, destino), status_code=303)
-        save_draft(response, draft.with_values(ingest_id or draft.ingest_id, typed))
+        save_draft(response, saved)
         return response
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
