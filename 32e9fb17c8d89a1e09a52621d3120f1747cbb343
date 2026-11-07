@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "summary": "Builds wizard steps 1 to 3 (Datos, Ajustes, Revisar y lanzar) and their read-only records; Ajustes saves every edit and never picks a file for the person (#245, #246).",
+  "files": [
+    {
+      "path": "src/pred_platform/app/static/js/wizard_steps.js",
+      "summary": "Per-edit autosave for Ajustes, plus the Datos map and auto-submitting choices.",
+      "annotations": [
+        {
+          "newRange": [1, 82],
+          "summary": "Ajustes posts each edit with destino=ajustes (keepalive), one request at a time; a form submit waits for one in flight.",
+          "rationale": "The draft is one cookie, so a stale autosave response arriving after Continuar would overwrite settings_ready. Serialising and making submit wait avoids that; verified in a real browser (autosave POST then Continue POST, Ajustes stays hecho, Back still returns to Ajustes).",
+          "author": "fm/pred-platform-wizard-steps"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/partials/wizard_rail.html",
+      "summary": "Rail steps in Ajustes are submit buttons with destino.",
+      "annotations": [
+        {
+          "newRange": [12, 12],
+          "summary": "Hidden Continuar submitter placed before the rail buttons.",
+          "rationale": "The first submit button in document order is the implicit Enter submitter; without it, Enter in a field would submit the Datos rail button.",
+          "author": "fm/pred-platform-wizard-steps"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/borrador.py",
+      "summary": "Draft cookie.",
+      "annotations": [
+        {
+          "newRange": [48, 50],
+          "summary": "Choosing another file clears settings_ready; the same file keeps it.",
+          "rationale": "Issue #245 case 3: the rail said Ajustes hecho for settings reviewed against another file.",
+          "author": "fm/pred-platform-wizard-steps"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/routers/execution.py",
+      "summary": "Ajustes, copy, Revisar and record rendering.",
+      "annotations": [
+        {
+          "newRange": [623, 680],
+          "summary": "One copy rule (_copy_settings) for the Ajustes copy form and the Results ?copiar_de= link.",
+          "rationale": "Main added ?copiar_de= separately; two owners of one rule diverged (the link kept an unknown file in the draft). Copy no longer marks Ajustes complete.",
+          "author": "fm/pred-platform-wizard-steps"
+        }
+      ]
+    }
+  ]
+}
