@@ -13,6 +13,7 @@ corresponde con la misma consulta.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -27,6 +28,7 @@ from pred_platform.app.configuracion import (
     ConfigExportError,
     config_filename,
     export_config,
+    form_values,
     parse_config,
 )
 from pred_platform.app.corridas import (
@@ -71,6 +73,7 @@ from pred_platform.app.ejecucion import (
     single_family_classes,
     stage_steps,
 )
+from pred_platform.app.historial import earlier_runs, timestamp
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
     NEW,
@@ -101,7 +104,7 @@ from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.control import ControlUnavailable, RunControl
-from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION
+from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION, run_id_for
 
 router = APIRouter()
 
@@ -298,13 +301,13 @@ def ejecucion(
     if params.get("ingest_id"):
         return redirect_with_query(step_href(NEW, "ajustes"), items, drop=("lanzar", "ejecucion"))
     if params.get("lanzar"):
-        return redirect_with_query(step_href(NEW, "datos"), [])
+        return redirect_with_query(step_href(NEW, "datos"), items, drop=("lanzar", "ejecucion"))
     wanted = (params.get("ejecucion") or "").strip()
     target = resolve_run_id(repository, wanted or LATEST)
     if target is None and wanted not in ("", LATEST):
         target = wanted  # Una referencia desconocida conserva la página 404.
     if target is None:
-        return redirect_with_query(step_href(NEW, "datos"), [])
+        return redirect_with_query(step_href(NEW, "datos"), items, drop=("ejecucion",))
     return redirect_with_query(step_href(target, "ejecucion"), items, drop=("ejecucion",))
 
 
@@ -442,18 +445,30 @@ def _render_ajustes(
     if form is None:
         values["ingest_id"] = ingest_id or draft.ingest_id or ""
     ingests = accepted_ingests(repository)
-    # El archivo que eligió la persona (el borrador, un enlace o el formulario enviado); sin
-    # elegir, el formulario ofrece el primero que se puede ejecutar, pero Datos sigue por hacer.
+    # El archivo que eligió la persona (el borrador, un enlace o el formulario enviado). Sin
+    # elegir, o con uno que la lista no tiene, la lista pide elegir uno: nunca elige por la
+    # persona, porque Atrás o un paso de la barra lo guardarían en el borrador.
     chosen = values.get("ingest_id") or None
-    selected = chosen
-    if not selected and imported is None:
-        selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
+    selected = chosen if chosen in {i.item.ingest_id for i in ingests} else None
     control = _control(request)
+    warning = exclusion
+    if form is None:
+        form = _launch_form(
+            values.get("families"), values.get("metric"), {k: values.get(k) for k in _LAUNCH_FIELDS}
+        )
+    if selected and warning is None:
+        warning = _check_launch(repository, selected, form)
+    by_class = {}
+    if selected:
+        with suppress(DataLayerError, InvalidQuery):
+            by_class = repository.get_topology_report(selected, size=1).summary.by_class
+    details = _stored_runs(request)
     context = {
         "wizard": draft_wizard(
             "ajustes", draft_facts(repository, draft, chosen), can_continue=bool(ingests)
         ),
         "source": repository.source,
+        "record": False,
         "ingests": ingests,
         "selected_ingest": selected,
         "form": values,
@@ -461,9 +476,14 @@ def _render_ajustes(
         "form_error": form_error,
         "import_error": import_error,
         "notice": imported,
-        "exclusion_warning": exclusion[0] if exclusion else None,
         "family_choices": FAMILY_CHOICES,
         "families_hint": families_hint(),
+        "class_counts": by_class,
+        "exclusion_warning": warning[0] if warning else None,
+        "copy_runs": [
+            {"id": r.id, "seed": r.seed, "iniciada_en": timestamp(r.iniciada_en)} for r in details
+        ],
+        "copy_run": request.query_params.get("copiar", ""),
         "metric_choices": METRIC_CHOICES,
         "control_reason": control.reason,
         "launch_form_id": AJUSTES_FORM,
@@ -472,6 +492,24 @@ def _render_ajustes(
     if save is not None:
         save_draft(response, save)
     return response
+
+
+def _stored_runs(request: Request) -> list[lectura.RunDetail]:
+    settings = request.app.state.settings
+    return lectura.list_runs(settings.db_path) if settings.data_source == "dal" else []
+
+
+def _duplicate(request: Request, ingest_id: str, form: FormResult) -> lectura.RunDetail | None:
+    settings = request.app.state.settings
+    if settings.data_source != "dal" or form.settings is None or form.errors:
+        return None
+    return lectura.get_run_for_identity(settings.db_path, run_id_for(ingest_id, form.settings))
+
+
+def _duration_context(request: Request, ingest_id: str) -> dict[str, Any]:
+    history = earlier_runs(_stored_runs(request), ingest_id, request.app.state.settings.data_root)
+    maximum = max((d.seconds for r in history for d in r.stages.values()), default=1) or 1
+    return {"earlier_runs": history, "duration_max": maximum, "stage_choices": STAGES}
 
 
 def _render_revisar(
@@ -499,6 +537,8 @@ def _render_revisar(
         "wizard": draft_wizard("revisar", draft_facts(repository, draft, ingest_id)),
         "source": repository.source,
         "record": False,
+        "duplicate": _duplicate(request, ingest_id, form),
+        **_duration_context(request, ingest_id),
         "ingest": ingest,
         "ingest_id": ingest_id,
         "review_rows": draft_items(form.values),
@@ -521,13 +561,36 @@ def _render_record(
         status = repository.get_run_status(facts.id, size=1)
     except (DataLayerError, InvalidQuery):
         return render_missing_run(request, facts.id)
+    detail = next((r for r in _stored_runs(request) if str(r.id) == facts.id), None)
+    values = None
+    record_error = None
+    if detail is not None:
+        try:
+            values = form_values(detail)
+        except ConfigExportError as exc:
+            record_error = str(exc)
+    by_class = {}
+    if facts.ingest_id:
+        with suppress(DataLayerError, InvalidQuery):
+            by_class = repository.get_topology_report(facts.ingest_id, size=1).summary.by_class
+    rows = settings_items(status.settings) if status.settings else []
+    if values is not None:
+        stored_labels = {label for label, _ in rows}
+        rows.extend(row for row in draft_items(values) if row[0] not in stored_labels)
     context = {
         "wizard": run_wizard(step, facts),
         "source": repository.source,
         "record": True,
         "facts": facts,
         "run": status.ejecucion,
-        "review_rows": settings_items(status.settings) if status.settings else [],
+        "review_rows": rows,
+        "form": values,
+        "record_error": record_error,
+        "family_choices": FAMILY_CHOICES,
+        "metric_choices": METRIC_CHOICES,
+        "families_hint": families_hint(),
+        "class_counts": by_class,
+        **_duration_context(request, facts.ingest_id or ""),
         "reserve": status.reserve,
     }
     template = "pages/paso_ajustes.html" if step == "ajustes" else "pages/paso_revisar.html"
@@ -547,80 +610,76 @@ def paso_ajustes(
         linked = request.query_params.get("ingest_id") or None
         runnable = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
         save = read_draft(request).with_ingest(linked) if linked and linked in runnable else None
-
+        # Un enlace con un archivo que no se puede ejecutar muestra el del borrador.
+        shown = linked if save is not None else None
         copiar_de = (request.query_params.get("copiar_de") or "").strip().lstrip("#")
         if copiar_de:
-            settings = request.app.state.settings
-            if settings.data_source == "fixture":
-                notice = (
-                    "warning",
-                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: "
-                    "la plataforma funciona con datos de prueba.",
-                )
-                return _render_ajustes(
-                    request, repository, ingest_id=linked, imported=notice, save=save
-                )
-            detail = lectura.get_run(settings.db_path, copiar_de)
-            if detail is None:
-                notice = (
-                    "warning",
-                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: "
-                    "no existe esa corrida.",
-                )
-                return _render_ajustes(
-                    request, repository, ingest_id=linked, imported=notice, save=save
-                )
-            versions = {
-                "plataforma": package_version("pred-platform"),
-                "contrato_v1": CONTRACT_VERSION,
-                "contrato_v2": M3_CONTRACT_VERSION,
-                "formato_parametros": PARAMETERS_SCHEMA_VERSION,
-            }
-            try:
-                document = export_config(detail, versions)
-                imported = parse_config(json.dumps(document).encode("utf-8"))
-            except ConfigExportError as exc:
-                motivo = str(exc).rstrip(".")
-                notice = (
-                    "warning",
-                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: {motivo}.",
-                )
-                return _render_ajustes(
-                    request, repository, ingest_id=linked, imported=notice, save=save
-                )
-            if imported.values is not None:
-                form = FormResult(imported.values, None, {})
-                form.values["ingest_id"] = imported.ingest_sha256 or ""
-                notice = (
-                    "info",
-                    f"Ajustes copiados de la corrida #{copiar_de}. Cambie la semilla y continúe.",
-                )
-                save_copy = read_draft(request).with_values(
-                    form.values["ingest_id"] or None, form.values
-                )
-                return _render_ajustes(
-                    request, repository, form=form, imported=notice, save=save_copy
-                )
-            motivo = (
-                " ".join(imported.errors).rstrip(".")
-                if imported.errors
-                else "la configuración no es válida"
-            )
-            notice = (
-                "warning",
-                f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: {motivo}.",
-            )
-            return _render_ajustes(
-                request, repository, ingest_id=linked, imported=notice, save=save
-            )
-
-        return _render_ajustes(request, repository, ingest_id=linked, save=save)
+            return _copy_settings(request, repository, copiar_de, ingest_id=shown, save=save)
+        return _render_ajustes(request, repository, ingest_id=shown, save=save)
     facts = run_facts(repository, corrida)
     if facts is None:
         return render_missing_run(request, corrida)
     return _render_record(request, repository, facts, "ajustes")
 
 
+@router.post("/corridas/nueva/copiar", response_class=HTMLResponse)
+def copiar_ajustes(
+    request: Request,
+    copiar: Annotated[str, Form()],
+    repository: DataRepository = Depends(get_repository),  # noqa: B008
+) -> HTMLResponse:
+    """«Partir de una corrida anterior» en Ajustes."""
+    return _copy_settings(request, repository, copiar.strip().lstrip("#"))
+
+
+def _copy_settings(
+    request: Request,
+    repository: DataRepository,
+    reference: str,
+    *,
+    ingest_id: str | None = None,
+    save: Draft | None = None,
+) -> HTMLResponse:
+    """Copia todos los ajustes guardados de una corrida al borrador, sin validarlos: no crea ni
+    reanuda una corrida, y Ajustes queda por revisar. Si no se puede copiar, el borrador no cambia
+    y Ajustes dice por qué. Lo usan el formulario de copia y el enlace ``?copiar_de=`` de
+    Resultados."""
+
+    def refused(reason: str) -> HTMLResponse:
+        notice = (
+            "warning",
+            f"No se pudieron copiar los ajustes de la corrida #{reference}: {reason}.",
+        )
+        return _render_ajustes(request, repository, ingest_id=ingest_id, imported=notice, save=save)
+
+    settings = request.app.state.settings
+    if settings.data_source != "dal":
+        return refused("la plataforma funciona con datos de prueba")
+    detail = lectura.get_run(settings.db_path, reference)
+    if detail is None:
+        return refused("no existe esa corrida")
+    try:
+        values = form_values(detail)
+    except ConfigExportError as exc:
+        return refused(str(exc).rstrip("."))
+    known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
+    values["ingest_id"] = detail.ingest_sha256 if detail.ingest_sha256 in known else ""
+    notice = (
+        ("info", f"Ajustes copiados de la corrida #{reference}. Cambie la semilla y continúe.")
+        if values["ingest_id"]
+        else (
+            "warning",
+            f"Ajustes copiados de la corrida #{reference}, pero el archivo de esa corrida no está "
+            "disponible. Elija otros datos y cambie la semilla antes de continuar.",
+        )
+    )
+    copy = read_draft(request).with_values(values["ingest_id"] or None, values)
+    return _render_ajustes(
+        request, repository, form=FormResult(values, None, {}), imported=notice, save=copy
+    )
+
+
+@router.post("/corridas/nueva/ajustes/comprobar", response_model=None)
 @router.post("/corridas/nueva/ajustes", response_model=None)
 def guardar_ajustes(
     request: Request,
@@ -655,11 +714,16 @@ def guardar_ajustes(
     if destino in STEP_KEYS and destino != "revisar":
         draft = read_draft(request)
         typed = {"families": families or [], "metric": metric, **fields}
+        saved = draft.with_values(ingest_id or draft.ingest_id, typed)
+        if destino == "ajustes" and request.headers.get("X-Pred-Autosave") == "true":
+            return _render_ajustes(request, repository, save=saved)
         response = RedirectResponse(step_href(NEW, destino), status_code=303)
-        save_draft(response, draft.with_values(ingest_id or draft.ingest_id, typed))
+        save_draft(response, saved)
         return response
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
+    if request.url.path.endswith("/comprobar"):
+        return _render_ajustes(request, repository, form=form, exclusion=warning)
     if form.errors or ingest_id is None:
         return _render_ajustes(request, repository, form=form, exclusion=warning)
     response = RedirectResponse(step_href(NEW, "revisar"), status_code=303)
@@ -725,6 +789,11 @@ def lanzar(
     warning = _check_launch(repository, ingest_id, form)
     if form.errors or form.settings is None or ingest_id is None:
         return _render_ajustes(request, repository, form=form, exclusion=warning)
+    duplicate = _duplicate(request, ingest_id, form)
+    if duplicate is not None:
+        return RedirectResponse(
+            f"{step_href(str(duplicate.id), 'ejecucion')}?aviso=existente", status_code=303
+        )
     if warning is not None and confirmar != warning[1]:
         return _render_revisar(request, repository, ingest_id=ingest_id, values=form.values)
     try:

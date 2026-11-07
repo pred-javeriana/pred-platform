@@ -356,6 +356,17 @@ def get_run(db_path: Path, reference: str) -> RunDetail | None:
     return None if row is None else RunDetail(*row)
 
 
+def get_run_for_identity(db_path: Path, identity: str) -> RunDetail | None:
+    """La generación que resolvería Lanzar, sin crear ni reanudar una corrida."""
+    from pred_platform.dal.ejecuciones import current_run_id
+
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_run_columns(conn):
+            return None
+        reference = current_run_id(conn, identity)
+    return get_run(db_path, reference)
+
+
 def task_state_counts(db_path: Path, ejecucion_id: int) -> dict[str, int]:
     """Tasks per state over the whole run (not just a page)."""
     with _open_readonly(db_path) as conn:

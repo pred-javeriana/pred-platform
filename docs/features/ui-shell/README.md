@@ -20,11 +20,14 @@ no administration screen. M0 is out of the flow.
   Siguiente go. It reads nothing; `app/corridas.py` reads the repository (`list_runs`,
   `get_run_status`, the published M3 runs) and builds the home and the facts the rail needs.
 - The draft of a new run (the chosen file and settings) lives in a browser session cookie
-  (`app/borrador.py`). Siguiente in Datos and Ajustes writes it. Leaving Ajustes by Atrás or a
-  rail step also writes what was typed, unvalidated (`destino` on `POST /corridas/nueva/ajustes`;
-  `static/js/pred.js` turns a rail click into that post). A link that chooses a runnable file
-  (`/corridas/nueva/ajustes?ingest_id=`) and an imported configuration write it too. Revisar and
-  launching validate everything again with the worker's rule; launching clears the draft.
+  (`app/borrador.py`). Siguiente in Datos and Ajustes writes it. Ajustes also saves each edit as
+  it happens, unvalidated (`destino=ajustes` on `POST /corridas/nueva/ajustes`, sent by
+  `static/js/wizard_steps.js`), and Atrás and the rail steps of Ajustes are submit buttons with
+  their own `destino`, so no exit loses what was typed, even without JavaScript. Ajustes never
+  chooses a file for the person, and choosing another file marks Ajustes to do again. A link that
+  chooses a runnable file (`/corridas/nueva/ajustes?ingest_id=`), a copied run and an imported
+  configuration write it too. Revisar and launching validate everything again with the worker's
+  rule; launching clears the draft.
 - `docs/UI_FLOW.md` maps the routes and lists their `DataRepository` operations and
   capabilities.
 - `static/css/pred.css` and `templates/components/` are the reusable design system on

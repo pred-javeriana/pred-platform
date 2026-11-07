@@ -217,6 +217,9 @@ class Wizard:
     after_text: str
     back: NavLink | None
     next: NavNext | None
+    # El formulario que envían los pasos de la barra (Ajustes de una corrida nueva): así salir por
+    # la barra guarda lo escrito, también sin JavaScript.
+    rail_submits: str | None = None
 
     @property
     def current(self) -> RailStep:
@@ -346,6 +349,7 @@ def draft_wizard(
         after_text=step.after_text,
         back=back,
         next=nxt,
+        rail_submits=AJUSTES_FORM if current == "ajustes" and can_continue else None,
     )
 
 
