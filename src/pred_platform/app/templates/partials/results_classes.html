@@ -1,5 +1,5 @@
 {% from "components/tables.html" import table_start, table_end %}
-{% from "components/terms.html" import gloss %}
+{% from "components/terms.html" import gloss, term %}
 {# La cifra exacta guardada como título de la celda que la muestra redondeada. #}
 {% macro exact(value) %}{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}{% endmacro %}
 {% macro exact_interval(lower, upper) %}{% if lower is not none and upper is not none %} title="[{{ exact_text(lower) }}; {{ exact_text(upper) }}]"{% endif %}{% endmacro %}
@@ -18,8 +18,8 @@
   {{ table_start(["Clase", "Campeona", "Motivo"] + class_headers, "Campeón y mediana de r por clase") }}
   {% for row in m3_classes.rows %}
   <tr>
-    <td class="pred-nowrap" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</td>
-    <td>{{ family_label(row.familia_campeona) }}</td>
+    <td class="pred-nowrap">{{ term(sku_class_term(row.sku_class)) }}</td>
+    <td>{{ term(family_term(row.familia_campeona)) }}</td>
     <td>{{ motivos.get(row.motivo, row.motivo) }}</td>
     {% for family in class_families %}
     <td class="num{% if family == row.familia_campeona %} is-champion{% endif %}"{% if family in row.medianas_r %}{{ exact(row.medianas_r[family]) }}{% endif %}>{% if family in row.medianas_r %}{{ ratio_text(row.medianas_r[family]) }}{% if family == row.familia_campeona %} <span class="pred-badge pred-badge--champion">campeona</span>{% endif %}{% else %}—{% endif %}</td>
@@ -92,7 +92,7 @@
   {{ table_start(["Clase", "SKU probados", "Mejores (BH)", "Peores (BH)", "Mejores (BY)", "Peores (BY)", "Nivel FCR"], "Significancia HLN-DM por clase") }}
   {% for row in m3_classes.significance %}
   <tr>
-    <td class="pred-nowrap" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</td>
+    <td class="pred-nowrap">{{ term(sku_class_term(row.sku_class)) }}</td>
     <td class="num">{{ format_count(row.n_probados) }}</td>
     <td class="num">{{ format_count(row.n_mejores) }}</td>
     <td class="num">{{ format_count(row.n_peores) }}</td>

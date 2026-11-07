@@ -1,4 +1,4 @@
-{% from "components/terms.html" import day, when %}
+{% from "components/terms.html" import day, term, when %}
 {% from "components/states.html" import empty_state, missing_run_state, unavailable_state %}
 {% from "components/progress.html" import progress_bar %}
 {% from "components/status.html" import status_indicator %}
@@ -14,7 +14,7 @@
    no dice cuándo lo leyó: pred.js tomaría la falta de lecturas por un servidor que no responde. #}
 {% macro run_pulse(run, progress, poll) %}
 <div class="pred-run__pulse" id="pulso-ejecucion"{% if run.iniciada_en %} data-pred-started="{{ run.iniciada_en.isoformat() }}"{% endif %}>
-  <p class="pred-run__pulse-now"><span class="pred-run__pulse-dot" aria-hidden="true"></span><span>Trabajando{% if current_stage %} en <strong>{{ current_stage }}</strong>{% endif %}{% if progress and progress.skus_total is not none %} · <span data-pred-tween="skus-terminados">{{ format_count(progress.skus_terminados) }}</span> de {{ format_count(progress.skus_total) }} SKU terminados en esta etapa{% endif %}</span></p>
+  <p class="pred-run__pulse-now"><span class="pred-run__pulse-dot" aria-hidden="true"></span><span>Trabajando{% if current_stage %} en <strong>{{ current_stage }}</strong>{% endif %}{% if progress and progress.skus_total is not none %} · <span data-pred-tween="skus-terminados-{{ progress.etapa_actual }}">{{ format_count(progress.skus_terminados) }}</span> de {{ format_count(progress.skus_total) }} SKU terminados en esta etapa{% endif %}</span></p>
   {% if elapsed or poll %}<p class="pred-run__pulse-time">{% if elapsed %}Lleva <span id="pulso-transcurrido">{{ elapsed }}</span>{% endif %}{% if poll %}{% if elapsed %} · {% endif %}<span id="pulso-lectura">avance leído ahora</span>{% endif %}</p>{% endif %}
 </div>
 {% endmacro %}
@@ -104,7 +104,7 @@
     {% for step in steps %}
     <li class="pred-steps__item is-{{ step.state }}"{% if step.state == "en_curso" %} aria-current="step"{% endif %}>
       <span class="pred-steps__mark" aria-hidden="true">{% if step.state == "hecha" %}<svg><use href="#i-check"></use></svg>{% else %}{{ loop.index }}{% endif %}</span>
-      <span class="pred-steps__label" title="{{ stage_term(step.code).hint }}">{{ step.label }}<span class="pred-sr-only">: {{ {"hecha": "terminada", "en_curso": "en curso", "pendiente": "pendiente"}[step.state] }}</span>{% if step.state == "en_curso" %}<span class="pred-steps__now" aria-hidden="true">En curso</span>{% endif %}</span>
+      <span class="pred-steps__label">{{ term(stage_term(step.code)) }}<span class="pred-sr-only">: {{ {"hecha": "terminada", "en_curso": "en curso", "pendiente": "pendiente"}[step.state] }}</span>{% if step.state == "en_curso" %}<span class="pred-steps__now" aria-hidden="true">En curso</span>{% endif %}</span>
     </li>
     {% endfor %}
   </ol>

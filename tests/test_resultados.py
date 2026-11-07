@@ -2147,3 +2147,16 @@ def test_fallo_tecnico_distingue_si_otros_modelos_pronosticaron(
         "Un producto con «Error técnico» no tiene un modelo campeón con pronóstico y cuenta "
         "en la familia que la evaluación le asignó." in summary_text
     )
+
+
+def test_no_evaluable_verdict_reason_explains_lack_of_recorded_demand_data() -> None:
+    from pred_platform.app.resultados_m3 import verdict_reason
+    from pred_platform.contract.models_v2 import M3Evidence
+    from pred_platform.contract.resources import read_example
+
+    evidence = M3Evidence.model_validate_json(read_example("m3_evidence.publicada"))
+    no_evaluable = next(r for r in evidence.items if r.veredicto == "NO_EVALUABLE")
+    assert (
+        verdict_reason(no_evaluable)
+        == "El periodo de prueba no tiene datos de demanda registrados con los que comparar."
+    )

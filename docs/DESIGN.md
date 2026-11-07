@@ -132,7 +132,7 @@ failure. Ingestion has accepted, rejected, failed and needs_confirmation, presen
 ingest vocabulary. These contexts remain separate in the presentation helpers.
 
 **M3 verdicts (contract v2).** The five verdicts M3 publishes are shown with a Spanish label and
-a one-line explanation from `app/presentation.py`; the code stays in filters, CSV and `title`:
+a one-line explanation from `app/presentation.py`; the code stays in filters, CSV, `data-*` attributes and engine output, not in `title`:
 Validado (ok, check-circle), Exploratorio (info, info), Evidencia insuficiente (warn,
 minus-circle), No evaluable (neutral, banned-sign) and Error técnico (err, x-circle).
 The significance (HLN-DM/BH) is a separate block, never a verdict tone.

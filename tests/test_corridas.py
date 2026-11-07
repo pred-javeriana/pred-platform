@@ -399,7 +399,7 @@ def test_choosing_settings_and_launching_walks_the_draft_through_the_steps(env: 
 
     # Ajustes: the draft keeps the file; Revisar opens once a file is chosen.
     ajustes = client.get("/corridas/nueva/ajustes").text
-    assert f'<option value="{env.ingest_id}" selected>' in ajustes
+    assert re.search(rf'<option value="{env.ingest_id}"[^>]*selected', ajustes)
     assert [state for state, _ in _rail(ajustes)] == ["done", "todo", "todo", "locked", "locked"]
     assert 'form="formulario-ajustes"' in _footer(ajustes)
     # Back to Datos without choosing again: the step shows the file of the draft.
@@ -605,7 +605,7 @@ def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
     ajustes = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
 
     assert COOKIE in ajustes.headers["set-cookie"]
-    assert f'<option value="{env.ingest_id}" selected>' in ajustes.text
+    assert re.search(rf'<option value="{env.ingest_id}"[^>]*selected', ajustes.text)
     # Datos, the rail and Revisar read the file the page shows, not the earlier draft.
     assert [state for state, _ in _rail(ajustes.text)][0] == "done"
     revisar = client.get("/corridas/nueva/revisar").text

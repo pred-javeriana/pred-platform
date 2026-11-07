@@ -73,7 +73,7 @@ def test_each_product_shows_the_three_directions_and_missing_test_causes(lumpy_d
         # A missing test reads by its message title; the engine's cause stays in the title.
         assert (
             'title="SARIMA sin candidato">El SKU quedó fuera de la comparación porque conservó '
-            "menos de dos familias evaluables.</span>"
+            "menos de dos familias evaluables.</abbr>"
         ) in missing
         assert "eligibility.fewer_than_two_families" not in missing
         assert "Sin prueba del grupo: falta alguna prueba válida" in missing

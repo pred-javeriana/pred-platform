@@ -31,6 +31,29 @@
     destino.remove();
   });
 
+  document.addEventListener("change", function (evento) {
+    const entrada = evento.target;
+    if (!entrada.matches || !entrada.matches("select")) return;
+    const opt = entrada.selectedOptions && entrada.selectedOptions[0];
+    if (opt && opt.title) {
+      entrada.title = opt.title;
+      entrada.dataset.exactWhen = opt.title;
+    } else {
+      entrada.removeAttribute("title");
+      delete entrada.dataset.exactWhen;
+    }
+  });
+
+  function sincronizarTitulosSelect(raiz) {
+    const origen = raiz && raiz.querySelectorAll ? raiz : document;
+    origen.querySelectorAll("select").forEach(function (sel) {
+      const opt = sel.selectedOptions && sel.selectedOptions[0];
+      if (opt && opt.title && !sel.title) {
+        sel.title = opt.title;
+        sel.dataset.exactWhen = opt.title;
+      }
+    });
+  }
   function colorProgreso(pct) {
     const desde = [46, 110, 158];
     const hasta = [62, 107, 79];
@@ -352,6 +375,7 @@
     window.setInterval(latido, 1000);
     prepararEvidencia(document);
     pintarBarras(document);
+    sincronizarTitulosSelect(document);
     actualizarSondeo();
     // Tras un envío inválido, el primer campo lleva al error sin recorrer la página de nuevo.
     const invalido = document.querySelector('[aria-invalid="true"]:not(:disabled)');
@@ -371,6 +395,7 @@
     if (evento.target === cuerpo()) fijarFase();
     prepararEvidencia(evento.target);
     pintarBarras(evento.target);
+    sincronizarTitulosSelect(evento.target);
     if (evento.target === cuerpo()) {
       evento.target.querySelectorAll("details[id]").forEach(function (detalle) {
         if (aperturas.has(detalle.id)) detalle.open = aperturas.get(detalle.id);

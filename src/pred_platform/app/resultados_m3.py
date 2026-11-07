@@ -865,7 +865,7 @@ def verdict_reason(row: models_v2.M3Verdict) -> str:
             else "Ningún modelo candidato dio un pronóstico de prueba."
         )
     elif verdict == "NO_EVALUABLE":
-        text = "El periodo de prueba no tiene demanda observada con la que comparar."
+        text = "El periodo de prueba no tiene datos de demanda registrados con los que comparar."
     elif verdict == "EVIDENCIA_INSUFICIENTE":
         text = (
             f"Tuvo {format_count(row.n_ventanas)} ventanas de prueba válidas y se necesitan al "

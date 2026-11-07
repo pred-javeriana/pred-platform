@@ -1,6 +1,7 @@
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
+{% from "components/terms.html" import term %}
 
 {# Los ajustes de una corrida nueva, en filas que llenan el ancho: los datos junto a la ventana de
    evaluación, las familias junto a las que admite cada clase y, plegado, lo que casi nunca
@@ -23,11 +24,11 @@
     <div class="pred-launch__row">
       <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">
         <label class="pred-field__label" for="ingest_id">Datos</label>
-        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if form_errors.get('ingest_id') %} ingest_id-error{% endif %}"{% if form_errors.get('ingest_id') %} aria-invalid="true"{% endif %}>
+        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if form_errors.get('ingest_id') %} ingest_id-error{% endif %}"{% if form_errors.get('ingest_id') %} aria-invalid="true"{% endif %}{% for choice in ingests %}{% if choice.item.ingest_id == selected_ingest and choice.item.published_at %} title="{{ exact_when(choice.item.published_at) }}" data-exact-when="{{ exact_when(choice.item.published_at) }}"{% endif %}{% endfor %}>
           {% if not selected_ingest %}<option value="" selected disabled>Elija un archivo de datos</option>{% endif %}
           {% for choice in ingests %}
           {% set item = choice.item %}
-          <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU{% if item.published_at %} · cargado el {{ format_when(item.published_at) }}{% endif %}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>
+          <option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}{% if item.published_at %} title="{{ exact_when(item.published_at) }}"{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU{% if item.published_at %} · cargado el {{ format_when(item.published_at) }}{% endif %}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>
           {% endfor %}
         </select>
         <p class="pred-field__hint" id="ingest_id-hint">Solo se ofrecen archivos aceptados en Datos; uno que declara datos sintéticos no se puede ejecutar.</p>
@@ -57,7 +58,7 @@
           <ul class="pred-family-rules__list">
             {% for sku_class, families in families_hint %}
             <li class="pred-family-rules__item">
-              <span class="pred-family-rules__class" title="{{ sku_class_term(sku_class).hint }}">{{ sku_class_label(sku_class) }}</span>
+              <span class="pred-family-rules__class">{{ term(sku_class_term(sku_class)) }}</span>
               <span class="pred-family-rules__families">{% for family in families %}<span class="pred-tag">{{ family_label(family) }}</span>{% endfor %}</span>
             </li>
             {% endfor %}
@@ -71,7 +72,7 @@
     <div class="pred-launch__grid">
       {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
       {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
-      {{ field("trials", "Configuraciones a probar por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", error=form_errors.get("trials", "")) }}
+      {{ field("trials", "Configuraciones por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", error=form_errors.get("trials", "")) }}
       {{ field("seed", "Semilla", value=form.seed, input_type="number", error=form_errors.get("seed", "")) }}
       {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
     </div>

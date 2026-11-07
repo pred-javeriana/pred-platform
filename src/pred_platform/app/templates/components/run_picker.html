@@ -6,11 +6,13 @@
 <form method="get" action="/resultados" class="pred-context__picker" id="elegir-ejecucion">
   <input type="hidden" name="vista" value="{{ vista }}">
   {% if lista == "familias" %}<input type="hidden" name="lista" value="familias">{% endif %}
+  {% set selected_choice = (executions | selectattr("ejecucion_id", "equalto", shown_id) | list | first) if shown_id is not none else (executions | first if executions else none) %}
+  {% set selected_title = exact_when(selected_choice.iniciada_en) if selected_choice and selected_choice.iniciada_en else "" %}
   <label class="pred-field__label" for="ejecucion-mostrada">Ejecución</label>
-  <select class="pred-field__control" id="ejecucion-mostrada" name="ejecucion">
+  <select class="pred-field__control" id="ejecucion-mostrada" name="ejecucion"{% if selected_title %} title="{{ selected_title }}" data-exact-when="{{ selected_title }}"{% endif %}>
     {% if shown_id is not none and shown_id not in known %}<option value="{{ shown_id }}" selected>#{{ shown_id }} · sin evaluación publicada</option>{% endif %}
     {% for choice in executions %}
-    <option value="{{ choice.ejecucion_id }}"{% if choice.ejecucion_id == shown_id %} selected{% endif %}>#{{ choice.ejecucion_id }} · {{ describe_status("run", choice.estado).label }} · {{ format_when(choice.iniciada_en) }}</option>
+    <option value="{{ choice.ejecucion_id }}"{% if choice.ejecucion_id == shown_id %} selected{% endif %}{% if choice.iniciada_en %} title="{{ exact_when(choice.iniciada_en) }}"{% endif %}>#{{ choice.ejecucion_id }} · {{ describe_status("run", choice.estado).label }} · {{ format_when(choice.iniciada_en) }}</option>
     {% endfor %}
   </select>
   {{ button("Mostrar", variant="subtle", type="submit") }}

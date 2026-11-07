@@ -107,13 +107,13 @@ misma en Ejecución y en la barra de contexto de Resultados, y el tono es de
 **Estados de tarea** (`EstadoTarea`, claves de contrato): `pendiente`, `ejecutando`,
 `finalizo_m2`, `exitosa`, `fallida`, `no_ejecutable`. Una tarea queda en `finalizo_m2` al
 terminar L2 y L3, y pasa a `exitosa` cuando M3 guarda su candidato. La presentación usa
-Pendiente, Ejecutando, Por evaluar, Exitosa, Fallida y No ejecutable, cada una con su
-explicación en `title`; no se alteran las claves almacenadas ni los filtros. Mientras la corrida
+Pendiente, Ejecutando, Por evaluar, Exitosa, Fallida y No ejecutable; el código queda en los
+filtros, el CSV, los atributos `data-*` y el texto del motor, no en `title`. Mientras la corrida
 está en curso, la etapa en curso gira un arco y dice «En curso», el anillo lleva un arco que
 gira, y una línea dice en qué etapa trabaja, cuántos de sus SKU terminaron, cuánto lleva (contado
 cada segundo) y hace cuánto se leyó el avance; con movimiento reducido nada se mueve y el texto
-dice lo mismo. Debajo se listan solo 5 tareas, las fallidas primero; un filtro o
-`?tareas=todas` muestra la lista completa.
+dice lo mismo. Debajo se listan solo las tareas fallidas (o, si no hay, las que corren), hasta 5;
+un filtro o `?tareas=todas` muestra la lista completa.
 
 **Estados de trial HPO** (contrato → etiqueta de interfaz):
 
@@ -175,8 +175,8 @@ significancia por clase).
 **Veredictos:** las vistas muestran los cinco veredictos que publica M3 (`FALLO_TECNICO`,
 `NO_EVALUABLE`, `EVIDENCIA_INSUFICIENTE`, `VALIDADO` y `EXPLORATORIO`) con su etiqueta en
 español y una explicación de una línea, ambas de `app/presentation.py`: «Error técnico», «No
-evaluable», «Evidencia insuficiente», «Validado» y «Exploratorio». El código sigue en los
-filtros, en el CSV y en `title`. La significancia HLN-DM/BH, o su causa, se muestra aparte del
+evaluable», «Evidencia insuficiente», «Validado» y «Exploratorio». El código queda en los
+filtros, el CSV, los atributos `data-*` y el texto del motor, no en `title`. La significancia HLN-DM/BH, o su causa, se muestra aparte del
 veredicto. `/resultados` sin `?ejecucion=` lleva a la corrida más nueva con una corrida M3
 PUBLICADA. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
 cuando varias corridas PUBLICADA comparten identidad.
@@ -225,7 +225,7 @@ inesperado.
 
 Resumen de cartera → Por clase de demanda → SKU → Decisión y comparación → Evidencia técnica bajo demanda.
 
-Resumen es la entrada de Resultados cuando hay evidencia M3 publicada: primero la vista general y después el detalle (Shneiderman). La lista «Veredictos» tiene una fila por SKU con su clase, la familia y el modelo campeones, el veredicto, r frente a la línea base, las ventanas válidas y la significancia, con la prueba desplegable. La lista «Resultados por familia» tiene una fila por SKU con su clase, la familia campeona y una columna por familia. Los filtros y la paginación se delegan al repositorio. En el detalle, configuraciones y ensayos comienzan cerrados; ventanas solo se solicitan con ventanas=1. Cada código aparece después de su nombre en español, en un title o en un detalle técnico, para auditoría.
+Resumen es la entrada de Resultados cuando hay evidencia M3 publicada: primero la vista general y después el detalle (Shneiderman). La lista «Veredictos» tiene una fila por SKU con su clase, la familia y el modelo campeones, el veredicto, r frente a la línea base, las ventanas válidas y la significancia, con la prueba desplegable. La lista «Resultados por familia» tiene una fila por SKU con su clase, la familia campeona y una columna por familia. Los filtros y la paginación se delegan al repositorio. En el detalle, configuraciones y ensayos comienzan cerrados; ventanas solo se solicitan con ventanas=1. El código queda en los filtros, el CSV, los atributos `data-*` y el texto del motor, no en `title`.
 
 La barra de contexto comunica el origen de los datos que declara la evaluación final (real, sintético o aumentado, o desconocido; sin evaluación final, no informado) y explica bajo demanda cómo leer la evidencia retrospectiva. Fixture/DAL describe la fuente de lectura, no el origen real/sintético. La selección por familia y sus Walk-Forward de búsqueda no constituyen evidencia independiente de reserva. No se infieren ratios, campeones ni veredictos de esa selección: vienen de M3.
 

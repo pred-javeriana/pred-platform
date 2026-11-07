@@ -25,7 +25,7 @@ links, filters and pages keep that resolved run. A context bar above the tabs na
 its ingest, the M3 run and the data origin. When several PUBLICADA runs share an identity the bar
 shows the contract's notice and links to the others. Each verdict is shown with its Spanish
 label and a one-line explanation, both owned by `app/presentation.py`; the published code stays
-in filters, CSV and `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the
+in filters, CSV, `data-*` attributes and engine output, not in `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the
 order of the engine's rules), the engine's justification on request, windows against `n_min`, r
 against Seasonal Naive (shown as «r frente a la línea base»),
 coverage, the data origin and, apart from the verdict, the HLN-DM/BH significance or its cause. A
@@ -124,7 +124,7 @@ run header, `list_m3_runs`, `get_m3_run` and `get_m3_evidence` for M3's decision
 Filters, sort and paging are **delegated** to the
 repository and the page shows whatever it returned. The views only order published rows to show
 them (classes, competitors, evaluated models) and format published numbers, for example a share or a
-win percentage from published counts; they never filter rows or recompute a statistic, and the
+win percentage from published counts; they never filter rows or recompute a statistic, except the seed-group page, which picks the one SKU the reader asked for from the computed group, and the
 browser runs no inline script. `include_windows` is only requested with `?ventanas=1`.
 
 - **Which run.** The repository accepts `latest` (`pred_platform.data.query.LATEST`) wherever it takes a
