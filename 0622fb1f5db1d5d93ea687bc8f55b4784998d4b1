@@ -1,0 +1,90 @@
+{
+ "version": 1,
+ "summary": "Step 4 (Ejecución) becomes progress-first: ring, current activity, stage durations with earlier-seed references, grouped causes and a return summary, with no extra reads while polling.",
+ "files": [
+  {
+   "path": "src/pred_platform/data/run_history.py",
+   "summary": "Page-load-only stage references from earlier comparable runs.",
+   "annotations": [
+    {
+     "newRange": [
+      1,
+      41
+     ],
+     "summary": "Up to two completed earlier runs with the same data and evaluation settings, one per seed, cached per minute.",
+     "rationale": "The label reads 'Antes', so the run itself and later runs are excluded. The polling route never calls this; tests assert list_runs is not read during polling and is read once per minute on page load.",
+     "author": "fm/pred-platform-wizard-live"
+    }
+   ]
+  },
+  {
+   "path": "src/pred_platform/app/routers/execution.py",
+   "summary": "Page load adds history and the cause snapshot; polling reuses the status it already read.",
+   "annotations": [
+    {
+     "newRange": [
+      291,
+      297
+     ],
+     "summary": "History and whole-run causes are read only when the full page renders.",
+     "rationale": "Cause aggregation costs about 8 ms on the real database, too much for every 2-second poll. The snapshot carries its read time and an explicit refresh link, and hx-preserve keeps it across swaps.",
+     "author": "fm/pred-platform-wizard-live"
+    },
+    {
+     "newRange": [
+      355,
+      361
+     ],
+     "summary": "The one step-bar refresh in the poll (#237): facts come from the status, outcome, actions and file name the poll already read.",
+     "rationale": "This replaces the status_facts call from #253, which reread published runs, ingests and the resume rule on every poll. Tests forbid run_facts, list_runs and task_causes during polling.",
+     "author": "fm/pred-platform-wizard-live"
+    }
+   ]
+  },
+  {
+   "path": "src/pred_platform/data/run_status.py",
+   "summary": "Local display fields on top of the packaged contract.",
+   "annotations": [
+    {
+     "newRange": [
+      1,
+      137
+     ],
+     "summary": "One pass over progreso.jsonl gives stage timings, last stage and product progress, cached by inode, mtime and size.",
+     "rationale": "The packaged contract files stay untouched; stage timings are excluded from contract serialization. Durations come only from recorded timestamps of the current attempt, never estimates.",
+     "author": "fm/pred-platform-wizard-live"
+    }
+   ]
+  },
+  {
+   "path": "src/pred_platform/app/static/js/live.js",
+   "summary": "Client-side live state for step 4.",
+   "annotations": [
+    {
+     "newRange": [
+      1,
+      382
+     ],
+     "summary": "Polling pause and focus protection moved from pred.js, plus the clock, pulse and sweep, 0.9 s ring tween, reduced motion and the local 'Desde su última visita' summary.",
+     "rationale": "The script sends no requests of its own; it restores reference bars and the common scale after each swap from data embedded at page load.",
+     "author": "fm/pred-platform-wizard-live"
+    }
+   ]
+  },
+  {
+   "path": "src/pred_platform/app/templates/partials/wizard_rail.html",
+   "summary": "Out-of-band rail with stable step ids.",
+   "annotations": [
+    {
+     "newRange": [
+      11,
+      11
+     ],
+     "summary": "During polling only the data step and an unfinished Resultados step keep their markup.",
+     "rationale": "The poll does not reread the file's product count, so the data step is preserved. The Lanzar step must update from 'Lanzada · en cola' to its start date, so it is not preserved.",
+     "author": "fm/pred-platform-wizard-live"
+    }
+   ]
+  }
+ ]
+}
