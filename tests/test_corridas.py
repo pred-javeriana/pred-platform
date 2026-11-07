@@ -68,7 +68,8 @@ def _rail(html: str) -> list[tuple[str, str | None]]:
     rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
     assert rail is not None
     items = re.findall(
-        r'<li class="is-(\w+)[^"]*">\s*<(?:a|span) class="pred-rail__item"(?: href="([^"]+)")?',
+        r'<li class="is-(\w+)[^"]*"[^>]*>\s*<(?:a|span) class="pred-rail__item"'
+        r'(?: href="([^"]+)")?',
         rail.group(0),
     )
     return [(state, href or None) for state, href in items]

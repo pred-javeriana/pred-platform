@@ -447,9 +447,10 @@ def test_resumed_elapsed_time_is_labelled_from_first_start(env: Env, state: str)
             "iniciada_en = '2026-11-01T12:00:00+00:00'",
             (state,),
         )
-    text = _text(client.get("/ejecucion?ejecucion=1").text)
-    assert "Desde el primer inicio" in text
-    assert "Duración" not in text
+    html = client.get("/ejecucion?ejecucion=1").text
+    assert "Desde el primer inicio" in _text(html)
+    assert "<dt>Duración</dt>" not in html
+    assert "<dt>Tiempo transcurrido</dt>" not in html
 
 
 @pytest.mark.parametrize("seconds, polling", [(119, True), (120, False), (180, False)])
@@ -695,7 +696,8 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
         {"event": "unit_finished", "stage": "L4", "sku_id": "B", "state": "completada"},
     )
     texto = fragmento()
-    assert "Trabajando en Evaluación final · 2 de 3 SKU terminados en esta etapa" in texto
+    assert "Trabajando en Evaluación final." in texto
+    assert "2 de 3 productos terminados en esta etapa" in texto
     # The working line counts the elapsed time and says when progress was read.
     assert "Lleva " in texto and "avance leído" in texto
     page = client.get("/ejecucion?ejecucion=1").text

@@ -17,6 +17,9 @@ _LOCK = json.loads((_STATIC_DIR / "vendor.lock.json").read_text(encoding="utf-8"
 _ASSETS = [
     "css/pico.min.css",
     "css/pred.css",
+    "css/live.css",
+    "js/pred.js",
+    "js/live.js",
     "js/htmx.min.js",
     "fonts/Archivo-Variable.woff2",
     "fonts/Archivo-Italic.woff2",
@@ -70,7 +73,7 @@ def test_vendored_file_matches_lock(path: str) -> None:
 
 
 def test_lock_covers_every_third_party_file() -> None:
-    own_files = {"css/pred.css", "js/pred.js"}
+    own_files = {"css/pred.css", "css/live.css", "js/pred.js", "js/live.js"}
     shipped = {
         p.relative_to(_STATIC_DIR).as_posix()
         for p in _STATIC_DIR.rglob("*")
@@ -84,8 +87,10 @@ def test_lock_covers_every_third_party_file() -> None:
     [
         "css/pico.min.css",
         "css/pred.css",
+        "css/live.css",
         "js/htmx.min.js",
         "js/pred.js",
+        "js/live.js",
     ],
 )
 def test_static_code_has_no_external_references(path: str) -> None:

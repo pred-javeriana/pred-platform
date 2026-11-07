@@ -635,7 +635,11 @@ def exact_when(value: datetime | None) -> str:
         return ""
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC (hora universal coordinada)")
+    value = value.astimezone(UTC)
+    stamp = value.strftime("%Y-%m-%d %H:%M:%S")
+    if value.microsecond:
+        stamp += f".{value.microsecond:06d}"
+    return stamp + " UTC (hora universal coordinada)"
 
 
 def format_date(value: str | date | None) -> str:

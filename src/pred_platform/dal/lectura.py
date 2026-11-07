@@ -371,6 +371,22 @@ def task_state_counts(db_path: Path, ejecucion_id: int) -> dict[str, int]:
     return {estado: int(n) for estado, n in rows}
 
 
+def task_causes(db_path: Path, ejecucion_id: int) -> list[tuple[str | None, str, int]]:
+    """Whole-run causes for a timestamped page-load snapshot; never called by polling."""
+    with _open_readonly(db_path) as conn:
+        if conn is None:
+            return []
+        rows = conn.execute(
+            "SELECT CASE WHEN json_valid(detalle_error) "
+            "THEN json_extract(detalle_error, '$.code') END AS code, "
+            "substr(modelo, 1, instr(modelo, ':') - 1) AS family, COUNT(*) "
+            "FROM tareas WHERE ejecucion_id = ? AND estado IN ('fallida', 'no_ejecutable') "
+            "GROUP BY code, family",
+            (ejecucion_id,),
+        ).fetchall()
+    return [(code if isinstance(code, str) else None, family, int(n)) for code, family, n in rows]
+
+
 def list_tasks(
     db_path: Path,
     ejecucion_id: int,

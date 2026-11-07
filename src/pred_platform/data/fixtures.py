@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from functools import cache
 from typing import Any, get_args
 
@@ -39,6 +41,7 @@ from pred_platform.data.query import (
     sort_items,
 )
 from pred_platform.data.repository import ArtifactDownload
+from pred_platform.data.run_status import CauseSnapshot, StageReference, TaskCause
 from pred_platform.data.scenarios import DEFAULT_SCENARIO, Scenario, get_scenario
 
 _SKU_CLASSES = get_args(models.SkuClass)
@@ -165,6 +168,31 @@ class FixtureRepository(M3FixtureSource):
         ]
         return sorted(runs, key=lambda run: int(run.id), reverse=True)
 
+    def _run_document(self, run_id: str) -> models.RunStatus:
+        return self._find(
+            models.RunStatus,
+            self.scenario.run_status,
+            run_id,
+            lambda d: d.ejecucion.id if d.ejecucion else None,
+            f"No existe la ejecución «{run_id}» en el escenario fixture",
+        )
+
+    def get_run_causes(self, run_id: str) -> CauseSnapshot:
+        causes = Counter(
+            (task.error.code if task.error else None, task.family or task.modelo.split(":")[0])
+            for task in self._run_document(run_id).tasks
+            if task.estado in ("fallida", "no_ejecutable")
+        )
+        return CauseSnapshot(
+            read_at=datetime.now(UTC),
+            causes=[
+                TaskCause(code=code, family=family, count=n) for (code, family), n in causes.items()
+            ],
+        )
+
+    def get_run_stage_history(self, run_id: str) -> list[StageReference]:
+        return []  # The examples publish no stage timestamps.
+
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         return None  # the examples record no run error
 
@@ -181,13 +209,7 @@ class FixtureRepository(M3FixtureSource):
         wanted_state = check_choice("estado", estado, _TASK_STATES)
         wanted_family = check_choice("family", family, _FAMILIES)
         request = PageRequest(page, size)
-        doc = self._find(
-            models.RunStatus,
-            self.scenario.run_status,
-            run_id,
-            lambda d: d.ejecucion.id if d.ejecucion else None,
-            f"No existe la ejecución «{run_id}» en el escenario fixture",
-        )
+        doc = self._run_document(run_id)
         tasks = [
             task
             for task in doc.tasks
@@ -196,7 +218,6 @@ class FixtureRepository(M3FixtureSource):
             and (wanted_family is None or task.family == wanted_family)
         ]
         items, paging = paginate(tasks, request)
-        # `progress` counts every task of the run, not only the filtered page.
         return _with(doc, tasks=items, page=paging)
 
     # ------------------------------------------------------------------ selections
