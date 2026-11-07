@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "summary": "Corrige el lanzamiento repetido, el seguimiento del estado y los avisos de Ejecución, con regresiones de navegador.",
+  "files": [
+    {
+      "path": "src/pred_platform/data/dal.py",
+      "summary": "Mantiene el estado activo hasta que el procesador libera el proceso registrado.",
+      "annotations": [
+        {
+          "newRange": [117, 124],
+          "summary": "La lectura no presenta como definitivo el estado que publica el motor mientras el procesador conserva pid.",
+          "rationale": "El motor publica antes de que el procesador cierre la ejecución. Por eso la página debe seguir consultando hasta finish_run. La regresión comprueba respuestas 200 y 286 antes y después del cierre.",
+          "author": "fm/pred-platform-fix-run-behavior"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/routers/execution.py",
+      "summary": "Valida la historia completa antes de impedir un lanzamiento.",
+      "annotations": [
+        {
+          "newRange": [408, 418],
+          "summary": "El formulario rechaza la falta de historia solo cuando ha leído todos los productos de la ingesta.",
+          "rationale": "Una página incompleta no demuestra que ningún producto alcance la historia necesaria. El rechazo no crea ejecuciones y la prueba del límite exacto conserva los lanzamientos válidos.",
+          "author": "fm/pred-platform-fix-run-behavior"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/dal/ejecuciones.py",
+      "summary": "Separa abrir una ejecución existente de reanudarla.",
+      "annotations": [
+        {
+          "newRange": [127, 127],
+          "summary": "create_run devuelve la ejecución existente sin cambiar su estado ni sus tareas.",
+          "rationale": "Repetir el lanzamiento podía modificar una ejecución publicada. Las regresiones conservan la fila completa y la reanudación explícita sigue reutilizando sus tareas.",
+          "author": "fm/pred-platform-fix-run-behavior"
+        }
+      ]
+    },
+    {
+      "path": "tests/browser/pred.test.mjs",
+      "summary": "Ejecuta la página y sus temporizadores en un navegador real.",
+      "annotations": [
+        {
+          "newRange": [1, 158],
+          "summary": "Las pruebas adelantan el reloj del navegador y provocan fallos reales de red sin sustituir pred.js ni el DOM.",
+          "rationale": "El HTML por sí solo no detecta errores de actualización. Las pruebas comprueban pausa, recuperación y espera agotada, y también fallan ante errores sin capturar. Las mutaciones de la guarda detectan ambos tipos de regresión.",
+          "author": "fm/pred-platform-fix-run-behavior"
+        }
+      ]
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "summary": "Exige que las pruebas de navegador se ejecuten en integración continua.",
+      "annotations": [
+        {
+          "newRange": [101, 104],
+          "summary": "La integración continua falla si falta el navegador, aunque una máquina local pueda omitir esa prueba.",
+          "rationale": "La omisión local es útil cuando no hay navegador instalado. En integración continua ocultaría la regresión, por eso PRED_BROWSER_REQUIRED convierte esa falta en un fallo.",
+          "author": "fm/pred-platform-fix-run-behavior"
+        }
+      ]
+    }
+  ]
+}
