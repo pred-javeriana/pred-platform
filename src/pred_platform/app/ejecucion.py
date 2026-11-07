@@ -284,13 +284,15 @@ def parse_launch_form(
             trials = _form_int(values["trials"])
         except ValueError:
             errors["trials"] = (
-                "Configuraciones por familia: escriba un número entero o déjelo vacío."
+                "Configuraciones por SKU y familia: escriba un número entero o déjelo vacío."
             )
         else:
             if trials < 1:
-                errors["trials"] = "Configuraciones por familia: debe ser mayor que cero."
+                errors["trials"] = "Configuraciones por SKU y familia: debe ser mayor que cero."
             elif trials > SQLITE_MAX_INTEGER:
-                errors["trials"] = "Configuraciones por familia: el número es demasiado grande."
+                errors["trials"] = (
+                    "Configuraciones por SKU y familia: el número es demasiado grande."
+                )
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
     elif not set(values["families"]) <= {key for key, _ in FAMILY_CHOICES}:
@@ -740,7 +742,7 @@ def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
         ("Paso entre ventanas", f"{values.get('step')} días"),
         ("Estacionalidad", f"{values.get('seasonality')} días"),
         (
-            "Configuraciones a probar por familia",
+            "Configuraciones por SKU y familia",
             trials if trials else "Las que cada familia prueba por defecto",
         ),
         ("Semilla", str(values.get("seed"))),

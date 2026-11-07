@@ -734,7 +734,7 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert response.status_code == 200
     assert "Mínimo de entrenamiento (días): escriba un número entero." in text
     assert "Horizonte (días): debe ser mayor que cero." in text
-    assert "Configuraciones por familia: debe ser mayor que cero." in text
+    assert "Configuraciones por SKU y familia: debe ser mayor que cero." in text
     assert "Elija al menos una familia de modelos." in text
     assert "Elija una de las métricas de la lista." in text
     assert 'value="abc"' in response.text  # what the operator typed is kept
@@ -985,14 +985,14 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         (
             "trials",
             str(2**63),
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         ("workers", str(2**63), "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
         (
             "trials",
             "9" * 4301,
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "+" + "9" * 4301, "Semilla: el número es demasiado grande."),
@@ -1000,18 +1000,18 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         (
             "trials",
             "+" + "9" * 4301,
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         (
             "trials",
             "\u0669" * 4301,
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         ("seed", "-" + "9" * 4301, "Semilla: debe ser cero o más."),
         (
             "trials",
             "-" + "9" * 4301,
-            "Configuraciones por familia: debe ser mayor que cero.",
+            "Configuraciones por SKU y familia: debe ser mayor que cero.",
         ),
     ],
 )
@@ -2072,3 +2072,12 @@ def test_un_solo_sku_dice_evaluarlo_y_varios_evaluarlos() -> None:
         needed=40,
     )
     assert any("Para evaluarlos, agregue" in (part.advice or "") for part in warn_multi.parts)
+
+
+def test_the_search_budget_field_says_it_applies_to_each_sku(env: Env) -> None:
+    client = _dal_client(env)
+    page = _text(client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text)
+    assert "Configuraciones por SKU y familia" in page
+    assert "Vacío: las que cada familia prueba por defecto en cada SKU." in page
+    refused = _text(_launch(client, env, trials="0").text)
+    assert "Configuraciones por SKU y familia: debe ser mayor que cero." in refused
