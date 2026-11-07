@@ -447,9 +447,10 @@ def test_resumed_elapsed_time_is_labelled_from_first_start(env: Env, state: str)
             "iniciada_en = '2026-11-01T12:00:00+00:00'",
             (state,),
         )
-    text = _text(client.get("/ejecucion?ejecucion=1").text)
-    assert "Desde el primer inicio" in text
-    assert "Duración" not in text
+    html = client.get("/ejecucion?ejecucion=1").text
+    assert "Desde el primer inicio" in _text(html)
+    assert "<dt>Duración</dt>" not in html
+    assert "<dt>Tiempo transcurrido</dt>" not in html
 
 
 @pytest.mark.parametrize("seconds, polling", [(119, True), (120, False), (180, False)])
