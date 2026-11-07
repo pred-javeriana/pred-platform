@@ -263,6 +263,8 @@ class RunDetail:
     reserva_json: str | None
     error_json: str | None
     ruta_corrida: str | None
+    pid: int | None
+    intento: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +285,8 @@ class TaskRow:
 
 _RUN_COLUMNS = (
     "e.id, e.run_id, e.estado, e.seed, e.iniciada_en, e.finalizada_en, e.configuracion_id, "
-    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json, e.ruta_corrida"
+    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json, e.ruta_corrida, "
+    "e.pid, e.intento"
 )
 _RUN_FROM = (
     "FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id "

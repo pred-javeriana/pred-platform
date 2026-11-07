@@ -274,7 +274,7 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     ),
     "platform.input_missing": Mensaje(
         "No se encontró el archivo de datos de la ingesta.",
-        "Vuelva a cargar el archivo en Datos y lance una nueva ejecución.",
+        "Vuelva a cargar el mismo archivo en Datos y reanude esta ejecución.",
     ),
     "platform.engine_unavailable": Mensaje(
         "El motor no está disponible.",

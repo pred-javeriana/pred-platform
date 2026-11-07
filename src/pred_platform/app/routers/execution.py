@@ -186,8 +186,13 @@ def _context(
     status_error: dict[str, object] | None = None
     try:
         status = repository.get_run_status(query.ejecucion, **query.as_kwargs())
-    except InvalidQuery as exc:
-        query_error = str(exc)
+    except InvalidQuery:
+        query_error = "Ese filtro no existe; se muestran todas las tareas."
+        query = ExecutionQuery(ejecucion=query.ejecucion, todas=True)
+        try:
+            status = repository.get_run_status(query.ejecucion)
+        except DataLayerError as exc:
+            status_error = error_view(exc)
     except DataLayerError as exc:
         status_error = error_view(exc)
 
@@ -205,7 +210,16 @@ def _context(
             tasks = repository.get_run_status(run.id, estado=focus_estado, size=FOCUS_SIZE)
         except (InvalidQuery, DataLayerError):
             tasks = status
-    poll = should_poll(estado, counts, reason=control.reason)
+            focus = False
+            focus_estado = None
+    poll = should_poll(
+        estado, counts, reason=control.reason, stopped_at=run.finalizada_en if run else None
+    )
+    detail = (
+        lectura.get_run(request.app.state.settings.db_path, run.id)
+        if run is not None and repository.source == "dal"
+        else None
+    )
     error = run_error(repository.get_run_error(run.id)) if run is not None else None
     actions = run_actions(
         estado,
@@ -229,6 +243,10 @@ def _context(
         and query.ejecucion != LATEST
         else None,
         "run": run,
+        "resumed": detail is not None and detail.intento > 1,
+        "stopped_open": estado == "detenida"
+        and not poll
+        and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0,
         "settings_rows": settings_items(status.settings) if status and status.settings else [],
         "reserve": status.reserve if status is not None else None,
         "progress": progress,
@@ -349,7 +367,7 @@ def ejecucion_estado(
 
 # ---------------------------------------------------------------- Ajustes y Revisar
 def _class_skus(
-    repository: DataRepository, ingest_id: str, sku_class: SkuClass
+    repository: DataRepository, ingest_id: str, sku_class: SkuClass | None
 ) -> list[TopologyMetrics]:
     """Todos los SKU de una clase de la ingesta, en orden, página a página de la topología.
 
@@ -396,6 +414,17 @@ def _check_launch(
         form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
     chosen = form.values["families"]
     needed = history_needed(form.settings) if form.settings is not None else 0
+    history = _class_skus(repository, ingest_id, None) if by_class else []
+    # Una lectura parcial no demuestra que todos los SKU sean demasiado cortos.
+    if history and len(history) >= sum(by_class.values()):
+        longest = max(row.n_periods for row in history)
+        if longest < needed:
+            form.errors["min_train"] = (
+                "Con estos ajustes ningún SKU tiene historia suficiente: "
+                f"se necesitan {needed} días antes del corte y el SKU más largo tiene "
+                f"{longest}. Reduzca el mínimo de entrenamiento, el horizonte o el paso."
+            )
+            return None
     single = single_family_classes(by_class, chosen)
     skus: dict[SkuClass, list[TopologyMetrics]] = {
         c: _class_skus(repository, ingest_id, c) for c in short_of_two(by_class, chosen)

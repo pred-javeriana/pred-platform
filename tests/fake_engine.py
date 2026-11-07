@@ -535,7 +535,7 @@ def main() -> int:
                 (os.environ.get("FAKE_ENGINE_TERMINAL_STATE", "completada"), args.run_id),
             )
         # El motor ya confirmo M3 y aun debe publicar los artefactos de la CLI.
-        time.sleep(0.7)
+        time.sleep(float(os.environ.get("FAKE_ENGINE_PUBLISH_EXIT_DELAY", "0.7")))
 
     (folder / "unidades.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in unit_rows), encoding="utf-8"
