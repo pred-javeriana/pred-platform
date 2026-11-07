@@ -1186,7 +1186,9 @@ button.pred-btn {
   background: var(--primary-dark);
 }
 
-.pred-btn--secondary {
+/* Con «button» delante, para ganarle al borde transparente de «button.pred-btn». */
+.pred-btn--secondary,
+button.pred-btn--secondary {
   background: var(--primary-soft);
   color: var(--primary-dark);
   border-color: var(--primary);
