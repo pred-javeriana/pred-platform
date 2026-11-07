@@ -4,18 +4,15 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import math
 import re
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import closing
-from datetime import datetime
 from html import unescape
-from types import SimpleNamespace
-from typing import Any
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.m3_publicada import publish, publish_confirmation
@@ -405,6 +402,18 @@ def test_product_mini_chart_keeps_the_published_interval_separate_from_bh(
     assert "La prueba y el p ajustado se muestran aparte" in _text(response.text)
 
 
+def _log_l4(env: Env, number: str, *events: tuple[str, str, str]) -> None:
+    """Append L4 events, as the engine writes them, to the run's own progress log."""
+    [(folder,)] = env.rows("SELECT ruta_corrida FROM ejecuciones WHERE id = ?", number)
+    log = env.settings.data_root / folder / "progreso.jsonl"
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write("{broken line\n")
+        for kind, moment, state in events:
+            handle.write(
+                json.dumps({"event": kind, "t": moment, "stage": "L4", "state": state}) + "\n"
+            )
+
+
 @pytest.mark.parametrize(
     "chapter,lista",
     [
@@ -414,44 +423,69 @@ def test_product_mini_chart_keeps_the_published_interval_separate_from_bh(
         ("estabilidad", ""),
         ("productos", ""),
         ("productos", "familias"),
+        ("exportar", ""),
     ],
 )
 def test_publication_time_is_l4_end_in_bogota_and_keeps_exact_utc_on_hover(
     published: tuple[TestClient, str],
-    monkeypatch: pytest.MonkeyPatch,
+    env: Env,
     chapter: str,
     lista: str,
 ) -> None:
     client, number = published
-    app = client.app
-    assert isinstance(app, FastAPI)
-    repository = app.state.repository
-    original = repository.get_run_status
-
-    def timed_status(run_id: str, **kwargs: Any):
-        status = original(run_id, **kwargs)
-        return status.model_copy(
-            update={
-                "stage_timings": [
-                    SimpleNamespace(
-                        code="L4",
-                        started_at=datetime.fromisoformat("2026-10-27T09:00:00+00:00"),
-                        finished_at=datetime.fromisoformat("2026-10-27T14:36:00+00:00"),
-                    )
-                ]
-            }
-        )
-
-    monkeypatch.setattr(repository, "get_run_status", timed_status)
+    # The evaluation was created at 10:00 UTC, two seconds after its L4 started.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T09:59:58+00:00", ""),
+        ("stage_finished", "2026-10-27T14:36:00.5+00:00", "completed"),
+    )
     params = {"m3": "m3-ui-0"}
     if lista:
         params["lista"] = lista
     response = client.get(f"/corridas/{number}/resultados/{chapter}", params=params)
     assert response.status_code == 200
-    assert "Evaluación publicada 27 oct 2026, 9:36 a. m." in _text(response.text)
+    text = _text(response.text)
+    assert "Evaluación publicada 27 oct 2026, 9:36 a. m." in text
     assert 'title="2026-10-27 14:36:00 UTC' in response.text
-    assert "Publicados" in _text(response.text)
-    assert "27 oct 2026, 5:00 a. m." not in _text(response.text)
+    rail = re.search(r'<nav class="pred-rail".*?</nav>', response.text, re.S)
+    assert rail is not None
+    # The rail shows the Bogotá day; its title keeps the exact L4 end.
+    assert "Publicados 27 oct 2026" in _text(rail.group())
+    assert "2026-10-27 14:36:00 UTC" in rail.group()
+    assert "27 oct 2026, 5:00 a. m." not in text
+
+
+def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
+    published: tuple[TestClient, str],
+    env: Env,
+) -> None:
+    client, number = published
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T09:59:58+00:00", ""),
+        ("stage_finished", "2026-10-27T11:00:00+00:00", "failed"),
+        ("stage_started", "2026-10-28T09:00:00+00:00", ""),
+        ("stage_finished", "2026-10-28T14:36:00+00:00", "completed"),
+    )
+    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
+    # Neither the failed attempt that held its creation nor a later attempt dates it.
+    assert "Evaluación publicada Fecha de publicación no informada" in _text(html)
+    shown = _text(html).split("Evaluación publicada", 1)[1]
+    assert "28 oct 2026, 9:36 a. m." not in shown and "27 oct 2026, 6:00 a. m." not in shown
+
+
+def test_without_a_progress_log_the_publication_time_is_unknown_not_the_creation(
+    published: tuple[TestClient, str],
+    env: Env,
+) -> None:
+    client, number = published
+    [(folder,)] = env.rows("SELECT ruta_corrida FROM ejecuciones WHERE id = ?", number)
+    (env.settings.data_root / folder / "progreso.jsonl").unlink()
+    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
+    assert "Evaluación publicada Fecha de publicación no informada" in _text(html)
+    assert "27 oct 2026, 5:00 a. m." not in _text(html).split("Evaluación publicada", 1)[1]
 
 
 def test_summary_does_not_infer_one_model_for_a_type_without_a_published_candidate(
@@ -469,36 +503,6 @@ def test_summary_does_not_infer_one_model_for_a_type_without_a_published_candida
     html = client.get(f"/corridas/{number}/resultados/resumen").text
     assert "Clásica pronostica mejor los 3 tipos" in _text(html)
     assert "Clásica (SARIMA)" not in html
-
-
-def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
-    published: tuple[TestClient, str],
-    env: Env,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client, number = published
-    app = client.app
-    assert isinstance(app, FastAPI)
-    repository = app.state.repository
-    original = repository.get_run_status
-
-    def later_attempt(run_id: str, **kwargs: Any):
-        return original(run_id, **kwargs).model_copy(
-            update={
-                "stage_timings": [
-                    SimpleNamespace(
-                        code="L4",
-                        started_at=datetime.fromisoformat("2026-10-28T09:00:00+00:00"),
-                        finished_at=datetime.fromisoformat("2026-10-28T14:36:00+00:00"),
-                    )
-                ]
-            }
-        )
-
-    monkeypatch.setattr(repository, "get_run_status", later_attempt)
-    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
-    assert "Evaluación publicada Fecha de publicación no informada" in _text(html)
-    assert "28 oct 2026, 9:36 a. m." not in _text(html).split("Evaluación publicada", 1)[1]
 
 
 def test_product_list_defaults_to_25_rows_and_preserves_the_exact_run_on_page_two(

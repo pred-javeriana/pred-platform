@@ -25,7 +25,10 @@ series too short) and failed ones show their error.
 The champion, the verdict and its evidence come from one exact M3 run of the M2 run shown (contract
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail
 links, filters and pages keep that resolved run. A context bar above the tabs names the execution,
-its ingest, the M3 run and the data origin. When several PUBLICADA runs share an identity the bar
+its ingest, the M3 run and the data origin. The publication time is the end of the L4 stage that
+created the shown M3 run, read by `get_stage_timings` from the run's `progreso.jsonl`; without
+that log the bar says the time is unknown and never shows `m3_corridas.creado_en`, which is the
+start of L4. When several PUBLICADA runs share an identity the bar
 shows the contract's notice and links to the others. Each verdict is shown with its Spanish
 label and a one-line explanation, both owned by `app/presentation.py`; the published code stays
 in filters, CSV, `data-*` attributes and engine output, not in `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the
@@ -114,7 +117,8 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
 **Grupo de semillas** is a separate compact view at `/resultados/grupo`, linked from the
 header of the Resultados step (also while it is locked) and from the thesis group on the
 Corridas home. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2.
-Each option reads «Publicada el …» from `GroupRunOption.creado_en` in Bogotá time, with the run id
+Each option reads «Creada el …» from `GroupRunOption.creado_en` in Bogotá time (the start of L4,
+not its end), with the run id
 and the data fingerprint in `title`. A source without a test reads its cause through
 `resultados_m3.source_cause`: the message catalog title for an exclusion, plain Spanish for a test
 cause, and the published code in `title`.

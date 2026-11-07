@@ -31,7 +31,7 @@ from pred_platform.app.presentation import (
 )
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import Ejecucion, EstadoTarea, RunStatus
+from pred_platform.contract.models import Ejecucion, EstadoTarea
 from pred_platform.data.m3_confirmation import (
     M3ClassConfirmation,
     M3ClassSignificance,
@@ -40,7 +40,7 @@ from pred_platform.data.m3_confirmation import (
 )
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import LATEST, MAX_SIZE
-from pred_platform.data.repository import DataRepository, M3ReserveBlocks
+from pred_platform.data.repository import DataRepository, M3ReserveBlocks, StageTiming
 
 
 @dataclass(frozen=True, slots=True)
@@ -1184,14 +1184,13 @@ def gap_digits(upper: float, tail: float, digits: int = 3) -> int:
 
 
 def publication_time(
-    status: RunStatus, publication: models_v2.M3Run | None = None
+    timings: Sequence[StageTiming], publication: models_v2.M3Run | None = None
 ) -> datetime | None:
-    """El fin de L4 del estado leído. Una publicación de otro intento no hereda esa fecha.
+    """El fin de la etapa L4 que publicó: la última que terminó bien o, con ``publication``, la
+    que la creó (``creado_en`` cae en ese L4). Una publicación de otro intento no hereda esa fecha.
 
-    El estado local puede añadir stage_timings sin cambiar el contrato publicado. Una fuente
-    antigua que no entrega esos tiempos deja la fecha sin informar, nunca usa creado_en.
+    Sin tiempos de etapa la fecha queda sin informar: ``creado_en`` es el inicio de L4, no su fin.
     """
-    timings = getattr(status, "stage_timings", ())
     for timing in reversed(timings):
         if timing.code != "L4" or timing.finished_at is None:
             continue

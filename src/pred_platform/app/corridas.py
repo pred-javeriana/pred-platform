@@ -80,7 +80,10 @@ def _facts(
         estado=run.estado,
         iniciada_en=run.iniciada_en,
         finalizada_en=run.finalizada_en,
-        publicada_en=publication_time(status),
+        # Solo una corrida publicada lee su registro de etapas: la portada no abre los demás.
+        publicada_en=publication_time(repository.get_stage_timings(run.id))
+        if run.id in published
+        else None,
         ingest_id=run.ingest_id,
         file_name=ingest.name if ingest else None,
         n_skus=ingest.n_skus if ingest else None,

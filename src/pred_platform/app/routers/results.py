@@ -389,7 +389,11 @@ def _describe_run(
     if run.ejecucion is None:
         return
     counts = run.progress.tareas_por_estado if run.progress is not None else None
-    context["m3_published_at"] = publication_time(run, resolved) if resolved else None
+    context["m3_published_at"] = (
+        publication_time(repository.get_stage_timings(run.ejecucion.id), resolved)
+        if resolved is not None and resolved.estado == "PUBLICADA"
+        else None
+    )
     # El embudo que la vista ya leyó (Resumen o Veredictos) evita leerlo otra vez.
     summary, consulta = context.get("m3_summary"), context.get("m3_consulta")
     funnel = (
