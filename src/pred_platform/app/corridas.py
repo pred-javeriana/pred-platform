@@ -23,7 +23,7 @@ from pred_platform.app.presentation import (
     format_duration,
     stage_label,
 )
-from pred_platform.app.resultados_m3 import published_executions, run_outcome
+from pred_platform.app.resultados_m3 import publication_time, published_executions, run_outcome
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestSummary, RunStatus
 from pred_platform.dal.lectura import run_number
@@ -80,6 +80,10 @@ def _facts(
         estado=run.estado,
         iniciada_en=run.iniciada_en,
         finalizada_en=run.finalizada_en,
+        # Solo una corrida publicada lee su registro de etapas: la portada no abre los demás.
+        publicada_en=publication_time(repository.get_stage_timings(run.id))
+        if run.id in published
+        else None,
         ingest_id=run.ingest_id,
         file_name=ingest.name if ingest else None,
         n_skus=ingest.n_skus if ingest else None,
@@ -221,7 +225,7 @@ def _slot_status(facts: RunFacts) -> StatusPresentation:
     return describe_run(facts.estado, resumable=facts.resumable)
 
 
-def _group_key(status: RunStatus) -> tuple[object, ...] | None:
+def group_key(status: RunStatus) -> tuple[object, ...] | None:
     """Los datos y los ajustes que comparten las corridas de un grupo; todo menos la semilla.
 
     La agregación y el recorte los informa el motor al terminar: no separan un grupo.
@@ -250,7 +254,7 @@ def _thesis_group(
     """
     groups: dict[tuple[object, ...], dict[int, RunFacts]] = {}
     for status in statuses:  # de la más nueva a la más vieja: queda la corrida más nueva
-        key = _group_key(status)
+        key = group_key(status)
         run = status.ejecucion
         if key is None or run is None or run.seed not in THESIS_SEEDS:
             continue

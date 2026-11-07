@@ -1,19 +1,22 @@
 # resultados
 
-Session that lands TASK-UI-1.2-C2 (model selection per SKU) on the `/resultados` surface.
+Published Results by research question, with per-product and per-family evidence.
 
 ## What
 
-`/resultados` has four tabs, overview first: **Resumen**, **Por clase**, **SKU** and **Perfiles de
-error**. Without `?ejecucion=` it shows the newest execution with a PUBLICADA M3 run, because the
-newest execution may still be running; a picker in the context bar lists the executions with
-published evidence. Without `?vista=` it opens on Resumen when the execution shown has published M3
-evidence and on the SKU tab otherwise. The SKU tab has two readings of the same products, chosen with
-a segmented control: **Veredictos** (`?vista=sku`, what M3 decided per SKU; the old
-`?vista=consulta` link still opens it) and **Resultados por familia** (`?vista=sku&lista=familias`, one row
-per SKU with its demand class, the state and value of each of the four families, one column per
-family, and the champion with its verdict, as M3 published them). A link with the M2 filters
-(`family`, `estado`) opens the M2 reading. `/resultados/sku/{sku_id}` is the detail, under a
+Step 5 has six chapters under `/corridas/{id}/resultados/`: **Resumen** (`resumen`),
+**¿Qué familia gana?** (`p1`), **¿Se verifica producto a producto?** (`p2`),
+**¿Se sostiene con otra semilla?** (`estabilidad`), **Productos** (`productos`) and
+**Exportar y reproducir** (`exportar`). The export chapter links every product of the evaluation;
+the filtered CSV stays on the Productos verdict list.
+`/resultados` redirects to the newest execution with a PUBLICADA M3 run. The old `vista=clase`
+query opens chapter 1, `vista=errores` opens its error-profile panel, and `vista=sku` or
+`vista=consulta` opens Productos, and `vista=exportar` opens the export chapter. Redirects keep filters, sort, page and the exact `m3` query.
+A running execution without publication locks step 5. A finished execution without M3 evidence
+keeps the M2 reading. Productos has two readings: **Veredictos** and **Ver por familia**
+(`lista=familias`, the state and value of each family, plus the published champion and verdict).
+Both product readings show 25 rows per page unless `size` is explicit.
+A link with the M2 filters (`family`, `estado`) opens the family reading. `/resultados/sku/{sku_id}` is the detail, under a
 breadcrumb that goes back to Resultados and to the list the reader came from: per family its state, the evidence of the chosen configuration, the HPO trials
 (completed, **pruned** and **failed**, each with its reason), the Walk-Forward summary and, on
 request, every window with its metrics. Excluded families say why (policy matrix, configured subset,
@@ -22,7 +25,10 @@ series too short) and failed ones show their error.
 The champion, the verdict and its evidence come from one exact M3 run of the M2 run shown (contract
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail
 links, filters and pages keep that resolved run. A context bar above the tabs names the execution,
-its ingest, the M3 run and the data origin. When several PUBLICADA runs share an identity the bar
+its ingest, the M3 run and the data origin. The publication time is the end of the L4 stage that
+created the shown M3 run, read by `get_stage_timings` from the run's `progreso.jsonl`; without
+that log the bar says the time is unknown and never shows `m3_corridas.creado_en`, which is the
+start of L4. When several PUBLICADA runs share an identity the bar
 shows the contract's notice and links to the others. Each verdict is shown with its Spanish
 label and a one-line explanation, both owned by `app/presentation.py`; the published code stays
 in filters, CSV, `data-*` attributes and engine output, not in `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the
@@ -32,31 +38,32 @@ coverage, the data origin and, apart from the verdict, the HLN-DM/BH significanc
 SKU launched after the cut says so; a run that is not PUBLICADA, or a publication without its
 exclusion metadata, explains why there is no verdict.
 
-The other tabs read the same resolved M3 run. **Resumen** shows the funnel M3 published for the
-whole run and counts the published HLN-DM results (with test, significant after BH within each
-demand class, without test by cause); it never recomputes the test. **Por clase** shows the champion
-family M3 froze for each class on the selection block, its reason, every family's median r and the
-class verdict counts. Below it, **Confirmación del campeón** shows, per class, the champion's state
-on the test block with its IUT and Holm p, its median r against Seasonal Naive with the bootstrap
-interval, and one row per competitor (SKU count, median ratio with interval, Hodges-Lehmann, wins
-with Wilson interval, Wilcoxon p and IUT p). **Significancia frente a la línea base** lists the
-HLN-DM counts per class after BH and after BY, with the FCR level. A run evaluated before the
-reserve blocks has no confirmation and says so; a class without a row says so in its own line. **Perfiles de error** shows the error profiles of the portfolio (`m3_cartera`, test
-block) for one metric at a time. The SKU detail also draws the champion's published h=1 forecast
+Each chapter keeps the same resolved M3 run. Resumen quotes the thesis research question,
+answers by demand type, and shows the three coverage figures from the published funnel.
+Chapter 1 has the reserve timeline, selection dot plot, confirmation forest plots and
+median-with-quartiles error profiles (`m3_cartera`), with the same metric switch. Its closed
+tables preserve the selection reason, comparable and excluded products, excluded families,
+IUT and Holm p, the median r against Seasonal Naive and its interval, and every competitor's
+median ratio, Hodges-Lehmann, victories with Wilson intervals, the Wilcoxon statistic and Wilcoxon/IUT p.
+Chapter 2 has 100% outcome bars, r histograms, BH/BY/FCR counts and descriptive verdicts.
+Chapter 3 shows the champion and confirmation per seed, and the range between published effects.
+It does not infer stability from two seeds or apply an effect-size threshold. Missing evidence
+stays missing. All charts are server-rendered SVG, with values in `data-*` attributes for hover
+and keyboard focus. Every value remains available in a label or a closed table. The SKU detail also draws the champion's published h=1 forecast
 against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
 champion and Seasonal Naive.
 
 **Champion distribution** (RF-CON-08, task A4). **Resumen** also answers which family dominates the
-portfolio: after the funnel it shows "Distribución de campeones por familia" and "Campeones por clase
-de demanda". It counts the SKU with a verdict by the champion family M3 published for each SKU
-(`get_m3_champions`, the `m3_campeones` view; `seasonal_naive` when the baseline wins) and shows it as a
-horizontal bar chart (`champion_share_svg` in `app/charts.py`, server-side SVG, one series, value at the
-tip in ink, no script) with the equivalent table beside it: evaluated, not evaluated, SKU and the share.
+portfolio: the closed "Campeona de cada producto, por familia" disclosure keeps the portfolio
+and per-type tables. It counts the SKU with a verdict by the champion family M3 published for
+each SKU (`get_m3_champions`, the `m3_campeones` view; `seasonal_naive` when the baseline wins).
+The tables retain evaluated, not evaluated, SKU and share. The former single-family bar chart
+is replaced by the per-type answer table.
 The share is a presentation of two published figures, the family's count over the funnel's
 `tras_exclusiones` (SKU with a verdict); the platform does not add or recompute counts. Products
 excluded before M3 are in the funnel and not here. The portfolio rows are checked against that
 denominator and, if they do not add up, the page says so with both numbers instead of adjusting one.
-The family of a SKU can differ from its class champion (shown in "Por clase") by the fallback M3
+The family of a SKU can differ from its class champion (shown in chapter 1) by the fallback M3
 documents in the justification. If the read of `m3_campeones` fails or comes incomplete, the funnel and
 the test counts stay and the cause is shown. The M2 reading of the SKU tab links back to the summary
 ("Ver distribución de campeones") when a PUBLICADA M3 run is resolved.
@@ -65,11 +72,15 @@ the test counts stay and the cause is shown. The M2 reading of the SKU tab links
 over M3's published verdicts. Unlike the M2 reading, whose rows are M2's selection per family, its
 list comes from `get_m3_evidence` of
 the resolved M3 run, so it can filter by the three things M3 decides: demand class (Syntetos-Boylan),
-champion family and verdict (the five published codes, shown with their labels). They combine, with a SKU search, and the list
+champion family and verdict (the five published codes, shown with their labels). The `prueba`
+filter adds improvement, no demonstrated difference, worse, or untested, using the published
+HLN-DM significance and the sign of its statistic. It does not use r or the descriptive verdict.
+The view reads the matching SKU set and delegates its intersection, sort and page to
+`get_m3_evidence(skus=...)`; CSV uses the same predicate. These filters combine with a SKU search, and the list
 sorts by SKU, class, verdict, r, windows or BH-adjusted p. Each row shows the champion family and
 model, the verdict, r, windows with `n_min` under them and, apart from the verdict, the significance
-(whether it is significant, in which direction, and the BH-adjusted p) or the cause M3 published when
-there is no test; the full test opens on demand. The count is the filtered total, while the funnel line (SKU with a verdict out of all the
+category or the cause M3 published when there is no test. The full test, including the statistic,
+raw p and BH-adjusted p, opens on demand. The count is the filtered total, while the funnel line (SKU with a verdict out of all the
 products) is the whole run's and does not change with the filters. The M2 family state is not a
 verdict filter (contract v2, section 7), so those filters stay in the M2 reading. An unknown filter value is
 rejected by the repository and shown as a notice; it is never ignored. Query code is
@@ -106,7 +117,8 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
 **Grupo de semillas** is a separate compact view at `/resultados/grupo`, linked from the
 header of the Resultados step (also while it is locked) and from the thesis group on the
 Corridas home. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2.
-Each option reads «Publicada el …» from `GroupRunOption.creado_en` in Bogotá time, with the run id
+Each option reads «Creada el …» from `GroupRunOption.creado_en` in Bogotá time (the start of L4,
+not its end), with the run id
 and the data fingerprint in `title`. A source without a test reads its cause through
 `resultados_m3.source_cause`: the message catalog title for an exclusion, plain Spanish for a test
 cause, and the published code in `title`.
@@ -124,8 +136,10 @@ run header, `list_m3_runs`, `get_m3_run` and `get_m3_evidence` for M3's decision
 Filters, sort and paging are **delegated** to the
 repository and the page shows whatever it returned. The views only order published rows to show
 them (classes, competitors, evaluated models) and format published numbers, for example a share or a
-win percentage from published counts; they never filter rows or recompute a statistic, except the seed-group page, which picks the one SKU the reader asked for from the computed group, and the
-browser runs no inline script. `include_windows` is only requested with `?ventanas=1`.
+win percentage from published counts; they never filter rows or recompute a statistic, except the seed-group page, which picks the one SKU the reader asked for from the computed group,
+and the test-result predicate, which selects SKU identifiers from published tests. The repository
+applies all list filters, ordering and pagination. The browser never computes a statistic and runs
+no inline script. `include_windows` is only requested with `?ventanas=1`.
 
 - **Which run.** The repository accepts `latest` (`pred_platform.data.query.LATEST`) wherever it takes a
   run id; it resolves to the run with the highest id. Resultados uses it only when no execution has
@@ -148,11 +162,13 @@ browser runs no inline script. `include_windows` is only requested with `?ventan
 | Router | `src/pred_platform/app/routers/results.py` |
 | Query, texts and evidence helpers | `src/pred_platform/app/seleccion.py` |
 | M3 run resolution and decision texts | `src/pred_platform/app/resultados_m3.py` |
+| Chapter answers and seed comparison | `src/pred_platform/app/resultados_capitulos.py` |
+| SVG charts and interaction | `src/pred_platform/app/charts.py`, `static/js/charts.js`, `static/css/results.css` |
 | Presentation (`family` and `verdict` vocabularies) | `src/pred_platform/app/presentation.py` |
-| Pages | `src/pred_platform/app/templates/pages/results.html`, `results_sku.html` |
+| Pages | `src/pred_platform/app/templates/pages/results.html`, `results_producto.html` |
 | Partials | `templates/partials/results_*.html` (`results_context.html` is the context bar) |
 | Champion forecast series and chart | `src/pred_platform/app/resultados_pronostico.py`, `src/pred_platform/app/charts.py` |
-| Tests | `tests/test_resultados.py`, `tests/test_resultados_pronostico.py`, `tests/test_presentation.py` |
+| Tests | `tests/test_results_chapters.py`, `tests/test_resultados.py`, `tests/test_resultados_pronostico.py`, `tests/test_presentation.py` |
 
 ## Data
 
