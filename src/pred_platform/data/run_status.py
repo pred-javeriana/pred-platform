@@ -58,6 +58,9 @@ class DisplayRunStatus(RunStatus):
 
     stage_timings: list[StageTiming] = Field(default_factory=list, exclude=True)
     last_stage: str | None = Field(default=None, exclude=True)
+    # True when a retry was stopped while queued: the log only holds the attempt that ended
+    # before it, and none of that describes the retry.
+    stopped_before_start: bool = Field(default=False, exclude=True)
 
 
 def _timestamp(value: object) -> datetime | None:
@@ -79,7 +82,7 @@ def _unit(event: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
     )
 
 
-type ProgressSummary = tuple[str | None, int | None, int | None, list[StageTiming]]
+type ProgressSummary = tuple[str | None, int | None, int | None, list[StageTiming], bool]
 
 _PROGRESS_CACHE: OrderedDict[Path, tuple[tuple[int, int, int], ProgressSummary]] = OrderedDict()
 _PROGRESS_CACHE_LOCK = Lock()
@@ -110,7 +113,7 @@ def read_run_progress(
                 _PROGRESS_CACHE.popitem(last=False)
         return summary
     except OSError:
-        return None, None, None, []
+        return None, None, None, [], False
 
 
 def _read_progress(path: Path) -> ProgressSummary:
@@ -118,6 +121,7 @@ def _read_progress(path: Path) -> ProgressSummary:
     plan = None
     finished = set()
     timings: dict[str, StageTiming] = {}
+    ended = False
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     for line in lines:
         try:
@@ -129,7 +133,10 @@ def _read_progress(path: Path) -> ProgressSummary:
         kind = event.get("event")
         code = event.get("stage")
         if kind == "run_started":
+            ended = False
             stage, plan, finished, timings = None, None, set(), {}
+        elif kind == "run_finished":
+            ended = True
         elif kind == "stage_started" and code in STAGES:
             if stage != code:
                 stage, plan, finished = code, None, set()
@@ -151,7 +158,7 @@ def _read_progress(path: Path) -> ProgressSummary:
             finished.add(_unit(event))
     ordered = [timings[code] for code in STAGES if code in timings]
     if plan is None:
-        return stage, None, None, ordered
+        return stage, None, None, ordered, ended
     skus = {sku for sku, _, _ in plan}
     pending = {sku for sku, _, _ in plan - finished}
-    return stage, len(skus), len(skus - pending), ordered
+    return stage, len(skus), len(skus - pending), ordered, ended

@@ -44,9 +44,15 @@ def add_stage_references(context: dict[str, Any], references: list[StageReferenc
         ]
 
 
+_WAITING_CAPTIONS = {
+    "pendiente": "Las etapas del nuevo intento se mostrarán cuando el procesador lo inicie.",
+    "detenida": "El nuevo intento se detuvo antes de empezar, así que no tiene tiempos por etapa.",
+}
+
+
 def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]:
     if status is None or status.ejecucion is None:
-        return {"live_snapshot": None, "stage_rows": [], "cause_groups": []}
+        return {"live_snapshot": None, "stage_rows": [], "stage_caption": None, "cause_groups": []}
     run, progress = status.ejecucion, status.progress
     timings = (
         status.stage_timings
@@ -59,11 +65,18 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
     if run.estado == "detenida" and isinstance(status, DisplayRunStatus):
         current = status.last_stage
     index = codes.index(current) if current in codes else -1
+    # A stage after the last one that started never ran: the run ended before reaching it.
+    ran = max([codes.index(code) for code in by_code] + [index], default=-1)
     stage_rows = []
     for i, (code, label) in enumerate(STAGES):
         timing = by_code.get(code)
         failed = bool(timing and timing.finish_state == "failed")
-        done = bool(timing and timing.finished_at) or run.estado in FINISHED_STATES or i < index
+        done = (
+            bool(timing and timing.finished_at)
+            or i < max(index, ran)
+            or run.estado == "completada"
+            or (run.estado in FINISHED_STATES and i <= ran)
+        )
         active = code == current and run.estado == "ejecutando" and not done
         stopped = code == current and run.estado == "detenida" and not done
         state = (
@@ -71,6 +84,8 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
             if failed
             else "hecha"
             if done
+            else "sin_ejecutar"
+            if run.estado in FINISHED_STATES
             else "en_curso"
             if active
             else "detenida"
@@ -98,8 +113,10 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
     maximum = max((row["seconds"] or 0 for row in stage_rows), default=0)
     for row in stage_rows:
         row["width"] = round(100 * (row["seconds"] or 0) / maximum, 2) if maximum else 0
+    waiting = run.estado == "pendiente" or getattr(status, "stopped_before_start", False)
     return {
         "stage_rows": stage_rows,
+        "stage_caption": _WAITING_CAPTIONS.get(run.estado) if waiting else None,
         "live_snapshot": {
             "version": 1,
             "id": run.id,

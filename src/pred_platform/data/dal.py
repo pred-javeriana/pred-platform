@@ -86,6 +86,14 @@ def _missing(capability: CapabilityId, what: str) -> Never:
     )
 
 
+def _stopped_by_operator(run: lectura.RunDetail) -> bool:
+    try:
+        error = json.loads(run.error_json) if run.error_json else None
+    except ValueError:
+        return False
+    return isinstance(error, dict) and error.get("code") == "platform.run_stopped"
+
+
 def _ejecucion(run: lectura.RunDetail) -> models.Ejecucion:
     return models.Ejecucion(
         id=str(run.id),
@@ -397,14 +405,21 @@ class DalRepository(M3DalSource):
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
         etapa, skus_total, skus_terminados = None, None, None
         timings = []
+        stopped_before_start = False
         if run.ruta_corrida and self.data_root is not None:
-            etapa, skus_total, skus_terminados, timings = read_run_progress(
+            etapa, skus_total, skus_terminados, timings, ended = read_run_progress(
                 self.data_root / run.ruta_corrida / "progreso.jsonl"
             )
+            # An operator stop that comes after the engine ended did not interrupt an attempt:
+            # the retry was still queued, so the log belongs to the attempt before it.
+            stopped_before_start = ended and run.estado == "detenida" and _stopped_by_operator(run)
+            if stopped_before_start:
+                etapa, skus_total, skus_terminados, timings = None, None, None, []
         parametros = json.loads(run.parametros)
         return DisplayRunStatus(
             stage_timings=timings,
             last_stage=etapa,
+            stopped_before_start=stopped_before_start,
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ejecucion=_ejecucion(run),
             settings=models.RunSettings(

@@ -35,7 +35,7 @@ def _references(db_path: Path, data_root: Path, run_id: str, minute: int) -> lis
     selected = sorted(by_seed.values(), key=lambda run: run.id, reverse=True)[:2]
     references = []
     for run in sorted(selected, key=lambda run: run.seed):
-        _, _, _, timings = read_run_progress(data_root / run.ruta_corrida / "progreso.jsonl")
+        _, _, _, timings, _ = read_run_progress(data_root / run.ruta_corrida / "progreso.jsonl")
         if timings:
             references.append(StageReference(id=str(run.id), seed=run.seed, timings=timings))
     return references
