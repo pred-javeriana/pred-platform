@@ -190,11 +190,15 @@ def test_history_is_cached_and_excludes_runs_with_other_settings(
         reads.append(path)
         return original(path)
 
+    assert _launch(client, env, seed="20", metric="mae").status_code == 303
     monkeypatch.setattr(lectura, "list_runs", listing)
     for _ in range(2):
-        body = client.get("/corridas/1/ejecucion").text
+        body = client.get("/corridas/4/ejecucion").text
         assert "Semilla 18" in body and "Semilla 19" not in body
     assert len(reads) == 1
+    # "Antes" lists earlier runs only: never a later run, never the run itself.
+    assert "Semilla 18" not in client.get("/corridas/1/ejecucion").text
+    assert "pred-stage-reference" not in client.get("/corridas/2/ejecucion").text
     reads.clear()
     assert client.get("/ejecucion/estado?ejecucion=1").status_code == 200
     assert reads == []

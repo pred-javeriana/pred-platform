@@ -25,7 +25,7 @@
 .pred-live-stages { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--border); }
 .pred-live-stages > li {
   display: grid;
-  grid-template-columns: 26px minmax(180px, 260px) minmax(0, 1fr) 150px;
+  grid-template-columns: 26px minmax(180px, 260px) minmax(0, 1fr) 200px;
   gap: 8px 16px;
   align-items: center;
   margin: 0;
@@ -40,7 +40,7 @@
 .pred-live-stages__bar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
 .pred-live-stages__duration { text-align: right; font: 13px var(--font-mono); color: var(--ink-soft); }
 .pred-live-stages__duration small { display: block; color: var(--info); font-family: var(--font-body); }
-.pred-live-stages__duration .pred-stage-before { color: var(--muted-text); font-size: 12px; }
+.pred-live-stages__duration .pred-stage-before { color: var(--muted-text); font-size: 12px; white-space: nowrap; }
 .pred-stage-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
 .pred-stage-legend li { display: flex; align-items: center; gap: 6px; margin: 0; }
 .pred-stage-legend i { width: 14px; height: 10px; background: var(--ok); }

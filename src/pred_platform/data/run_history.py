@@ -23,17 +23,16 @@ def _references(db_path: Path, data_root: Path, run_id: str, minute: int) -> lis
         return []
     identity = comparison_key(current.ingest_sha256, json.loads(current.parametros))
     by_seed = {}
-    for run in runs:  # newest first, one completed reference per seed
+    for run in runs:  # newest first, one completed earlier reference per seed
         if (
-            run.estado not in ("completada", "completada_con_fallos")
+            run.id >= current.id
+            or run.estado not in ("completada", "completada_con_fallos")
             or not run.ruta_corrida
             or comparison_key(run.ingest_sha256, json.loads(run.parametros)) != identity
         ):
             continue
         by_seed.setdefault(run.seed, run)
     selected = sorted(by_seed.values(), key=lambda run: run.id, reverse=True)[:2]
-    if len(selected) < 2:
-        selected = [run for run in selected if run.id != current.id]
     references = []
     for run in sorted(selected, key=lambda run: run.seed):
         _, _, _, timings = read_run_progress(data_root / run.ruta_corrida / "progreso.jsonl")

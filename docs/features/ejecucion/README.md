@@ -80,7 +80,8 @@ fingerprint (`run.incompatible_config`).
   timestamped snapshot stays across swaps; “Actualizar causas” reloads it explicitly. Polling
   uses the original state-count query and never aggregates causes. Initial page load also reads
   cached stage references for up to two comparable
-  completed seeds (same data and evaluation settings). The browser retains those references
+  completed seeds (same data and evaluation settings) from earlier runs, never the run itself or
+  a later one, matching the “Antes” label. The browser retains those references
   across polling swaps; polling never reads history. Missing history leaves only the current
   run's bars. The full task list and configuration remain in a disclosure below the causes.
 - **Returning to a run.** The browser stores its last visible snapshot locally. After at least a
