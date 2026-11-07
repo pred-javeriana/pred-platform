@@ -48,6 +48,7 @@ def test_queued_resume_waits_for_new_stage_timings_without_deleting_logs(
     path = env.settings.data_root / "runs" / run.run_id / "progreso.jsonl"
     artifacts = path.read_bytes()
     client = _dal_client(env, worker=worker)
+    busy = None
     if worker == "embedded":
         # Another run already owns the processor when this one returns to the queue.
         assert _launch(client, env, seed="18").status_code == 303
@@ -69,7 +70,7 @@ def test_queued_resume_waits_for_new_stage_timings_without_deleting_logs(
         assert "Duración por etapa del intento actual" not in body
         assert "Las etapas del nuevo intento se mostrarán cuando el procesador lo inicie." in body
     assert path.read_bytes() == artifacts
-    if worker == "embedded":
+    if busy is not None:
         with closing(dal.connect(env.db)) as conn:
             dal.request_stop(conn, busy.id, error=run_stopped_error())
     with closing(dal.connect(env.db)) as conn:
