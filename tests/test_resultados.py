@@ -596,6 +596,31 @@ def test_sku_shows_the_published_interval_beside_r(
     assert shown not in other
 
 
+def test_sku_explains_nonpositive_estimated_variance_without_claiming_constant_errors(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pred_platform.app.resultados_m3 import cause_text
+
+    expected = (
+        "la varianza estimada de las diferencias de error no es positiva, "
+        "así que la prueba no se puede calcular"
+    )
+    assert cause_text("varianza_no_positiva") == expected
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE m3_veredictos SET dm_estadistico=NULL,dm_p_valor=NULL,dm_p_ajustado=NULL,"
+            "dm_alfa=NULL,dm_significativa=NULL,dm_causa='varianza_no_positiva' "
+            "WHERE run_id='m3-real-1' AND sku='FIL-0001'"
+        )
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    assert expected in _text(response.text)
+    assert "no varían" not in _text(response.text)
+
+
 def test_sku_distinguishes_the_unadjusted_interval_from_bh_significance(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
