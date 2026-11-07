@@ -17,6 +17,8 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     slow_m3       L2 and L3 complete, M3 stores the first SKU, then waits until it is killed
     m3_ok         like ok, but M3 is published (exit 0) without L4 events, as a resume reusing it
+    malformed_progress / malformed_after_publication
+                  writes a progress record without keys, before or after publishing its state
     future_schema writes a progress stream of an unsupported major version
     incompatible  refuses the run_id (its stored identity differs) without writing anything
 
@@ -401,6 +403,16 @@ def main() -> int:
     stream.emit(
         "run_started", schema=schema, run_id=args.run_id, attempt=attempt, workers=args.workers
     )
+
+    if scenario in ("malformed_progress", "malformed_after_publication"):
+        if scenario == "malformed_after_publication":
+            with sqlite3.connect(os.environ["PRED_DB_PATH"]) as conn:
+                conn.execute(
+                    "UPDATE ejecuciones SET estado='completada' WHERE run_id=?", (args.run_id,)
+                )
+        stream.emit("unit_started", stage="L2")
+        time.sleep(60)
+        return 0
 
     # Before L2 the engine excludes a SKU that cannot run at all; at the close of L2 the
     # two-family rule excludes one with a single evaluable family.

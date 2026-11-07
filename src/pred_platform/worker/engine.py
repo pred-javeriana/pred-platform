@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -161,6 +162,12 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
         "PRED_DATA_ROOT": str(settings.data_root.resolve()),
         "PRED_DB_PATH": str(settings.db_path.resolve()),
     }
+    if sys.platform == "linux":
+        # setpriv execs the engine in place. The kernel also stops it when reload or a
+        # forced shutdown kills the supervisor before Python can run its cleanup.
+        if shutil.which(command[0], path=env.get("PATH")) is None:
+            raise FileNotFoundError(f"No existe el ejecutable del motor: {command[0]}")
+        command = ["setpriv", "--pdeathsig", "SIGTERM", "--", *command]
     with log_path.open("ab") as log:
         return subprocess.Popen(  # noqa: S603 - the command comes from trusted settings
             command,
@@ -183,15 +190,36 @@ def engine_owner(pid: int, db_path: Path) -> EngineOwner:
     ``"other"``: an engine of another database, such as the original of a copy served here.
     ``"none"``: no such process, or a process that is not a platform engine (a reused pid, or
     one this user cannot inspect).
+
+    ``launch`` makes the engine command the leader of its own process group, so the group keeps
+    the recorded pid as its id. Its members are read too: a wrapper command (a resource-slot
+    script, ``uv run``) can die while the engine it started keeps running in that group.
     """
-    try:
-        served = psutil.Process(pid).environ().get("PRED_DB_PATH")
-    except psutil.Error:
-        return "none"
-    if not served:
-        return "none"
-    same = os.path.normcase(Path(served).resolve()) == os.path.normcase(db_path.resolve())
-    return "this" if same else "other"
+    candidates = [pid]
+    if sys.platform != "win32":
+        candidates += [member for member in _group_members(pid) if member != pid]
+    owner: EngineOwner = "none"
+    for candidate in candidates:
+        try:
+            served = psutil.Process(candidate).environ().get("PRED_DB_PATH")
+        except psutil.Error:
+            continue
+        if not served:
+            continue
+        if os.path.normcase(Path(served).resolve()) == os.path.normcase(db_path.resolve()):
+            return "this"
+        owner = "other"
+    return owner
+
+
+def _group_members(group: int) -> list[int]:
+    """The live processes of the process group ``group`` (POSIX); zombies are left out."""
+    members = []
+    for proc in psutil.process_iter():
+        with contextlib.suppress(OSError, psutil.Error):
+            if os.getpgid(proc.pid) == group and proc.status() != psutil.STATUS_ZOMBIE:
+                members.append(proc.pid)
+    return members
 
 
 def is_alive(pid: int) -> bool:
@@ -199,12 +227,13 @@ def is_alive(pid: int) -> bool:
     if sys.platform == "win32":
         return _windows_is_alive(pid)
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+        # A terminated child can remain a zombie until its Popen owner reaps it.
+        # It needs no grace period and must not trigger a later SIGKILL.
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
         return False
-    except PermissionError:
+    except psutil.AccessDenied:
         return True
-    return True
 
 
 def _windows_is_alive(pid: int) -> bool:
@@ -264,12 +293,17 @@ def terminate(pid: int, *, grace: float = 5.0) -> None:
     try:
         group = os.getpgid(pid)
     except ProcessLookupError:
+        # The leader is gone, but the engine a wrapper started may still run in its group.
+        group = pid
+    if not _group_members(group):
         return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(group, signal.SIGTERM)
     deadline = time.monotonic() + grace
     while time.monotonic() < deadline:
-        if not is_alive(pid):
+        # The whole group, not only the leader: a member that ignores SIGTERM still runs
+        # when the leader is already a zombie.
+        if not _group_members(group):
             return
         time.sleep(0.05)
     with contextlib.suppress(ProcessLookupError, PermissionError):
