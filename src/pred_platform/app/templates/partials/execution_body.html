@@ -147,7 +147,7 @@
   </ul>
   {% endif %}
   <div id="causas-corrida" hx-preserve="true">
-  {% if cause_snapshot_at %}<p class="pred-meta">Causas leídas {{ when(cause_snapshot_at) }}. Este resumen no cambia automáticamente. <a href="/corridas/{{ run.id }}/ejecucion#titulo-causas">Actualizar causas</a></p>{% endif %}
+  {% if cause_snapshot_at %}<p class="pred-meta">Causas leídas {{ when(cause_snapshot_at) }} · Este resumen no cambia automáticamente. <a href="/corridas/{{ run.id }}/ejecucion#titulo-causas">Actualizar causas</a></p>{% endif %}
   {% if cause_groups %}
   {{ table_start(["Causa", "Familias", "Tareas"], "Causas de las tareas sin pronóstico") }}
   {% for cause in cause_groups %}

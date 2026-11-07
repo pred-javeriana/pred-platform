@@ -242,6 +242,8 @@ def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(
     assert all(f"sku-{n:02}" in full.text for n in range(12))
     assert 'id="causas-corrida" hx-preserve="true"' in full.text
     assert "Causas leídas" in full.text and "Actualizar causas" in full.text
+    # The time ends in "a. m." or "p. m.", so a following period would double it.
+    assert re.search(r"Causas leídas <time[^>]*>[^<]*</time> · Este resumen", full.text)
 
     def no_cause_query(*args):
         pytest.fail("Polling must not aggregate causes")
