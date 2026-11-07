@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -37,7 +38,7 @@ from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
-from tests.test_worker import Env, _escribir_progreso, _guardar_origen, _scenario, _wait
+from tests.test_worker import _FAKE, Env, _escribir_progreso, _guardar_origen, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
@@ -1722,6 +1723,61 @@ def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
     assert 'pred-callout--err" id="error-ejecucion"' in html
     assert _run_state_tone(html) == "err"
     assert _run_state_tone(client.get("/resultados").text) == "err"
+
+
+def test_reuploading_missing_input_allows_the_same_run_to_resume(env: Env) -> None:
+    client = TestClient(create_app(env.settings))
+    content = b"sku_id,timestamp,demand_qty,lead_time_days\nFIL-0001,2026-01-01,4,7\n"
+    env = replace(env, ingest_id=hashlib.sha256(content).hexdigest())
+
+    def upload() -> None:
+        response = client.post(
+            "/datos/cargar", files={"archivo": ("ventas.csv", content)}, follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert env.ingest_id in response.headers["location"]
+
+    def drain() -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "pred_platform.worker", "--once"],
+            env={
+                **os.environ,
+                "PRED_DATA_ROOT": str(env.settings.data_root),
+                "PRED_DB_PATH": str(env.db),
+                "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+                "FAKE_ENGINE_SCENARIO": "ok",
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+    upload()
+    assert _launch(client, env).status_code == 303
+    [(run_id,)] = env.rows("SELECT run_id FROM ejecuciones")
+    parquet = env.settings.data_root / "processed/ventas.parquet"
+    parquet.unlink()  # El archivo se perdió después del lanzamiento y antes de la toma.
+    drain()
+    assert "No se encontró el archivo de datos" in client.get("/corridas/1/ejecucion").text
+
+    upload()
+    assert parquet.is_file()
+    before = env.rows("SELECT * FROM ejecuciones")
+    assert "aviso=existente" in _launch(client, env).headers["location"]
+    assert env.rows("SELECT * FROM ejecuciones") == before
+    page = client.get("/corridas/1/ejecucion").text
+    assert _resume_button(page) == "enabled"
+    assert "reanude esta ejecución" in _text(page)
+    resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+    assert "aviso=reanudada" in resumed.headers["location"]
+    drain()
+    assert env.rows("SELECT run_id, estado, intento FROM ejecuciones") == [
+        (run_id, "completada", 2)
+    ]
+    assert env.rows("SELECT COUNT(*) FROM configuraciones") == [(1,)]
+    assert 'data-pred-run-state="completada"' in client.get("/corridas/1/ejecucion").text
 
 
 def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryable(

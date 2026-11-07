@@ -602,7 +602,7 @@ def offers_resume(estado: str, error: RunError | None, *, nothing_to_compare: bo
     """
     return (
         estado in RESUMABLE_STATES
-        and (error is None or error.code not in (INCOMPATIBLE_CONFIG, "platform.input_missing"))
+        and (error is None or error.code != INCOMPATIBLE_CONFIG)
         and not nothing_to_compare
         and not _same_on_resume(error)
     )
