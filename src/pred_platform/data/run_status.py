@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from pydantic import AwareDatetime, BaseModel, Field
@@ -78,25 +79,41 @@ def _unit(event: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
     )
 
 
+type ProgressSummary = tuple[str | None, int | None, int | None, list[StageTiming]]
+
+_PROGRESS_CACHE: OrderedDict[Path, tuple[tuple[int, int, int], ProgressSummary]] = OrderedDict()
+_PROGRESS_CACHE_LOCK = Lock()
+
+
 def read_run_progress(
     path: Path,
-) -> tuple[str | None, int | None, int | None, list[StageTiming]]:
+) -> ProgressSummary:
     """Read one log once per file version, shared by the page's two status reads.
 
     A retry begins at the last run_started. A repeated planned event replaces the old plan.
-    Missing timestamps never become invented durations. Cache only the small parsed summary.
+    Missing timestamps never become invented durations. Keep one small summary per file, so
+    successive live versions cannot evict unchanged completed files from the eight-file cache.
     """
     try:
         stat = path.stat()
-        return _read_progress(path, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        version = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        with _PROGRESS_CACHE_LOCK:
+            cached = _PROGRESS_CACHE.get(path)
+            if cached is not None and cached[0] == version:
+                _PROGRESS_CACHE.move_to_end(path)
+                return cached[1]
+        summary = _read_progress(path)
+        with _PROGRESS_CACHE_LOCK:
+            _PROGRESS_CACHE[path] = version, summary
+            _PROGRESS_CACHE.move_to_end(path)
+            if len(_PROGRESS_CACHE) > 8:
+                _PROGRESS_CACHE.popitem(last=False)
+        return summary
     except OSError:
         return None, None, None, []
 
 
-@lru_cache(maxsize=8)
-def _read_progress(
-    path: Path, inode: int, modified: int, size: int
-) -> tuple[str | None, int | None, int | None, list[StageTiming]]:
+def _read_progress(path: Path) -> ProgressSummary:
     stage = None
     plan = None
     finished = set()
