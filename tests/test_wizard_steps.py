@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from contextlib import closing
 from datetime import datetime
 from html import unescape
+from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
+from pred_platform.app.borrador import Draft, DraftStore
 from pred_platform.data.fixtures import FixtureRepository
 from tests.test_corridas import _fixture_client
 from tests.test_ejecucion import FORM, _dal_client, _launch, _review, _text
@@ -177,7 +181,7 @@ def test_matrix_previews_exclusions_and_the_saved_edit_reaches_revisar(env: Env)
     )
     assert response.status_code == 200
     # The preview only redraws the matrix; the page saves each edit with destino=ajustes.
-    assert "set-cookie" not in response.headers
+    assert client.app.state.drafts.read(client.cookies["pred_borrador"]).rev == 0  # type: ignore[attr-defined]
     client.post("/corridas/nueva/ajustes", data={**typed, "destino": "ajustes"})
     assert 'aria-label="Familias por tipo de demanda"' in response.text
     assert (
@@ -344,3 +348,88 @@ def test_data_step_offers_validated_files_and_its_summary_keeps_all_four_types(e
     assert 'action="/datos/cargar"' in page.text
     for label in ("Suave", "Errática", "Intermitente", "Grumosa"):
         assert label in _text(page.text)
+
+
+def _rev(response: Any) -> str:
+    return response.headers["X-Pred-Draft-Rev"]
+
+
+def _autosave(client: TestClient, env: Env, rev: str | None, **changes: str) -> Any:
+    headers = {"X-Pred-Autosave": "true", **({} if rev is None else {"X-Pred-Draft-Rev": rev})}
+    return client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, **changes, "destino": "ajustes"},
+        headers=headers,
+    )
+
+
+def _seed(client: TestClient) -> str | None:
+    found = re.search(r'name="seed"[^>]*value="(\d+)"', client.get("/corridas/nueva/ajustes").text)
+    return found.group(1) if found else None
+
+
+def test_autosave_only_writes_from_the_latest_draft_revision(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, seed="61")
+    page = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    first = re.search(r'data-draft-rev="(\d+)"', page.text)
+    assert first is not None
+
+    saved = _autosave(client, env, first.group(1), seed="99")
+    assert saved.status_code == 200 and "set-cookie" not in saved.headers
+    assert int(_rev(saved)) > int(first.group(1)) and _seed(client) == "99"
+
+    # A copy is a later choice: it raises the revision, so the page that saw the old one cannot
+    # replace it, whether its answer or the request itself arrives late.
+    client.post("/corridas/nueva/copiar", data={"copiar": "1"})
+    assert _seed(client) == "61"
+    stale = _autosave(client, env, _rev(saved), seed="98")
+    assert stale.status_code == 409 and "set-cookie" not in stale.headers
+    assert int(_rev(stale)) > int(_rev(saved)) and _seed(client) == "61"
+
+    # The page rendered after the copy carries the new revision and saves again.
+    newest = re.search(r'data-draft-rev="(\d+)"', client.get("/corridas/nueva/ajustes").text)
+    assert newest is not None and newest.group(1) == _rev(stale)
+    assert _autosave(client, env, newest.group(1), seed="55").status_code == 200
+    assert _seed(client) == "55"
+
+
+@pytest.mark.parametrize("rev", [None, "", "-1", "x", "7"])
+def test_autosave_without_a_valid_revision_writes_nothing(env: Env, rev: str | None) -> None:
+    client = _dal_client(env)
+    client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    response = _autosave(client, env, rev, seed="77")
+    assert response.status_code == 409 and _seed(client) != "77"
+
+
+def test_autosave_without_a_session_writes_nothing(env: Env) -> None:
+    client = _dal_client(env)
+    response = _autosave(client, env, "0", seed="77")
+    assert response.status_code == 409 and "set-cookie" not in response.headers
+
+
+def test_the_draft_store_survives_a_restart_and_a_read_only_folder(tmp_path: Path) -> None:
+    session = "ab" * 16
+    first = DraftStore(tmp_path / "borradores")
+    stored = first.write(session, Draft(ingest_id="cd" * 32))
+    assert stored.rev == 1 and DraftStore(tmp_path / "borradores").read(session) == stored
+
+    # A folder that cannot be written keeps serving the draft from a temporary one.
+    blocked = tmp_path / "archivo"
+    blocked.write_text("no es una carpeta")
+    fallback = DraftStore(blocked / "borradores")
+    assert fallback.write(session, Draft(ingest_id="cd" * 32)).rev == 1
+    assert fallback.read(session).ingest_id == "cd" * 32
+
+
+def test_old_drafts_expire(tmp_path: Path) -> None:
+    now = [1000.0]
+    store = DraftStore(tmp_path, ttl=100.0, clock=lambda: now[0])
+    store.write("ab" * 16, Draft())
+    now[0] += 4000
+    store.write("cd" * 16, Draft())
+    os.utime(tmp_path / f"{'ab' * 16}.json", (0, 0))
+    now[0] += 4000
+    store.write("ef" * 16, Draft())
+    assert not (tmp_path / f"{'ab' * 16}.json").exists()
+    assert (tmp_path / f"{'ef' * 16}.json").exists()

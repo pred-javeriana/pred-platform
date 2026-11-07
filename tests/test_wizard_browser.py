@@ -41,6 +41,8 @@ class Browser:
         self.waiting = threading.Event()
         self.release = threading.Event()
         self.hold = False
+        # "response" holds an autosave after the server processed it; "request" before.
+        self.stage = "response"
 
     def command(self, *args: str, script: str | None = None) -> str:
         result = subprocess.run(
@@ -70,16 +72,22 @@ def browser(env: Env, request: pytest.FixtureRequest):
 
     @app.middleware("http")
     async def response_barrier(request, call_next):
+        autosave = request.headers.get("X-Pred-Autosave") == "true"
+        held = (
+            live.hold and request.method == "POST" and request.url.path == "/corridas/nueva/ajustes"
+        )
+        if held and autosave and live.stage == "request":
+            # Only the first request is held: the pages that follow save normally.
+            live.hold = False
+            live.waiting.set()
+            await asyncio.to_thread(live.release.wait, 15)
         response = await call_next(request)
         if (
-            live.hold
-            and request.method == "POST"
-            and request.url.path == "/corridas/nueva/ajustes"
-            and (
-                response.headers.get("location") == "/corridas/nueva/ajustes"
-                or request.headers.get("X-Pred-Autosave") == "true"
-            )
+            held
+            and live.hold
+            and (response.headers.get("location") == "/corridas/nueva/ajustes" or autosave)
         ):
+            live.hold = False
             live.waiting.set()
             await asyncio.to_thread(live.release.wait, 15)
         if request.query_params.get("nojs") == "1":
@@ -207,11 +215,21 @@ def test_step_navigation_waits_for_autosave(browser: Browser, env: Env):
     assert browser.waiting.wait(5)
     browser.run("await page.click('#barra-pasos button[value=datos]');")
     browser.release.set()
-    browser.run("""
-        await page.wait('.pred-file-choices');
+    # The page is navigating: a script that starts on the old document loses its context, so
+    # the check repeats until the browser is on Datos.
+    check = """
         const path = await page.eval(() => location.pathname);
         if (path !== '/corridas/nueva/datos') throw new Error('No llegó a Datos: ' + path);
-    """)
+    """
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            browser.run(check)
+            break
+        except AssertionError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.2)
     browser.open("/corridas/nueva/ajustes")
     browser.run("""
         const seed = await page.eval(() => document.querySelector('#seed').value);
@@ -257,3 +275,90 @@ def test_demand_descriptions_fit_their_cells(browser: Browser, env: Env, width: 
     """)
     if evidence := os.environ.get("PRED_BROWSER_EVIDENCE"):
         browser.command("screenshot", str(Path(evidence) / f"demand-{width}.png"), "--full-page")
+
+
+def _type(browser: Browser, field: str, value: str) -> None:
+    browser.run(f"""
+        await page.fill('#{field}', '{value}');
+        await page.eval(() => document.querySelector('#{field}')
+            .dispatchEvent(new Event('change', {{bubbles:true}})));
+    """)
+
+
+def _choose_settings(browser: Browser, choice: str) -> str:
+    """Make the later choice (copy or import) from a fresh Ajustes page; returns its seed."""
+    if choice == "link":
+        browser.open("/corridas/nueva/ajustes?copiar_de=1")
+        return "61"
+    if choice == "copy":
+        browser.run("""
+            await page.eval(() => {
+                const select = document.querySelector('#copiar');
+                select.value = '1';
+                select.dispatchEvent(new Event('change', {bubbles:true}));
+            });
+            await page.wait(500);
+        """)
+        return "61"
+    browser.run("""
+        await page.click('#importar > summary');
+        await page.eval(async () => {
+            const response = await fetch('/ejecucion/configuracion.json?ejecucion=1');
+            const config = await response.json();
+            config.parametros.seed = 62;
+            const files = new DataTransfer();
+            files.items.add(new File([JSON.stringify(config)], 'ajustes.json',
+                {type:'application/json'}));
+            const input = document.querySelector('#importar-configuracion input[type=file]');
+            input.files = files.files;
+        });
+        await page.click('#importar-configuracion button[type=submit]');
+        await page.wait(500);
+    """)
+    return "62"
+
+
+@pytest.mark.parametrize("stage", ["response", "request"])
+@pytest.mark.parametrize("leave", ["reload", "navigate"])
+@pytest.mark.parametrize("choice", ["copy", "link", "import"])
+def test_a_late_autosave_from_a_page_already_left_keeps_the_later_choice(
+    browser: Browser, env: Env, choice: str, leave: str, stage: str
+):
+    """An autosave from a page the person already left may reach the server, or its answer may
+    reach the browser, after a copy or import: the later settings must still be the draft."""
+    _launch(_dal_client(env), env, seed="61")
+    _complete(browser, env)
+    browser.stage = stage
+    browser.hold = True
+    _type(browser, "seed", "99")
+    assert browser.waiting.wait(5), "El guardado anterior no llegó al servidor"
+    if leave == "reload":
+        browser.run("await page.eval(() => location.reload()); await page.wait(500);")
+    else:
+        browser.open("/corridas/nueva/datos")
+        browser.open("/corridas/nueva/ajustes")
+    seed = _choose_settings(browser, choice)
+    # The person keeps editing the page the choice produced: a later horizon is saved too.
+    _type(browser, "horizon", "3")
+    browser.run("await page.wait(800);")
+    browser.release.set()
+    browser.run("await page.wait(1000);")
+    browser.open("/corridas/nueva/ajustes")
+    browser.run(f"""
+        const values = await page.eval(() => ({{
+            seed: document.querySelector('#seed').value,
+            horizon: document.querySelector('#horizon').value
+        }}));
+        if (values.seed !== '{seed}' || values.horizon !== '3')
+            throw new Error('Ajustes perdió lo elegido: ' + JSON.stringify(values));
+        await page.click('button[form=formulario-ajustes]:not([name])');
+        await page.wait('input[type=hidden][name=seed]');
+        const review = await page.eval(() => ({{
+            path: location.pathname,
+            seed: document.querySelector('input[type=hidden][name=seed]')?.value,
+            horizon: document.querySelector('input[type=hidden][name=horizon]')?.value
+        }}));
+        if (review.path !== '/corridas/nueva/revisar' || review.seed !== '{seed}' ||
+            review.horizon !== '3')
+            throw new Error('Revisar perdió lo elegido: ' + JSON.stringify(review));
+    """)

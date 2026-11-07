@@ -13,8 +13,12 @@
   /* Ajustes guarda cada cambio en el borrador en cuanto se hace (el mismo envío que Atrás, con
      destino=ajustes, que no valida), así ninguna salida lo pierde: la barra superior, recargar o
      el botón Atrás del navegador. «keepalive» deja terminar el envío aunque la página se vaya.
-     El borrador es una sola cookie: un envío a la vez, para que uno viejo no la escriba después
-     de uno nuevo, y Continuar, Atrás o un paso de la barra esperan al que esté en camino. */
+     El borrador vive en el servidor con una revisión que sube en cada escritura. Cada envío lleva
+     la revisión que esta página vio y el servidor lo rechaza (409) si una elección más nueva, como
+     una copia o importación hecha desde otra página, ya lo reemplazó: una página que se dejó, o
+     una respuesta que llega tarde, nunca pisa lo elegido después. Un envío a la vez, para que
+     cada uno traiga la revisión del anterior, y Continuar, Atrás o un paso de la barra esperan
+     al que esté en camino. */
   const ajustes = document.querySelector("form[data-autosave]");
   if (ajustes) {
     let pending = false;
@@ -28,8 +32,16 @@
       pending = false;
       const data = new FormData(ajustes);
       data.set("destino", "ajustes");
-      inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true" }, credentials: "same-origin", keepalive: true })
-        .then(function (response) { return response.ok ? response.text() : null; })
+      const sent = ajustes.dataset.draftRev || "0";
+      inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true", "X-Pred-Draft-Rev": sent }, credentials: "same-origin", keepalive: true })
+        .then(function (response) {
+          const rev = response.headers.get("X-Pred-Draft-Rev");
+          if (rev !== null) ajustes.dataset.draftRev = rev;
+          // Otra página guardó antes: esta, que sigue abierta, es la que la persona edita ahora,
+          // así que vuelve a enviar lo suyo con la revisión actual.
+          if (response.status === 409) { if (rev !== null && rev !== sent) pending = true; return null; }
+          return response.ok ? response.text() : null;
+        })
         .then(function (html) {
           if (!html || pending || replacing || submitting) return;
           const saved = new DOMParser().parseFromString(html, "text/html");

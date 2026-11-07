@@ -19,8 +19,11 @@ no administration screen. M0 is out of the flow.
 - `app/pasos.py` owns the step model: names, purposes, step states and where Atrás and
   Siguiente go. It reads nothing; `app/corridas.py` reads the repository (`list_runs`,
   `get_run_status`, the published M3 runs) and builds the home and the facts the rail needs.
-- The draft of a new run (the chosen file and settings) lives in a browser session cookie
-  (`app/borrador.py`). Siguiente in Datos and Ajustes writes it. Ajustes also saves each edit as
+- The draft of a new run (the chosen file and settings) lives on the server, one file per browser
+  session under `<data root>/borradores`; the session cookie only carries the identifier
+  (`app/borrador.py`). Every write raises the draft revision, and the Ajustes autosave
+  (`X-Pred-Draft-Rev`) writes only while the page still holds the latest revision, so a page the
+  person already left cannot replace a copy or import made later. Siguiente in Datos and Ajustes writes it. Ajustes also saves each edit as
   it happens, unvalidated (`destino=ajustes` on `POST /corridas/nueva/ajustes`, sent by
   `static/js/wizard_steps.js`), and Atrás and the rail steps of Ajustes are submit buttons with
   their own `destino`, so no exit loses what was typed, even without JavaScript. Ajustes never

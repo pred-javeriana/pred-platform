@@ -121,7 +121,7 @@ def elegir_datos(
         else step_href(NEW, "ajustes")
     )
     response = RedirectResponse(target, status_code=303)
-    save_draft(response, read_draft(request).with_ingest(ingest_id))
+    save_draft(request, response, read_draft(request).with_ingest(ingest_id))
     return response
 
 
@@ -210,7 +210,7 @@ def _submit(
     )
     # Un archivo cargado y aceptado queda elegido para la corrida nueva.
     if report.ingest_id and _runnable(repository, report.ingest_id):
-        save_draft(response, read_draft(request).with_ingest(report.ingest_id))
+        save_draft(request, response, read_draft(request).with_ingest(report.ingest_id))
     return response
 
 

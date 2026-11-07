@@ -22,7 +22,15 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 
-from pred_platform.app.borrador import Draft, clear_draft, read_draft, save_draft
+from pred_platform.app.borrador import (
+    Draft,
+    autosave_draft,
+    bind_session,
+    clear_draft,
+    read_draft,
+    save_draft,
+    write_draft,
+)
 from pred_platform.app.configuracion import (
     MAX_BYTES,
     ConfigExportError,
@@ -430,6 +438,7 @@ def _render_ajustes(
     imported: tuple[str, str] | None = None,
     exclusion: tuple[ExclusionWarning, str | None] | None = None,
     save: Draft | None = None,
+    saved: Draft | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     """Ajustes de la corrida nueva: el formulario con los valores del borrador (o los enviados).
@@ -438,9 +447,12 @@ def _render_ajustes(
     formulario y, si el archivo trae otra ingesta que esta plataforma no tiene, lo deja sin
     ingesta elegida, para que nadie lance los ajustes importados sobre otros datos sin darse
     cuenta. ``exclusion`` es el aviso de los SKU que quedarían sin campeón, junto al rechazo que
-    impide continuar. ``save`` es el borrador que la página guarda y muestra en la barra de pasos.
+    impide continuar. ``save`` es el borrador que la página guarda y muestra en la barra de pasos;
+    ``saved``, el que el guardado automático ya guardó (la respuesta no toca la cookie).
     """
-    draft = save or read_draft(request)
+    if save is not None:
+        saved = write_draft(request, save)
+    draft = saved or read_draft(request)
     values = form.values if form is not None else dict(draft.values)
     if form is None:
         values["ingest_id"] = ingest_id or draft.ingest_id or ""
@@ -487,10 +499,16 @@ def _render_ajustes(
         "metric_choices": METRIC_CHOICES,
         "control_reason": control.reason,
         "launch_form_id": AJUSTES_FORM,
+        # La revisión que esta página vio: su guardado automático solo vale con ella.
+        "draft_rev": draft.rev,
     }
     response = _render(request, "pages/paso_ajustes.html", context, status_code)
     if save is not None:
-        save_draft(response, save)
+        bind_session(request, response)
+    elif saved is None:
+        # Sin sesión, la página abre una antes de su primer guardado automático: una respuesta
+        # tardía del guardado nunca fija una sesión nueva.
+        bind_session(request, response, only_new=True)
     return response
 
 
@@ -679,6 +697,26 @@ def _copy_settings(
     )
 
 
+def _autosave(
+    request: Request, repository: DataRepository, ingest_id: str | None, typed: dict[str, Any]
+) -> Response:
+    """El guardado automático de Ajustes: escribe lo tecleado solo si la página aún tiene la última
+    revisión del borrador. Una página que ya se dejó, o la de otra pestaña, trae una revisión
+    vieja y no reemplaza una elección más nueva (copia, importación o Atrás). Ambas respuestas
+    llevan la revisión actual y ninguna toca la cookie de sesión."""
+
+    def change(draft: Draft) -> Draft:
+        return draft.with_values(ingest_id or draft.ingest_id, typed)
+
+    kept, current = autosave_draft(request, request.headers.get("X-Pred-Draft-Rev"), change)
+    headers = {"X-Pred-Draft-Rev": str(current.rev)}
+    if not kept:
+        return Response(status_code=409, headers=headers)
+    response = _render_ajustes(request, repository, saved=current)
+    response.headers.update(headers)
+    return response
+
+
 @router.post("/corridas/nueva/ajustes/comprobar", response_model=None)
 @router.post("/corridas/nueva/ajustes", response_model=None)
 def guardar_ajustes(
@@ -695,7 +733,7 @@ def guardar_ajustes(
     seed: Annotated[str | None, Form()] = None,
     workers: Annotated[str | None, Form()] = None,
     destino: Annotated[str | None, Form()] = None,
-) -> HTMLResponse | RedirectResponse:
+) -> HTMLResponse | RedirectResponse | Response:
     """«Continuar a Revisar y lanzar»: valida como lo hará Lanzar y guarda el borrador. Nada se
     lanza todavía; un error vuelve a Ajustes con su explicación.
 
@@ -712,13 +750,12 @@ def guardar_ajustes(
         "workers": workers,
     }
     if destino in STEP_KEYS and destino != "revisar":
-        draft = read_draft(request)
         typed = {"families": families or [], "metric": metric, **fields}
-        saved = draft.with_values(ingest_id or draft.ingest_id, typed)
         if destino == "ajustes" and request.headers.get("X-Pred-Autosave") == "true":
-            return _render_ajustes(request, repository, save=saved)
+            return _autosave(request, repository, ingest_id, typed)
+        draft = read_draft(request)
         response = RedirectResponse(step_href(NEW, destino), status_code=303)
-        save_draft(response, saved)
+        save_draft(request, response, draft.with_values(ingest_id or draft.ingest_id, typed))
         return response
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
@@ -727,7 +764,7 @@ def guardar_ajustes(
     if form.errors or ingest_id is None:
         return _render_ajustes(request, repository, form=form, exclusion=warning)
     response = RedirectResponse(step_href(NEW, "revisar"), status_code=303)
-    save_draft(response, read_draft(request).with_settings(ingest_id, form.values))
+    save_draft(request, response, read_draft(request).with_settings(ingest_id, form.values))
     return response
 
 
@@ -807,7 +844,7 @@ def lanzar(
         f"{step_href(str(result.ejecucion_id), 'ejecucion')}?{urlencode({'aviso': aviso})}",
         status_code=303,
     )
-    clear_draft(response)
+    clear_draft(request, response)
     return response
 
 
