@@ -13,6 +13,7 @@ corresponde con la misma consulta.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -31,10 +32,10 @@ from pred_platform.app.configuracion import (
 )
 from pred_platform.app.corridas import (
     draft_facts,
+    facts_from_status,
     ingests_by_id,
     resolve_run_id,
     run_facts,
-    status_facts,
 )
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
@@ -69,7 +70,11 @@ from pred_platform.app.ejecucion import (
     short_of_two,
     should_poll,
     single_family_classes,
-    stage_steps,
+)
+from pred_platform.app.execution_display import (
+    add_cause_snapshot,
+    add_stage_references,
+    execution_display,
 )
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
@@ -83,7 +88,7 @@ from pred_platform.app.pasos import (
     step_href,
 )
 from pred_platform.app.presentation import describe_run
-from pred_platform.app.resultados_m3 import run_outcome
+from pred_platform.app.resultados_m3 import run_outcome_details
 from pred_platform.app.routers.corridas import (
     Locked,
     redirect_with_query,
@@ -213,7 +218,10 @@ def _context(
         error=error,
         nothing_to_compare=run_compares_nothing(repository, run, status),
     )
+    now = datetime.now(UTC)
+    outcome = run_outcome_details(repository, run, counts) if run is not None else None
     return {
+        **execution_display(status, now),
         "capabilities": capabilities,
         "orchestration": orchestration,
         "source": repository.source,
@@ -243,14 +251,12 @@ def _context(
         "focus": focus,
         "focus_estado": focus_estado,
         "focus_total": tasks.page.total if focus and tasks and tasks.page else 0,
-        "outcome": run_outcome(repository, run, counts) if run is not None else None,
+        "outcome": outcome.text if outcome else None,
+        "published": outcome.published if outcome else False,
         "run_ingest": ingest_name(repository, run.ingest_id) if run is not None else None,
         "run_error": error,
-        "steps": stage_steps(run.estado, progress.etapa_actual if progress else None)
-        if run is not None
-        else [],
         "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
-        "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
+        "elapsed": elapsed_text(run, now) if run is not None else None,
         "actions": actions,
         "run_status": describe_run(run.estado, resumable=actions.offers_resume)
         if run is not None
@@ -282,6 +288,13 @@ def _render_execution(
         return render_missing_run(request, corrida)
     context = _context(request, repository, ejecucion=facts.id, action_error=action_error)
     context["wizard"] = run_wizard("ejecucion", facts)
+    try:
+        references = repository.get_run_stage_history(facts.id)
+    except DataLayerError:
+        references = []
+    add_stage_references(context, references)
+    with suppress(DataLayerError):
+        add_cause_snapshot(context, repository.get_run_causes(facts.id))
     return _render(request, "pages/execution.html", context, status_code)
 
 
@@ -339,8 +352,13 @@ def ejecucion_estado(
     que deje de preguntar."""
     context = _context(request, repository)
     status = context["status"]
-    facts = status_facts(repository, status) if status is not None else None
-    if facts is not None:
+    if status is not None and status.ejecucion is not None:
+        facts = facts_from_status(
+            status,
+            published=context["published"],
+            resumable=context["actions"].offers_resume,
+            file_name=context["run_ingest"].file_name if context["run_ingest"] else None,
+        )
         context["wizard"] = run_wizard("ejecucion", facts)
     return _render(
         request, "partials/execution_poll.html", context, 200 if context["poll"] else 286

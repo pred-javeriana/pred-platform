@@ -1,4 +1,4 @@
-{% from "components/terms.html" import day, term, when %}
+{% from "components/terms.html" import day, when %}
 {% from "components/states.html" import empty_state, missing_run_state, unavailable_state %}
 {% from "components/progress.html" import progress_bar %}
 {% from "components/status.html" import status_indicator %}
@@ -7,18 +7,17 @@
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/evidence.html" import evidence_nav, evidence_panel %}
 
-{# Mientras el motor trabaja: qué hace ahora, cuánto lleva y cuándo se leyó el avance. pred.js
-   cuenta el tiempo cada segundo y dice si el servidor deja de responder; sin JS, el texto del
-   servidor sigue siendo cierto. El punto late; con movimiento reducido queda quieto. Sin sondeo
-   (datos de ejemplo o una copia de solo lectura) la página no vuelve a leer el avance, así que
-   no dice cuándo lo leyó: pred.js tomaría la falta de lecturas por un servidor que no responde. #}
-{% macro run_pulse(run, progress, poll) %}
+{# El reloj y las transiciones no hacen lecturas: usan la respuesta del sondeo existente. #}
+{% macro run_pulse(run, progress) %}
 <div class="pred-run__pulse" id="pulso-ejecucion"{% if run.iniciada_en %} data-pred-started="{{ run.iniciada_en.isoformat() }}"{% endif %}>
-  <p class="pred-run__pulse-now"><span class="pred-run__pulse-dot" aria-hidden="true"></span><span>Trabajando{% if current_stage %} en <strong>{{ current_stage }}</strong>{% endif %}{% if progress and progress.skus_total is not none %} · <span data-pred-tween="skus-terminados-{{ progress.etapa_actual }}">{{ format_count(progress.skus_terminados) }}</span> de {{ format_count(progress.skus_total) }} SKU terminados en esta etapa{% endif %}</span></p>
+  <p class="pred-run__pulse-now"><span class="pred-run__pulse-dot" aria-hidden="true"></span><strong>Trabajando{% if current_stage %} en {{ current_stage }}{% endif %}.</strong></p>
+  {% if progress and progress.etapa_actual %}<p class="pred-live__hint">{{ stage_term(progress.etapa_actual).hint }}</p>{% endif %}
+  {% if progress and progress.skus_total is not none %}<p><strong><span data-pred-tween="skus-terminados-{{ progress.etapa_actual }}">{{ format_count(progress.skus_terminados) }}</span> de {{ format_count(progress.skus_total) }}</strong> productos terminados en esta etapa.</p>{% endif %}
   {% if elapsed or poll %}<p class="pred-run__pulse-time">{% if elapsed %}Lleva <span id="pulso-transcurrido">{{ elapsed }}</span>{% endif %}{% if poll %}{% if elapsed %} · {% endif %}<span id="pulso-lectura">avance leído ahora</span>{% endif %}</p>{% endif %}
 </div>
 {% endmacro %}
 
+{% if live_snapshot %}<span hidden data-pred-live='{{ live_snapshot | tojson }}'></span>{% endif %}
 <span hidden data-pred-poll="{{ 'true' if poll else 'false' }}" data-pred-run-state="{{ run.estado if run else 'sin_ejecucion' }}" data-pred-run-summary="{% if run %}Ejecución {{ run.id }}: {{ describe_status('run', run.estado).label }}{% else %}Sin ejecución{% endif %}"></span>
 {% if missing_run %}
   {{ missing_run_state(missing_run, "Puede abrir la ejecución más reciente o lanzar una nueva.", "Ver la ejecución más reciente", "/ejecucion") }}
@@ -61,11 +60,24 @@
       {% if finished and results_href %}{{ button("Ver resultados", variant="primary", href=results_href) }}{% endif %}
     </div>
   </header>
+  {% if progress %}
+  {% set counts = progress.tareas_por_estado %}
+  {% set done = counts.get("exitosa", 0) if run.estado == "detenida" else counts.get("exitosa", 0) + counts.get("fallida", 0) + counts.get("no_ejecutable", 0) %}
+  {% set pct = ((100 * done / progress.tareas_total) | round(1)) if run.estado == "detenida" and progress.tareas_total else (0.0 if run.estado == "detenida" else progress.avance_pct) %}
+  <div class="pred-live">
+    <div class="pred-live__ring">{{ progress_bar(done, progress.tareas_total, pct, "Tareas exitosas antes de detenerse" if run.estado == "detenida" else "Avance de la ejecución", circular=true, working=run.estado == "ejecutando") }}</div>
+    <div class="pred-live__reading">
+  {% endif %}
+  {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress) }}{% endif %}
+  {% if finished and elapsed %}<p class="pred-live__finished"><strong>Terminó en {{ elapsed }}.</strong></p>{% endif %}
   {% if outcome %}<p class="pred-run__outcome" id="resultado-ejecucion">{{ outcome }}</p>{% endif %}
+  {% if run.estado == "detenida" and actions.offers_resume %}<p>Lo terminado queda guardado. Reanudar sigue desde la última tarea guardada.</p>{% endif %}
+  {% if progress and progress.etapa_actual == "L4" and run.estado == "ejecutando" %}<p class="pred-meta">En esta etapa el porcentaje de tareas casi no se mueve: la evaluación final trabaja por producto. Siga el conteo de productos.</p>{% endif %}
   <dl class="pred-facts">
     <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
     {# Mientras trabaja, el pulso de abajo cuenta el tiempo transcurrido. #}
     {% if elapsed and run.estado != "ejecutando" %}<div><dt>{{ "Duración" if run.finalizada_en else "Tiempo transcurrido" }}</dt><dd>{{ elapsed }}</dd></div>{% endif %}
+    {% if run.finalizada_en %}<div><dt>Terminó</dt><dd>{{ when(run.finalizada_en) }}</dd></div>{% endif %}
     {% if run.ingest_id %}<div><dt>Datos</dt><dd><a href="/corridas/{{ run.id }}/datos" title="Ingesta {{ run.ingest_id }}">{% if run_ingest and run_ingest.file_name %}{{ run_ingest.file_name }}{% else %}<span class="mono">{{ abbreviate_id(run.ingest_id) }}</span>{% endif %}</a></dd></div>{% endif %}
     <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
   </dl>
@@ -99,44 +111,55 @@
   <p class="pred-note pred-note--muted">La ejecución se detuvo antes de crear tareas. Revise el registro del motor (<span class="mono">motor.log</span> en la carpeta de la ejecución) y vuelva a lanzar.</p>
   {% endif %}
 
-  {% if steps %}
-  <ol class="pred-steps" aria-label="Etapas del motor">
-    {% for step in steps %}
-    <li class="pred-steps__item is-{{ step.state }}"{% if step.state == "en_curso" %} aria-current="step"{% endif %}>
+  {% if progress %}</div></div>{% endif %}
+  {% if stage_rows %}
+  <p class="pred-meta pred-stage-key">{% if stage_caption %}{{ stage_caption }}{% else %}Duración por etapa del intento actual · barras desde cero, en la misma escala. No es una estimación de lo que falta.{% endif %}</p>
+  <ul class="pred-stage-legend" aria-label="Referencia de las barras"><li><i></i>Esta corrida</li>{% for reference in stage_history | default([]) %}<li><i class="is-reference-{{ loop.index0 }}"></i>Semilla {{ reference.seed }}</li>{% endfor %}</ul>
+  <ol class="pred-live-stages" aria-label="Etapas del motor">
+    {% for step in stage_rows %}
+    <li class="is-{{ step.state }}" data-stage-code="{{ step.code }}" data-stage-seconds="{{ step.seconds if step.seconds is not none else '' }}">
       <span class="pred-steps__mark" aria-hidden="true">{% if step.state == "hecha" %}<svg><use href="#i-check"></use></svg>{% else %}{{ loop.index }}{% endif %}</span>
-      <span class="pred-steps__label">{{ term(stage_term(step.code)) }}<span class="pred-sr-only">: {{ {"hecha": "terminada", "en_curso": "en curso", "pendiente": "pendiente"}[step.state] }}</span>{% if step.state == "en_curso" %}<span class="pred-steps__now" aria-hidden="true">En curso</span>{% endif %}</span>
+      <span class="pred-live-stages__name">{{ step.label }}<small>{{ step.hint }}</small><span class="pred-sr-only">: {{ {"hecha": "terminada", "fallida": "fallida", "en_curso": "en curso", "detenida": "detenida", "sin_ejecutar": "no se ejecutó", "pendiente": "pendiente"}[step.state] }}</span></span>
+      <span class="pred-live-stages__bars" aria-hidden="true"><span class="pred-live-stages__bar"><i style="width:{{ step.width }}%"></i></span>{% for reference in step.references | default([]) %}<span class="pred-live-stages__bar pred-stage-reference is-reference-{{ loop.index0 }}"><i style="width:{{ reference.width }}%"></i></span>{% endfor %}</span>
+      <span class="pred-live-stages__duration">{% if step.duration %}{{ step.duration }}{% else %}{{ {"pendiente": "Pendiente", "sin_ejecutar": "No se ejecutó"}.get(step.state, "Sin registro de duración") }}{% endif %}{% if step.state in ("en_curso", "detenida", "fallida") %}<small>{{ {"en_curso": "En curso", "detenida": "Detenida", "fallida": "Falló"}[step.state] }}</small>{% endif %}{% if step.references %}<small class="pred-stage-before">Antes: {% for reference in step.references %}{{ reference.duration }}{% if not loop.last %} · {% endif %}{% endfor %}</small>{% endif %}</span>
     </li>
     {% endfor %}
   </ol>
   {% endif %}
-  {% if run.estado == "ejecutando" and not progress %}{{ run_pulse(run, none, poll) }}{% endif %}
-
-  {% if progress %}
-  {% set counts = progress.tareas_por_estado %}
-  {# Una corrida detenida cierra sus tareas abiertas como fallidas o no ejecutables: no es avance. #}
-  {% if run.estado == "detenida" %}
-    {% set done = counts.get("exitosa", 0) %}
-    {% set pct = ((100 * done / progress.tareas_total) | round(1)) if progress.tareas_total else 0.0 %}
-    {% set bar_label = "Tareas exitosas antes de detenerse" %}
-  {% else %}
-    {% set done = counts.get("exitosa", 0) + counts.get("fallida", 0) + counts.get("no_ejecutable", 0) %}
-    {% set pct = progress.avance_pct %}
-    {% set bar_label = "Avance de la ejecución" %}
-  {% endif %}
-  <div class="pred-run__progress">
-    {{ progress_bar(done, progress.tareas_total, pct, bar_label, circular=true, working=run.estado == "ejecutando") }}
-    <div class="pred-run__states">
-      {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress, poll) }}{% endif %}
-      <p class="pred-meta" id="tareas-por-estado">Tareas por estado. Elija uno para ver sus tareas.</p>
-      <ul class="pred-statelist" aria-labelledby="tareas-por-estado">
-        {% for code, count in state_counts %}
-        <li><a href="/ejecucion?{{ query.query_string(estado=code, page=1) }}#tareas"{% if query.estado == code %} aria-current="true"{% endif %}{% if not count %} class="is-zero"{% endif %}>{{ status_indicator(describe_status("task", code)) }} <span class="mono" data-pred-tween="tareas-{{ code }}">{{ format_count(count) }}</span></a></li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-  {% endif %}
 </section>
+
+{% if run.estado in ("pendiente", "ejecutando") %}
+<section class="pred-panel pred-action-card pred-close-page">
+  <div><h2>Puede cerrar esta página</h2><p>La corrida sigue en el procesador aunque cierre el navegador. Al volver, abra esta corrida en Corridas para ver lo que pasó mientras no estaba.</p></div>
+  <div class="pred-action-card__do">{{ button("Ir a Corridas", variant="secondary", href="/") }}</div>
+</section>
+{% endif %}
+
+<section class="pred-panel pred-live-tasks" aria-labelledby="titulo-causas">
+  <h2 id="titulo-causas">Tareas que conviene mirar</h2>
+  <p>Una tarea es un producto con un modelo. Las tareas que no salieron se agrupan por causa, sin perder de vista el avance.</p>
+  {% if progress %}
+  <p class="pred-meta" id="tareas-por-estado">Tareas por estado. Elija uno para ver sus tareas.</p>
+  <ul class="pred-statelist" aria-labelledby="tareas-por-estado">
+    {% for code, count in state_counts %}
+    <li><a href="/corridas/{{ run.id }}/ejecucion?{{ query.query_string(estado=code, page=1) }}#tareas"{% if query.estado == code %} aria-current="true"{% endif %}{% if not count %} class="is-zero"{% endif %}>{{ status_indicator(describe_status("task", code)) }} <span class="mono" data-pred-tween="tareas-{{ code }}">{{ format_count(count) }}</span></a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <div id="causas-corrida" hx-preserve="true">
+  {% if cause_snapshot_at %}<p class="pred-meta">Causas leídas {{ when(cause_snapshot_at) }} · Este resumen no cambia automáticamente. <a href="/corridas/{{ run.id }}/ejecucion#titulo-causas">Actualizar causas</a></p>{% endif %}
+  {% if cause_groups %}
+  {{ table_start(["Causa", "Familias", "Tareas"], "Causas de las tareas sin pronóstico") }}
+  {% for cause in cause_groups %}
+  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action and not actions.nothing_to_compare %}<span class="pred-subvalue pred-cause">{{ cause.action }}</span>{% endif %}{% if cause.code %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><span class="mono">{{ cause.code }}</span></details>{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
+  {% endfor %}
+  {{ table_end() }}
+  {% elif progress and not progress.tareas_por_estado.get("fallida", 0) and not progress.tareas_por_estado.get("no_ejecutable", 0) %}
+  <p class="pred-meta">Ninguna tarea ha fallado ni ha quedado sin ejecutar.</p>
+  {% else %}<p class="pred-meta">Las causas agrupadas se leen al abrir este paso. Consulte las tareas para ver el detalle.</p>{% endif %}
+  </div>
+  <details class="pred-details" id="lista-tareas"{% if query.explicit %} open{% endif %}>
+    <summary>Ver tareas, con filtros, y configuración</summary>
 
 <div class="pred-evidence-area" id="detalle-ejecucion" data-evidence-tabs>
   <h2 class="pred-sr-only">Detalle de la ejecución</h2>
@@ -215,4 +238,6 @@
   {% endif %}
 {% endcall %}
 </div>
+  </details>
+</section>
 {% endif %}

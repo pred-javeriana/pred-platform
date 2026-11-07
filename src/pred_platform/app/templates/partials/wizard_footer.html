@@ -2,7 +2,7 @@
    enlace, el envío del formulario del paso, un formulario propio o, si todavía no se puede
    seguir, un botón deshabilitado con su motivo debajo. #}
 {% set next = wizard.next %}
-<nav class="pred-footnav" aria-label="Navegación entre pasos">
+<nav class="pred-footnav" id="navegacion-pasos" aria-label="Navegación entre pasos"{% if swap_oob %} hx-swap-oob="true"{% endif %}>
   <div class="pred-footnav__side">
     {% if wizard.back and wizard.back.submits %}
     {# Atrás guarda lo escrito en Ajustes antes de salir, sin validarlo todavía. #}
