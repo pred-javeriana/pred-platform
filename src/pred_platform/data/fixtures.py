@@ -218,13 +218,16 @@ class FixtureRepository(M3FixtureSource):
         wanted_state = check_choice("estado", estado, _FAMILY_STATES)
         key_name = check_sort(sort, _SELECTION_SORT)
         request = PageRequest(page, size)
+        shared = run_id in self.scenario.selection_runs
         doc = self._find(
             models.SkuSelectionList,
             (self.scenario.sku_selection_list,),
-            run_id,
+            LATEST if shared else run_id,
             lambda d: d.run_id,
             f"No hay selecciones para la ejecución {run_id!r}",
         )
+        if shared:
+            doc = _with(doc, run_id=run_id)
 
         def keep(row: models.SkuSelectionRow) -> bool:
             if wanted_class is not None and row.sku_class != wanted_class:
@@ -254,10 +257,15 @@ class FixtureRepository(M3FixtureSource):
     def get_sku_selection(
         self, run_id: str, sku_id: str, *, include_windows: bool = False
     ) -> models.SkuSelection:
+        shared = run_id in self.scenario.selection_runs
         for example in self.scenario.sku_selections:
             data = json.loads(_text(example))
-            if data["sku_id"] != sku_id or not _matches(run_id, data.get("run_id")):
+            if data["sku_id"] != sku_id or not _matches(
+                LATEST if shared else run_id, data.get("run_id")
+            ):
                 continue
+            if shared:
+                data["run_id"] = run_id
             if not include_windows:
                 for entry in data["families"]:
                     if entry.get("walk_forward"):

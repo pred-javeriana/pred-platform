@@ -23,7 +23,7 @@ from pred_platform.app.presentation import (
     format_duration,
     stage_label,
 )
-from pred_platform.app.resultados_m3 import published_executions
+from pred_platform.app.resultados_m3 import published_executions, run_outcome
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestSummary, RunStatus
 from pred_platform.dal.lectura import run_number
@@ -99,7 +99,14 @@ def run_facts(
     if run_number(corrida) is None:
         return None
     status = _status(repository, corrida)
-    if status is None:
+    return None if status is None else status_facts(repository, status, published)
+
+
+def status_facts(
+    repository: DataRepository, status: RunStatus, published: frozenset[str] | None = None
+) -> RunFacts | None:
+    """Los hechos de una corrida cuyo estado quien llama ya leyó (el sondeo de Ejecución)."""
+    if status.ejecucion is None:
         return None
     if published is None:
         published = published_runs(repository)
@@ -156,6 +163,9 @@ class Home:
 
 
 _RESULTS_READY = StatusPresentation("i-check", "Completada · resultados listos", "ok")
+_RESULTS_READY_WITH_FAILURES = StatusPresentation(
+    "i-warn", "Completada con fallos · resultados listos", "warn"
+)
 _NOT_PUBLISHED = StatusPresentation("i-check", "Completada · sin evaluación final publicada", "ok")
 _QUEUED = StatusPresentation("i-clock", "En cola", "neutral")
 _NOT_LAUNCHED = StatusPresentation("i-clock", "Sin lanzar", "neutral")
@@ -164,8 +174,13 @@ _SLOT_RUNNING = StatusPresentation("i-play", "En curso", "info")
 _SLOT_DONE = StatusPresentation("i-check", "Terminada, sin publicar", "ok")
 
 
-def _row(facts: RunFacts, now: datetime) -> RunRow:
+def _row(facts: RunFacts, now: datetime, outcome: str | None = None) -> RunRow:
     execution = step_href(facts.id, "ejecucion")
+    if facts.published and facts.estado == "completada_con_fallos":
+        return RunRow(
+            facts, _RESULTS_READY_WITH_FAILURES, outcome, 5, -1, False, "Ver resultados",
+            step_href(facts.id, "resultados"), False,
+        )  # fmt: skip
     if facts.published:
         return RunRow(
             facts, _RESULTS_READY, None, 5, -1, False, "Ver resultados",
@@ -262,6 +277,15 @@ def _newest_first(statuses: Iterable[RunStatus]) -> list[RunStatus]:
     )
 
 
+def _failure_outcome(repository: DataRepository, status: RunStatus, facts: RunFacts) -> str | None:
+    """Qué dejó una corrida publicada que terminó con tareas fallidas; sin fallos, no hay frase."""
+    if not (facts.published and facts.estado == "completada_con_fallos"):
+        return None
+    run, progress = status.ejecucion, status.progress
+    assert run is not None
+    return run_outcome(repository, run, progress.tareas_por_estado if progress else None)
+
+
 def home(repository: DataRepository, now: datetime | None = None) -> Home:
     """Todas las corridas, con la que está en curso primero, y el grupo de la tesis."""
     try:
@@ -279,7 +303,12 @@ def home(repository: DataRepository, now: datetime | None = None) -> Home:
         if status.ejecucion is not None
     }
     moment = now or datetime.now(UTC)
-    rows = [_row(facts[s.ejecucion.id], moment) for s in statuses if s.ejecucion is not None]
-    # Una corrida en cola o en curso va primero: es la que la persona vuelve a mirar.
-    rows.sort(key=lambda row: row.facts.estado not in ("pendiente", "ejecutando"))
+    rows = [
+        _row(facts[s.ejecucion.id], moment, _failure_outcome(repository, s, facts[s.ejecucion.id]))
+        for s in statuses
+        if s.ejecucion is not None
+    ]
+    # La corrida en curso va primero y la que espera turno, después: son las que la persona
+    # vuelve a mirar.
+    rows.sort(key=lambda row: {"ejecutando": 0, "pendiente": 1}.get(row.facts.estado, 2))
     return Home(tuple(rows), _thesis_group(statuses, facts))

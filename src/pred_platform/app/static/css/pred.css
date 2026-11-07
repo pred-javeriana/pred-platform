@@ -1083,7 +1083,7 @@ dl.pred-check {
 
 dl.pred-check > div {
   display: grid;
-  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
   align-items: baseline;
   gap: var(--space-3);
   padding: 12px 0;
@@ -1101,6 +1101,14 @@ dl.pred-check dd {
   margin: 0;
   color: var(--ink-soft);
   font-size: 15px;
+}
+
+/* En las filas con «Cambiar», el valor queda a la izquierda y el enlace a la derecha, dentro del dd. */
+dl.pred-check dd:has(> a) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 dl.pred-check a {

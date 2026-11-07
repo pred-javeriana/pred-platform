@@ -77,7 +77,7 @@
     {% with topology_details=true %}{% include "partials/data_topology.html" %}{% endwith %}
     {% endif %}
     {% if not record %}
-    {% call evidence_panel("carga", "Cargar otro archivo", "Valide otro CSV en lugar del actual; el historial conserva las ingestas anteriores.", active=form_error or report.status == "needs_confirmation" and not pending_token) %}
+    {% call evidence_panel("carga", "Cargar otro archivo", "Valide otro CSV en lugar del actual; el historial conserva los archivos cargados antes.", active=form_error or report.status == "needs_confirmation" and not pending_token) %}
       {{ upload_form(false) }}
     {% endcall %}
     {% endif %}
@@ -93,7 +93,7 @@
   {% endif %}
 
   {% if not record %}
-  {% call evidence_panel("historial", "Historial de ingestas", "Los archivos ya cargados. Abra uno para revisar su diagnóstico y sus clases de demanda.", active=request.query_params.get("history_page")) %}
+  {% call evidence_panel("historial", "Historial de archivos cargados", "Los archivos ya cargados. Abra uno para revisar su diagnóstico y sus clases de demanda.", active=request.query_params.get("history_page")) %}
     {% if list_error %}
       {{ unavailable_state(
         list_error.title,
@@ -104,7 +104,7 @@
     {% elif listing and (listing.items or listing.page.total) %}
       {% include "partials/data_history.html" %}
     {% else %}
-      <p class="pred-meta">Todavía no hay ingestas registradas.</p>
+      <p class="pred-meta">Todavía no hay archivos cargados.</p>
     {% endif %}
   {% endcall %}
   {% endif %}

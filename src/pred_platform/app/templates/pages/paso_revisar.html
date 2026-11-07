@@ -19,8 +19,8 @@
       <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
       <div><dt>Lanzada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
       {% else %}
-      <div><dt>Datos</dt><dd>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}{% if ingest and ingest.n_skus is not none %}<span class="pred-subvalue">{{ format_count(ingest.n_skus) }} productos</span>{% endif %}{% if form_errors.get("ingest_id") %}<span class="pred-subvalue pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}</dd><a href="/corridas/nueva/datos">Cambiar</a></div>
-      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd><a href="/corridas/nueva/ajustes">Cambiar</a></div>{% endfor %}
+      <div><dt>Datos</dt><dd><span>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}{% if ingest and ingest.n_skus is not none %}<span class="pred-subvalue">{{ format_count(ingest.n_skus) }} productos</span>{% endif %}{% if form_errors.get("ingest_id") %}<span class="pred-subvalue pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}</span> <a href="/corridas/nueva/datos">Cambiar</a></dd></div>
+      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd><span>{{ value }}</span> <a href="/corridas/nueva/ajustes">Cambiar</a></dd></div>{% endfor %}
       {% endif %}
     </dl>
     {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}

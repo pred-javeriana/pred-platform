@@ -42,9 +42,12 @@ def test_each_step_of_a_new_run_renders_inside_the_shell() -> None:
         assert response.status_code == 200, key
         html = response.text
         assert f"<title>{label} · Corrida nueva · PRED</title>" in html, key
-        assert '<nav class="pred-rail" aria-label="Pasos de la corrida">' in html, key
+        assert (
+            '<nav class="pred-rail" id="barra-pasos" aria-label="Pasos de la corrida">' in html
+        ), key
         # Below 900 px this summary replaces the rail.
-        assert '<nav class="pred-rail-compact" aria-label="Paso actual de la corrida">' in html, key
+        assert '<nav class="pred-rail-compact" id="resumen-paso" ' in html, key
+        assert 'aria-label="Paso actual de la corrida">' in html, key
         assert eyebrow in html, key
         assert f"<h1>{label}</h1>" in html, key
         # La barra superior nombra la corrida y no marca Corridas como página actual.

@@ -29,7 +29,13 @@ from pred_platform.app.configuracion import (
     export_config,
     parse_config,
 )
-from pred_platform.app.corridas import draft_facts, ingests_by_id, resolve_run_id, run_facts
+from pred_platform.app.corridas import (
+    draft_facts,
+    ingests_by_id,
+    resolve_run_id,
+    run_facts,
+    status_facts,
+)
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
     FAMILY_CHOICES,
@@ -329,10 +335,15 @@ def ejecucion_estado(
     request: Request,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
-    """El cuerpo de la página para el sondeo. 286 le dice a htmx que deje de preguntar."""
+    """El cuerpo de la página para el sondeo, con la barra de pasos al día. 286 le dice a htmx
+    que deje de preguntar."""
     context = _context(request, repository)
+    status = context["status"]
+    facts = status_facts(repository, status) if status is not None else None
+    if facts is not None:
+        context["wizard"] = run_wizard("ejecucion", facts)
     return _render(
-        request, "partials/execution_body.html", context, 200 if context["poll"] else 286
+        request, "partials/execution_poll.html", context, 200 if context["poll"] else 286
     )
 
 

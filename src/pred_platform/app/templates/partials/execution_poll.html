@@ -1,0 +1,8 @@
+{# La respuesta del sondeo de Ejecución: el cuerpo de la página y, fuera de él, la barra de pasos y
+   su resumen angosto, para que sigan el avance que el cuerpo muestra. #}
+{% include "partials/execution_body.html" %}
+{% if wizard %}
+{% set swap_oob = true %}
+{% include "partials/wizard_rail.html" %}
+{% include "partials/wizard_compact.html" %}
+{% endif %}

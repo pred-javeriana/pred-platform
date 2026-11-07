@@ -45,6 +45,9 @@ class Scenario:
     m3_forecasts: tuple[str, ...] = ()
     m3_failures: tuple[str, ...] = ()
     m3_units: tuple[str, ...] = ()
+    # Runs, besides the one the selection examples carry (``1``), that answer with the same
+    # selections, so every run the scenario lists has its selection table.
+    selection_runs: tuple[str, ...] = ()
 
 
 _M3_STATUS = ("m3_run_status.publicada", "m3_run_status.rechazada", "m3_run_status.en_curso")
@@ -113,6 +116,7 @@ _ERRORES = Scenario(
     run_status=("run_status.cinco_estados", "run_status.normal"),
     sku_selection_list="sku_selection_list.normal",
     sku_selections=("sku_selection.familia_fallida", "sku_selection.lumpy_solo_clasica"),
+    selection_runs=("2",),
     synthetic_list="synthetic_list.normal",
     synthetic_runs=("synthetic_run.normal", "synthetic_run.bitacora_anterior"),
     m3_runs="m3_runs.varias_publicadas",

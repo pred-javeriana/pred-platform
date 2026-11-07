@@ -1,0 +1,2 @@
+{# La línea de estado de un paso (pasos.Step): su texto y, si lo tiene, la fecha con la hora exacta en UTC. #}
+{% macro step_sub(step) %}{{ step.sub }}{% if step.sub_when %} <time datetime="{{ step.sub_when.isoformat() }}" title="{{ exact_when(step.sub_when) }}">{{ format_date(step.sub_when) }}</time>{% endif %}{% endmacro %}
