@@ -255,13 +255,13 @@ def test_issue_178_import_config_field_stretches_to_button() -> None:
 
 
 def test_issue_179_launch_advanced_grid_aligns_bottom_and_uses_short_label() -> None:
-    css_path = TEMPLATES.parent / "static/css/pred.css"
-    css = css_path.read_text(encoding="utf-8")
-    assert ".pred-launch__advanced .pred-launch__grid" in css
-    block = css.split(".pred-launch__advanced .pred-launch__grid", 1)[1].split("}", 1)[0]
-    assert "align-items: end" in block
+    # Ajustes lays its fields out in the settings grid: label, input, then the hint, so the
+    # inputs of one row line up at the top whatever hint each field carries.
+    css = (TEMPLATES.parent / "static/css/wizard_steps.css").read_text(encoding="utf-8")
+    block = css.split(".pred-settings-grid {", 1)[1].split("}", 1)[0]
+    assert "align-items: start" in block
 
-    tmpl_path = TEMPLATES / "partials/execution_launch.html"
+    tmpl_path = TEMPLATES / "partials/settings_evaluation.html"
     tmpl_text = tmpl_path.read_text(encoding="utf-8")
     assert '"Configuraciones por familia"' in tmpl_text
     assert '"Configuraciones a probar por familia"' not in tmpl_text

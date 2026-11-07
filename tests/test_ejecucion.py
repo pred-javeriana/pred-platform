@@ -335,7 +335,7 @@ def test_the_launch_form_lists_the_families_each_class_admits() -> None:
     matrix = re.search(r'<table class="pred-family-matrix">(.*?)</table>', html, re.S)
     assert matrix is not None
     headers = re.findall(r'<th scope="col"[^>]*>(.*?)</th>', matrix[1], re.S)
-    assert [_text(header).split(" ")[0] for header in headers] == [
+    assert [_text(header).split()[0] for header in headers] == [
         "Familia",
         "Suave",
         "Errática",

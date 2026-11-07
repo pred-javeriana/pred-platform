@@ -1,9 +1,10 @@
+{% from "components/terms.html" import term %}
 <section class="pred-panel" id="matriz-familias" aria-labelledby="titulo-familias">
   <h2 id="titulo-familias">Familias de modelos</h2>
   <p class="pred-lead" id="families-hint">Cada producto necesita al menos dos familias que admitan su tipo de demanda para competir. La tabla muestra qué familia sirve a qué tipo.</p>
   <div class="pred-table-wrap" role="region" aria-label="Familias por tipo de demanda" tabindex="0">
     <table class="pred-family-matrix">
-      <thead><tr><th scope="col">Familia</th>{% for code, admitted in families_hint %}<th scope="col" title="{{ sku_class_term(code).hint }}">{{ sku_class_label(code) }}{% if class_counts %}<small>{{ format_count(class_counts.get(code, 0)) }} productos</small>{% endif %}</th>{% endfor %}</tr></thead>
+      <thead><tr><th scope="col">Familia</th>{% for code, admitted in families_hint %}<th scope="col">{{ term(sku_class_term(code)) }}{% if class_counts %}<small>{{ format_count(class_counts.get(code, 0)) }} productos</small>{% endif %}</th>{% endfor %}</tr></thead>
       <tbody>
       {% for family, label in family_choices %}
       <tr>

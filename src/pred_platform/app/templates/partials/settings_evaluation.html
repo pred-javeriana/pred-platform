@@ -15,13 +15,13 @@
       <div class="pred-settings-grid">
         {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", disabled=record, error=evaluation_errors.get("step", "")) }}
         {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", disabled=record, error=evaluation_errors.get("seasonality", "")) }}
-        {{ field("trials", "Configuraciones a probar por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", disabled=record, error=evaluation_errors.get("trials", "")) }}
+        {{ field("trials", "Configuraciones por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", disabled=record, error=evaluation_errors.get("trials", "")) }}
         {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", disabled=record, error=evaluation_errors.get("workers", "")) }}
       </div>
       {% if not record %}
       <div class="pred-field pred-settings-data{% if evaluation_errors.get('ingest_id') %} is-error{% endif %}">
         <label class="pred-field__label" for="ingest_id">Datos</label>
-        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if evaluation_errors.get('ingest_id') %} ingest_id-error{% endif %}">
+        <select class="pred-field__control" id="ingest_id" name="ingest_id" aria-describedby="ingest_id-hint{% if evaluation_errors.get('ingest_id') %} ingest_id-error{% endif %}"{% for choice in ingests %}{% if choice.item.ingest_id == selected_ingest and choice.item.published_at %} title="{{ exact_when(choice.item.published_at) }}" data-exact-when="{{ exact_when(choice.item.published_at) }}"{% endif %}{% endfor %}>
           {% if not selected_ingest %}<option value="" selected disabled>Elija un archivo de datos</option>{% endif %}
           {% for choice in ingests %}{% set item = choice.item %}<option value="{{ item.ingest_id }}"{% if item.ingest_id == selected_ingest %} selected{% endif %}{% if choice.synthetic %} disabled{% endif %}{% if item.published_at %} title="{{ exact_when(item.published_at) }}"{% endif %}>{{ item.name }} · {{ format_count(item.n_skus) }} SKU{% if item.published_at %} · cargado el {{ format_when(item.published_at) }}{% endif %}{% if choice.synthetic %} · no ejecutable: datos sintéticos{% endif %}</option>{% endfor %}
         </select>

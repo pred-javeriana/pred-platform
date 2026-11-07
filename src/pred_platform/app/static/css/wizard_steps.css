@@ -1,6 +1,6 @@
 /* Datos, Ajustes y Revisar: una decisión por tarjeta, sin cambiar el ancho del recorrido. */
 .pred-settings-form { margin: 0; }
-.pred-settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 24px; }
+.pred-settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 24px; align-items: start; }
 .pred-copy-card { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); border-left: 1px solid var(--border); }
 .pred-copy-actions { max-width: 430px; }
 .pred-copy-notice { grid-column: 1 / -1; }
