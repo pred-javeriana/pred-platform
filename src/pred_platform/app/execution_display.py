@@ -48,7 +48,11 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
     if status is None or status.ejecucion is None:
         return {"live_snapshot": None, "stage_rows": [], "cause_groups": []}
     run, progress = status.ejecucion, status.progress
-    timings = status.stage_timings if isinstance(status, DisplayRunStatus) else []
+    timings = (
+        status.stage_timings
+        if isinstance(status, DisplayRunStatus) and run.estado != "pendiente"
+        else []
+    )
     by_code = {item.code: item for item in timings}
     codes = [code for code, _ in STAGES]
     current = progress.etapa_actual if progress else None

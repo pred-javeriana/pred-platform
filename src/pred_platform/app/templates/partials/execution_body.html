@@ -113,7 +113,7 @@
 
   {% if progress %}</div></div>{% endif %}
   {% if stage_rows %}
-  <p class="pred-meta pred-stage-key">Duración por etapa del intento actual · barras desde cero, en la misma escala. No es una estimación de lo que falta.</p>
+  <p class="pred-meta pred-stage-key">{% if run.estado == "pendiente" %}Las etapas del nuevo intento se mostrarán cuando el procesador lo inicie.{% else %}Duración por etapa del intento actual · barras desde cero, en la misma escala. No es una estimación de lo que falta.{% endif %}</p>
   <ul class="pred-stage-legend" aria-label="Referencia de las barras"><li><i></i>Esta corrida</li>{% for reference in stage_history | default([]) %}<li><i class="is-reference-{{ loop.index0 }}"></i>Semilla {{ reference.seed }}</li>{% endfor %}</ul>
   <ol class="pred-live-stages" aria-label="Etapas del motor">
     {% for step in stage_rows %}
