@@ -98,6 +98,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - run: uv sync --extra dev --frozen
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
       - name: pytest (incluye pred.js en Chromium real)
         env:
           PRED_BROWSER_REQUIRED: "1"
