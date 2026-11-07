@@ -15,7 +15,6 @@
 .pred-chapters a { display: flex; gap: 8px; align-items: center; white-space: nowrap; padding: 12px 14px 10px; border-bottom: 3px solid transparent; text-decoration: none; color: var(--ink-soft); font-size: 14px; }
 .pred-chapters a[aria-current] { border-bottom-color: var(--primary); font-weight: 700; color: var(--ink); }
 .pred-chapters__number { display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 12px; font-weight: 700; }
-.pred-chapter-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; margin: 24px 0; }
 .pred-research-question { margin: 0 0 24px; border-left: 3px solid var(--primary); padding: 0 0 0 18px; }
 .pred-research-question p { font-size: 17px; line-height: 1.45; font-weight: 400; font-style: italic; color: var(--ink); max-width: none; }
 .pred-research-question cite { font-size: 13px; color: var(--muted-text); font-style: normal; }
@@ -47,7 +46,7 @@
 .pred-results-bytype { table-layout: fixed; }
 .pred-results-bytype th, .pred-results-bytype td { vertical-align: top; padding-top: 12px; padding-bottom: 12px; }
 .pred-results-bytype th { width: 28%; }
-.pred-results-bytype .pred-subvalue { max-width: 34ch; }
+.pred-table.pred-results-bytype .pred-subvalue { max-width: 34ch; white-space: normal; }
 .pred-results-bytype th .pred-subvalue { font-weight: 400; }
 .pred-results-bytype__bar { display: flex; gap: 10px; align-items: center; }
 .pred-results-bytype__bar strong { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }

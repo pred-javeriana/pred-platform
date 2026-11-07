@@ -87,6 +87,7 @@ from pred_platform.app.resultados_m3 import (
     profiles,
     publication_time,
     published_executions,
+    published_funnel,
     reserve_windows,
     run_outcome,
     summary,
@@ -136,6 +137,7 @@ def _base_context(repository: DataRepository, vista: str) -> dict[str, Any]:
         "champion_capability": champion,
         "source": repository.source,
         "m3_published_at": None,
+        "context_funnel": None,
     }
 
 
@@ -404,6 +406,10 @@ def _describe_run(
         if resolved is not None and resolved.estado == "PUBLICADA"
         else None
     )
+    if funnel is None and resolved is not None and resolved.estado == "PUBLICADA":
+        # Capítulo 1 y 3 no leen el embudo; la fila de contexto lo necesita en todos.
+        funnel = published_funnel(repository, run.ejecucion.id, resolved.run_id)
+    context["context_funnel"] = funnel
     context["outcome"] = run_outcome(
         repository,
         run.ejecucion,

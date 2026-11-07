@@ -806,6 +806,17 @@ def origin_label(run: models_v2.M3Run | None) -> str:
     return "desconocido: no se declaró si los datos son reales"
 
 
+def origin_fact(run: models_v2.M3Run | None) -> tuple[str, str]:
+    """Los mismos bits en la fila de contexto, tras «Datos»: el origen y la nota que lo matiza."""
+    if run is None:
+        return "sin informar", ""
+    if run.datos_sinteticos:
+        return "sintéticos o aumentados", "(declarados)"
+    if run.origen_declarado:
+        return "reales", "(declarados)"
+    return "de origen desconocido", "(no se declaró si son reales)"
+
+
 def verdict_group(veredicto: str) -> str:
     return "Evaluado" if veredicto in GROUPS["evaluados"] else "No evaluado"
 

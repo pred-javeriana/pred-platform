@@ -12,8 +12,8 @@
   {% endif %}
   {% if chapter %}
   <p class="pred-context__compact-fact">Evaluación publicada <strong>{% if m3_published_at %}{{ when(m3_published_at) }}{% else %}Fecha de publicación no informada{% endif %}</strong></p>
-  <p class="pred-context__compact-fact">Datos <strong>{{ origin_label(m3.run) }}</strong></p>
-  {% if m3_summary.funnel %}<p class="pred-context__compact-fact">{{ format_count(m3_summary.funnel.total_productos) }} productos</p>{% elif m3_consulta.evidence and m3_consulta.evidence.funnel %}<p class="pred-context__compact-fact">{{ format_count(m3_consulta.evidence.funnel.total_productos) }} productos</p>{% endif %}
+  {% set origin, origin_note = origin_fact(m3.run) %}<p class="pred-context__compact-fact">Datos <strong>{{ origin }}</strong>{% if origin_note %} {{ origin_note }}{% endif %}</p>
+  {% if context_funnel %}<p class="pred-context__compact-fact">{{ format_count(context_funnel.total_productos) }} productos</p>{% endif %}
   <details class="pred-details pred-context__record"><summary>Detalles de la corrida</summary>
   {% endif %}
   <dl class="pred-context__facts">

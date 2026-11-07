@@ -47,9 +47,11 @@
   {% else %}
     {{ unavailable_state("Todavía no hay campeón por SKU.", "La lista de Productos conserva los resultados de cada familia.", champion_capability.reason_code or "not_implemented", champion_capability.blocked_by) }}
   {% endif %}
-  <nav class="pred-chapter-footer" aria-label="Navegación entre capítulos">
-    {% if previous_chapter %}{{ button("Atrás: " ~ previous_chapter[1], variant="secondary", href=results_base ~ "/" ~ previous_chapter[0] ~ ("?" ~ chapter_query if chapter_query else "")) }}{% else %}{{ button("Atrás: Ejecución", variant="secondary", href="/corridas/" ~ reference ~ "/ejecucion") }}{% endif %}
-    {% if next_chapter %}{{ button("Siguiente: " ~ next_chapter[1], href=results_base ~ "/" ~ next_chapter[0] ~ ("?" ~ chapter_query if chapter_query else "")) }}{% endif %}
+  {# El mismo pie que los demás pasos (partials/wizard_footer.html), entre capítulos. #}
+  {% set back_href = results_base ~ "/" ~ previous_chapter[0] ~ ("?" ~ chapter_query if chapter_query else "") if previous_chapter else "/corridas/" ~ reference ~ "/ejecucion" %}
+  <nav class="pred-footnav pred-chapter-footer" aria-label="Navegación entre capítulos">
+    <div class="pred-footnav__side"><a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ back_href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>Atrás: {{ previous_chapter[1] if previous_chapter else "Ejecución" }}</a></div>
+    {% if next_chapter %}<div class="pred-footnav__side pred-footnav__side--end"><a class="pred-btn pred-btn--primary pred-btn--large" href="{{ results_base }}/{{ next_chapter[0] }}{{ '?' ~ chapter_query if chapter_query else '' }}">Siguiente: {{ next_chapter[1] }}<svg aria-hidden="true"><use href="#i-arrow-right"></use></svg></a></div>{% endif %}
   </nav>
   {% endif %}
 </div>

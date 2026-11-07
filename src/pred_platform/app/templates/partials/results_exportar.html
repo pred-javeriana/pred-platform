@@ -6,21 +6,21 @@
       <dt>Veredictos</dt>
       <dd>Un producto por fila: tipo, campeona, veredicto, razón de error, ventanas y significancia, de todos los productos de la evaluación. Para llevarse solo los filtrados, use «Exportar CSV» en Productos.</dd>
       <span>
-        <a class="pred-btn pred-btn--secondary" href="/resultados/exportar.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><span class="pred-icon i-download" aria-hidden="true"></span> CSV</a>
+        <a class="pred-btn pred-btn--secondary" href="/resultados/exportar.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><svg aria-hidden="true"><use href="#i-download"></use></svg>CSV</a>
       </span>
     </div>
     <div>
       <dt>Exclusiones</dt>
       <dd>Los {{ format_count(n_exclusiones) }} productos que no compitieron y su causa.</dd>
       <span>
-        <a class="pred-btn pred-btn--secondary" href="/resultados/exclusiones.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><span class="pred-icon i-download" aria-hidden="true"></span> CSV</a>
+        <a class="pred-btn pred-btn--secondary" href="/resultados/exclusiones.csv?ejecucion={{ reference }}{{ '&m3=' ~ m3.run.run_id if m3 and m3.run else '' }}"><svg aria-hidden="true"><use href="#i-download"></use></svg>CSV</a>
       </span>
     </div>
     <div>
       <dt>Configuración</dt>
       <dd>Los ajustes, la ingesta y las versiones de esta corrida, para repetirla.</dd>
       <span>
-        <a class="pred-btn pred-btn--secondary" href="/ejecucion/configuracion.json?ejecucion={{ reference }}"><span class="pred-icon i-download" aria-hidden="true"></span> JSON</a>
+        <a class="pred-btn pred-btn--secondary" href="/ejecucion/configuracion.json?ejecucion={{ reference }}"><svg aria-hidden="true"><use href="#i-download"></use></svg>JSON</a>
       </span>
     </div>
   </dl>
@@ -32,6 +32,6 @@
     <p class="wz-lead">Empieza una corrida nueva en el paso 2 con estos ajustes y estos datos. Solo cambie la semilla: esta corrida usó la <b>{{ run_seed }}</b>.</p>
   </div>
   <div class="wz-action__do">
-    <a class="pred-btn pred-btn--primary wz-btn-lg" href="/corridas/nueva/ajustes?copiar_de={{ reference }}">Nueva corrida con estos ajustes <span class="pred-icon i-arrow-right" aria-hidden="true"></span></a>
+    <a class="pred-btn pred-btn--primary wz-btn-lg" href="/corridas/nueva/ajustes?copiar_de={{ reference }}">Nueva corrida con estos ajustes<svg aria-hidden="true"><use href="#i-arrow-right"></use></svg></a>
   </div>
 </section>

@@ -89,6 +89,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "gap_digits",
         "interval_text",
         "level_text",
+        "origin_fact",
         "origin_label",
         "p_text",
         "percent_text",

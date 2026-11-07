@@ -153,6 +153,10 @@ def test_each_chapter_is_server_rendered_and_preserves_the_exact_evaluation(
     assert 'src="http' not in html
     assert "data-tip=" in html or chapter in ("resumen", "exportar")
     assert "Prototipo" not in _text(html)
+    # The context row names the declared origin in agreement with «Datos».
+    assert "Datos reales (declarados)" in _text(html)
+    # Every chapter's context row counts the products, even where the chapter reads no funnel.
+    assert re.search(r'pred-context__compact-fact">\d+ productos<', html)
 
 
 @pytest.mark.parametrize(
@@ -185,13 +189,22 @@ def test_export_is_the_last_chapter_with_one_footer_and_links_bound_to_the_evalu
 ) -> None:
     client, number = published
     products = client.get(f"/corridas/{number}/resultados/productos?m3=m3-ui-0").text
-    next_link = f'href="/corridas/{number}/resultados/exportar?m3=m3-ui-0"> Siguiente: Exportar'
-    assert next_link in re.sub(r"\s+", " ", products)
+    next_link = f'href="/corridas/{number}/resultados/exportar?m3=m3-ui-0">Siguiente: Exportar'
+    assert next_link in products
     html = client.get(f"/corridas/{number}/resultados/exportar?m3=m3-ui-0").text
-    footer = re.findall(r'<nav class="pred-[a-z-]*" aria-label="Navegación entre [^"]*"', html)
-    assert footer == ['<nav class="pred-chapter-footer" aria-label="Navegación entre capítulos"']
-    back_link = f'href="/corridas/{number}/resultados/productos?m3=m3-ui-0"> Atrás: Productos'
-    assert back_link in re.sub(r"\s+", " ", html)
+    # One footer, shaped like the other steps' footer: the export partial adds none of its own.
+    footer = re.findall(r'<nav class="[^"]*" aria-label="Navegación entre [^"]*"', html)
+    assert footer == [
+        '<nav class="pred-footnav pred-chapter-footer" aria-label="Navegación entre capítulos"'
+    ]
+    back_link = (
+        f'href="/corridas/{number}/resultados/productos?m3=m3-ui-0">'
+        '<svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>Atrás: Productos'
+    )
+    assert back_link in html
+    # Every icon is a sprite reference, not an empty placeholder.
+    assert "pred-icon i-" not in html
+    assert html.count('<use href="#i-download">') == 3
     assert "Siguiente:" not in _text(html)
     assert f"/resultados/exportar.csv?ejecucion={number}&amp;m3=m3-ui-0" in html
     assert f"/resultados/exclusiones.csv?ejecucion={number}&amp;m3=m3-ui-0" in html
@@ -335,7 +348,12 @@ def test_stability_requires_all_three_seeds_and_only_compares_the_same_settings(
     assert "Sin responder: faltan corridas publicadas" in text
     assert "2 de 3 confirmadas" in text
     _publish(env, client, 2, only_smooth=True)
-    text = _text(client.get(path).text)
+    html = client.get(path).text
+    text = _text(html)
+    # The context row picks the run by seed and day, named as the prototype names it.
+    picker = re.search(r'<select[^>]*id="ejecucion-mostrada"[^>]*>', html)
+    assert picker is not None and 'aria-label="Elegir la corrida"' in picker.group()
+    assert re.search(r">#\d+ · semilla 2 · \d+ \w+ \d{4}</option>", html)
     assert "La misma campeona gana y se confirma en las tres semillas" in text
     assert "3 de 3 confirmadas" in text
     assert "No concluyente" not in text
