@@ -35,6 +35,7 @@ from pred_platform.contract import models
 from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
+from pred_platform.worker import engine
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
@@ -487,14 +488,88 @@ def test_engine_terminal_state_keeps_polling_until_worker_finishes(env: Env, sta
     assert _launch(client, env).status_code == 303
     with closing(dal.connect(env.db)) as conn, conn:
         conn.execute("UPDATE ejecuciones SET estado = ?, pid = 12345", (state,))
-    response = client.get("/ejecucion/estado?ejecucion=1")
-    assert response.status_code == 200
-    assert 'data-pred-poll="true"' in response.text
-    with closing(dal.connect(env.db)) as conn:
-        dal.finish_run(conn, 1, estado=state)
-    settled = client.get("/ejecucion/estado?ejecucion=1")
-    assert settled.status_code == 286
-    assert f'data-pred-run-state="{state}"' in settled.text
+    owner = WorkerLock.for_database(env.db)
+    assert owner.acquire()
+    try:
+        response = client.get("/ejecucion/estado?ejecucion=1")
+        assert response.status_code == 200
+        assert 'data-pred-poll="true"' in response.text
+        with closing(dal.connect(env.db)) as conn:
+            dal.finish_run(conn, 1, estado=state)
+        settled = client.get("/ejecucion/estado?ejecucion=1")
+        assert settled.status_code == 286
+        assert f'data-pred-run-state="{state}"' in settled.text
+    finally:
+        owner.release()
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
+    env: Env, state: str
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    process = subprocess.Popen(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env={
+            **os.environ,
+            "PRED_DATA_ROOT": str(env.settings.data_root),
+            "PRED_DB_PATH": str(env.db),
+            "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+            "FAKE_ENGINE_SCENARIO": "publishes_before_exit",
+            "FAKE_ENGINE_TERMINAL_STATE": state,
+            "FAKE_ENGINE_PUBLISH_EXIT_DELAY": "5",
+        },
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    pid = None
+    try:
+        _wait(
+            lambda: bool(env.rows("SELECT pid FROM ejecuciones WHERE estado = ?", state)),
+            what="engine publication before worker cleanup",
+        )
+        [(pid,)] = env.rows("SELECT pid FROM ejecuciones")
+        assert pid is not None and engine.engine_owner(pid, env.db) == "this"
+        process.kill()
+        process.wait(timeout=10)
+        # Sin procesador, el motor todavía activo debe mantener el seguimiento.
+        assert client.get("/ejecucion/estado?ejecucion=1").status_code == 200
+        _wait(
+            lambda: engine.engine_owner(pid, env.db) == "none",
+            what="orphan engine exit",
+        )
+
+        def assert_terminal_without_writes() -> None:
+            before = env.db.read_bytes()
+            fragment = client.get("/ejecucion/estado?ejecucion=1")
+            assert fragment.status_code == 286
+            assert 'data-pred-poll="false"' in fragment.text
+            assert f'data-pred-run-state="{state}"' in fragment.text
+            for path, region in (
+                ("/", r'<ul class="pred-runs">(.*?)</ul>'),
+                ("/corridas/1/ejecucion", r'<div class="pred-run__identity">(.*?)</div>'),
+                ("/resultados?ejecucion=1", r'<dl class="pred-context__facts">(.*?)</dl>'),
+            ):
+                response = client.get(path)
+                assert response.status_code == 200
+                shown = re.search(region, response.text, re.S)
+                assert shown is not None
+                labels = re.findall(r'pred-status__label">\s*([^<]+)', shown.group(1))
+                assert labels and all(label.startswith("Completada") for label in labels), path
+            assert env.db.read_bytes() == before
+
+        assert_terminal_without_writes()
+        # Un proceso ajeno que reutilice el PID tampoco vuelve activa la ejecución.
+        with closing(dal.connect(env.db)) as conn, conn:
+            conn.execute("UPDATE ejecuciones SET pid = ?", (os.getpid(),))
+        assert_terminal_without_writes()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=10)
+        if pid is not None and engine.engine_owner(pid, env.db) == "this":
+            engine.terminate(pid)
 
 
 @pytest.mark.parametrize("parameter", ["estado", "family"])
