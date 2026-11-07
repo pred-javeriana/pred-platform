@@ -368,11 +368,23 @@ nav.pred-rail .pred-rail__item {
   text-decoration: none;
 }
 
-nav.pred-rail a.pred-rail__item:hover {
+/* En Ajustes, los pasos son botones que envían el formulario: se ven igual que los enlaces. */
+nav.pred-rail button.pred-rail__item {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+nav.pred-rail a.pred-rail__item:hover,
+nav.pred-rail button.pred-rail__item:hover {
   background: var(--primary-soft);
 }
 
-nav.pred-rail a.pred-rail__item:focus-visible {
+nav.pred-rail a.pred-rail__item:focus-visible,
+nav.pred-rail button.pred-rail__item:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: -3px;
 }

@@ -10,6 +10,39 @@
       if (event.target.matches('input[type=radio], select[name=copiar]')) form.requestSubmit();
     });
   });
+  /* Ajustes guarda cada cambio en el borrador en cuanto se hace (el mismo envío que Atrás, con
+     destino=ajustes, que no valida), así ninguna salida lo pierde: la barra superior, recargar o
+     el botón Atrás del navegador. «keepalive» deja terminar el envío aunque la página se vaya.
+     El borrador es una sola cookie: un envío a la vez, para que uno viejo no la escriba después
+     de uno nuevo, y Continuar, Atrás o un paso de la barra esperan al que esté en camino. */
+  const ajustes = document.querySelector("form[data-autosave]");
+  if (ajustes) {
+    let pending = false;
+    let inFlight = null;
+    let timer = 0;
+    const save = function () {
+      clearTimeout(timer);
+      if (!pending || inFlight) return;
+      pending = false;
+      const data = new FormData(ajustes);
+      data.set("destino", "ajustes");
+      inFlight = fetch(ajustes.action, { method: "POST", body: data, redirect: "manual", credentials: "same-origin", keepalive: true })
+        .catch(function () {})
+        .finally(function () { inFlight = null; save(); });
+    };
+    ajustes.addEventListener("input", function () { pending = true; clearTimeout(timer); timer = setTimeout(save, 300); });
+    ajustes.addEventListener("change", function () { pending = true; save(); });
+    ajustes.addEventListener("submit", function (event) {
+      // El envío del formulario lleva todo lo escrito: no hace falta otro guardado.
+      pending = false;
+      clearTimeout(timer);
+      if (!inFlight) return;
+      event.preventDefault();
+      const submitter = event.submitter;
+      inFlight.then(function () { pending = false; ajustes.requestSubmit(submitter); });
+    });
+    window.addEventListener("pagehide", save);
+  }
   document.querySelectorAll("[data-demand-map]").forEach(function (map) {
     const svg = map.querySelector("svg");
     const readout = map.querySelector("[data-demand-readout]");

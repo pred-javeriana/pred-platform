@@ -46,7 +46,7 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
 
     assert copied.status_code == 200
     assert "Ajustes copiados de la corrida #1" in _text(copied.text)
-    assert "Revise la semilla" in copied.text
+    assert "Cambie la semilla y continúe" in copied.text
     assert env.rows("SELECT estado, finalizada_en FROM ejecuciones") == before
     # The copy survives navigation without pressing Continuar first.
     html = client.get("/corridas/nueva/ajustes").text
@@ -78,8 +78,9 @@ def test_copying_a_missing_run_does_not_replace_the_draft(env: Env) -> None:
     client = _dal_client(env)
     _review(client, env, seed="123")
     missing = client.post("/corridas/nueva/copiar", data={"copiar": "999"})
-    assert missing.status_code == 404
-    assert "No existe esa corrida para copiar." in missing.text
+    assert "No se pudieron copiar los ajustes de la corrida #999: no existe esa corrida." in (
+        _text(missing.text)
+    )
     assert _launch_payload(client.get("/corridas/nueva/revisar").text)["seed"] == "123"
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
@@ -141,17 +142,29 @@ def test_review_launches_exactly_the_values_it_displays(env: Env, metric: str, t
     }
 
 
-def test_matrix_previews_exclusions_and_preserves_the_draft_without_launching(env: Env) -> None:
+def test_matrix_previews_exclusions_and_the_saved_edit_reaches_revisar(env: Env) -> None:
     client = _dal_client(env)
+    typed = {
+        "ingest_id": env.ingest_id,
+        **FORM,
+        "families": ["classical", "ml"],
+        "seed": "2",
+        "min_train": "20",
+        "step": "7",
+    }
     response = client.post(
-        "/corridas/nueva/ajustes/comprobar",
-        data={"ingest_id": env.ingest_id, **FORM, "families": ["classical", "ml"], "seed": "2"},
-        headers={"HX-Request": "true"},
+        "/corridas/nueva/ajustes/comprobar", data=typed, headers={"HX-Request": "true"}
     )
     assert response.status_code == 200
+    # The preview only redraws the matrix; the page saves each edit with destino=ajustes.
+    assert "set-cookie" not in response.headers
+    client.post("/corridas/nueva/ajustes", data={**typed, "destino": "ajustes"})
     assert 'aria-label="Familias por tipo de demanda"' in response.text
-    assert "FIL-0003" in _text(response.text)
-    assert "queda con una sola familia (Clásica)" in _text(response.text)
+    assert (
+        "1 SKU Grumosa queda con una sola familia (Clásica): FIL-0003 . "
+        "Para evaluarlo, agregue Fundacional." in _text(response.text)
+    )
+    assert '<span class="mono pred-nowrap">FIL-0003</span>' in response.text
     assert "Fundacional" in _text(response.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
     review = client.get("/corridas/nueva/revisar").text
@@ -193,7 +206,10 @@ def test_records_include_trials_workers_and_seed_without_edit_or_launch_controls
             if step == "ajustes":
                 assert re.search(rf'name="{name}"[^>]*value="{value}"[^>]* disabled', html)
             else:
-                assert re.search(rf"<dt>{label}</dt><dd[^>]*>{value}</dd>", html), (step, label)
+                assert re.search(rf"<dt>{label}</dt><dd[^>]*><span>{value}</span></dd>", html), (
+                    step,
+                    label,
+                )
         markup = Markup(html)
         ids = {attrs["id"] for _, attrs in markup.tags if "id" in attrs}
         assert all(attrs["for"] in ids for attrs in markup.select("label") if "for" in attrs)

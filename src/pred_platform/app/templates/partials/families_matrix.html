@@ -1,4 +1,3 @@
-{% from "components/alerts.html" import alert %}
 <section class="pred-panel" id="matriz-familias" aria-labelledby="titulo-familias">
   <h2 id="titulo-familias">Familias de modelos</h2>
   <p class="pred-lead" id="families-hint">Cada producto necesita al menos dos familias que admitan su tipo de demanda para competir. La tabla muestra qué familia sirve a qué tipo.</p>
@@ -8,7 +7,7 @@
       <tbody>
       {% for family, label in family_choices %}
       <tr>
-        <th scope="row">{% if record %}<span class="pred-matrix-family">{% else %}<label for="fam-{{ family }}">{% endif %}{% if not record %}<input id="fam-{{ family }}" type="checkbox" name="families" value="{{ family }}"{% if family in form.families %} checked{% endif %}{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}>{% endif %}<span><strong class="pred-family-key" data-family="{{ family }}">{{ family_label(family) }}</strong><small>{{ family_term(family).hint }}</small>{% if family == 'foundation' %}<small>Necesita Chronos-2 instalado en el equipo del motor.</small>{% endif %}</span>{% if record %}</span>{% else %}</label>{% endif %}</th>
+        <th scope="row">{% if record %}<span class="pred-matrix-family">{% else %}<label for="fam-{{ family }}">{% endif %}{% if not record %}<input id="fam-{{ family }}" type="checkbox" name="families" value="{{ family }}"{% if family in form.families %} checked{% endif %}{% if form_errors.get('families') %} aria-invalid="true" aria-describedby="families-error"{% endif %}>{% endif %}<span><strong class="pred-family-key" data-family="{{ family }}">{{ family_label(family) }}</strong><small>{{ family_term(family).hint }}</small>{% if family == 'foundation' %}<small>Necesita el modelo Chronos-2 instalado en el equipo del motor; si falta, la ejecución se detiene al empezar y ninguna familia se ejecuta.</small>{% endif %}</span>{% if record %}</span>{% else %}</label>{% endif %}</th>
         {% for code, admitted in families_hint %}
         {% set state = 'on' if family in admitted and family in form.families else 'off' if family in admitted else 'na' %}
         <td><span class="pred-matrix-dot pred-matrix-dot--{{ state }}" title="{{ family_label(family) }}: {{ 'compite' if state == 'on' else 'admitida, sin elegir' if state == 'off' else 'la política no la usa en este tipo' }}"><span class="pred-sr-only">{{ 'Compite' if state == 'on' else 'Admitida, sin elegir' if state == 'off' else 'No admite este tipo' }}</span></span></td>
@@ -25,5 +24,5 @@
     <li><span class="pred-matrix-dot pred-matrix-dot--na" aria-hidden="true"></span>la política no la usa en este tipo</li>
   </ul>
   {% if not record and form_errors.get('families') %}<p class="pred-field__error" id="families-error">{{ form_errors['families'] }}</p>{% endif %}
-  {% if exclusion_warning %}{{ alert(exclusion_warning, variant="warning") }}{% endif %}
+  {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
 </section>

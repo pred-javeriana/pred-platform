@@ -92,8 +92,8 @@ def test_the_expected_columns_are_open_both_as_first_upload_and_as_another_file(
     client, _ = _client(tmp_path)
     first = client.get("/datos").text
     another = client.get(f"/datos?ingest_id={ACCEPTED}#carga").text
-    assert 'id="titulo-carga">Cargar un archivo<' in first
-    assert "Cargar otro archivo" in another
+    for html in (first, another):
+        assert "<summary>Cargar un archivo nuevo</summary>" in html
     # Folded, the list left the right half of the upload card empty.
     for html in (first, another):
         assert re.search(r'<details [^>]*id="columnas-csv" open>', html)

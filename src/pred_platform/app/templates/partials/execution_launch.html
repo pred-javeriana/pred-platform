@@ -31,10 +31,11 @@
   {% if notice %}<div class="pred-copy-notice">{{ alert(notice[1], variant=notice[0]) }}</div>{% endif %}
 </section>
 {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
+{% if form_errors.get("form") %}{{ alert(form_errors["form"], variant="error") }}{% endif %}
 {% if not ingests %}
 <section class="pred-panel"><h2>Primero elija los datos</h2><p class="pred-note pred-note--muted">Todavía no hay ningún archivo de datos aceptado. Cargue y valide un archivo en <a href="/corridas/nueva/datos">Datos</a> para poder ejecutar.</p></section>
 {% else %}
-<form method="post" action="/corridas/nueva/ajustes" class="pred-launch pred-settings-form" id="{{ launch_form_id }}"
+<form method="post" action="/corridas/nueva/ajustes" class="pred-launch pred-settings-form" id="{{ launch_form_id }}" data-autosave
       hx-post="/corridas/nueva/ajustes/comprobar" hx-trigger="change" hx-target="#matriz-familias" hx-select="#matriz-familias" hx-swap="outerHTML" hx-sync="this:replace">
   {% include "partials/families_matrix.html" %}
   {% include "partials/settings_evaluation.html" %}

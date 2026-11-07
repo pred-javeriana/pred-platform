@@ -27,7 +27,7 @@ After launch, Ajustes and Revisar become read-only records with the complete sto
 
 The Configuración tab and the Ajustes/Revisar records have an "Exportar configuración (JSON)" button
 (`GET /ejecucion/configuracion.json?ejecucion=<id>`, the latest run when omitted), and the
-Ajustes step of a new run has a "Reproducir una ejecución anterior" disclosure with the import form
+Ajustes step of a new run has an "Importar un archivo de configuración" disclosure with the import form
 (`POST /ejecucion/configuracion`, multipart field `archivo`). The file is JSON with its own format
 (`pred-platform.configuracion-ejecucion`, `schema_version` 1) and holds the stored `run_id`, the
 `identidad` (`run_id_for`, the id the platform uses to recognise the same run), the SHA-256 of the

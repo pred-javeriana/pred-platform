@@ -445,12 +445,11 @@ def _render_ajustes(
     if form is None:
         values["ingest_id"] = ingest_id or draft.ingest_id or ""
     ingests = accepted_ingests(repository)
-    # El archivo que eligió la persona (el borrador, un enlace o el formulario enviado); sin
-    # elegir, el formulario ofrece el primero que se puede ejecutar, pero Datos sigue por hacer.
+    # El archivo que eligió la persona (el borrador, un enlace o el formulario enviado). Sin
+    # elegir, o con uno que la lista no tiene, la lista pide elegir uno: nunca elige por la
+    # persona, porque Atrás o un paso de la barra lo guardarían en el borrador.
     chosen = values.get("ingest_id") or None
-    selected = chosen
-    if not selected and imported is None:
-        selected = next((i.item.ingest_id for i in ingests if not i.synthetic), None)
+    selected = chosen if chosen in {i.item.ingest_id for i in ingests} else None
     control = _control(request)
     warning = exclusion
     if form is None:
@@ -609,74 +608,12 @@ def paso_ajustes(
         linked = request.query_params.get("ingest_id") or None
         runnable = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
         save = read_draft(request).with_ingest(linked) if linked and linked in runnable else None
-
+        # Un enlace con un archivo que no se puede ejecutar muestra el del borrador.
+        shown = linked if save is not None else None
         copiar_de = (request.query_params.get("copiar_de") or "").strip().lstrip("#")
         if copiar_de:
-            settings = request.app.state.settings
-            if settings.data_source == "fixture":
-                notice = (
-                    "warning",
-                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: "
-                    "la plataforma funciona con datos de prueba.",
-                )
-                return _render_ajustes(
-                    request, repository, ingest_id=linked, imported=notice, save=save
-                )
-            detail = lectura.get_run(settings.db_path, copiar_de)
-            if detail is None:
-                notice = (
-                    "warning",
-                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: "
-                    "no existe esa corrida.",
-                )
-                return _render_ajustes(
-                    request, repository, ingest_id=linked, imported=notice, save=save
-                )
-            versions = {
-                "plataforma": package_version("pred-platform"),
-                "contrato_v1": CONTRACT_VERSION,
-                "contrato_v2": M3_CONTRACT_VERSION,
-                "formato_parametros": PARAMETERS_SCHEMA_VERSION,
-            }
-            try:
-                document = export_config(detail, versions)
-                imported = parse_config(json.dumps(document).encode("utf-8"))
-            except ConfigExportError as exc:
-                motivo = str(exc).rstrip(".")
-                notice = (
-                    "warning",
-                    f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: {motivo}.",
-                )
-                return _render_ajustes(
-                    request, repository, ingest_id=linked, imported=notice, save=save
-                )
-            if imported.values is not None:
-                form = FormResult(imported.values, None, {})
-                form.values["ingest_id"] = imported.ingest_sha256 or ""
-                notice = (
-                    "info",
-                    f"Ajustes copiados de la corrida #{copiar_de}. Cambie la semilla y continúe.",
-                )
-                save_copy = read_draft(request).with_values(
-                    form.values["ingest_id"] or None, form.values
-                )
-                return _render_ajustes(
-                    request, repository, form=form, imported=notice, save=save_copy
-                )
-            motivo = (
-                " ".join(imported.errors).rstrip(".")
-                if imported.errors
-                else "la configuración no es válida"
-            )
-            notice = (
-                "warning",
-                f"No se pudieron copiar los ajustes de la corrida #{copiar_de}: {motivo}.",
-            )
-            return _render_ajustes(
-                request, repository, ingest_id=linked, imported=notice, save=save
-            )
-
-        return _render_ajustes(request, repository, ingest_id=linked, save=save)
+            return _copy_settings(request, repository, copiar_de, ingest_id=shown, save=save)
+        return _render_ajustes(request, repository, ingest_id=shown, save=save)
     facts = run_facts(repository, corrida)
     if facts is None:
         return render_missing_run(request, corrida)
@@ -689,36 +626,55 @@ def copiar_ajustes(
     copiar: Annotated[str, Form()],
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
-    """Copia todos los ajustes guardados al borrador; no crea ni reanuda una corrida."""
-    detail = next((r for r in _stored_runs(request) if str(r.id) == copiar), None)
-    if detail is None:
-        return _render_ajustes(
-            request, repository, form_error="No existe esa corrida para copiar.", status_code=404
+    """«Partir de una corrida anterior» en Ajustes."""
+    return _copy_settings(request, repository, copiar.strip().lstrip("#"))
+
+
+def _copy_settings(
+    request: Request,
+    repository: DataRepository,
+    reference: str,
+    *,
+    ingest_id: str | None = None,
+    save: Draft | None = None,
+) -> HTMLResponse:
+    """Copia todos los ajustes guardados de una corrida al borrador, sin validarlos: no crea ni
+    reanuda una corrida, y Ajustes queda por revisar. Si no se puede copiar, el borrador no cambia
+    y Ajustes dice por qué. Lo usan el formulario de copia y el enlace ``?copiar_de=`` de
+    Resultados."""
+
+    def refused(reason: str) -> HTMLResponse:
+        notice = (
+            "warning",
+            f"No se pudieron copiar los ajustes de la corrida #{reference}: {reason}.",
         )
+        return _render_ajustes(request, repository, ingest_id=ingest_id, imported=notice, save=save)
+
+    settings = request.app.state.settings
+    if settings.data_source != "dal":
+        return refused("la plataforma funciona con datos de prueba")
+    detail = lectura.get_run(settings.db_path, reference)
+    if detail is None:
+        return refused("no existe esa corrida")
     try:
         values = form_values(detail)
     except ConfigExportError as exc:
-        return _render_ajustes(request, repository, form_error=str(exc), status_code=409)
+        return refused(str(exc).rstrip("."))
     known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
     values["ingest_id"] = detail.ingest_sha256 if detail.ingest_sha256 in known else ""
-    response = _render_ajustes(
-        request,
-        repository,
-        form=FormResult(values, None, {}),
-        imported=(
-            "info" if values["ingest_id"] else "warning",
-            f"Ajustes copiados de la corrida #{copiar}. "
-            "Revise la semilla: una corrida nueva del grupo necesita otra. "
-            + (
-                ""
-                if values["ingest_id"]
-                else "El archivo de esa corrida no está disponible. "
-                "Elija otros datos antes de lanzar."
-            ),
-        ),
+    notice = (
+        ("info", f"Ajustes copiados de la corrida #{reference}. Cambie la semilla y continúe.")
+        if values["ingest_id"]
+        else (
+            "warning",
+            f"Ajustes copiados de la corrida #{reference}, pero el archivo de esa corrida no está "
+            "disponible. Elija otros datos y cambie la semilla antes de continuar.",
+        )
     )
-    save_draft(response, read_draft(request).with_settings(values["ingest_id"], values))
-    return response
+    copy = read_draft(request).with_values(values["ingest_id"] or None, values)
+    return _render_ajustes(
+        request, repository, form=FormResult(values, None, {}), imported=notice, save=copy
+    )
 
 
 @router.post("/corridas/nueva/ajustes/comprobar", response_model=None)

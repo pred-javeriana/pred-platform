@@ -25,9 +25,11 @@ inicio, nombra la corrida que se ve y ofrece «Nueva corrida».
 
 Una corrida nueva vive en `/corridas/nueva/<paso>` hasta que se lanza. Su borrador (el archivo
 y los ajustes elegidos) se guarda en una cookie de sesión del navegador (`app/borrador.py`). El
-borrador se escribe con Siguiente en Datos o en Ajustes; al salir de Ajustes por Atrás o por la
-barra de pasos guarda lo escrito sin validarlo, y también lo escriben un enlace que elige un
-archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`) y una configuración importada. Revisar
+borrador se escribe con Siguiente en Datos o en Ajustes; Ajustes guarda cada cambio en cuanto se
+hace, sin validarlo, y Atrás y los pasos de la barra lo guardan también sin JavaScript. Ajustes no
+elige un archivo por la persona, y elegir otro archivo deja Ajustes por revisar. También lo
+escriben un enlace que elige un archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`), la
+copia de una corrida (`?copiar_de=` o el formulario de copia) y una configuración importada. Revisar
 y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. Una corrida lanzada vive en
 `/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
 se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
@@ -38,10 +40,10 @@ y Siguiente.
 | --- | --- |
 | `/` | Corridas: el inicio |
 | `/corridas/nueva/datos` | Paso 1 de una corrida nueva. `POST` elige el archivo y lleva a Ajustes |
-| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; `?ingest_id=` llega con el archivo ya elegido |
+| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; con `destino` guarda lo escrito sin validar y va a ese paso. `?ingest_id=` llega con el archivo ya elegido y `?copiar_de=` copia los ajustes de una corrida |
 | `/corridas/nueva/revisar` | Paso 3: lista con «Cambiar» por fila, duraciones publicadas de corridas anteriores y Lanzar (`POST /ejecucion/lanzar`). Un duplicado deshabilita Lanzar y enlaza a la corrida existente. Sin archivo elegido está bloqueado |
 | `POST /corridas/nueva/copiar` | Copia todos los ajustes de una corrida al borrador, sin lanzarla |
-| `POST /corridas/nueva/ajustes/comprobar` | Actualiza la matriz y sus avisos al cambiar un campo; guarda los ajustes válidos sin lanzar |
+| `POST /corridas/nueva/ajustes/comprobar` | Actualiza la matriz y sus avisos al cambiar un campo; no guarda ni lanza |
 | `/corridas/nueva/ejecucion`, `/corridas/nueva/resultados` | Bloqueados hasta lanzar: dicen qué falta y llevan al primer paso por hacer |
 | `/corridas/{id}/datos`, `/corridas/{id}/ajustes`, `/corridas/{id}/revisar` | Registro de lo que eligió la corrida lanzada |
 | `/corridas/{id}/ejecucion` | Paso 4: avance, acciones y tareas de la corrida |

@@ -45,7 +45,9 @@ class Draft:
     settings_ready: bool = False
 
     def with_ingest(self, ingest_id: str) -> Draft:
-        return replace(self, ingest_id=ingest_id)
+        """Otro archivo pide revisar los ajustes de nuevo; el mismo conserva Ajustes completo."""
+        ready = self.settings_ready and ingest_id == self.ingest_id
+        return replace(self, ingest_id=ingest_id, settings_ready=ready)
 
     def with_settings(self, ingest_id: str, values: dict[str, Any]) -> Draft:
         return Draft(ingest_id=ingest_id, values=_clean(values), settings_ready=True)
