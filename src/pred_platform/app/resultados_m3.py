@@ -124,6 +124,12 @@ _NOT_PUBLISHED = "La evaluación no está publicada."
 
 def _unavailable_evidence(availability: models_v2.Availability) -> M3Problem:
     """Por qué una corrida M3 resuelta no entrega evidencia (sin metadatos o no publicada)."""
+    if availability.reason_code == "not_published":
+        return M3Problem(
+            _NOT_PUBLISHED,
+            "La evaluación todavía no está publicada; su evidencia aparece al publicarse.",
+            "not_published",
+        )
     title = _METADATA_MISSING if availability.reason_code == "metadata_missing" else _NOT_PUBLISHED
     return _problem(title, availability)
 
@@ -848,7 +854,16 @@ def verdict_reason(row: models_v2.M3Verdict) -> str:
     verdict = row.veredicto
     ratio = ratio_text(row.razon_sn)
     if verdict == "FALLO_TECNICO":
-        text = "Ni el modelo campeón ni los demás modelos produjeron un pronóstico de prueba."
+        other_evaluated = any(
+            m.razon_sn is not None
+            for m in (row.modelos_evaluados or [])
+            if m.familia != "seasonal_naive" and m.familia != row.familia_campeona
+        )
+        text = (
+            "El modelo de la familia campeona no dio un pronóstico de prueba; otros modelos sí."
+            if other_evaluated
+            else "Ningún modelo candidato dio un pronóstico de prueba."
+        )
     elif verdict == "NO_EVALUABLE":
         text = "El periodo de prueba no tiene demanda observada con la que comparar."
     elif verdict == "EVIDENCIA_INSUFICIENTE":
@@ -922,6 +937,12 @@ def run_outcome(
     if failed:
         verb = "Falló" if failed == 1 else "Fallaron"
         parts.append(f"{verb} {format_count(failed)} de {format_count(total)} tareas de modelos.")
+    elif counts.get("no_ejecutable", 0):
+        n = counts["no_ejecutable"]
+        parts.append(
+            f"Ninguna tarea falló; {format_count(n)} no se {'pudo' if n == 1 else 'pudieron'} "
+            "ejecutar por las condiciones de su producto."
+        )
     elif total:
         parts.append("Ninguna tarea falló.")
     if funnel is None:
@@ -950,8 +971,8 @@ def run_outcome(
     if technical:
         parts.append(
             f"{format_count(technical)} {'tiene' if technical == 1 else 'tienen'} el veredicto "
-            f"«{verdict_label('FALLO_TECNICO')}»: ningún modelo "
-            f"{'lo' if technical == 1 else 'los'} pronosticó."
+            f"«{verdict_label('FALLO_TECNICO')}»: su modelo campeón o todos sus candidatos no "
+            f"{'lo' if technical == 1 else 'los'} pronosticaron."
         )
     return " ".join(parts)
 

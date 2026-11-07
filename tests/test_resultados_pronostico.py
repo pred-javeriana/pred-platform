@@ -275,7 +275,11 @@ def test_sin_veredicto_sin_candidato_y_excluidos_no_cargan_series() -> None:
     repo.candidate = None
     client, _ = _client(repo=repo)
     page = client.get(f"/resultados/sku/{SKU}")
-    assert page.status_code == 200 and "no publicó un candidato campeón" in page.text
+    assert (
+        page.status_code == 200
+        and "La evaluación final no publicó un modelo campeón para este SKU." in page.text
+    )
+    assert "M3 no publicó" not in page.text
     assert '<svg role="img"' not in page.text and all(op == "blocks" for op, _, _ in repo.calls)
 
 

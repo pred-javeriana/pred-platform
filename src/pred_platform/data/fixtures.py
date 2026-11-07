@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from pred_platform.config import DataSource
 from pred_platform.contract import models
-from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
+from pred_platform.contract.errors import ArtifactMissing, InvalidQuery, NotFound
 from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures_m3 import M3FixtureSource
@@ -186,7 +186,7 @@ class FixtureRepository(M3FixtureSource):
             self.scenario.run_status,
             run_id,
             lambda d: d.ejecucion.id if d.ejecucion else None,
-            f"No existe la ejecución {run_id!r} en el escenario fixture",
+            f"No existe la ejecución «{run_id}» en el escenario fixture",
         )
         tasks = [
             task
@@ -224,7 +224,7 @@ class FixtureRepository(M3FixtureSource):
             (self.scenario.sku_selection_list,),
             LATEST if shared else run_id,
             lambda d: d.run_id,
-            f"No hay selecciones para la ejecución {run_id!r}",
+            f"No hay selecciones para la ejecución «{run_id}»",
         )
         if shared:
             doc = _with(doc, run_id=run_id)
@@ -272,7 +272,7 @@ class FixtureRepository(M3FixtureSource):
                         entry["walk_forward"]["windows"] = None
             data["champion"] = None
             return parse_as(models.SkuSelection, data)
-        raise ArtifactMissing(f"No hay detalle del SKU {sku_id!r} en la ejecución {run_id!r}")
+        raise NotFound(f"No hay detalle del SKU «{sku_id}» en la ejecución «{run_id}»")
 
     # -------------------------------------------------------------- synthetic runs
     def list_synthetic_runs(
@@ -326,4 +326,4 @@ class FixtureRepository(M3FixtureSource):
             doc = _load(model, example)
             if _matches(wanted, identity(doc)):
                 return doc
-        raise ArtifactMissing(not_found)
+        raise NotFound(not_found)

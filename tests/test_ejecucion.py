@@ -616,7 +616,7 @@ def test_one_family_for_a_class_warns_which_skus_lose_the_comparison(env: Env) -
     assert response.status_code == 200
     assert (
         "1 SKU Grumosa queda con una sola familia (Clásica): FIL-0003 . "
-        "Para evaluarlos, agregue Fundacional." in text
+        "Para evaluarlo, agregue Fundacional." in text
     )
     assert '<span class="mono pred-nowrap">FIL-0003</span>' in response.text  # never split
     assert "si lanza así, esos SKU quedan fuera de la comparación y sin campeón." in text
@@ -643,7 +643,7 @@ def test_families_that_leave_no_class_two_say_the_run_elects_no_champion(env: En
         assert sku in text
     assert (
         "Con estas familias ningún SKU tiene dos familias que comparar: la ejecución no elige "
-        "ningún campeón y puede detenerse en la etapa «Ajuste de modelos»." in text
+        "ningún campeón y puede detenerse en el ajuste de modelos." in text
     )
     assert "si lanza así, esos SKU quedan fuera" not in text
     assert "Lanzar de todos modos" in text
@@ -1248,15 +1248,25 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
 ) -> None:
     client = _dal_client(env)
     _launch(client, env)
-    hint = "hasta que se inicie el procesador de ejecuciones con make worker"
+    hint = "hasta que se inicie el procesador de ejecuciones."
+
+    def raw_pages() -> tuple[str, str]:
+        run = client.get("/corridas/1/ejecucion").text
+        return run, _review(client, env, seed="18")
 
     def pages() -> tuple[str, str]:
-        run = _text(client.get("/corridas/1/ejecucion").text)
-        return run, _text(_review(client, env, seed="18"))
+        r, rev = raw_pages()
+        return _text(r), _text(rev)
 
+    raw_run, raw_review = raw_pages()
     run, review = pages()
-    assert "debe iniciar el procesador de ejecuciones con make worker" in run
+    assert "debe iniciar el procesador de ejecuciones." in run
     assert hint in review
+    assert "make worker" in raw_run and "make worker" in raw_review
+    assert "make worker" not in re.sub(r"<details[^>]*>.*?</details>", "", raw_run, flags=re.DOTALL)
+    assert "make worker" not in re.sub(
+        r"<details[^>]*>.*?</details>", "", raw_review, flags=re.DOTALL
+    )
     other = WorkerLock.for_database(env.db)  # a `make worker` beside the app
     assert other.acquire()
     try:
@@ -1630,3 +1640,211 @@ def test_an_older_ingest_beyond_500_still_shows_its_filename(env: Env) -> None:
     page = client.get("/ejecucion?ejecucion=1").text
     assert "demo_canonico.csv</a>" in page
     assert f'<span class="mono">{env.ingest_id[:12]}</span>' not in page
+
+
+def test_la_ayuda_de_fundacional_dice_que_la_ejecucion_se_detiene(env: Env) -> None:
+    html = _dal_client(env).get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text
+    assert (
+        "Necesita el modelo Chronos-2 instalado en el equipo del motor; "
+        "si falta, la ejecución se detiene al empezar y ninguna familia se ejecuta." in html
+    )
+    assert "sus tareas fallan con un aviso" not in html
+
+
+def test_la_ayuda_de_no_ejecutable_dice_que_la_causa_dice_por_que(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    _launch(client, env)
+    env.worker().run_next()
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE tareas SET estado = 'no_ejecutable', "
+            'detalle_error = \'{"code": "eligibility.fewer_than_two_families", "stage": "L2"}\' '
+            "WHERE id = (SELECT MIN(id) FROM tareas)"
+        )
+        conn.commit()
+    page = client.get("/ejecucion?ejecucion=1").text
+    assert (
+        "El motor no ejecutó o no comparó este modelo para este producto; "
+        "la causa de la fila dice por qué." in page
+    )
+    assert "no es un error del sistema" not in page
+
+
+def test_ejecucion_detenida_sin_tareas_con_reanudar_no_pide_revisar_motor_log(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    _set_run(env, "detenida", run_stopped_error())
+    html = client.get("/ejecucion?ejecucion=1").text
+    assert "Reanudar" in html
+    assert "Revise el registro del motor" not in html
+
+
+def test_ejecucion_detenida_sin_nada_que_comparar_no_dice_reanude(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+    warned = _launch(client, env, families=["classical"], **LONG_ENOUGH)
+    key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
+    assert key is not None
+    _launch(client, env, families=["classical"], confirmar=key.group(1), **LONG_ENOUGH)
+    _set_run(env, "detenida", run_stopped_error())
+    page = client.get("/ejecucion?ejecucion=1").text
+    assert "Reanudar no se ofrece" in page
+    assert "Reanude la ejecución cuando quiera." not in page
+
+
+def test_avisos_de_ejecucion_sin_textos_tecnicos(env: Env) -> None:
+    client = _dal_client(env)
+    valid_cfg = json.dumps(
+        {
+            "formato": "pred-platform.configuracion-ejecucion",
+            "schema_version": 1,
+            "run_id": "r-7383b31d3eea7528",
+            "identidad": "r-7383b31d3eea7528",
+            "ingesta_sha256": env.ingest_id,
+            "parametros": {
+                "min_train": 40,
+                "horizon": 2,
+                "step": 7,
+                "seasonality": 7,
+                "metric": "rmse",
+                "families": ["classical", "ml"],
+                "trials": 5,
+                "seed": 42,
+                "workers": 1,
+            },
+            "versiones": {"plataforma": "0.1.0"},
+        }
+    ).encode("utf-8")
+    resp = client.post(
+        "/ejecucion/configuracion",
+        files={"archivo": ("corrida.json", valid_cfg, "application/json")},
+    )
+    assert resp.status_code == 200
+    assert "Configuración importada. Revise los valores y continúe para lanzarla." in _text(
+        resp.text
+    )
+    assert "r-7383b31d3eea7528" not in resp.text
+
+    missing_cfg = json.dumps(
+        {
+            "formato": "pred-platform.configuracion-ejecucion",
+            "schema_version": 1,
+            "run_id": "r-7383b31d3eea7528",
+            "identidad": "r-7383b31d3eea7528",
+            "ingesta_sha256": "ab4d31bd58790000000000000000000000000000000000000000000000000000",
+            "parametros": {
+                "families": ["classical", "ml"],
+                "metric": "rmse",
+                "min_train": 40,
+                "horizon": 2,
+                "step": 7,
+                "seasonality": 7,
+                "trials": 5,
+                "seed": 42,
+                "workers": 1,
+            },
+            "versiones": {"plataforma": "0.1.0"},
+        }
+    ).encode("utf-8")
+    resp_missing = client.post(
+        "/ejecucion/configuracion",
+        files={"archivo": ("corrida.json", missing_cfg, "application/json")},
+    )
+    assert resp_missing.status_code == 200
+    assert "Configuración importada, pero sus datos no están cargados en esta plataforma." in _text(
+        resp_missing.text
+    )
+    assert "ab4d31bd5879" not in resp_missing.text
+    assert "r-7383b31d3eea7528" not in resp_missing.text
+
+    _launch(client, env)
+    incompat_error = {
+        "code": "run.incompatible_config",
+        "detail": "error: run_id incompatible con la entrada o configuracion previa",
+        "stage": "L2",
+    }
+    _set_run(env, "detenida", incompat_error)
+    html = client.get("/ejecucion?ejecucion=1").text
+    callout_html = re.search(
+        r'<div class="pred-callout[^"]*" id="error-ejecucion">(.*?)</div>', html, re.S
+    )
+    assert callout_html is not None
+    details_part = re.search(r"<details[^>]*>(.*?)</details>", callout_html.group(1), re.S)
+    assert details_part is not None and "run_id incompatible" in details_part.group(1)
+    outside_details = re.sub(r"<details[^>]*>.*?</details>", "", callout_html.group(1), flags=re.S)
+    assert "run_id incompatible" not in outside_details
+    assert "La configuración no coincide con la ejecución guardada." in outside_details
+
+
+def test_ejecucion_detenida_por_database_busy_antes_de_tareas(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    db_busy = {
+        "code": "platform.database_busy",
+        "detail": "database is locked",
+        "stage": "platform",
+        "retryable": True,
+    }
+    _set_run(env, "detenida", db_busy)
+    html = client.get("/ejecucion?ejecucion=1").text
+    assert "La base de datos estaba ocupada y no se pudo registrar la ejecución." in html
+    assert "Espere un momento y reanude la ejecución." in html
+    assert "Reanudar" in html
+    assert "Revise el registro del motor" not in html
+
+    partial = client.get("/ejecucion/estado?ejecucion=1").text
+    assert "La base de datos estaba ocupada y no se pudo registrar la ejecución." in partial
+    assert "Espere un momento y reanude la ejecución." in partial
+    assert "Revise el registro del motor" not in partial
+
+
+def test_ejecucion_completada_con_solo_no_ejecutable_muestra_frase_correcta(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute("UPDATE ejecuciones SET estado = 'completada_con_fallos' WHERE id = 1")
+        conn.execute(
+            "INSERT INTO tareas "
+            "(ejecucion_id, sku, modelo, corte, seed, estado, detalle_error) VALUES "
+            "(1, 'FIL-0001', 'classical:sarima', '2024-01-01', 42, 'exitosa', NULL), "
+            "(1, 'FIL-0002', 'classical:sarima', '2024-01-01', 42, 'no_ejecutable', "
+            '\'{"code": "eligibility.fewer_than_two_families", "stage": "L2"}\')'
+        )
+        conn.commit()
+    page = client.get("/ejecucion?ejecucion=1").text
+    text = _text(page)
+    assert "Ninguna tarea falló; 1 no se pudo ejecutar por las condiciones de su producto." in text
+    assert "Terminó; algunas tareas de modelos fallaron o no se pudieron ejecutar." in page
+
+
+def test_seleccion_sku_en_ejecucion_detenida_muestra_texto_propio(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    _set_run(env, "detenida", run_stopped_error())
+    doc = env.repo().list_sku_selections("1")
+    assert doc.availability.status == "unavailable"
+    assert doc.availability.detail == "La ejecución se detuvo antes de dejar la selección por SKU."
+
+
+def test_un_solo_sku_dice_evaluarlo_y_varios_evaluarlos() -> None:
+    from pred_platform.app.ejecucion import exclusion_warning
+
+    warn_single = exclusion_warning(
+        families=["classical", "ml"],
+        by_class={"smooth": 0, "intermittent": 0, "lumpy": 1, "erratic": 0},
+        skus={"lumpy": []},
+        needed=40,
+    )
+    assert any("Para evaluarlo, agregue" in (part.advice or "") for part in warn_single.parts)
+
+    warn_multi = exclusion_warning(
+        families=["classical", "ml"],
+        by_class={"smooth": 0, "intermittent": 0, "lumpy": 2, "erratic": 0},
+        skus={"lumpy": []},
+        needed=40,
+    )
+    assert any("Para evaluarlos, agregue" in (part.advice or "") for part in warn_multi.parts)

@@ -256,11 +256,13 @@ def champion_forecast(
     verdict = decision.verdicts.get(sku)
     if decision.run is None or verdict is None or sku in decision.excluded:
         return replace(
-            series, problem="No hay un veredicto M3 con pronóstico campeón para este SKU."
+            series, problem="No hay un veredicto con pronóstico del modelo campeón para este SKU."
         )
     series = replace(series, candidate=verdict.candidato_campeon, family=verdict.familia_campeona)
     if not series.candidate:
-        return replace(series, problem="M3 no publicó un candidato campeón para este SKU.")
+        return replace(
+            series, problem="La evaluación final no publicó un modelo campeón para este SKU."
+        )
     run_id = decision.run.run_id
     try:
         observations = _all_pages(

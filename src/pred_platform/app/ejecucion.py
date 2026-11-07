@@ -473,6 +473,7 @@ def exclusion_warning(
             missing = [
                 family_label(f) for f in FAMILIES_BY_SKU_CLASS.get(sku_class, ()) if f != family
             ]
+            eval_verb = "evaluarlo" if eligible == 1 else "evaluarlos"
             parts.append(
                 WarningPart(
                     f"{format_count(eligible)} SKU {label} "
@@ -480,7 +481,7 @@ def exclusion_warning(
                     f"({family_label(family)})",
                     tuple(named),
                     more,
-                    f"Para evaluarlos, agregue {_either(missing)}.",
+                    f"Para {eval_verb}, agregue {_either(missing)}.",
                 )
             )
         if short:
@@ -497,7 +498,7 @@ def exclusion_warning(
     if compares_nothing(by_class, families):
         closing = (
             "Con estas familias ningún SKU tiene dos familias que comparar: la ejecución no elige "
-            f"ningún campeón y puede detenerse en la etapa «{stage_label('L2')}»."
+            "ningún campeón y puede detenerse en el ajuste de modelos."
         )
     else:
         closing = (
@@ -538,6 +539,7 @@ class RunError:
     code: str
     retryable: bool
     stage: str | None = None
+    cataloged: bool = False
 
 
 def run_error(info: ErrorInfo | None) -> RunError | None:
@@ -545,6 +547,7 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
     if info is None:
         return None
     title = error_title(info.code, info.stage, info.row_index, info.column)
+    is_cataloged = mensajes.mensaje(info.code) is not None
     return RunError(
         title=title,
         # Un detalle que repite el título no dice nada nuevo: se lee una sola vez.
@@ -553,6 +556,7 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
         code=info.code,
         retryable=info.retryable,
         stage=info.stage,
+        cataloged=is_cataloged,
     )
 
 
@@ -598,7 +602,7 @@ def offers_resume(estado: str, error: RunError | None, *, nothing_to_compare: bo
     """
     return (
         estado in RESUMABLE_STATES
-        and (error is None or error.code != INCOMPATIBLE_CONFIG)
+        and (error is None or error.code not in (INCOMPATIBLE_CONFIG, "platform.input_missing"))
         and not nothing_to_compare
         and not _same_on_resume(error)
     )
