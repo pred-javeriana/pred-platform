@@ -20,6 +20,8 @@ from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.data.fixtures import FixtureRepository
 from tests import formulario_html
+from tests.m3_publicada import publish
+from tests.test_ui_review import Markup
 from tests.test_worker import Env, _fixture_id
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -117,6 +119,44 @@ def _main(html: str) -> str:
 def test_the_old_addresses_lead_to_their_step_with_the_same_query(old: str, new: str) -> None:
     response = _fixture_client().get(old, follow_redirects=False)
     assert (response.status_code, response.headers["location"]) == (307, new)
+
+
+@pytest.mark.parametrize("surface", ["ejecucion", "resultados"])
+@pytest.mark.parametrize("reference", ["number", "engine", "latest"])
+def test_an_old_link_opens_the_run_it_names(env: Env, surface: str, reference: str) -> None:
+    client = _dal_client(env)
+    for seed in ("11", "12"):
+        assert (
+            client.post(
+                "/ejecucion/lanzar", data={"ingest_id": env.ingest_id, **FORM, "seed": seed}
+            ).status_code
+            == 200
+        )
+    ((engine_id,),) = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")
+    publish(
+        env.db,
+        ingesta_sha256=env.ingest_id,
+        run_id_m2=engine_id,
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+    )
+    wanted = {"number": "1", "engine": engine_id, "latest": "latest"}[reference]
+    expected = "2" if reference == "latest" else "1"
+
+    page = client.get(f"/{surface}?ejecucion={wanted}", follow_redirects=True)
+
+    assert page.status_code == 200
+    assert page.url.path == f"/corridas/{expected}/{surface}"
+    assert f"Corrida #{expected} · semilla" in page.text
+    # Only an absent reference chooses the most recent published evaluation.
+    if surface == "resultados":
+        product = client.get(f"/resultados/sku/FIL-0001?ejecucion={wanted}")
+        # There is no SKU detail in these queued runs, but its page keeps the named run.
+        assert product.status_code == 404
+        assert product.url.path == f"/corridas/{expected}/resultados/producto/FIL-0001"
+        assert f"Corrida #{expected} · semilla" in product.text
+        default = client.get("/resultados", follow_redirects=True)
+        assert default.url.path == "/corridas/1/resultados"
+        assert "Corrida #1 · semilla 11" in default.text
 
 
 def test_without_runs_the_old_addresses_start_a_new_run() -> None:
@@ -252,6 +292,39 @@ def test_each_rail_step_reads_as_its_number_name_status_and_state() -> None:
     assert [name.split(" ", 2)[:2] for name in names] == [["Paso", str(n)] for n in range(1, 6)]
     assert names[3].startswith("Paso 4 Ejecución Aquí")
     assert names[3].endswith(": en curso")
+
+
+def test_the_compact_step_date_keeps_the_exact_utc_time() -> None:
+    html = _fixture_client().get("/corridas/1/revisar").text
+    compact = re.search(r'<nav class="pred-rail-compact".*?</nav>', html, re.S)
+    assert compact is not None
+    dates = Markup(compact.group(0)).select("time")
+    assert len(dates) == 1
+    assert dates[0]["datetime"] == "2026-10-02T06:00:00+00:00"
+    assert dates[0]["title"] == "2026-10-02 06:00:00 UTC (hora universal coordinada)"
+    assert "Lanzada 2 oct 2026" in _text(compact.group(0))
+
+
+@pytest.mark.parametrize("step", ["revisar", "ejecucion", "resultados"])
+def test_a_locked_current_step_is_announced(step: str) -> None:
+    html = _fixture_client().get(f"/corridas/nueva/{step}").text
+    current = [
+        attrs for attrs in Markup(html).select("span") if attrs.get("aria-current") == "step"
+    ]
+    assert len(current) == 1
+    assert current[0]["class"] == "pred-rail__item"
+
+
+def test_review_change_links_belong_to_their_descriptions(env: Env) -> None:
+    client = _dal_client(env)
+    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM})
+    html = client.get("/corridas/nueva/revisar").text
+    page = Markup(html)
+    assert page.definition_list_misuse() == []
+    changes = re.findall(
+        r'<dd[^>]*>.*?<a href="/corridas/nueva/(?:datos|ajustes)">Cambiar</a></dd>', html
+    )
+    assert len(changes) >= 4
 
 
 def test_back_and_next_follow_the_steps_of_a_launched_run() -> None:
@@ -490,7 +563,7 @@ def test_after_a_rail_exit_and_browser_back_continuar_goes_to_revisar(env: Env) 
     page = client.get("/corridas/nueva/ajustes").text
     typed = {"horizon": "4"}
 
-    # A rail step: the script sends the form with that step on a submit button of its own.
+    # A rail step: the script sends the form with that step in a temporary hidden field.
     rail = formulario_html.submit(page, _AJUSTES_FORM, typed=typed)
     rail["destino"] = ["datos"]
     left = client.post("/corridas/nueva/ajustes", data=rail, follow_redirects=False)
@@ -650,3 +723,205 @@ def test_copiar_de_valid_run_populates_ajustes_and_informs_user(env: Env) -> Non
     assert '<option value="rmse" selected>' in html
     revisar = client.get("/corridas/nueva/revisar").text
     assert '<input type="hidden" name="seed" value="47">' in revisar
+
+
+# ------------------------------------------------- lo que el recorrido promete, de punta a punta
+def _launch(client: TestClient, env: Env, *seeds: str) -> None:
+    for seed in seeds:
+        launched = client.post(
+            "/ejecucion/lanzar",
+            data={"ingest_id": env.ingest_id, **FORM, "seed": seed},
+            follow_redirects=False,
+        )
+        assert launched.status_code == 303
+
+
+def _set_run(env: Env, run: int, estado: str, started: str | None = "2026-10-02T06:00:00Z") -> None:
+    with sqlite3.connect(env.db) as conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = ?, iniciada_en = ? WHERE id = ?",
+            (estado, started, run),
+        )
+
+
+def _rail_subs(html: str) -> list[str]:
+    rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
+    assert rail is not None
+    return [
+        _text(sub)
+        for sub in re.findall(
+            r'<span class="pred-rail__sub">.*?</span></span>', rail.group(0), re.S
+        )
+    ]
+
+
+def _ingest_of_the_fixture() -> str:
+    (first, *_) = FixtureRepository().list_ingests().items
+    assert first.ingest_id is not None
+    return first.ingest_id
+
+
+@pytest.mark.parametrize(
+    ("old", "run", "tab", "kept"),
+    [
+        (
+            "/ejecucion?ejecucion=1&estado=fallida&page=2&tareas=todas",
+            "1",
+            None,
+            r'<option value="fallida" selected>',
+        ),
+        (
+            "/resultados?ejecucion=1&vista=sku&lista=familias&q=FIL&page=2",
+            "1",
+            "sku",
+            r'name="q"[^>]*value="FIL"',
+        ),
+        ("/resultados?vista=resumen&m3=m3-a", "1", "resumen", None),
+        ("/resultados?ejecucion=latest&vista=clase", "1", "clase", None),
+    ],
+)
+def test_an_old_address_shows_its_run_tab_and_filters(
+    old: str, run: str, tab: str | None, kept: str | None
+) -> None:
+    page = _fixture_client().get(old, follow_redirects=True)
+
+    assert page.status_code == 200
+    assert f"Corrida #{run} · semilla" in page.text
+    if tab is not None:
+        current = [
+            attrs["href"] or ""
+            for attrs in Markup(page.text).select("a")
+            if attrs.get("aria-current") == "page"
+            and f"/corridas/{run}/resultados?" in (attrs["href"] or "")
+        ]
+        assert [f"vista={tab}" in href for href in current] == [True]
+    if kept is not None:
+        assert re.search(kept, page.text)
+
+
+def test_the_old_datos_address_keeps_the_chosen_file_and_filter() -> None:
+    ingest = _ingest_of_the_fixture()
+    page = _fixture_client().get(
+        f"/datos?ingest_id={ingest}&sku_class=smooth", follow_redirects=True
+    )
+    assert page.url.path == "/corridas/nueva/datos"
+    assert re.search(r'<option value="smooth" selected>', page.text)
+    assert ingest in page.text
+
+
+def test_the_rail_says_what_the_saved_draft_holds(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    before = _rail_subs(client.get("/corridas/nueva/ajustes").text)
+    assert before[0].startswith("demo_canonico.csv")
+    assert before[1] == "4 familias · semilla 0"  # the defaults
+
+    client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "17", "families": ["classical", "ml"]},
+    )
+
+    for path in ("/corridas/nueva/ajustes", "/corridas/nueva/revisar", "/corridas/nueva/datos"):
+        subs = _rail_subs(client.get(path).text)
+        assert subs[0].startswith("demo_canonico.csv"), path
+        assert subs[1] == "2 familias · semilla 17", path
+
+
+def test_the_rail_follows_the_run_while_ejecucion_polls(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, "0")
+    page = client.get("/corridas/1/ejecucion")
+    assert 'id="barra-pasos"' in page.text
+    assert _rail_subs(page.text)[3] == "En cola"
+
+    # The run starts: the poll answers the new rail and the narrow summary beside the body.
+    _set_run(env, 1, "ejecutando")
+    poll = client.get("/ejecucion/estado?ejecucion=1")
+    assert poll.status_code == 200
+    assert 'hx-swap-oob="true"' in poll.text
+    assert _rail_subs(poll.text)[3].startswith("Trabajando")
+    assert re.search(r'<nav class="pred-rail-compact" id="resumen-paso"[^>]*hx-swap-oob', poll.text)
+
+    # The run ends: the last answer stops the polling and closes the step in the rail.
+    _set_run(env, 1, "completada")
+    done = client.get("/ejecucion/estado?ejecucion=1")
+    assert done.status_code == 286
+    assert _rail_subs(done.text)[3] == "Terminó"
+
+
+def test_the_home_says_a_queued_run_has_not_started(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, "0")
+
+    home = _main(client.get("/").text)
+    assert "en cola, todavía sin empezar" in home
+    assert "lanzada —" not in home
+    assert _rail_subs(client.get("/corridas/1/ejecucion").text)[2] == "Lanzada · en cola"
+    # Once it starts, the date reads as before.
+    _set_run(env, 1, "ejecutando")
+    assert "lanzada 2 oct 2026" in _main(client.get("/").text)
+    assert _rail_subs(client.get("/corridas/1/ejecucion").text)[2].startswith("Lanzada 2 oct 2026")
+
+
+def test_the_home_lists_the_run_in_progress_before_the_queued_ones(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, "0", "1", "2")
+    _set_run(env, 2, "ejecutando")
+
+    text = _main(client.get("/").text)
+
+    order = [text.index(f"#{run} · semilla {run - 1}") for run in (2, 3, 1)]
+    assert order == sorted(order)
+
+
+def test_the_home_says_when_a_published_run_had_failed_tasks(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, "0", "1")
+    ((engine_id,),) = env.rows("SELECT run_id FROM ejecuciones WHERE id = 1")
+    publish(
+        env.db, ingesta_sha256=env.ingest_id, run_id_m2=engine_id,
+        verdicts={"FIL-0001": ("smooth", "VALIDADO")},
+    )  # fmt: skip
+    for number in (1, 2):
+        _set_run(env, number, "completada_con_fallos")
+    with sqlite3.connect(env.db) as conn:
+        failure = json.dumps({"code": "platform.candidate_failed", "stage": "L3"})
+        for model, estado, error in (
+            ("classical:a", "fallida", failure),
+            ("ml:b", "exitosa", None),
+        ):
+            conn.execute(
+                "INSERT INTO tareas (ejecucion_id, sku, modelo, corte, seed, estado, detalle_error)"
+                " VALUES (1, 'FIL-0001', ?, '2026-03-13', 0, ?, ?)",
+                (model, estado, error),
+            )
+
+    html = client.get("/").text
+    published = html.split("#1 · semilla 0", 1)[1].split("#2", 1)[0]
+    text = _text(published)
+
+    assert "Completada con fallos · resultados listos" in text
+    assert "Falló 1 de 2 tareas de modelos. Aun así, el producto tiene veredicto." in text
+    assert "Completada · resultados listos" not in text
+    assert "pred-status--warn" in published
+    # The run whose evaluation is not published keeps its own wording.
+    assert "Completada · sin evaluación final publicada" in _text(html.split("#2", 1)[1])
+
+
+@pytest.mark.parametrize("step", ["datos", "ajustes", "revisar"])
+def test_the_record_steps_of_a_launched_run_do_not_promise_a_summary(step: str) -> None:
+    html = _fixture_client().get(f"/corridas/1/{step}").text
+    assert "nada empieza hasta que lo confirme" not in html
+    assert "Verá un resumen antes de empezar" not in html
+    assert "El avance está en Ejecución y los resultados, en Resultados." in html
+
+
+def test_the_scenario_errores_has_the_selections_of_its_current_run() -> None:
+    client = _fixture_client("errores")
+    page = client.get("/resultados", follow_redirects=True)
+    assert page.url.path == "/corridas/2/resultados"
+    sku = client.get("/corridas/2/resultados?vista=sku")
+    assert sku.status_code == 200
+    assert "No hay selecciones para la ejecución" not in sku.text
+    assert "FIL-0001" in sku.text
+    assert client.get("/corridas/1/resultados?vista=sku").status_code == 200

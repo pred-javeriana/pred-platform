@@ -97,6 +97,7 @@ LAUNCHED_PURPOSE = (
     "Esta corrida ya se lanzó. Este paso muestra lo que se eligió y no se puede cambiar; para "
     "usar otros valores, empiece una corrida nueva con estos ajustes."
 )
+LAUNCHED_AFTER = "El avance está en Ejecución y los resultados, en Resultados."
 _RECORD_STEPS = ("datos", "ajustes", "revisar")
 # Una corrida en estos estados todavía no tiene resultados que leer.
 _UNFINISHED = ("pendiente", "ejecutando", "detenida")
@@ -372,7 +373,7 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
         [
             ("done", _data_sub(run.file_name, run.n_skus), None),
             ("done", _settings_sub(run.families, run.seed), None),
-            ("done", "Lanzada", run.iniciada_en),
+            ("done", "Lanzada" if run.iniciada_en else "Lanzada · en cola", run.iniciada_en),
             execution,
             results,
         ],
@@ -405,6 +406,8 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
     after_lead, after_text = step.after_lead, step.after_text
     if current == "ejecucion" and run.published:
         after_text = "Ya están publicados."
+    elif current in _RECORD_STEPS:
+        after_lead, after_text = None, LAUNCHED_AFTER
     return Wizard(
         corrida=run.id,
         title=f"Corrida #{run.id} · semilla {run.seed}",

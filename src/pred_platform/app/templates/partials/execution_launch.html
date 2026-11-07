@@ -17,7 +17,8 @@
   {% else %}
   <form method="post" action="/corridas/nueva/ajustes" class="pred-launch" id="{{ launch_form_id }}">
     {# El primer botón de envío del formulario es el que usa Enter en un campo: Continuar, que
-       valida. Atrás y los pasos de la barra llevan su destino en su propio botón, más abajo. #}
+       valida. Atrás lleva su destino en su propio botón, más abajo; un paso de la barra lo lleva en un
+       campo temporal que agrega pred.js y quita después de enviar. #}
     <button type="submit" class="pred-sr-only" tabindex="-1" aria-hidden="true">Continuar a Revisar y lanzar</button>
     <div class="pred-launch__row">
       <div class="pred-field{% if form_errors.get('ingest_id') %} is-error{% endif %}">

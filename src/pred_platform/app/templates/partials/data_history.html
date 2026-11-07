@@ -2,13 +2,13 @@
 {% from "components/status.html" import status_indicator %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 
-{{ table_start(["Archivo", "Estado", "Filas", "SKU", "Publicada"], "Historial de ingestas") }}
+{{ table_start(["Archivo", "Estado", "Filas", "SKU", "Publicada"], "Historial de archivos cargados") }}
 {% for item in listing.items %}
 {% set current = report and item.ingest_id == report.ingest_id %}
 <tr{% if current %} class="is-current"{% endif %}>
   <th scope="row">
     {% if item.ingest_id %}
-    <a href="{{ datos_path }}?ingest_id={{ item.ingest_id }}" title="Ingesta {{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
+    <a href="{{ datos_path }}?ingest_id={{ item.ingest_id }}" title="Archivo cargado {{ item.ingest_id }}"{% if current %} aria-current="true"{% endif %}>{{ item.name }}</a>
     {% if current %}<span class="pred-subvalue">La que se muestra arriba</span>{% endif %}
     {% else %}
     {{ item.name }}
@@ -27,12 +27,12 @@
   <td class="pred-nowrap">{{ when(item.published_at) }}</td>
 </tr>
 {% else %}
-{{ table_empty(5, "Página sin ingestas", "Vuelva a la primera página del historial.") }}
+{{ table_empty(5, "Página sin archivos cargados", "Vuelva a la primera página del historial.") }}
 {% endfor %}
 {{ table_end() }}
 {% if history_pages and (history_pages.show or listing.page.number > 1) %}
-<nav class="pred-pager" aria-label="Paginación de ingestas">
-  <span>Página {{ listing.page.number }} · {{ format_count(listing.page.total) }} ingestas</span>
+<nav class="pred-pager" aria-label="Paginación de archivos cargados">
+  <span>Página {{ listing.page.number }} · {{ format_count(listing.page.total) }} archivos cargados</span>
   {% if history_pages.has_prev %}<a href="{{ history_prev_href }}">Anterior</a>{% endif %}
   {% if history_pages.has_next %}<a href="{{ history_next_href }}">Siguiente</a>{% endif %}
   <a href="{{ history_reset_href }}">Primera página</a>

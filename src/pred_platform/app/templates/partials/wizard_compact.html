@@ -1,0 +1,7 @@
+{# El resumen del paso actual para pantallas angostas, que reemplaza a la barra lateral. #}
+{% from "components/step_sub.html" import step_sub %}
+{% set here = wizard.current %}
+<nav class="pred-rail-compact" id="resumen-paso" aria-label="Paso actual de la corrida"{% if swap_oob %} hx-swap-oob="true"{% endif %}>
+  <p><strong>Paso {{ here.number }} de {{ wizard.steps | length }} · {{ here.label }}</strong> · {{ step_sub(here) }}</p>
+  <div class="pred-rail-compact__bar" aria-hidden="true">{% for step in wizard.steps %}<i class="{{ 'is-done' if step.state == 'done' else ('is-current' if step.current else '') }}"></i>{% endfor %}</div>
+</nav>

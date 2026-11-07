@@ -98,16 +98,40 @@ def test_the_expected_columns_are_open_both_as_first_upload_and_as_another_file(
         assert re.search(r'<details [^>]*id="columnas-csv" open>', html)
 
 
+@pytest.mark.parametrize("scenario", ["normal", "vacio", "errores"])
+def test_the_visible_text_of_datos_has_no_developer_words(tmp_path: Path, scenario: str) -> None:
+    client, repo = _client(tmp_path, scenario)
+    ingest = repo.list_ingests().items[0].ingest_id if scenario != "vacio" else None
+    for path in ("/corridas/nueva/datos", f"/corridas/nueva/datos?ingest_id={ingest}"):
+        if ingest is None and "ingest_id" in path:
+            continue
+        html = client.get(path).text
+        # The technical detail stays one click away, folded: it is not the visible text.
+        shown = re.sub(r"<details.*?</details>", " ", html, flags=re.S)
+        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", shown))
+        assert not re.search(r"ingesta|SHA-256", text, re.I), (scenario, path)
+
+
+def test_the_file_identifier_is_in_a_folded_technical_detail(tmp_path: Path) -> None:
+    client, repo = _client(tmp_path)
+    ingest = repo.list_ingests().items[0].ingest_id
+    html = client.get(f"/corridas/nueva/datos?ingest_id={ingest}").text
+    found = re.search(
+        r"<details[^>]*><summary>Detalle técnico</summary>.*?SHA-256.*?</details>", html, re.S
+    )
+    assert found is not None and str(ingest) in found.group(0)
+
+
 def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text
-    assert "Todavía no hay ingestas registradas." in html
+    assert "Todavía no hay archivos cargados." in html
     assert 'id="titulo-carga">Cargar un archivo<' in html
     assert "No hay SKU que coincidan" not in html
     assert "La caracterización todavía no está disponible." not in html
     # El historial no queda como subsección de «Cargar un archivo» en el esquema de títulos.
     headings = re.findall(r"<h([1-4])[^>]*>([^<]*)<", html)
-    history = headings.index(("3", "Historial de ingestas"))
+    history = headings.index(("3", "Historial de archivos cargados"))
     assert headings[history - 1] == ("2", "Archivos ya cargados")
 
 

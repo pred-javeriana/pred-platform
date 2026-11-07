@@ -31,7 +31,7 @@ from pred_platform.app.charts import (
     product_models_svg,
 )
 from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
-from pred_platform.app.corridas import draft_facts, run_facts
+from pred_platform.app.corridas import draft_facts, resolve_run_id, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import run_resumable
 from pred_platform.app.pasos import (
@@ -161,13 +161,11 @@ def resultados(
     con evidencia publicada (si no hay, la más reciente)."""
     params = request.query_params
     wanted = (params.get("ejecucion") or "").strip()
-    target: str | None = None
-    if wanted and wanted != LATEST:
-        header = _run_header(repository, wanted)
-        target = (
-            header.ejecucion.id if header is not None and header.ejecucion is not None else wanted
-        )
-    if target is None:
+    if wanted:
+        target = resolve_run_id(repository, wanted)
+        if target is None and wanted != LATEST:
+            target = wanted
+    else:
         published = published_executions(repository)
         target = published[0].ejecucion_id if published else _latest_run(repository)
     if target is None:
@@ -178,8 +176,7 @@ def resultados(
 
 
 def _latest_run(repository: DataRepository) -> str | None:
-    status = _run_header(repository, LATEST)
-    return status.ejecucion.id if status is not None and status.ejecucion is not None else None
+    return resolve_run_id(repository, LATEST)
 
 
 @router.get("/corridas/{corrida}/resultados", response_class=HTMLResponse)
@@ -550,9 +547,9 @@ def sku_detalle(
 ) -> RedirectResponse:
     params = request.query_params
     wanted = (params.get("ejecucion") or "").strip()
-    target: str | None = wanted if wanted not in ("", LATEST) else None
-    if target is None:
-        target = _resolve_sku_run(repository, sku_id)
+    target = resolve_run_id(repository, wanted) if wanted else _resolve_sku_run(repository, sku_id)
+    if target is None and wanted and wanted != LATEST:
+        target = wanted
     if target is None:
         target = default_execution(repository)
     quoted_target = quote(target, safe="")

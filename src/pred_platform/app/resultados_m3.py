@@ -932,7 +932,12 @@ def run_outcome(
     lead = "Aun así, " if failed else ""
     products, with_verdict = funnel.total_productos, funnel.tras_exclusiones
     if with_verdict == products:
-        sentence = f"{lead}los {format_count(products)} productos tienen veredicto."
+        who = (
+            "el producto tiene"
+            if products == 1
+            else f"los {format_count(products)} productos tienen"
+        )
+        sentence = f"{lead}{who} veredicto."
     else:
         rest = products - with_verdict
         sentence = (
