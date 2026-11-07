@@ -1,28 +1,33 @@
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/status.html" import verdict_status %}
-{% from "partials/results_macros.html" import answer, fraction, inline_bar, outcome_legend, key, problem %}
+{% from "partials/results_macros.html" import answer, fraction, inline_bar, outcome_legend, key, problem, unread_note %}
 {{ problem(m3_classes) }}
+{{ unread_note(m3_classes) }}
 {% if m3_summary.problem != m3_classes.problem %}{{ problem(m3_summary) }}{% endif %}
 {% if m3_classes.run %}
-{% call answer('Pregunta 2 · ¿En qué tipos de demanda se verifica la mejora producto por producto?', answers.verification, 'Respaldada para los productos con mejora verificada' if answers.better else 'No concluyente' if answers.tested else 'Sin responder', 'ok' if answers.better else 'warn' if answers.tested else 'neutral') %}
+{% call answer('Pregunta 2 · ¿En qué tipos de demanda se verifica la mejora producto por producto?', answers.verification, 'Sin responder' if answers.unread else 'Respaldada para los productos con mejora verificada' if answers.better else 'No concluyente' if answers.tested else 'Sin responder', 'neutral' if answers.unread else 'ok' if answers.better else 'warn' if answers.tested else 'neutral') %}
 <dl class="pred-results-kpis">{% for row in m3_classes.significance %}<div><dt>{{ sku_class_label(row.sku_class) }}</dt><dd>{{ fraction(row.n_mejores, row.n_probados) }}<small>{{ format_count(row.n_mejores) }} de {{ format_count(row.n_probados) }} productos</small>{{ inline_bar(row.n_mejores, row.n_probados - row.n_mejores - row.n_peores, row.n_peores, row.n_probados) }}</dd></div>{% endfor %}</dl>
 {% endcall %}
 <section class="pred-panel" id="significancia-por-clase">
   <h2>Producto por producto, frente a la línea base</h2>
   <p class="pred-results-lead">Para cada producto, una prueba (HLN-DM con ajuste de Benjamini-Hochberg dentro de cada tipo) comprueba si hay evidencia de una diferencia de error con la línea base. Sin diferencia demostrada no significa equivalencia.</p>
+  {% if not answers.unread %}
   {{ outcome_legend() }}
   {{ key([('area', 'cada barra reúne el 100 % de productos con veredicto')]) }}
   <figure class="pred-results-figure"><figcaption><strong>Resultado de la prueba por tipo de demanda</strong><span>El denominador de la barra incluye los productos sin prueba. El porcentaje a la derecha usa solo los probados.</span></figcaption>{{ significance_svg | safe }}</figure>
+  {% endif %}
   <details class="pred-details"><summary>Ver las cifras de la prueba por tipo</summary>
+    {% if not answers.unread %}
     {{ table_start(['Clase', 'SKU probados', 'Mejores (BH)', 'Peores (BH)', 'Mejores (BY)', 'Peores (BY)', 'Nivel FCR', 'Resultado adverso'], 'Significancia HLN-DM por clase') }}
     {% for row in m3_classes.significance %}{% set category = m3_classes.rows | selectattr('sku_class', 'equalto', row.sku_class) | first %}<tr><th scope="row">{{ sku_class_label(row.sku_class) }}</th><td class="num">{{ format_count(row.n_probados) }}</td><td class="num">{{ format_count(row.n_mejores) }}</td><td class="num">{{ format_count(row.n_peores) }}</td><td class="num">{{ format_count(row.n_mejores_by) }}</td><td class="num">{{ format_count(row.n_peores_by) }}</td><td class="num"{% if row.nivel_fcr is not none %} title="{{ exact_text(row.nivel_fcr) }}"{% endif %}>{{ level_text(row.nivel_fcr) if row.nivel_fcr is not none else '—' }}</td><td class="num">{{ format_count(category.n_adversos) if category else '—' }}</td></tr>{% endfor %}
     {{ table_end() }}
     <p class="pred-meta">Benjamini-Hochberg (BH) ajusta dentro de cada tipo; Benjamini-Yekutieli (BY) se informa como sensibilidad. El nivel FCR es el de los intervalos de r de los productos significativos por BH.</p>
+    {% endif %}
     {% if m3_summary.dm and m3_summary.dm.sin_prueba %}
     {{ table_start(['Por qué no tienen prueba', 'SKU'], 'SKU sin prueba HLN-DM por causa') }}{% for cause, count in m3_summary.dm.sin_prueba.items() %}<tr><th scope="row" title="{{ cause }}">{{ cause_text(cause) }}</th><td class="num">{{ format_count(count) }}</td></tr>{% endfor %}{{ table_end() }}
     {% endif %}
   </details>
-  <div class="pred-result-pairs"><strong>Abrir en Productos</strong><a class="pred-btn pred-btn--secondary pred-btn--small" href="{{ results_base }}/productos?prueba=mejora&amp;{{ chapter_query }}">{{ format_count(answers.better) }} con mejora verificada</a><a class="pred-btn pred-btn--secondary pred-btn--small" href="{{ results_base }}/productos?prueba=sin_diferencia&amp;{{ chapter_query }}">{{ format_count(answers.unchanged) }} sin diferencia demostrada</a><a class="pred-btn pred-btn--secondary pred-btn--small" href="{{ results_base }}/productos?prueba=peor&amp;{{ chapter_query }}">{{ format_count(answers.worse) }} peores que la línea base</a></div>
+  <div class="pred-result-pairs"><strong>Abrir en Productos</strong><a class="pred-btn pred-btn--secondary pred-btn--small" href="{{ results_base }}/productos?prueba=mejora&amp;{{ chapter_query }}">{{ (format_count(answers.better) ~ ' con') if not answers.unread else 'Con' }} mejora verificada</a><a class="pred-btn pred-btn--secondary pred-btn--small" href="{{ results_base }}/productos?prueba=sin_diferencia&amp;{{ chapter_query }}">{{ (format_count(answers.unchanged) ~ ' sin') if not answers.unread else 'Sin' }} diferencia demostrada</a><a class="pred-btn pred-btn--secondary pred-btn--small" href="{{ results_base }}/productos?prueba=peor&amp;{{ chapter_query }}">{{ (format_count(answers.worse) ~ ' peores') if not answers.unread else 'Peores' }} que la línea base</a></div>
 </section>
 <section class="pred-panel">
   <h2>Cómo se reparte la razón de error</h2>
@@ -31,7 +36,7 @@
   {{ key([('area', 'productos en cada intervalo de r'), ('reference', '1 = mismo error que la línea base')]) }}
   <div class="pred-results-smalls">{% for code, histogram in histograms.items() %}<figure class="pred-results-figure"><figcaption><strong>{{ sku_class_label(code) }}</strong></figcaption>{{ histogram[0] | safe }}</figure>{% endfor %}</div>
   <details class="pred-details"><summary>Ver las cifras de los histogramas</summary>
-    {{ table_start(['Tipo', 'Intervalo de r', 'Mejora verificada', 'Sin diferencia demostrada', 'Peor'], 'Distribución de r por tipo y prueba') }}
+    {{ table_start(['Tipo', 'Intervalo de r', 'Mejora verificada', 'Sin diferencia demostrada', 'Peor', 'Sin prueba'], 'Distribución de r por tipo y prueba') }}
     {% for code, histogram in histograms.items() %}{% for label, counts in histogram[1] %}<tr><th scope="row">{{ sku_class_label(code) }}</th><td>{{ label }}</td>{% for count in counts %}<td class="num">{{ format_count(count) }}</td>{% endfor %}</tr>{% endfor %}{% endfor %}
     {{ table_end() }}
   </details>

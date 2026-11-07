@@ -1,6 +1,6 @@
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/status.html" import verdict_status %}
-{% from "partials/results_macros.html" import claim, family, fraction, inline_bar, outcome_legend, problem %}
+{% from "partials/results_macros.html" import claim, family, fraction, inline_bar, outcome_legend, problem, unread_note %}
 {{ problem(m3_summary) }}
 {% if m3_summary.funnel %}
 {% set funnel = m3_summary.funnel %}
@@ -8,10 +8,11 @@
 <section class="pred-panel">
   <blockquote class="pred-research-question"><p>¿Qué familia de modelos de pronóstico ofrece el mejor desempeño para la demanda de inventarios de una empresa a partir de sus datos históricos, y en qué perfiles de demanda esa superioridad puede verificarse empíricamente mediante backtesting retrospectivo sobre una ventana temporal de validación real?</p><cite>Pregunta de investigación · Tesis, «Introducción»</cite></blockquote>
   <div class="pred-results-headline">{{ claim(answers.label, answers.tone) }}<p>{{ answers.selection }}</p></div>
+  {{ unread_note(m3_classes) }}
   <dl class="pred-results-kpis">
-    <div><dt>Tipos con campeona confirmada</dt><dd>{{ answers.confirmed }} <small>de {{ answers.types }} tipos publicados</small></dd></div>
+    <div><dt>Tipos con campeona confirmada</dt><dd>{% if answers.unread %}<span class="pred-kpi-text">No se pudo leer</span>{% else %}{{ answers.confirmed }} <small>de {{ answers.types }} tipos publicados</small>{% endif %}</dd></div>
     <div><dt>Error frente a la línea base</dt><dd class="pred-kpi-text">{{ answers.effect_range }}<small>en el producto típico, según el tipo</small></dd></div>
-    <div><dt>Productos con mejora verificada</dt><dd>{{ fraction(answers.better, answers.tested) }}<small>{{ format_count(answers.better) }} de {{ format_count(answers.tested) }} probados</small></dd></div>
+    <div><dt>Productos con mejora verificada</dt><dd>{% if answers.unread %}<span class="pred-kpi-text">No se pudo leer</span>{% else %}{{ fraction(answers.better, answers.tested) }}<small>{{ format_count(answers.better) }} de {{ format_count(answers.tested) }} probados</small>{% endif %}</dd></div>
     <div><dt>Semillas con resultados</dt><dd>{{ published_seed_count }} <small>de 3; la estabilidad exige las tres</small></dd></div>
   </dl>
   <div class="pred-table-wrap" role="region" aria-label="Respuesta por tipo de demanda" tabindex="0">
@@ -21,9 +22,9 @@
     {% set significance = m3_classes.significance | selectattr('sku_class', 'equalto', row.sku_class) | first %}
     <tr>
       <th scope="row"><strong>{{ sku_class_label(row.sku_class) }}</strong><span class="pred-subvalue">{{ sku_class_term(row.sku_class).hint }}</span></th>
-      <td data-label="Familia campeona"><strong>{{ family(row.familia_campeona, family_colors) }}</strong><span class="pred-subvalue">{% if confirmation %}{{ claim(CONFIRMATION_STATES[confirmation.estado], 'ok' if confirmation.estado == 'confirmado' else 'warn') }}{% else %}Sin confirmación publicada{% endif %}</span></td>
-      <td data-label="Error frente a la línea base">{% if confirmation and confirmation.efecto_mediana_r is not none %}{% set r = confirmation.efecto_mediana_r %}<strong>{{ format_decimal((1 - r) * 100, 1) ~ ' % menos' if r < 1 else format_decimal((r - 1) * 100, 1) ~ ' % más' if r > 1 else 'El mismo error' }}</strong><span class="pred-subvalue" title="{{ exact_text(r) }}">r = {{ ratio_text(r) }}{% if confirmation.efecto_ic_inferior is not none %} · IC {{ interval_text(confirmation.efecto_ic_inferior, confirmation.efecto_ic_superior) }}{% endif %}</span>{% else %}Sin efecto publicado{% endif %}</td>
-      <td data-label="Mejora verificada producto por producto">{% if significance %}<div class="pred-results-bytype__bar">{{ inline_bar(significance.n_mejores, significance.n_probados - significance.n_mejores - significance.n_peores, significance.n_peores, significance.n_probados) }}<strong>{{ fraction(significance.n_mejores, significance.n_probados) }}</strong></div><span class="pred-subvalue">{{ format_count(significance.n_mejores) }} de {{ format_count(significance.n_probados) }} productos{% if significance.n_peores %} · {{ format_count(significance.n_peores) }} {{ 'peor' if significance.n_peores == 1 else 'peores' }}{% endif %}</span>{% else %}Sin prueba publicada{% endif %}</td>
+      <td data-label="Familia campeona"><strong>{{ family(row.familia_campeona, family_colors) }}</strong><span class="pred-subvalue">{% if confirmation %}{{ claim(CONFIRMATION_STATES[confirmation.estado], 'ok' if confirmation.estado == 'confirmado' else 'warn') }}{% elif answers.unread %}No se pudo leer la confirmación{% else %}Sin confirmación publicada{% endif %}</span></td>
+      <td data-label="Error frente a la línea base">{% if confirmation and confirmation.efecto_mediana_r is not none %}{% set r = confirmation.efecto_mediana_r %}<strong>{{ effect_phrase(r) }}</strong><span class="pred-subvalue" title="{{ exact_text(r) }}">r = {{ ratio_text(r) }}{% if confirmation.efecto_ic_inferior is not none %} · IC {{ interval_text(confirmation.efecto_ic_inferior, confirmation.efecto_ic_superior) }}{% endif %}</span>{% elif answers.unread %}No se pudo leer{% else %}Sin efecto publicado{% endif %}</td>
+      <td data-label="Mejora verificada producto por producto">{% if significance %}<div class="pred-results-bytype__bar">{{ inline_bar(significance.n_mejores, significance.n_probados - significance.n_mejores - significance.n_peores, significance.n_peores, significance.n_probados) }}<strong>{{ fraction(significance.n_mejores, significance.n_probados) }}</strong></div><span class="pred-subvalue">{{ format_count(significance.n_mejores) }} de {{ format_count(significance.n_probados) }} productos{% if significance.n_peores %} · {{ format_count(significance.n_peores) }} {{ 'peor' if significance.n_peores == 1 else 'peores' }}{% endif %}</span>{% elif answers.unread %}No se pudo leer{% else %}Sin prueba publicada{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody></table></div>
@@ -54,8 +55,8 @@
   <h2>Respuestas</h2>
   <ol class="pred-results-questions">
     <li><span class="pred-results-questions__number">1</span><div><p>¿Qué familia pronostica mejor cada tipo de demanda?</p><strong>{{ answers.selection }}</strong><div>{{ claim(answers.label, answers.tone) }}</div></div><a href="{{ results_base }}/p1?{{ chapter_query }}">Ver la evidencia →</a></li>
-    <li><span class="pred-results-questions__number">2</span><div><p>¿En qué tipos se verifica la mejora producto por producto?</p><strong>{{ answers.verification }}</strong><div>{{ claim('Respaldada para ' ~ format_count(answers.better) ~ ' productos', 'ok') }} · {{ claim('No concluyente para ' ~ format_count(answers.unchanged), 'warn') }}</div></div><a href="{{ results_base }}/p2?{{ chapter_query }}">Ver la evidencia →</a></li>
-    <li><span class="pred-results-questions__number">3</span><div><p>¿Se sostiene si se repite la corrida con otra semilla?</p><strong>{% if stability_rows and stability_rows | rejectattr('stable') | list | length == 0 %}La misma campeona gana y se confirma en las tres semillas.{% else %}La estabilidad exige la misma campeona confirmada en las tres semillas.{% endif %}</strong><div>{{ claim('Respaldada', 'ok') if stability_rows and stability_rows | rejectattr('stable') | list | length == 0 else claim('Sin responder' if published_seed_count < 3 else 'No concluyente', 'neutral') }}</div></div><a href="{{ results_base }}/estabilidad?{{ chapter_query }}">Ver la evidencia →</a></li>
+    <li><span class="pred-results-questions__number">2</span><div><p>¿En qué tipos se verifica la mejora producto por producto?</p><strong>{{ answers.verification }}</strong><div>{% if answers.unread %}{{ claim('Sin responder') }}{% else %}{{ claim('Respaldada para ' ~ format_count(answers.better) ~ ' productos', 'ok') }} · {{ claim('No concluyente para ' ~ format_count(answers.unchanged), 'warn') }}{% endif %}</div></div><a href="{{ results_base }}/p2?{{ chapter_query }}">Ver la evidencia →</a></li>
+    <li><span class="pred-results-questions__number">3</span><div><p>¿Se sostiene si se repite la corrida con otra semilla?</p><strong>{% if stability_rows and stability_rows | rejectattr('stable') | list | length == 0 %}La misma campeona gana y se confirma en las tres semillas.{% else %}La estabilidad exige la misma campeona confirmada en las tres semillas.{% endif %}</strong><div>{{ claim('Respaldada', 'ok') if stability_rows and stability_rows | rejectattr('stable') | list | length == 0 else claim('Sin responder' if published_seed_count < 3 or stability_rows | selectattr('unread') | list else 'No concluyente', 'neutral') }}</div></div><a href="{{ results_base }}/estabilidad?{{ chapter_query }}">Ver la evidencia →</a></li>
   </ol>
   <p class="pred-meta">Respaldada: la prueba la sostiene. No concluyente: no alcanza para decidir. Sin responder: falta evidencia.</p>
 </section>

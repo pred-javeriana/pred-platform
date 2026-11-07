@@ -26,6 +26,7 @@ from pred_platform.app.presentation import (
     evaluation_state_label,
     family_label,
     format_count,
+    format_decimal,
     metric_label,
     verdict_label,
 )
@@ -1178,6 +1179,31 @@ def ratio_text(value: float | None) -> str:
     if value == math.inf:
         return "∞"
     return _decimal(value, max(_side_digits(value, 1.0, 3), _side_digits(value, 0.0, 3)))
+
+
+def effect_parts(ratio: float) -> tuple[str, str]:
+    """La cifra y la leyenda del efecto de una razón mediana publicada.
+
+    ∞ es un valor legal (la línea base no se equivoca y la campeona sí), no un efecto ausente.
+    """
+    if ratio == math.inf:
+        return "Sin límite", "más error que la línea base (r = ∞)"
+    if ratio < 1:
+        return f"{format_decimal((1 - ratio) * 100, 1)} %", "menos error que la línea base"
+    if ratio > 1:
+        return f"{format_decimal((ratio - 1) * 100, 1)} %", "más error que la línea base"
+    return "0,0 %", "el mismo error que la línea base"
+
+
+def effect_phrase(ratio: float) -> str:
+    """El efecto de una razón mediana en una frase corta."""
+    if ratio == math.inf:
+        return "Sin límite (r = ∞)"
+    if ratio < 1:
+        return f"{format_decimal((1 - ratio) * 100, 1)} % menos"
+    if ratio > 1:
+        return f"{format_decimal((ratio - 1) * 100, 1)} % más"
+    return "El mismo error"
 
 
 def gap_digits(upper: float, tail: float, digits: int = 3) -> int:

@@ -154,7 +154,8 @@ Resumen cita la pregunta de investigación, muestra las respuestas por tipo y co
 por familia y el recorrido desde los datos hasta los productos evaluados. El capítulo 1 presenta
 la selección, la confirmación del campeón y los perfiles de error. El capítulo 2 presenta la
 significancia HLN-DM por tipo, los histogramas de r y los veredictos descriptivos. El capítulo 3
-compara las campeonas y sus efectos entre semillas con los mismos datos y ajustes. Productos
+compara las campeonas y sus efectos entre semillas, solo con publicaciones que el grupo final
+acepta junto a la abierta (mismos datos, identidad, protocolo y productos). Productos
 conserva las lecturas de veredictos y de familias, los filtros, el orden y la paginación.
 Los gráficos son SVG del servidor. Las tablas cerradas «Ver las cifras» conservan medianas,
 intervalos, Hodges-Lehmann, victorias e intervalos de Wilson, p IUT, p Holm, p Wilcoxon, conteos

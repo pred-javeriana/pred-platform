@@ -21,6 +21,9 @@
 {% macro problem(found) -%}
 {% if found.problem %}<section class="pred-unavailable"><h2>{{ found.problem.title }}</h2><p>{{ found.problem.detail }}</p></section>{% endif %}
 {%- endmacro %}
+{% macro unread_note(found) -%}
+{% if found.confirmation is none and found.confirmation_problem %}<p class="pred-note">{{ found.confirmation_problem.title }} {{ found.confirmation_problem.detail }}</p>{% endif %}
+{%- endmacro %}
 {% macro answer(question, sentence, label, tone="neutral") -%}
 <section class="pred-results-answer"><div class="pred-results-answer__top"><p>{{ question }}</p>{{ claim(label, tone) }}</div><p class="pred-results-answer__sentence">{{ sentence }}</p>{{ caller() }}</section>
 {%- endmacro %}

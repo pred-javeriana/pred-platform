@@ -11,7 +11,11 @@ Step 5 has six chapters under `/corridas/{id}/resultados/`: **Resumen** (`resume
 the filtered CSV stays on the Productos verdict list.
 `/resultados` redirects to the newest execution with a PUBLICADA M3 run. The old `vista=clase`
 query opens chapter 1, `vista=errores` opens its error-profile panel, and `vista=sku` or
-`vista=consulta` opens Productos, and `vista=exportar` opens the export chapter. Redirects keep filters, sort, page and the exact `m3` query.
+`vista=consulta` opens Productos, `vista=prueba` opens chapter 2, and `vista=exportar` opens the export chapter. Redirects keep filters, sort, page and the exact `m3` query.
+Chapter 3 shows, for each seed 0, 1 and 2, the newest PUBLICADA evaluation that
+`comparable_m3_runs` accepts beside the open one: the final group's own rules (same ingest,
+identity, protocol and products). A queued, failed or incompatible run leaves its seed pending and
+never hides a published one.
 A running execution without publication locks step 5. A finished execution without M3 evidence
 keeps the M2 reading. Productos has two readings: **Veredictos** and **Ver por familia**
 (`lista=familias`, the state and value of each family, plus the published champion and verdict).

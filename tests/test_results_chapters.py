@@ -37,8 +37,8 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]*>", " ", html)).strip()
 
 
-def _launch(env: Env, client: TestClient, seed: int):
-    values = {"ingest_id": env.ingest_id, "seed": str(seed), **_FORM}
+def _launch(env: Env, client: TestClient, seed: int, *, trials: str = "1"):
+    values = {"ingest_id": env.ingest_id, "seed": str(seed), **_FORM, "trials": trials}
     response = client.post("/ejecucion/lanzar", data=values, follow_redirects=False)
     # Estos ajustes dejan una clase con una familia: el operador acepta el aviso en Revisar.
     confirmation = re.search(r'name="confirmar" value="([^"]+)"', response.text)
@@ -72,6 +72,7 @@ def _publish(env: Env, client: TestClient, seed: int, *, only_smooth: bool = Fal
         run_id=run_id,
         verdicts=verdicts,
         significant=("FIL-0001",),
+        seed=seed,
     )
     with closing(sqlite3.connect(env.db)) as conn, conn:
         conn.execute(
@@ -485,7 +486,8 @@ def test_publication_time_is_l4_end_in_bogota_and_keeps_exact_utc_on_hover(
     # The rail shows the Bogotá day; its title keeps the exact L4 end.
     assert "Publicados 27 oct 2026" in _text(rail.group())
     assert "2026-10-27 14:36:00 UTC" in rail.group()
-    assert "27 oct 2026, 5:00 a. m." not in text
+    # The group chooser below names each option by its creation time; the page header must not.
+    assert "27 oct 2026, 5:00 a. m." not in text.split("Grupo final de semillas", 1)[0]
 
 
 def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
@@ -560,3 +562,210 @@ def test_product_list_defaults_to_25_rows_and_preserves_the_exact_run_on_page_tw
     html = client.get(unescape(second.group(1))).text
     assert re.findall(r'aria-label="Ver evidencia del SKU ([^"]+)"', html) == ["SKU-25"]
     assert "Página 2 de 2" in _text(html)
+
+
+def _sql(env: Env, statement: str, *args: object) -> None:
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(statement, args)
+
+
+def _three_seeds(env: Env, client: TestClient) -> list[str]:
+    return [_publish(env, client, seed, only_smooth=True) for seed in range(3)]
+
+
+@pytest.mark.parametrize(
+    ("table", "assignment", "where"),
+    [
+        (
+            "m3_corridas",
+            "identidad = json_set(identidad, '$.codigo_version', '0000000')",
+            "run_id = 'm3-ui-2'",
+        ),
+        (
+            "m3_protocolos",
+            "protocolo = json_set(protocolo, '$.politica.tolerancia_empate', 0.5)",
+            "run_id = 'm3-ui-2'",
+        ),
+        (
+            "m3_protocolos",
+            "protocolo = json_set(protocolo, '$.bloques.dias_reserva', 81)",
+            "run_id = 'm3-ui-2'",
+        ),
+        ("m3_veredictos", "sku_class = 'erratic'", "run_id = 'm3-ui-2' AND sku = 'FIL-0003'"),
+    ],
+    ids=["code", "policy", "blocks", "population"],
+)
+def test_stability_needs_runs_the_final_group_accepts_not_only_the_same_settings(
+    env: Env, table: str, assignment: str, where: str
+) -> None:
+    client = _dal_client(env)
+    first, *_ = _three_seeds(env, client)
+    _sql(env, f"UPDATE {table} SET {assignment} WHERE {where}")
+    stability = _text(client.get(f"/corridas/{first}/resultados/estabilidad").text)
+    summary = _text(client.get(f"/corridas/{first}/resultados/resumen").text)
+    for text in (stability, summary):
+        assert "La misma campeona gana y se confirma en las tres semillas" not in text
+    assert "Sin responder: faltan corridas publicadas" in stability
+    assert "2 de 3 confirmadas" in stability
+    assert "Semillas con resultados 2 de 3" in summary
+    assert "Pendiente" in stability
+
+
+def test_a_queued_relaunch_of_a_seed_does_not_hide_its_published_evaluation(env: Env) -> None:
+    client = _dal_client(env)
+    first, *_ = _three_seeds(env, client)
+    assert _launch(env, client, 1, trials="2").status_code == 303
+    html = client.get(f"/corridas/{first}/resultados/estabilidad").text
+    text = _text(html)
+    assert "La misma campeona gana y se confirma en las tres semillas" in text
+    assert "3 de 3 confirmadas" in text
+    assert "Sin resultados" not in text and "Pendiente" not in text
+    # The published seed 1 keeps its own run, not the queued one launched later.
+    assert re.search(r"Semilla 1 · #2", text)
+    summary = _text(client.get(f"/corridas/{first}/resultados/resumen").text)
+    assert "Semillas con resultados 3 de 3" in summary
+
+
+def test_a_confirmation_that_cannot_be_read_is_not_reported_as_absent(env: Env) -> None:
+    client = _dal_client(env)
+    first, *_ = _three_seeds(env, client)
+    _sql(env, "UPDATE m3_confirmaciones SET p_holm = 5 WHERE run_id = 'm3-ui-0'")
+    for chapter in ("resumen", "p2", "estabilidad"):
+        html = client.get(f"/corridas/{first}/resultados/{chapter}").text
+        text = _text(html)
+        assert "no es válida" in text, chapter
+        for absence in (
+            "no publicó pruebas",
+            "Sin confirmación publicada",
+            "Sin efecto publicado",
+            "Sin prueba publicada",
+            "0 con mejora verificada",
+        ):
+            assert absence not in text, (chapter, absence)
+    summary = _text(client.get(f"/corridas/{first}/resultados/resumen").text)
+    assert "No se pudo leer" in summary
+    assert "Con veredicto" in summary and "Evaluados" in summary  # the readable evidence stays
+    verification = _text(client.get(f"/corridas/{first}/resultados/p2").text)
+    assert "No se pudieron leer las pruebas por producto" in verification
+    assert "Validado no es lo mismo que significativo" in verification
+    stability = _text(client.get(f"/corridas/{first}/resultados/estabilidad").text)
+    assert "No se pudo leer la confirmación" in stability
+    assert "Sin responder: no se pudo leer una confirmación" in stability
+    assert "Respaldada" not in stability.split("Pregunta 3")[-1].split("Campeona por semilla")[0]
+
+
+def _histogram_counts(html: str) -> dict[str, list[int]]:
+    """Per class, the sum of each outcome column of the closed histogram table."""
+    table = re.search(r'aria-label="Distribución de r por tipo y prueba".*?</table>', html, re.S)
+    assert table is not None
+    header = re.findall(r'<th scope="col">([^<]+)</th>', table.group())
+    assert header[-1] == "Sin prueba"
+    totals: dict[str, list[int]] = {}
+    for label, counts in re.findall(
+        r'<tr><th scope="row">([^<]+)</th><td>[^<]*</td>((?:<td class="num">\d+</td>)+)</tr>',
+        table.group(),
+    ):
+        row = [int(n) for n in re.findall(r">(\d+)<", counts)]
+        previous = totals.setdefault(label, [0] * len(row))
+        totals[label] = [a + b for a, b in zip(previous, row, strict=True)]
+    return totals
+
+
+def test_a_product_with_r_and_no_test_stays_in_the_histogram_and_its_table(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    # FIL-0004 is the one erratic product: it has r but no test, with its published cause.
+    _sql(
+        env,
+        "UPDATE m3_veredictos SET dm_estadistico = NULL, dm_p_valor = NULL, "
+        "dm_p_ajustado = NULL, dm_alfa = NULL, dm_significativa = NULL, "
+        "dm_causa = 'datos_sinteticos' WHERE run_id = 'm3-ui-0' AND sku = 'FIL-0004'",
+    )
+    html = client.get(f"/corridas/{number}/resultados/p2").text
+    totals = _histogram_counts(html)
+    # Every product with a published r is counted once: three smooth, one erratic.
+    assert {label: sum(row) for label, row in totals.items()} == {
+        "Suave": 3,
+        "Errática": 1,
+        "Grumosa": 0,
+        "Intermitente": 0,
+    }
+    assert totals["Errática"] == [0, 0, 0, 1]
+    assert totals["Suave"] == [1, 1, 1, 0]
+    # The untested bin has its own colour in the chart, and its tooltip counts it.
+    assert 'fill="#ffffff" class="stack-part"' in html
+    assert "1 sin prueba" in html
+
+
+def _stability_chart(html: str) -> str:
+    start = html.index("Campeona frente a la línea base")
+    return html[start : html.index("</figure>", start)]
+
+
+def test_zero_and_infinite_effects_keep_their_range_and_off_scale_symbols(env: Env) -> None:
+    client = _dal_client(env)
+    first, second, third = _three_seeds(env, client)
+    _sql(
+        env, "UPDATE m3_confirmaciones SET efecto_mediana_r = ? WHERE run_id = 'm3-ui-1'", math.inf
+    )
+    _sql(env, "UPDATE m3_confirmaciones SET efecto_mediana_r = 0.0 WHERE run_id = 'm3-ui-2'")
+    chart = _stability_chart(client.get(f"/corridas/{first}/resultados/estabilidad").text)
+    assert "Rango ∞" in chart and "Rango 0,8000" not in chart
+    assert "0,800 / ∞ / 0,000" in _text(chart)
+    # Seeds 1 and 2 sit off the logarithmic scale: one arrow each, at its own edge.
+    assert len(re.findall(r"l-?8,-5 v10 z", chart)) == 2
+    assert "l8,-5 v10 z" in chart and "l-8,-5 v10 z" in chart
+    # The summary of the run whose effect is infinite names it instead of calling it absent.
+    summary = _text(client.get(f"/corridas/{second}/resultados/resumen").text)
+    assert "Sin límite (r = ∞)" in summary and not re.search(r"\binf\b", summary)
+    assert "Sin efecto publicado" not in summary
+    chapter = _text(client.get(f"/corridas/{second}/resultados/p1").text)
+    assert "Sin límite" in chapter and not re.search(r"\binf\b", chapter)
+
+
+def test_the_run_picker_keeps_the_chapter_on_every_chapter(env: Env) -> None:
+    client = _dal_client(env)
+    first, second, _ = _three_seeds(env, client)
+    for chapter in ("resumen", "p1", "p2", "estabilidad", "productos", "exportar"):
+        html = client.get(f"/corridas/{first}/resultados/{chapter}").text
+        form = re.search(r'<form[^>]*id="elegir-ejecucion".*?</form>', html, re.S)
+        assert form is not None, chapter
+        hidden = dict(
+            re.findall(r'<input type="hidden" name="(\w+)" value="([^"]*)"', form.group())
+        )
+        opened = client.get(
+            "/resultados", params={**hidden, "ejecucion": second}, follow_redirects=True
+        )
+        assert opened.status_code == 200
+        assert opened.url.path == f"/corridas/{second}/resultados/{chapter}", chapter
+
+
+@pytest.mark.parametrize(
+    ("reason", "comparable", "wording"),
+    [
+        ("sin_skus_comparables", "[]", "no hubo productos comparables"),
+        ("compuerta_linea_base", None, "ninguna familia supera a la línea base"),
+    ],
+)
+@pytest.mark.parametrize("chapter", ["resumen", "p1"])
+def test_a_baseline_kept_by_default_is_not_called_the_best_forecast(
+    published: tuple[TestClient, str],
+    env: Env,
+    reason: str,
+    comparable: str | None,
+    wording: str,
+    chapter: str,
+) -> None:
+    client, number = published
+    _sql(
+        env,
+        "UPDATE m3_categorias SET familia_campeona = 'seasonal_naive', motivo = ?, "
+        "skus_comparables = COALESCE(?, skus_comparables) WHERE run_id = 'm3-ui-0'",
+        reason,
+        comparable,
+    )
+    text = _text(client.get(f"/corridas/{number}/resultados/{chapter}").text)
+    assert not re.search(r"pronostica mejor (los|\d)", text)
+    assert wording in text
+    assert "Respaldada en esta corrida" not in text

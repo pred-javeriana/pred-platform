@@ -1271,17 +1271,16 @@ def profile_svg(rows: Sequence[models_v2.M3PortfolioRow], metric: str, sku_class
 
 def histogram_svg(
     rows: Sequence[models_v2.M3Verdict], sku_class: str
-) -> tuple[str, list[tuple[str, tuple[int, int, int]]]]:
-    """Cuenta filas publicadas en intervalos logarítmicos; los extremos no se descartan."""
+) -> tuple[str, list[tuple[str, tuple[int, int, int, int]]]]:
+    """Cuenta filas publicadas en intervalos logarítmicos; los extremos no se descartan.
+
+    Cada producto con r publicado cuenta una vez: mejora verificada, sin diferencia demostrada,
+    peor o sin prueba (la prueba no se hizo y el veredicto publica la causa).
+    """
     low, high, count = 0.4, 2.5, 26
-    bins = [[0, 0, 0] for _ in range(count + 2)]
+    bins = [[0, 0, 0, 0] for _ in range(count + 2)]
     for row in rows:
-        if (
-            row.sku_class != sku_class
-            or row.razon_sn is None
-            or row.dm_causa is not None
-            or row.dm_significativa is None
-        ):
+        if row.sku_class != sku_class or row.razon_sn is None:
             continue
         value = row.razon_sn
         index = (
@@ -1293,7 +1292,9 @@ def histogram_svg(
             + min(count - 1, int((math.log(value) - math.log(low)) / math.log(high / low) * count))
         )
         group = (
-            0
+            3
+            if row.dm_causa is not None
+            else 0
             if row.dm_significativa and row.dm_estadistico is not None and row.dm_estadistico < 0
             else 2
             if row.dm_significativa and row.dm_estadistico is not None and row.dm_estadistico > 0
@@ -1318,15 +1319,16 @@ def histogram_svg(
             if index == count + 1
             else f"{format_decimal(lo, 3)} ≤ r < {format_decimal(hi, 3)}"
         )
-        table.append((label, (values[0], values[1], values[2])))
+        table.append((label, (values[0], values[1], values[2], values[3])))
         y = float(bottom)
-        for n, color in zip(values, OUTCOME_COLORS[:3], strict=True):
+        for n, color in zip(values, OUTCOME_COLORS, strict=True):
             h = n / maximum * (bottom - top)
             y -= h
             if n:
+                outline = ' class="stack-part"' if color == OUTCOME_COLORS[3] else ""
                 body += (
                     f'<rect x="{left + index * band + 0.5:.2f}" y="{y:.2f}" '
-                    f'width="{band - 1:.2f}" height="{h:.2f}" fill="{color}"/>'
+                    f'width="{band - 1:.2f}" height="{h:.2f}" fill="{color}"{outline}/>'
                 )
         if sum(values):
             body += _hit(
@@ -1337,7 +1339,7 @@ def histogram_svg(
                 f"{sum(values)} productos",
                 f"{label} · {sku_class_label(sku_class)}",
                 f"{values[0]} con mejora verificada; {values[1]} sin diferencia demostrada; "
-                f"{values[2]} peores",
+                f"{values[2]} peores; {values[3]} sin prueba",
             )
     sx = _log_scale(low, high, left + band, right - band)
     body += _line(sx(1), top, sx(1), bottom, "reference")
@@ -1356,6 +1358,16 @@ def histogram_svg(
     return _result_svg(
         width, height, f"Distribución de r en {sku_class_label(sku_class)}", body
     ), table
+
+
+def _spread_text(values: Sequence[float]) -> str:
+    """La distancia entre los valores publicados; un ∞ aparte de un valor finito la hace ∞."""
+    if len(values) < 2:
+        return "-"
+    low, high = min(values), max(values)
+    if low == high:
+        return format_decimal(0.0, 4)
+    return "∞" if math.isinf(high) else format_decimal(high - low, 4)
 
 
 def stability_svg(
@@ -1385,7 +1397,7 @@ def stability_svg(
     for index, (label, values) in enumerate(rows):
         y = 42 + index * 36
         body += _text(0, y + 4, label, "strong")
-        present = [v for _, v, _ in values if v is not None and math.isfinite(v)]
+        present = [v for _, v, _ in values if v is not None]
         if present:
             body += _line(sx(min(present)), y, sx(max(present)), y, "interval", "#2c2f34")
         for seed, value, family in values:
@@ -1393,7 +1405,15 @@ def stability_svg(
                 continue
             color = FAMILY_COLORS.get(family or "", "#8d9198")
             x = sx(value)
-            if seed == 1:
+            if value == 0 or math.isinf(value):
+                # Fuera de la escala logarítmica: una flecha al borde, una por semilla.
+                direction = -1 if value == 0 else 1
+                nudge = -direction * seed * 9
+                body += (
+                    f'<path d="M{x + nudge:.2f},{y:.2f} l{-direction * 8},-5 v10 z" '
+                    f'fill="{color}" stroke="#2c2f34" stroke-width="1"/>'
+                )
+            elif seed == 1:
                 body += (
                     f'<rect x="{x - 6:.2f}" y="{y - 6:.2f}" width="12" height="12" '
                     f'fill="none" stroke="{color}" stroke-width="2"/>'
@@ -1403,7 +1423,7 @@ def stability_svg(
             else:
                 body += f'<circle cx="{x:.2f}" cy="{y:.2f}" r="5" fill="{color}"/>'
         value_text = " / ".join(ratio_text(value) for _, value, _ in values)
-        range_text = format_decimal(max(present) - min(present), 4) if len(present) >= 2 else "-"
+        range_text = _spread_text(present)
         body += _text(width - 82, y + 4, value_text, "num", "end") + _text(
             width, y + 4, range_text, "num strong", "end"
         )

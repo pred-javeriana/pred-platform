@@ -283,6 +283,14 @@ class DataRepository(Protocol):
         """Compute the final three-seed evidence on read, without persisting derived rows."""
         ...
 
+    def comparable_m3_runs(self, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
+        """The PUBLICADA runs of ``run_ids`` the final group accepts beside ``reference``.
+
+        Applies the group's own rules: same ingest, identity, protocol and population, and a
+        different seed. ``EvidenceInvalid`` if ``reference`` itself is not usable seed evidence.
+        """
+        ...
+
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """La confirmación del campeón en el bloque de prueba de una corrida PUBLICADA.
 
