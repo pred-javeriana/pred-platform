@@ -107,6 +107,28 @@ def test_polled_navigation_tracks_each_stage_without_reading_navigation_again(
         assert 'id="paso-datos"' in response.text and 'hx-preserve="true"' in response.text
 
 
+def test_polled_navigation_follows_a_resumed_run_from_queue_to_its_stage(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    stop = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+    assert stop.status_code == 303
+    assert "Detenida" in _navigation(client.get("/corridas/1/ejecucion").text, "barra-pasos")
+    resume = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+    assert resume.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
+    assert "En cola" in _navigation(client.get(resume.headers["location"]).text, "barra-pasos")
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+    _escribir_progreso(env, run.run_id, {"event": "stage_started", "stage": "L2"})
+    polled = client.get("/ejecucion/estado?ejecucion=1")
+    assert polled.status_code == 200
+    for element_id in ("barra-pasos", "resumen-paso"):
+        navigation = _navigation(polled.text, element_id)
+        assert "Etapa 2 de 4" in navigation
+        assert "En cola" not in navigation and "Detenida" not in navigation
+
+
 def test_step_four_keeps_one_poll_and_no_new_repository_reads() -> None:
     client, repo = _fixture_client("errores")
     page = client.get("/corridas/1/ejecucion")
