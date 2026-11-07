@@ -66,6 +66,8 @@
   transform: translateX(-100%);
   animation: pred-live-sheen 2.4s ease-in-out var(--pred-reloj, 0s) infinite;
 }
+/* Sin sondeo la página no se actualiza sola: el destello no promete avance. */
+.pred-live-stages.is-fija .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i::after { animation: none; }
 @keyframes pred-live-sheen { to { transform: translateX(100%); } }
 .pred-close-page { border-style: dashed; }
 .pred-close-page p,

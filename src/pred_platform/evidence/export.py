@@ -21,4 +21,9 @@ def document(result: GroupEvidence) -> dict[str, Any]:
             return [clean(v) for v in value]
         return value
 
-    return clean(asdict(result))
+    doc = {"complete": result.significance.complete, **clean(asdict(result))}
+    for product, row in zip(
+        result.significance.products, doc["significance"]["products"], strict=True
+    ):
+        row["worsened"] = product.worsened
+    return doc

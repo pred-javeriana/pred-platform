@@ -55,6 +55,8 @@ from pred_platform.data.run_status import (
     TaskCause,
     read_run_progress,
 )
+from pred_platform.worker import engine
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -94,15 +96,30 @@ def _stopped_by_operator(run: lectura.RunDetail) -> bool:
     return isinstance(error, dict) and error.get("code") == "platform.run_stopped"
 
 
-def _ejecucion(run: lectura.RunDetail) -> models.Ejecucion:
+def _run_state(run: lectura.RunDetail, db_path: Path) -> str:
+    """El estado que se muestra: el motor publica el final antes de que el worker lo cierre.
+
+    Mientras el motor de esta base siga vivo, o un worker sostenga el candado de la base y cierre
+    la corrida, el final guardado se oculta como ``ejecutando``. Sin ninguno de los dos (el worker
+    murió entre la publicación y la limpieza del pid) se muestra el estado guardado. Solo lee.
+    """
+    if run.pid is None or run.estado not in ("completada", "completada_con_fallos"):
+        return run.estado
+    if engine.engine_owner(run.pid, db_path) == "this":
+        return "ejecutando"
+    return "ejecutando" if WorkerLock.for_database(db_path).held_elsewhere() else run.estado
+
+
+def _ejecucion(run: lectura.RunDetail, db_path: Path) -> models.Ejecucion:
+    estado = _run_state(run, db_path)
     return models.Ejecucion(
         id=str(run.id),
         ingest_id=run.ingest_sha256,
         configuracion_id=str(run.configuracion_id),
         seed=run.seed,
-        estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+        estado=estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
         iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
-        finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
+        finalizada_en=run.finalizada_en if estado != "ejecutando" else None,  # type: ignore[arg-type]
     )
 
 
@@ -335,7 +352,7 @@ class DalRepository(M3DalSource):
 
     # -------------------------------------------------------------------- run status
     def list_runs(self) -> list[models.Ejecucion]:
-        return [_ejecucion(run) for run in lectura.list_runs(self.db_path)]
+        return [_ejecucion(run, self.db_path) for run in lectura.list_runs(self.db_path)]
 
     def get_run_causes(self, run_id: str) -> CauseSnapshot:
         run = lectura.get_run(self.db_path, run_id)
@@ -403,6 +420,7 @@ class DalRepository(M3DalSource):
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
+        estado_run = _run_state(run, self.db_path)
         etapa, skus_total, skus_terminados = None, None, None
         timings = []
         stopped_before_start = False
@@ -421,7 +439,7 @@ class DalRepository(M3DalSource):
             last_stage=etapa,
             stopped_before_start=stopped_before_start,
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
-            ejecucion=_ejecucion(run),
+            ejecucion=_ejecucion(run, self.db_path),
             settings=models.RunSettings(
                 schema_version=parametros.get("schema_version", 1),
                 configuracion_version=run.configuracion_version,
@@ -439,9 +457,9 @@ class DalRepository(M3DalSource):
                 tareas_total=total_tasks,
                 tareas_por_estado=by_state,  # type: ignore[arg-type]
                 avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
-                etapa_actual=etapa if run.estado == "ejecutando" else None,  # type: ignore[arg-type]
-                skus_total=skus_total if run.estado == "ejecutando" else None,
-                skus_terminados=skus_terminados if run.estado == "ejecutando" else None,
+                etapa_actual=etapa if estado_run == "ejecutando" else None,  # type: ignore[arg-type]
+                skus_total=skus_total if estado_run == "ejecutando" else None,
+                skus_terminados=skus_terminados if estado_run == "ejecutando" else None,
             ),
             tasks=[
                 models.Tarea(

@@ -31,7 +31,7 @@ FORM: dict[str, Any] = {
     "metric": "mae",
     "min_train": "40",
     "horizon": "2",
-    "step": "14",
+    "step": "7",
     "seasonality": "7",
     "trials": "1",
     "seed": "0",
@@ -635,7 +635,7 @@ def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
         "parametros": {
             "min_train": 40,
             "horizon": 2,
-            "step": 14,
+            "step": 7,
             "seasonality": 7,
             "metric": "mae",
             "families": ["classical", "ml"],

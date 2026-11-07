@@ -8,12 +8,12 @@
 {% from "components/evidence.html" import evidence_nav, evidence_panel %}
 
 {# El reloj y las transiciones no hacen lecturas: usan la respuesta del sondeo existente. #}
-{% macro run_pulse(run, progress) %}
-<div class="pred-run__pulse" id="pulso-ejecucion"{% if run.iniciada_en %} data-pred-started="{{ run.iniciada_en.isoformat() }}"{% endif %}>
+{% macro run_pulse(run, progress, poll) %}
+<div class="pred-run__pulse{% if not poll %} is-fija{% endif %}" id="pulso-ejecucion"{% if poll and run.iniciada_en %} data-pred-started="{{ run.iniciada_en.isoformat() }}"{% endif %}>
   <p class="pred-run__pulse-now"><span class="pred-run__pulse-dot" aria-hidden="true"></span><strong>Trabajando{% if current_stage %} en {{ current_stage }}{% endif %}.</strong></p>
   {% if progress and progress.etapa_actual %}<p class="pred-live__hint">{{ stage_term(progress.etapa_actual).hint }}</p>{% endif %}
   {% if progress and progress.skus_total is not none %}<p><strong><span data-pred-tween="skus-terminados-{{ progress.etapa_actual }}">{{ format_count(progress.skus_terminados) }}</span> de {{ format_count(progress.skus_total) }}</strong> productos terminados en esta etapa.</p>{% endif %}
-  {% if elapsed or poll %}<p class="pred-run__pulse-time">{% if elapsed %}Lleva <span id="pulso-transcurrido">{{ elapsed }}</span>{% endif %}{% if poll %}{% if elapsed %} · {% endif %}<span id="pulso-lectura">avance leído ahora</span>{% endif %}</p>{% endif %}
+  <p class="pred-run__pulse-time">{% if elapsed %}{{ "Desde el primer inicio" if resumed else "Lleva" }} <span id="pulso-transcurrido">{{ elapsed }}</span>{% endif %}{% if poll %}{% if elapsed %} · {% endif %}<span id="pulso-lectura">avance leído ahora</span>{% else %}{% if elapsed %} · {% endif %}esta página no se actualiza sola; recárguela para ver el avance{% endif %}</p>
 </div>
 {% endmacro %}
 
@@ -65,10 +65,10 @@
   {% set done = counts.get("exitosa", 0) if run.estado == "detenida" else counts.get("exitosa", 0) + counts.get("fallida", 0) + counts.get("no_ejecutable", 0) %}
   {% set pct = ((100 * done / progress.tareas_total) | round(1)) if run.estado == "detenida" and progress.tareas_total else (0.0 if run.estado == "detenida" else progress.avance_pct) %}
   <div class="pred-live">
-    <div class="pred-live__ring">{{ progress_bar(done, progress.tareas_total, pct, "Tareas exitosas antes de detenerse" if run.estado == "detenida" else "Avance de la ejecución", circular=true, working=run.estado == "ejecutando") }}</div>
+    <div class="pred-live__ring">{{ progress_bar(done, progress.tareas_total, pct, "Tareas exitosas antes de detenerse" if run.estado == "detenida" else "Avance de la ejecución", circular=true, working=run.estado == "ejecutando" and poll) }}</div>
     <div class="pred-live__reading">
   {% endif %}
-  {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress) }}{% endif %}
+  {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress, poll) }}{% endif %}
   {% if finished and elapsed %}<p class="pred-live__finished"><strong>Terminó en {{ elapsed }}.</strong></p>{% endif %}
   {% if outcome %}<p class="pred-run__outcome" id="resultado-ejecucion">{{ outcome }}</p>{% endif %}
   {% if run.estado == "detenida" and actions.offers_resume %}<p>Lo terminado queda guardado. Reanudar sigue desde la última tarea guardada.</p>{% endif %}
@@ -76,7 +76,7 @@
   <dl class="pred-facts">
     <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
     {# Mientras trabaja, el pulso de abajo cuenta el tiempo transcurrido. #}
-    {% if elapsed and run.estado != "ejecutando" %}<div><dt>{{ "Duración" if run.finalizada_en else "Tiempo transcurrido" }}</dt><dd>{{ elapsed }}</dd></div>{% endif %}
+    {% if elapsed and run.estado != "ejecutando" %}<div><dt>{{ "Desde el primer inicio" if resumed else "Duración" if run.finalizada_en else "Tiempo transcurrido" }}</dt><dd>{{ elapsed }}</dd></div>{% endif %}
     {% if run.finalizada_en %}<div><dt>Terminó</dt><dd>{{ when(run.finalizada_en) }}</dd></div>{% endif %}
     {% if run.ingest_id %}<div><dt>Datos</dt><dd><a href="/corridas/{{ run.id }}/datos" title="Ingesta {{ run.ingest_id }}">{% if run_ingest and run_ingest.file_name %}{{ run_ingest.file_name }}{% else %}<span class="mono">{{ abbreviate_id(run.ingest_id) }}</span>{% endif %}</a></dd></div>{% endif %}
     <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
@@ -107,6 +107,7 @@
   {% elif run.estado == "pendiente" and not control_reason %}
   <p class="pred-note">En cola: empezará cuando termine la ejecución anterior.</p>
   {% endif %}
+  {% if stopped_open %}<p class="pred-note">Las tareas abiertas se cerrarán cuando vuelva el procesador de ejecuciones.</p>{% endif %}
   {% if run.estado == "detenida" and not (progress and progress.tareas_total) and not actions.offers_resume %}
   <p class="pred-note pred-note--muted">La ejecución se detuvo antes de crear tareas. Revise el registro del motor (<span class="mono">motor.log</span> en la carpeta de la ejecución) y vuelva a lanzar.</p>
   {% endif %}
@@ -115,7 +116,7 @@
   {% if stage_rows %}
   <p class="pred-meta pred-stage-key">{% if stage_caption %}{{ stage_caption }}{% else %}Duración por etapa del intento actual · barras desde cero, en la misma escala. No es una estimación de lo que falta.{% endif %}</p>
   <ul class="pred-stage-legend" aria-label="Referencia de las barras"><li><i></i>Esta corrida</li>{% for reference in stage_history | default([]) %}<li><i class="is-reference-{{ loop.index0 }}"></i>Semilla {{ reference.seed }}</li>{% endfor %}</ul>
-  <ol class="pred-live-stages" aria-label="Etapas del motor">
+  <ol class="pred-live-stages{% if not poll %} is-fija{% endif %}" aria-label="Etapas del motor">
     {% for step in stage_rows %}
     <li class="is-{{ step.state }}" data-stage-code="{{ step.code }}" data-stage-seconds="{{ step.seconds if step.seconds is not none else '' }}">
       <span class="pred-steps__mark" aria-hidden="true">{% if step.state == "hecha" %}<svg><use href="#i-check"></use></svg>{% else %}{{ loop.index }}{% endif %}</span>

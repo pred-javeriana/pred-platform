@@ -93,12 +93,30 @@ def calculate_lumpy(
     # The final lumpy comparison is foundation against SARIMA and Seasonal Naive.
     # A different class champion cannot be attributed to new SARIMA draws.
     if set(champions.values()) != {"foundation"}:
+        effects = tuple(
+            SeedEffect(
+                run.run_id,
+                run.seed,
+                champions[run.run_id],
+                comparison,
+                count,
+                value,
+                0,
+                None,
+                "campeona_distinta",
+            )
+            for run in runs
+            for comparison in ("seasonal_naive", "classical")
+            if (run.run_id, comparison) in published
+            for count, value in [published[run.run_id, comparison]]
+        )
         return LumpyEvidence(
             tuple(sorted(common)),
+            effects,
             (),
             (),
-            (),
-            "La campeona de lumpy no es Fundacional en todas las corridas.",
+            "La campeona de la demanda grumosa cambia entre evaluaciones: la clase no es estable. "
+            "Se muestran las medianas publicadas de cada evaluación.",
         )
     comparisons = ("seasonal_naive", "classical")
     products = tuple(

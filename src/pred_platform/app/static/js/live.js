@@ -97,7 +97,7 @@
     if (!pulso) return;
     const transcurrido = document.getElementById("pulso-transcurrido");
     const inicio = Date.parse(pulso.dataset.predStarted || "");
-    if (transcurrido && isFinite(inicio)) {
+    if (!pausado && transcurrido && isFinite(inicio)) {
       transcurrido.textContent = duracionViva((Date.now() - inicio) / 1000);
     }
     const lectura = document.getElementById("pulso-lectura");
@@ -193,11 +193,14 @@
   });
   document.addEventListener("focusout", function () { setTimeout(reintentarTerminal, 0); });
   document.addEventListener("selectionchange", reintentarTerminal);
-  document.body.addEventListener("htmx:responseError", function (evento) {
-    if (evento.detail.target !== cuerpo()) return;
+  function errorSondeo(evento) {
+    if (evento.detail.target !== cuerpo() && evento.detail.elt !== cuerpo()) return;
     const ayuda = document.getElementById("actualizacion-ayuda");
     if (ayuda) ayuda.textContent = "No se pudo actualizar la ejecución. Recargue la página para reintentar.";
-  });
+  }
+  document.body.addEventListener("htmx:responseError", errorSondeo);
+  document.body.addEventListener("htmx:sendError", errorSondeo);
+  document.body.addEventListener("htmx:timeout", errorSondeo);
 
   // Las referencias llegaron con la página; los fragmentos no vuelven a leer ese historial.
   let referencias = [];

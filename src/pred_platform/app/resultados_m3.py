@@ -1027,7 +1027,10 @@ _CAUSES: dict[str, str] = {
     "datos_sinteticos": "datos sintéticos",
     "sin_familias_competidoras": "sin familias competidoras",
     "pocas_ventanas": "muy pocas ventanas para la prueba",
-    "varianza_no_positiva": "las diferencias de error no varían y la prueba no se puede calcular",
+    "varianza_no_positiva": (
+        "la varianza estimada de las diferencias de error no es positiva, "
+        "así que la prueba no se puede calcular"
+    ),
     "sin_ventanas_comunes": "el campeón y la línea base no comparten ventanas",
     "no_entregada": "no entregó resultados",
     "no_elegible": "no está admitida para esta clase",
