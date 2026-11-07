@@ -1,0 +1,69 @@
+{
+ "version": 1,
+ "summary": "Detiene el motor y todo su grupo cuando se interrumpe su supervisor, conserva las corridas publicadas y registra los errores de supervisión sin abandonar la cola.",
+ "files": [
+  {
+   "path": "src/pred_platform/worker/engine.py",
+   "summary": "Protege el motor ante la muerte del supervisor y distingue los procesos zombis.",
+   "annotations": [
+    {
+     "newRange": [
+      165,
+      170
+     ],
+     "summary": "El lanzamiento solicita SIGTERM del kernel cuando muere el supervisor en Linux.",
+     "rationale": "Un cierre abrupto puede impedir la limpieza de Python. El prefijo conserva el PID del motor y evita ejecutar código previo al arranque dentro de un proceso con hilos. Las pruebas reproducen la muerte forzada y dos interrupciones seguidas con recarga. La integración con el motor real pasó 11 pruebas. El sistema necesita setpriv en PATH.",
+     "author": "fm/pred-platform-worker-robustness"
+    },
+    {
+     "newRange": [
+      198,
+      222
+     ],
+     "summary": "engine_owner revisa también los miembros del grupo del PID registrado.",
+     "rationale": "Un envoltorio del comando puede morir por la señal del kernel y dejar al motor vivo en su grupo. Sin esta revisión, la recuperación veía un PID muerto y lanzaba un segundo motor sobre el mismo run_id. La prueba con un envoltorio sh y un worker matado con SIGKILL lo reproduce.",
+     "author": "fm/pred-platform-worker-robustness"
+    },
+    {
+     "newRange": [
+      304,
+      320
+     ],
+     "summary": "terminate espera a que no quede ningún miembro vivo del grupo antes de volver.",
+     "rationale": "Antes bastaba un líder zombi para salir sin SIGKILL, y un miembro que ignora SIGTERM seguía vivo. El líder solo, ya zombi, sigue saliendo de inmediato, así se mantiene la corrección del plazo de cierre.",
+     "author": "fm/pred-platform-worker-robustness"
+    }
+   ]
+  },
+  {
+   "path": "src/pred_platform/worker/bucle.py",
+   "summary": "Liquida cada reclamo cuyo seguimiento falla y conserva el reintento del diagnóstico si la base no responde.",
+   "annotations": [
+    {
+     "newRange": [
+      205,
+      216
+     ],
+     "summary": "run_next registra el error inesperado y detiene el reclamo antes de atender otra corrida.",
+     "rationale": "El manejador anterior detenía el proceso pero dejaba la fila ejecutando sin supervisor. Se reutiliza la liquidación pendiente para conservar el diagnóstico durante fallos de base. Las pruebas con progreso malformado comprueban el cierre del hijo, el error guardado y la ejecución de la siguiente corrida.",
+     "author": "fm/pred-platform-worker-robustness"
+    }
+   ]
+  },
+  {
+   "path": "src/pred_platform/dal/ejecuciones.py",
+   "summary": "Conserva el estado publicado al liquidar un reclamo.",
+   "annotations": [
+    {
+     "newRange": [
+      309,
+      319
+     ],
+     "summary": "stop_claimed solo libera el PID y fija la hora de fin cuando el motor ya publicó la corrida.",
+     "rationale": "El motor puede publicar completada antes de que el supervisor recoja su proceso. Si la supervisión falla en esa ventana, el resultado publicado se conserva en lugar de pasar a detenida. La regresión directa y la de progreso malformado tras publicar fallaban antes y pasan ahora.",
+     "author": "fm/pred-platform-worker-robustness"
+    }
+   ]
+  }
+ ]
+}
