@@ -212,10 +212,12 @@ def test_artifact_missing_sugiere_reanudar_y_es_reintentable() -> None:
     assert mensajes.reintentable("platform.artifact_missing") is True
 
 
-def test_input_missing_pide_volver_a_cargar_y_no_se_reintenta() -> None:
+def test_input_missing_pide_restaurar_y_reanudar_la_misma_ejecucion() -> None:
     descripcion = mensajes.describir({"code": "platform.input_missing", "stage": "platform"})
     assert descripcion.titulo == "No se encontró el archivo de datos de la ingesta."
-    assert descripcion.accion == "Vuelva a cargar el archivo en Datos y lance una nueva ejecución."
+    assert descripcion.accion == (
+        "Vuelva a cargar el mismo archivo en Datos y reanude esta ejecución."
+    )
     assert descripcion.reintentable is False
 
 

@@ -47,6 +47,8 @@ from pred_platform.data.query import (
     paginate,
 )
 from pred_platform.data.repository import ArtifactDownload
+from pred_platform.worker import engine
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -119,15 +121,30 @@ def _missing(capability: CapabilityId, what: str) -> Never:
     )
 
 
-def _ejecucion(run: lectura.RunDetail) -> models.Ejecucion:
+def _run_state(run: lectura.RunDetail, db_path: Path) -> str:
+    """El estado que se muestra: el motor publica el final antes de que el worker lo cierre.
+
+    Mientras el motor de esta base siga vivo, o un worker sostenga el candado de la base y cierre
+    la corrida, el final guardado se oculta como ``ejecutando``. Sin ninguno de los dos (el worker
+    murió entre la publicación y la limpieza del pid) se muestra el estado guardado. Solo lee.
+    """
+    if run.pid is None or run.estado not in ("completada", "completada_con_fallos"):
+        return run.estado
+    if engine.engine_owner(run.pid, db_path) == "this":
+        return "ejecutando"
+    return "ejecutando" if WorkerLock.for_database(db_path).held_elsewhere() else run.estado
+
+
+def _ejecucion(run: lectura.RunDetail, db_path: Path) -> models.Ejecucion:
+    estado = _run_state(run, db_path)
     return models.Ejecucion(
         id=str(run.id),
         ingest_id=run.ingest_sha256,
         configuracion_id=str(run.configuracion_id),
         seed=run.seed,
-        estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+        estado=estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
         iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
-        finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
+        finalizada_en=run.finalizada_en if estado != "ejecutando" else None,  # type: ignore[arg-type]
     )
 
 
@@ -360,7 +377,7 @@ class DalRepository(M3DalSource):
 
     # -------------------------------------------------------------------- run status
     def list_runs(self) -> list[models.Ejecucion]:
-        return [_ejecucion(run) for run in lectura.list_runs(self.db_path)]
+        return [_ejecucion(run, self.db_path) for run in lectura.list_runs(self.db_path)]
 
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         # Written by the worker (``worker/errores.py``); one that is not an ErrorInfo is not shown.
@@ -415,15 +432,16 @@ class DalRepository(M3DalSource):
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
+        estado_run = _run_state(run, self.db_path)
         etapa, skus_total, skus_terminados = None, None, None
-        if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
+        if estado_run == "ejecutando" and run.ruta_corrida and self.data_root is not None:
             etapa, skus_total, skus_terminados = _avance_en_curso(
                 self.data_root / run.ruta_corrida / "progreso.jsonl"
             )
         parametros = json.loads(run.parametros)
         return models.RunStatus(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
-            ejecucion=_ejecucion(run),
+            ejecucion=_ejecucion(run, self.db_path),
             settings=models.RunSettings(
                 schema_version=parametros.get("schema_version", 1),
                 configuracion_version=run.configuracion_version,

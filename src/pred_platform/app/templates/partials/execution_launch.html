@@ -72,7 +72,7 @@
     <div class="pred-launch__grid">
       {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", error=form_errors.get("step", "")) }}
       {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", error=form_errors.get("seasonality", "")) }}
-      {{ field("trials", "Configuraciones por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", error=form_errors.get("trials", "")) }}
+      {{ field("trials", "Configuraciones por SKU y familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto en cada SKU.", error=form_errors.get("trials", "")) }}
       {{ field("seed", "Semilla", value=form.seed, input_type="number", error=form_errors.get("seed", "")) }}
       {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", error=form_errors.get("workers", "")) }}
     </div>
