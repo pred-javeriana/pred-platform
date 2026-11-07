@@ -101,7 +101,7 @@ after(async () => {
     chrome.kill();
     await exited;
   }
-  if (profile) await rm(profile, { recursive: true, force: true });
+  if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 afterEach(() => {
