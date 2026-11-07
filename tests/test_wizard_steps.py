@@ -37,6 +37,26 @@ def _launch_payload(html: str) -> dict[str, Any]:
     return payload
 
 
+@pytest.mark.parametrize("step", ["ajustes", "revisar"])
+@pytest.mark.parametrize("reported", [False, True])
+def test_records_keep_the_window_aggregation(env: Env, step: str, reported: bool) -> None:
+    client = _dal_client(env)
+    _launch(client, env)
+    if reported:
+        _execute(
+            env,
+            "UPDATE configuraciones SET parametros=json_set(parametros, "
+            "'$.aggregation', 'media', '$.trim', 0.2)",
+        )
+    html = _text(client.get(f"/corridas/1/{step}").text)
+    assert "Resumen de las ventanas" in html
+    assert (
+        "Media (recorte del 20 % en cada extremo)"
+        if reported
+        else "Lo informa el motor al terminar la ejecución"
+    ) in html
+
+
 def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env) -> None:
     client = _dal_client(env)
     _launch(client, env, seasonality="14", trials="3", workers="7", seed="1")

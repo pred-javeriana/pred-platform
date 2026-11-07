@@ -252,6 +252,7 @@ def _render_page(
     report_error = layer_error
     topology: TopologyReport | None = None
     topology_error = None
+    overview_error = None
     topology_query = None
     topology_pages = None
     chart_svg = None
@@ -290,15 +291,22 @@ def _render_page(
             topology_pages = page_meta(topology.page)
             if topology.availability.status == "available":
                 chart_svg = topology_scatter_svg(topology)
-                whole = repository.get_topology_report(report.ingest_id, size=MAX_SIZE)
-                items = list(whole.items)
-                for page in range(2, (whole.page.total + MAX_SIZE - 1) // MAX_SIZE + 1):
-                    items.extend(
-                        repository.get_topology_report(
-                            report.ingest_id, size=MAX_SIZE, page=page
-                        ).items
+                try:
+                    whole = repository.get_topology_report(report.ingest_id, size=MAX_SIZE)
+                    items = list(whole.items)
+                    for page in range(2, (whole.page.total + MAX_SIZE - 1) // MAX_SIZE + 1):
+                        items.extend(
+                            repository.get_topology_report(
+                                report.ingest_id, size=MAX_SIZE, page=page
+                            ).items
+                        )
+                    summary_chart_svg = demand_scatter_svg(
+                        whole.model_copy(update={"items": items})
                     )
-                summary_chart_svg = demand_scatter_svg(whole.model_copy(update={"items": items}))
+                except DataLayerError as exc:
+                    overview_error = error_view(exc)
+                except InvalidQuery as exc:
+                    query_error = str(exc)
             else:
                 topology_error = {
                     "code": topology.availability.reason_code,
@@ -366,6 +374,7 @@ def _render_page(
         else None,
         "topology": topology,
         "topology_error": topology_error,
+        "overview_error": overview_error,
         "topology_query": topology_query,
         "topology_pages": topology_pages,
         "chart_svg": chart_svg,

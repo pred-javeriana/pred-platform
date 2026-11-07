@@ -10,6 +10,7 @@
       {{ field("horizon", "Horizonte (días)", value=form.horizon, input_type="number", disabled=record, error=evaluation_errors.get("horizon", "")) }}
       {{ field("seed", "Semilla", value=form.seed, input_type="number", hint="El grupo de la tesis usa 0, 1 y 2.", disabled=record, error=evaluation_errors.get("seed", "")) }}
     </div>
+    {% if record %}<dl class="pred-check">{% for label, value in review_rows if label == 'Resumen de las ventanas' %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
     <details class="pred-details pred-launch__advanced"{% if not record and not selected_ingest or evaluation_errors | select("in", ["ingest_id", "step", "seasonality", "trials", "workers"]) | list %} open{% endif %}>
       <summary>Ajustes de búsqueda y reproducibilidad</summary>
       <div class="pred-settings-grid">

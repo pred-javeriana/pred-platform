@@ -573,15 +573,17 @@ def _render_record(
     if facts.ingest_id:
         with suppress(DataLayerError, InvalidQuery):
             by_class = repository.get_topology_report(facts.ingest_id, size=1).summary.by_class
+    rows = settings_items(status.settings) if status.settings else []
+    if values is not None:
+        stored_labels = {label for label, _ in rows}
+        rows.extend(row for row in draft_items(values) if row[0] not in stored_labels)
     context = {
         "wizard": run_wizard(step, facts),
         "source": repository.source,
         "record": True,
         "facts": facts,
         "run": status.ejecucion,
-        "review_rows": draft_items(values)
-        if values is not None
-        else (settings_items(status.settings) if status.settings else []),
+        "review_rows": rows,
         "form": values,
         "record_error": record_error,
         "family_choices": FAMILY_CHOICES,

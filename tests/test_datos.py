@@ -11,6 +11,7 @@ from pred_platform.app.datos import PendingUpload, PendingUploads
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract import models
+from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures import FixtureRepository
@@ -64,6 +65,23 @@ def _client(tmp_path: Path, scenario: str = "normal") -> tuple[TestClient, Recor
     repo = RecordingRepository(scenario)
     app.state.repository = repo
     return TestClient(app), repo
+
+
+def test_overview_failure_keeps_the_filtered_products(tmp_path: Path, monkeypatch) -> None:
+    client, repo = _client(tmp_path)
+    read = repo.get_topology_report
+
+    def topology(ingest_id, **kwargs):
+        if kwargs.get("size") == 500:
+            raise ArtifactMissing("No se pudo leer el mapa completo")
+        return read(ingest_id, **kwargs)
+
+    monkeypatch.setattr(repo, "get_topology_report", topology)
+    html = client.get(f"/corridas/nueva/datos?ingest_id={ACCEPTED}&q=FIL-0001&size=10").text
+    assert "No se pudo leer el mapa completo" in html
+    assert "Topología por SKU de la página filtrada" in html
+    assert 'class="mono">FIL-0001</span>' in html
+    assert 'id="filtros-topologia"' in html
 
 
 def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path) -> None:
