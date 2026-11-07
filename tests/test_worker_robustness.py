@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
@@ -118,11 +119,23 @@ def test_malformed_progress_stops_the_claim_and_the_loop_runs_the_next_run(
     thread = threading.Thread(target=worker.run_forever, args=(stop,), daemon=True)
     thread.start()
     try:
-        _wait(lambda: env.rows("SELECT estado FROM ejecuciones") == [("detenida",)], timeout=8)
-        assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
-        assert children[0].poll() is not None
+        _wait(
+            lambda: (
+                bool(children)
+                and children[0].poll() is not None
+                and env.rows("SELECT estado, pid FROM ejecuciones")[0]
+                in (("detenida", None), ("completada", None))
+            ),
+            timeout=8,
+            what="the claim to settle",
+        )
         assert "KeyError" in caplog.text
-        assert "sku_id" in env.rows("SELECT error_json FROM ejecuciones")[0][0]
+        ((estado, error),) = env.rows("SELECT estado, error_json FROM ejecuciones")
+        if scenario == "malformed_after_publication":
+            # The engine already published the run: settling the claim keeps its result.
+            assert (estado, error) == ("completada", None)
+        else:
+            assert estado == "detenida" and "sku_id" in error
         monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "ok")
         enqueue_run(env.settings, env.ingest_id, replace(SMALL, seed=18))
         _wait(lambda: env.rows("SELECT estado FROM ejecuciones ORDER BY id")[-1][0] == "completada")
@@ -270,6 +283,114 @@ def test_two_fast_interrupts_with_reload_do_not_leave_an_engine(env: Env):
         process.wait(timeout=10)
         if pid is not None and engine.is_alive(pid):
             engine.terminate(pid, grace=0.1)
+
+
+def test_settling_a_claim_keeps_a_run_the_engine_already_published(env: Env):
+    from pred_platform.dal import ejecuciones as dal
+    from pred_platform.worker.errores import run_stopped_error
+
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        with conn:
+            conn.execute("UPDATE ejecuciones SET estado='completada', pid=55555")
+        dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
+    ((estado, pid, error, finished),) = env.rows(
+        "SELECT estado, pid, error_json, finalizada_en FROM ejecuciones"
+    )
+    assert (estado, pid, error) == ("completada", None, None)
+    assert finished is not None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+def test_termination_kills_group_members_that_survive_sigterm(tmp_path: Path):
+    marker = tmp_path / "member.pid"
+    member = (
+        "import signal, sys, time; from pathlib import Path; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "Path(sys.argv[1]).write_text(str(__import__('os').getpid())); time.sleep(300)"
+    )
+    leader_code = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {member!r}, sys.argv[1]]); time.sleep(300)"
+    )
+    leader = subprocess.Popen(
+        [sys.executable, "-c", leader_code, str(marker)], start_new_session=True
+    )
+    member_pid = None
+    try:
+        _wait(lambda: marker.exists() and marker.read_text() != "", timeout=10)
+        member_pid = int(marker.read_text())
+        engine.terminate(leader.pid, grace=1)
+        # The leader dies on SIGTERM and stays a zombie until reaped; the member ignores
+        # SIGTERM, so only the SIGKILL after the grace period stops it.
+        _wait(lambda: not engine.is_alive(member_pid), timeout=3, what="member to be killed")
+    finally:
+        if _group_exists(leader.pid):
+            os.killpg(leader.pid, signal.SIGKILL)
+        leader.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="muerte del supervisor en Linux")
+def test_recovery_stops_an_engine_a_wrapper_left_behind_before_relaunching(
+    env: Env, tmp_path: Path, monkeypatch
+):
+    # A wrapper runs the engine as its child, as a resource-slot script or `uv run` does.
+    # The kernel stops only the wrapper when the supervisor dies abruptly.
+    wrapper = tmp_path / "engine-wrapper.sh"
+    wrapper.write_text(
+        f'#!/bin/sh\n{" ".join(env.settings.engine_command)} "$@" &\nwait\n', encoding="utf-8"
+    )
+    wrapper.chmod(0o755)
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    worker = subprocess.Popen(
+        [sys.executable, "-m", "pred_platform.worker"],
+        env={
+            **os.environ,
+            "PRED_DATA_ROOT": str(env.settings.data_root),
+            "PRED_DB_PATH": str(env.db),
+            "PRED_ENGINE_CMD": str(wrapper),
+            "FAKE_ENGINE_SCENARIO": "slow",
+        },
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    group = None
+    orphans: list[int] = []
+    try:
+        _wait(lambda: env.rows("SELECT COUNT(*) FROM tareas")[0][0] > 0)
+        group = env.rows("SELECT pid FROM ejecuciones")[0][0]
+        worker.kill()
+        worker.wait(timeout=10)
+        _wait(lambda: not engine.is_alive(group), timeout=3, what="wrapper to stop")
+        orphans = [p.pid for p in psutil.process_iter() if _pgid(p.pid) == group]
+        assert orphans and all(engine.is_alive(pid) for pid in orphans)
+
+        launched_beside: list[list[int]] = []
+
+        def launcher(command, **kwargs):
+            launched_beside.append([pid for pid in orphans if engine.is_alive(pid)])
+            return engine.launch(command, **kwargs)
+
+        monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "ok")
+        Worker(env.settings, launcher=launcher).drain()
+
+        assert launched_beside == [[]]  # no second engine while the first still ran
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait(timeout=10)
+        if group is not None and _group_exists(group):
+            os.killpg(group, signal.SIGKILL)
+
+
+def _pgid(pid: int) -> int | None:
+    try:
+        return os.getpgid(pid)
+    except OSError:
+        return None
 
 
 def _group_exists(pid: int) -> bool:
