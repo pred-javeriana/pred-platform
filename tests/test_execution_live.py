@@ -62,6 +62,11 @@ def test_polled_navigation_moves_from_queue_to_published_without_reloading(
     unpublished = client.get("/ejecucion/estado?ejecucion=1")
     assert unpublished.status_code == 286
     assert "Sin evaluación final publicada" in _navigation(unpublished.text, "barra-pasos")
+    # Only the data step, which polling does not reread, keeps its old markup.
+    assert "Lanzada · en cola" in _navigation(queued, "barra-pasos")
+    assert "Lanzada · en cola" not in _navigation(unpublished.text, "barra-pasos")
+    assert re.search(r'id="paso-revisar"(?! hx-preserve)', unpublished.text)
+    assert re.search(r'id="paso-datos" hx-preserve="true"', unpublished.text)
     assert "Parciales" not in _navigation(unpublished.text, "navegacion-pasos")
     # The engine double announces publication but does not write M3 rows. Supply the
     # published repository documents separately, as when the real engine commits its evidence.
