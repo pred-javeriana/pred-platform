@@ -294,6 +294,22 @@ def test_a_working_run_shows_what_it_is_doing_and_that_it_is_still_alive() -> No
     assert "pred-progress__sweep" in html and 'data-pred-tween="avance-pct"' in html
 
 
+def test_execution_state_in_stage_l3_uses_stage_qualified_skus_terminados_tween(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, repo = _fixture_client("normal")
+    status = repo.get_run_status("latest")
+    assert status.progress is not None
+    updated_progress = status.progress.model_copy(
+        update={"etapa_actual": "L3", "skus_total": 7, "skus_terminados": 3}
+    )
+    updated = status.model_copy(update={"progress": updated_progress})
+    monkeypatch.setattr(repo, "get_run_status", lambda *args, **kwargs: updated)
+    response = client.get("/ejecucion/estado")
+    assert response.status_code in (200, 286)
+    assert 'data-pred-tween="skus-terminados-L3"' in response.text
+
+
 def test_a_page_that_does_not_poll_does_not_say_when_it_read_the_progress() -> None:
     # Fixtures (and a read-only copy) never read the progress again: a «read now» line would
     # turn into «the server does not answer» after 12 s, about a server that is fine.
@@ -560,7 +576,7 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert response.status_code == 200
     assert "Mínimo de entrenamiento (días): escriba un número entero." in text
     assert "Horizonte (días): debe ser mayor que cero." in text
-    assert "Configuraciones a probar por familia: debe ser mayor que cero." in text
+    assert "Configuraciones por familia: debe ser mayor que cero." in text
     assert "Elija al menos una familia de modelos." in text
     assert "Elija una de las métricas de la lista." in text
     assert 'value="abc"' in response.text  # what the operator typed is kept
@@ -761,14 +777,14 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         (
             "trials",
             str(2**63),
-            "Configuraciones a probar por familia: el número es demasiado grande.",
+            "Configuraciones por familia: el número es demasiado grande.",
         ),
         ("workers", str(2**63), "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
         (
             "trials",
             "9" * 4301,
-            "Configuraciones a probar por familia: el número es demasiado grande.",
+            "Configuraciones por familia: el número es demasiado grande.",
         ),
         ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "+" + "9" * 4301, "Semilla: el número es demasiado grande."),
@@ -776,18 +792,18 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         (
             "trials",
             "+" + "9" * 4301,
-            "Configuraciones a probar por familia: el número es demasiado grande.",
+            "Configuraciones por familia: el número es demasiado grande.",
         ),
         (
             "trials",
             "\u0669" * 4301,
-            "Configuraciones a probar por familia: el número es demasiado grande.",
+            "Configuraciones por familia: el número es demasiado grande.",
         ),
         ("seed", "-" + "9" * 4301, "Semilla: debe ser cero o más."),
         (
             "trials",
             "-" + "9" * 4301,
-            "Configuraciones a probar por familia: debe ser mayor que cero.",
+            "Configuraciones por familia: debe ser mayor que cero.",
         ),
     ],
 )
@@ -1397,7 +1413,7 @@ def test_the_data_surface_continues_to_the_settings_of_that_ingestion(env: Env) 
     )
     assert (chosen.status_code, chosen.headers["location"]) == (303, "/corridas/nueva/ajustes")
     settings = client.get("/corridas/nueva/ajustes").text
-    assert f'<option value="{env.ingest_id}" selected>' in settings
+    assert re.search(rf'<option value="{env.ingest_id}"[^>]*selected', settings)
 
 
 # ------------------------------------------------------------------------------ las ayudas

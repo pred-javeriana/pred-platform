@@ -113,6 +113,10 @@ def test_each_verdict_has_a_spanish_label_and_a_one_line_explanation() -> None:
     for status in shown:
         assert status.hint and status.hint.endswith(".") and "\n" not in status.hint
         assert "_" not in status.hint and len(status.hint) <= 90
+    assert (
+        describe_status("verdict", "NO_EVALUABLE").hint
+        == "No hay datos de demanda registrados en el periodo de prueba."
+    )
     assert [status.code for status in shown] == list(verdicts)
     assert len({(status.icon, status.modifier) for status in shown}) == len(verdicts)
     # Filters send the contract code and show the label.

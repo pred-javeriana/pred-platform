@@ -111,7 +111,7 @@ _VERDICT: dict[str, StatusPresentation] = {
         "i-ban",
         "No evaluable",
         "neutral",
-        "No hay demanda observada en el periodo de prueba.",
+        "No hay datos de demanda registrados en el periodo de prueba.",
     ),
     "EVIDENCIA_INSUFICIENTE": StatusPresentation(
         "i-minus-circle",

@@ -1,4 +1,4 @@
-{% from "components/terms.html" import when %}
+{% from "components/terms.html" import term, when %}
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
@@ -54,7 +54,7 @@
       {% for item in rows %}
       <tr>
         <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ item.row.sku_id | urlencode }}?{{ query.detail_query() }}" aria-label="Ver evidencia del SKU {{ item.row.sku_id }}">{{ item.row.sku_id }}</a></th>
-        <td class="pred-demand-class" title="{{ sku_class_term(item.row.sku_class).hint }}">{{ sku_class_label(item.row.sku_class) }}</td>
+        <td class="pred-demand-class">{{ term(sku_class_term(item.row.sku_class)) }}</td>
         <td>
           {% set verdict = m3.verdicts.get(item.row.sku_id) %}
           {% if verdict %}

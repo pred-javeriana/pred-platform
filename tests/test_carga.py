@@ -207,7 +207,7 @@ def test_uploading_in_the_browser_leads_to_the_diagnosis_and_the_topology(env: E
     # The accepted file stays chosen for the new run: Ajustes opens with it.
     assert "pred_borrador=" in response.headers["set-cookie"]
     ajustes = client.get("/corridas/nueva/ajustes").text
-    assert f'<option value="{_sha(content)}" selected>' in ajustes
+    assert re.search(rf'<option value="{_sha(content)}"[^>]*selected', ajustes)
 
 
 def test_a_conflicting_upload_goes_through_the_confirmation_step(env: Env) -> None:

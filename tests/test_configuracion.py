@@ -178,7 +178,7 @@ def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
     assert re.search(r'value="classical"[^>]*checked', page.text)
     assert re.search(r'value="ml"[^>]*checked', page.text)
     assert not re.search(r'value="dl"[^>]*checked', page.text)
-    assert f'<option value="{env.ingest_id}" selected>' in page.text
+    assert re.search(rf'<option value="{env.ingest_id}"[^>]*selected', page.text)
     # Importar no creó nada.
     after = (
         env.rows("SELECT COUNT(*) FROM ejecuciones")[0]

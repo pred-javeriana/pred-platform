@@ -284,15 +284,13 @@ def parse_launch_form(
             trials = _form_int(values["trials"])
         except ValueError:
             errors["trials"] = (
-                "Configuraciones a probar por familia: escriba un número entero o déjelo vacío."
+                "Configuraciones por familia: escriba un número entero o déjelo vacío."
             )
         else:
             if trials < 1:
-                errors["trials"] = "Configuraciones a probar por familia: debe ser mayor que cero."
+                errors["trials"] = "Configuraciones por familia: debe ser mayor que cero."
             elif trials > SQLITE_MAX_INTEGER:
-                errors["trials"] = (
-                    "Configuraciones a probar por familia: el número es demasiado grande."
-                )
+                errors["trials"] = "Configuraciones por familia: el número es demasiado grande."
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
     elif not set(values["families"]) <= {key for key, _ in FAMILY_CHOICES}:

@@ -1,4 +1,5 @@
 {% from "components/tables.html" import table_start, table_end %}
+{% from "components/terms.html" import term %}
 {# Los perfiles de error de la evaluación final resuelta (m3_cartera). m3_profiles es un
    M3Profiles. #}
 {% if m3_profiles.problem %}
@@ -17,8 +18,8 @@
   {{ table_start(["Clase", "Familia", "Media", "Mediana", "p25", "p75", "SKU", "Instancias", "No calculables"], "Perfiles de error de la ejecución") }}
   {% for row in m3_profiles.rows %}
   <tr{% if loop.first or row.sku_class != loop.previtem.sku_class %} class="pred-table__group-start"{% endif %}>
-    <td class="pred-demand-class">{% if loop.first or row.sku_class != loop.previtem.sku_class %}<span title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</span>{% else %}<span class="pred-sr-only">{{ sku_class_label(row.sku_class) }}</span>{% endif %}</td>
-    <td class="pred-nowrap" title="{{ family_term(row.familia).hint }}">{{ family_label(row.familia) }}</td>
+    <td class="pred-demand-class">{% if loop.first or row.sku_class != loop.previtem.sku_class %}{{ term(sku_class_term(row.sku_class)) }}{% else %}<span class="pred-sr-only">{{ sku_class_label(row.sku_class) }}</span>{% endif %}</td>
+    <td class="pred-nowrap">{{ term(family_term(row.familia)) }}</td>
     {% for value in (row.media, row.mediana, row.p25, row.p75) %}
     <td class="num"{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}>{% if value is none %}—{% elif m3_profiles.metrica == "razon_sn" %}{{ ratio_text(value) }}{% else %}{{ format_decimal(value, 3) }}{% endif %}</td>
     {% endfor %}

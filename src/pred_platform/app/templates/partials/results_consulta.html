@@ -2,7 +2,7 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 {% from "components/status.html" import status_indicator, verdict_legend %}
-{% from "components/terms.html" import gloss %}
+{% from "components/terms.html" import gloss, term %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {# Los veredictos de la evaluación final resuelta, uno por SKU (RF-CON-05). m3_consulta es un
    M3Consulta; cq, su consulta. El repositorio filtra, ordena y pagina; aquí solo se muestra. #}
@@ -60,9 +60,9 @@
     {% for row in evidence.items %}
     <tr>
       <th scope="row" class="pred-sku"><a class="mono" href="/resultados/sku/{{ row.sku | urlencode }}?{{ cq.detail_query() }}" aria-label="Ver evidencia del SKU {{ row.sku }}">{{ row.sku }}</a></th>
-      <td class="pred-demand-class" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</td>
+      <td class="pred-demand-class">{{ term(sku_class_term(row.sku_class)) }}</td>
       {% set model = champion_model(row) %}
-      <td><span class="pred-nowrap" title="{{ family_term(row.familia_campeona).hint }}">{{ family_label(row.familia_campeona) }}</span>{% if model %}<span class="pred-subvalue" title="{{ model_term(model).hint }}">{{ model_label(model) }}</span>{% endif %}</td>
+      <td><span class="pred-nowrap">{{ term(family_term(row.familia_campeona)) }}</span>{% if model %}<span class="pred-subvalue">{{ term(model_term(model)) }}</span>{% endif %}</td>
       <td class="pred-verdict-cell">{{ status_indicator(describe_status("verdict", row.veredicto)) }}</td>
       <td class="num">{{ ratio_text(row.razon_sn) }}</td>
       <td class="num">{{ format_count(row.n_ventanas) }}<span class="pred-subvalue">mínimo {{ format_count(row.n_min) }}</span></td>
