@@ -18,7 +18,15 @@ from pred_platform.data import run_history
 from pred_platform.data.dal import DalRepository
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.data.run_status import StageReference, StageTiming
-from tests.test_ejecucion import _dal_client, _fixture_client, _launch, _text
+from pred_platform.worker.errores import run_stopped_error
+from tests.test_ejecucion import (
+    LONG_ENOUGH,
+    _dal_client,
+    _fixture_client,
+    _launch,
+    _set_run,
+    _text,
+)
 from tests.test_worker import Env, _escribir_progreso
 from tests.test_worker import env as env  # noqa: F401
 
@@ -132,6 +140,37 @@ def test_polled_navigation_follows_a_resumed_run_from_queue_to_its_stage(env: En
         navigation = _navigation(polled.text, element_id)
         assert "Etapa 2 de 4" in navigation
         assert "En cola" not in navigation and "Detenida" not in navigation
+
+
+def test_grouped_causes_drop_the_advice_when_nothing_can_be_compared(env: Env) -> None:
+    client = _dal_client(env)
+    warned = _launch(client, env, families=["classical"], **LONG_ENOUGH)
+    key = re.search(r'name="confirmar" value="([^"]+)"', warned.text)
+    assert key is not None
+    _launch(client, env, families=["classical"], confirmar=key.group(1), **LONG_ENOUGH)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.claim_pending(conn)
+        assert run is not None
+        dal.task_stage_finished(
+            conn,
+            run.id,
+            sku="sku-00",
+            modelo="classical:sarima",
+            corte="2026-06-29",
+            seed=run.seed,
+            stage="L2",
+            completed=False,
+            seconds=1.0,
+            finished_at="2026-11-04T21:00:00Z",
+            error={"code": "selection.no_viable_trial", "stage": "L2", "severity": "error"},
+        )
+        conn.commit()
+    _set_run(env, "detenida", run_stopped_error())
+    page = client.get("/corridas/1/ejecucion").text
+    assert "ningún SKU tiene dos familias que comparar" in page
+    groups = page.split('aria-label="Causas de las tareas sin pronóstico"')[1].split("</table>")[0]
+    assert "selection.no_viable_trial" in groups
+    assert "pred-cause" not in groups
 
 
 def test_step_four_keeps_one_poll_and_no_new_repository_reads() -> None:

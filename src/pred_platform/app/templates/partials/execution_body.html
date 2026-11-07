@@ -151,7 +151,7 @@
   {% if cause_groups %}
   {{ table_start(["Causa", "Familias", "Tareas"], "Causas de las tareas sin pronóstico") }}
   {% for cause in cause_groups %}
-  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action %}<span class="pred-subvalue pred-cause">{{ cause.action }}</span>{% endif %}{% if cause.code %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><span class="mono">{{ cause.code }}</span></details>{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
+  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action and not actions.nothing_to_compare %}<span class="pred-subvalue pred-cause">{{ cause.action }}</span>{% endif %}{% if cause.code %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><span class="mono">{{ cause.code }}</span></details>{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
   {% endfor %}
   {{ table_end() }}
   {% elif progress and not progress.tareas_por_estado.get("fallida", 0) and not progress.tareas_por_estado.get("no_ejecutable", 0) %}
