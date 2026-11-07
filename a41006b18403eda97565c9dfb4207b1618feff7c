@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "summary": "Step 5 Results becomes six chapters with server-rendered SVG charts, closed figure tables, the group panel in chapter 3 and the publication time read from the end of L4.",
+  "files": [
+    {
+      "path": "src/pred_platform/data/dal.py",
+      "summary": "Reads stage start and end times from the run's progreso.jsonl.",
+      "annotations": [
+        {
+          "newRange": [104, 148],
+          "summary": "_stage_timings_of keeps every stage_started event and records its end only when stage_finished says completed.",
+          "rationale": "A failed L4 never publishes, so it must not date a publication. The completed log of a thesis run is about 22 MB and never changes, so the parse is cached by path, size and modification time. Verified with route tests that append L4 events to the run log, and against the live seed 0 log, which gives 2026-11-03 00:52:11 UTC.",
+          "author": "fm/pred-platform-wizard-results"
+        },
+        {
+          "newRange": [421, 426],
+          "summary": "get_stage_timings resolves the run folder and returns no timings when the run or its log is missing.",
+          "rationale": "Without a log the page says the time is unknown, because m3_corridas.creado_en is the start of L4 and showing it would claim a wrong time. Covered by test_without_a_progress_log_the_publication_time_is_unknown_not_the_creation.",
+          "author": "fm/pred-platform-wizard-results"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/resultados_m3.py",
+      "summary": "Owns the publication-time rule and the plain origin wording of the context row.",
+      "annotations": [
+        {
+          "newRange": [1197, 1238],
+          "summary": "publication_time returns the end of the completed L4 whose window contains the evaluation's creado_en.",
+          "rationale": "An older publication from an earlier attempt must not inherit a later attempt's L4 end, so the creation time must fall inside the L4 window. test_an_older_publication_does_not_inherit_a_later_attempts_l4_end proves both the failed-attempt and later-attempt cases.",
+          "author": "fm/pred-platform-wizard-results"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/routers/results.py",
+      "summary": "Routes the chapters, keeps old URLs and fills each chapter's reads and charts.",
+      "annotations": [
+        {
+          "newRange": [234, 272],
+          "summary": "paso_resultados redirects unknown chapters and old ?vista= links before it applies the lock for unpublished runs.",
+          "rationale": "An old Productos link on a running run used to show the locked entry, so its partial M2 reading was lost. An unknown chapter used to say the run did not exist. Both cases are covered in tests/test_results_chapters.py and the errores fixture test in tests/test_corridas.py.",
+          "author": "fm/pred-platform-wizard-results"
+        },
+        {
+          "newRange": [397, 415],
+          "summary": "_describe_run reads the published funnel once when the chapter did not, so every context row counts the products.",
+          "rationale": "Chapters 1 and 3 read no funnel, so their context row lost the product count shown in the prototype. The same funnel feeds run_outcome, so no second read happens. Verified at 1440 and 390 px on the real snapshot.",
+          "author": "fm/pred-platform-wizard-results"
+        },
+        {
+          "newRange": [468, 482],
+          "summary": "The stability chapter shows the seed group only when the chosen publications include the evaluation on screen.",
+          "rationale": "A group built from other publications would answer chapter 3 for a different run. The group reads stay in resultados_grupo, shared with /resultados/grupo, so the standalone page and the chapter show the same values.",
+          "author": "fm/pred-platform-wizard-results"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/presentation.py",
+      "summary": "Names a seed option by its creation date.",
+      "annotations": [
+        {
+          "newRange": [520, 522],
+          "summary": "group_option_label now reads «Creada el …» because GroupRunOption.creado_en is the start of L4, not the publication.",
+          "rationale": "The task dates publication from the end of L4, so calling creado_en a publication date would contradict the context row on the same run. The seconds disambiguation from the seed-group fixes is kept and its test now expects the new word.",
+          "author": "fm/pred-platform-wizard-results"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/static/css/pred.css",
+      "summary": "Moves the narrow-screen rules for the action card after the base rules.",
+      "annotations": [
+        {
+          "newRange": [3883, 3897],
+          "summary": "The max-width 900px block for .wz-action now follows the base rule, so the action stacks under its text on phones.",
+          "rationale": "The earlier block came before the base rule with the same specificity, so the two-column grid always won and squeezed «Repetir con otra semilla» into a narrow column at 390 px. Checked by screenshot at 390 and 1440 px.",
+          "author": "fm/pred-platform-wizard-results"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/partials/results_exportar.html",
+      "summary": "The export chapter body, now inside the chapter navigation.",
+      "annotations": [
+        {
+          "newRange": [7, 7],
+          "summary": "The verdicts row says the chapter link exports every product and points to «Exportar CSV» in Productos for the filtered file.",
+          "rationale": "The chapter link carries only the evaluation, not the Productos filters, so the old «Respeta los filtros de Productos» was false from this page.",
+          "author": "fm/pred-platform-wizard-results"
+        }
+      ]
+    }
+  ]
+}
