@@ -296,8 +296,10 @@ def stop_claimed(
 
     A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
     the meantime keeps its own error and time; both release the recorded process, which the worker
-    has already reaped. A later attempt, or any other state, belongs to someone else and is left
-    alone.
+    has already reaped. One the engine already published (``completada`` or
+    ``completada_con_fallos``) before the worker imported its final files is left as it is: its
+    recorded process marks it for ``interrupted_runs``, so the next worker start runs it again
+    and imports it. A later attempt or a fully settled run is left alone too.
     """
     with conn:
         _begin_immediate(conn)

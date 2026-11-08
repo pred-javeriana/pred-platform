@@ -36,6 +36,7 @@ from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
 from pred_platform.worker import engine
+from pred_platform.worker.bucle import Worker
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
@@ -520,6 +521,9 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
             "FAKE_ENGINE_SCENARIO": "publishes_before_exit",
             "FAKE_ENGINE_TERMINAL_STATE": state,
             "FAKE_ENGINE_PUBLISH_EXIT_DELAY": "5",
+            # El worker muerto deja al motor sin padre; este motor ignora la señal que el
+            # núcleo le envía entonces, para que el sondeo cubra el motor aún activo.
+            "FAKE_ENGINE_IGNORE_SIGTERM": "1",
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1633,7 +1637,7 @@ def _wal_copy_in_a_read_only_folder(env: Env) -> sqlite3.Connection:
     return reader
 
 
-def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
+def test_an_embedded_worker_that_cannot_create_its_lock_waits_and_resumes(
     env: Env, caplog: pytest.LogCaptureFixture
 ) -> None:
     client = _dal_client(env)
@@ -1643,17 +1647,34 @@ def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
     try:
         with TestClient(app) as served:
             thread = app.state.worker_thread
-            _wait(lambda: not thread.is_alive(), timeout=10, what="the worker thread to stop")
+            _wait(lambda: "no puede crear su candado" in caplog.text)
+            assert thread.is_alive()
+            assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
             run_page = _text(served.get("/ejecucion?ejecucion=1").text)
             form = _text(_review(served, env, seed="5"))
+            assert "procesador de ejecuciones de esta instalación se detuvo" not in run_page
+            assert "procesador de ejecuciones de esta instalación se detuvo" not in form
+            env.db.parent.chmod(0o755)
+            _wait(lambda: env.rows("SELECT estado FROM ejecuciones") == [("completada",)])
     finally:
         env.db.parent.chmod(0o755)
         reader.close()
 
+    assert not thread.is_alive()
+    assert env.rows("SELECT estado, pid FROM ejecuciones") == [("completada", None)]
+
+
+def test_a_stopped_embedded_worker_is_reported_in_the_run_and_launch_form(env: Env, monkeypatch):
+    _launch(_dal_client(env), env)
+    monkeypatch.setattr(Worker, "run_forever", lambda self, stop: None)
+    app = create_app(replace(env.settings, worker="embedded"))
+    with TestClient(app) as served:
+        _wait(lambda: not app.state.worker_thread.is_alive())
+        run_page = _text(served.get("/ejecucion?ejecucion=1").text)
+        form = _text(_review(served, env, seed="5"))
     assert "el procesador de ejecuciones de esta instalación se detuvo" in run_page
     assert "empezará cuando termine" not in run_page and "worker" not in run_page
     assert "El procesador de ejecuciones de esta instalación se detuvo" in form
-    assert "no puede crear su candado" in caplog.text
     assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
 
 
@@ -1663,7 +1684,8 @@ def test_once_without_a_lock_file_logs_why_and_leaves_the_queue(
     _launch(_dal_client(env), env)
     reader = _wal_copy_in_a_read_only_folder(env)
     try:
-        env.worker().drain()
+        with pytest.raises(PermissionError):
+            env.worker().drain()
     finally:
         env.db.parent.chmod(0o755)
         reader.close()
