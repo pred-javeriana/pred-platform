@@ -1,20 +1,26 @@
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/terms.html" import term %}
+{% from "partials/results_macros.html" import family_legend, key %}
 {# Los perfiles de error de la evaluación final resuelta (m3_cartera). m3_profiles es un
    M3Profiles. #}
-{% if m3_profiles.problem %}
+{% if m3_profiles.problem and m3_profiles.problem != m3_classes.problem %}
 <section class="pred-unavailable">
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ m3_profiles.problem.title }}</h2>
   <p>{{ m3_profiles.problem.detail }}</p>
 </section>
 {% endif %}
 {% if m3_profiles.run %}
-<section class="pred-section" id="perfiles-error">
-  <h2>Perfiles de error por clase y familia</h2>
+<section class="pred-panel" id="perfiles-error">
+  <h2>Cuánto se equivoca cada familia</h2>
+  <p class="pred-results-lead">El error de cada familia en el bloque de prueba: el punto es la mediana entre productos y la línea va del cuartil 1 al 3. Elija la medida.</p>
   <nav class="pred-segmented" aria-label="Métrica del perfil">
     {% for name, label in profile_metrics.items() %}<a href="{{ metric_hrefs[name] }}"{% if name == m3_profiles.metrica %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
   <p class="pred-meta">{{ metric_term(m3_profiles.metrica).hint }} Distribución en el bloque de prueba, tal como la publicó la evaluación final{% if m3_profiles.metrica == "razon_sn" %}; la línea base vale 1{% endif %}.</p>
+  {{ family_legend(family_colors) }}
+  {{ key([('dot', 'mediana entre productos'), ('interval', 'mitad central: del cuartil 1 al 3')] + ([('reference', '1 = línea base')] if m3_profiles.metrica == 'razon_sn' else [('reference', '0 = sin sesgo')] if m3_profiles.metrica == 'me' else [('reference', '1 = error de la referencia de MASE')] if m3_profiles.metrica == 'mase' else [])) }}
+  <div class="pred-results-smalls">{% for code, svg in profile_svgs.items() if svg %}<figure class="pred-results-figure"><figcaption><strong>{{ sku_class_label(code) }}</strong></figcaption>{{ svg | safe }}</figure>{% endfor %}</div>
+  <details class="pred-details"><summary>Ver las cifras de los perfiles de error</summary>
   {{ table_start(["Clase", "Familia", "Media", "Mediana", "p25", "p75", "SKU", "Instancias", "No calculables"], "Perfiles de error de la ejecución") }}
   {% for row in m3_profiles.rows %}
   <tr{% if loop.first or row.sku_class != loop.previtem.sku_class %} class="pred-table__group-start"{% endif %}>
@@ -29,5 +35,6 @@
   </tr>
   {% endfor %}
   {{ table_end() }}
+  </details>
 </section>
 {% endif %}

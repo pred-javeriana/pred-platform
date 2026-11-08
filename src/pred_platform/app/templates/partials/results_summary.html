@@ -1,134 +1,80 @@
 {% from "components/tables.html" import table_start, table_end %}
-{% from "components/status.html" import status_indicator, verdict_status %}
-{% from "components/terms.html" import gloss, term %}
-{# El resumen de la evaluación final resuelta (contrato v2). m3_summary es un M3Summary. Primero
-   las cifras que responden «¿qué se decidió?», después el embudo que las explica y el detalle. #}
-{% if m3_summary.problem %}
-<section class="pred-unavailable">
-  <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ m3_summary.problem.title }}</h2>
-  <p>{{ m3_summary.problem.detail }}</p>
-  {% if run and run.ejecucion and run.ejecucion.estado in ("pendiente", "ejecutando") %}<p><a href="/ejecucion?ejecucion={{ run.ejecucion.id }}">Siga el avance en Ejecución</a>: los resultados aparecen cuando se publique la evaluación final.</p>{% endif %}
-</section>
-{% endif %}
+{% from "components/status.html" import verdict_status %}
+{% from "partials/results_macros.html" import claim, family, fraction, inline_bar, outcome_legend, problem, unread_note %}
+{{ problem(m3_summary) }}
 {% if m3_summary.funnel %}
 {% set funnel = m3_summary.funnel %}
-{% set counts = funnel.conteos %}
-<section class="pred-section" id="resumen-cifras" aria-label="Cifras de la ejecución">
-  <dl class="pred-kpis">
-    <div class="pred-kpis__item"><dt>Productos de la ejecución</dt><dd>{{ format_count(funnel.total_productos) }}</dd></div>
-    <div class="pred-kpis__item"><dt>Con veredicto</dt><dd>{{ format_count(funnel.tras_exclusiones) }}</dd></div>
-    {% for code in ("VALIDADO", "EXPLORATORIO") %}
-    {% set shown = describe_status("verdict", code) %}
-    <div class="pred-kpis__item"><dt>{{ status_indicator(shown) }}</dt><dd>{{ format_count(counts[code]) }}</dd><dd class="pred-kpis__note">{{ shown.hint }}</dd></div>
-    {% endfor %}
-    <div class="pred-kpis__item"><dt>No evaluados</dt><dd>{{ format_count(funnel.no_evaluados) }}</dd><dd class="pred-kpis__note">Sin comparación válida con la línea base: {{ verdict_label("FALLO_TECNICO") | lower }}, {{ verdict_label("NO_EVALUABLE") | lower }} o {{ verdict_label("EVIDENCIA_INSUFICIENTE") | lower }}.</dd></div>
+{% set by_class = m3_classes.confirmations %}
+<section class="pred-panel">
+  <blockquote class="pred-research-question"><p>¿Qué familia de modelos de pronóstico ofrece el mejor desempeño para la demanda de inventarios de una empresa a partir de sus datos históricos, y en qué perfiles de demanda esa superioridad puede verificarse empíricamente mediante backtesting retrospectivo sobre una ventana temporal de validación real?</p><cite>Pregunta de investigación · Tesis, «Introducción»</cite></blockquote>
+  <div class="pred-results-headline">{{ claim(answers.label, answers.tone) }}<p>{{ answers.selection }}</p></div>
+  {{ unread_note(m3_classes) }}
+  <dl class="pred-results-kpis">
+    <div><dt>Tipos con campeona confirmada</dt><dd>{% if answers.unread %}<span class="pred-kpi-text">No se pudo leer</span>{% else %}{{ answers.confirmed }} <small>de {{ answers.types }} tipos publicados</small>{% endif %}</dd></div>
+    <div><dt>Error frente a la línea base</dt><dd class="pred-kpi-text">{{ answers.effect_range }}<small>en el producto típico, según el tipo</small></dd></div>
+    <div><dt>Productos con mejora verificada</dt><dd>{% if answers.unread %}<span class="pred-kpi-text">No se pudo leer</span>{% else %}{{ fraction(answers.better, answers.tested) }}<small>{{ format_count(answers.better) }} de {{ format_count(answers.tested) }} probados</small>{% endif %}</dd></div>
+    <div><dt>Semillas con resultados</dt><dd>{{ published_seed_count }} <small>de 3; la estabilidad exige las tres</small></dd></div>
   </dl>
-  <p class="pred-meta">Conteos de toda la ejecución, no de una página ni de un filtro. <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}">Ver la lista de SKU</a>.</p>
-</section>
-
-<div class="pred-section-grid">
-<section class="pred-section" id="embudo">
-  <h2>Embudo de la ejecución</h2>
-  <p class="pred-meta">De los productos del archivo a los que tienen veredicto: cada fila resta o reparte la anterior.</p>
-  <table class="pred-funnel">
-    <caption class="pred-sr-only">Embudo de la ejecución</caption>
-    <tbody>
-      <tr class="pred-funnel__total"><th scope="row">Productos de la ejecución</th><td class="num">{{ format_count(funnel.total_productos) }}</td></tr>
-      <tr class="pred-funnel__minus"><th scope="row">Empezaron a venderse después de la fecha de corte</th><td class="num">− {{ format_count(funnel.excluded_count) }}</td></tr>
-      <tr class="pred-funnel__minus"><th scope="row">Excluidos antes de evaluar</th><td class="num">{% if funnel.eligibility_excluded_count is none %}No informado{% else %}− {{ format_count(funnel.eligibility_excluded_count) }}{% endif %}</td></tr>
-      {% for code, reason, count in m3_summary.eligibility or [] %}
-      <tr class="pred-funnel__detail"><th scope="row" title="Código {{ code }}">{{ reason }}</th><td class="num">{{ format_count(count) }}</td></tr>
-      {% endfor %}
-      <tr class="pred-funnel__total"><th scope="row">Con veredicto</th><td class="num">{{ format_count(funnel.tras_exclusiones) }}</td></tr>
-      {% for group, veredicto, count in funnel_rows(funnel) %}
-      {% if loop.first or group != loop.previtem[0] %}
-      <tr class="pred-funnel__group"><th scope="row">{{ group }}</th><td class="num">{{ format_count(funnel.evaluados if group == "Evaluados" else funnel.no_evaluados) }}</td></tr>
-      {% endif %}
-      <tr class="pred-funnel__detail"><th scope="row">{{ verdict_status(veredicto) }}</th><td class="num">{{ format_count(count) }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="pred-meta">Evaluados: {{ verdict_label("VALIDADO") }} y {{ verdict_label("EXPLORATORIO") }}. No evaluados: {{ verdict_label("FALLO_TECNICO") }}, {{ verdict_label("NO_EVALUABLE") }} y {{ verdict_label("EVIDENCIA_INSUFICIENTE") }}.</p>
-</section>
-{% if m3_summary.champions_problem %}
-<p class="pred-note"><strong>{{ m3_summary.champions_problem.title }}</strong> {{ m3_summary.champions_problem.detail }}</p>
-{% endif %}
-{% if m3_summary.champions %}
-{% set champions = m3_summary.champions %}
-<section class="pred-section" id="campeones-por-familia">
-  <h2>Distribución de campeones por familia</h2>
-  <p class="pred-meta">Cuenta los productos con veredicto según la familia campeona de cada uno: la evaluación final elige y esta vista solo cuenta. El porcentaje es la parte de los {{ format_count(champions.published_total) }} productos con veredicto; los excluidos antes de evaluar están en el embudo. Es evidencia sobre el historial reservado, no una estimación del desempeño futuro.</p>
-  {% if not champions.consistent %}
-  <p class="pred-note"><strong>Las cifras no cuadran.</strong> Las familias suman {{ format_count(champions.counted_total) }} productos y el embudo publicó {{ format_count(champions.published_total) }} con veredicto. Se muestran tal como se publicaron.</p>
-  {% endif %}
-  {% if champion_svg %}
-  <figure class="pred-chart" tabindex="0" role="region" aria-label="Gráfico desplazable de campeones por familia">
-    {{ champion_svg | safe }}
-  </figure>
-  {% endif %}
-  {{ table_start(["Familia campeona", "Evaluados", "No evaluados", "SKU", "% con veredicto"], "SKU por familia campeona") }}
-  {% for row in champions.portfolio %}
-  <tr>
-    <th scope="row" class="pred-nowrap" tabindex="0" title="{{ family_term(row.familia).hint }}">{{ family_label(row.familia) }}</th>
-    <td class="num">{{ format_count(row.n_evaluados) }}</td>
-    <td class="num">{{ format_count(row.n_no_evaluados) }}</td>
-    <td class="num">{{ format_count(row.n_skus) }}</td>
-    <td class="num">{{ percent_text(row.share) if row.share is not none else "—" }}</td>
-  </tr>
-  {% endfor %}
-  <tr class="pred-table__total">
-    <th scope="row">Con veredicto</th>
-    <td class="num">{{ format_count(funnel.evaluados) }}</td>
-    <td class="num">{{ format_count(funnel.no_evaluados) }}</td>
-    <td class="num">{{ format_count(funnel.tras_exclusiones) }}</td>
-    <td class="num">{{ percent_text(1.0) if funnel.tras_exclusiones else "—" }}</td>
-  </tr>
-  {{ table_end() }}
-  <p class="pred-meta">Un producto con «{{ verdict_label("FALLO_TECNICO") }}» no tiene un modelo campeón con pronóstico y cuenta en la familia que la evaluación le asignó.</p>
-</section>
-{% endif %}
-</div>
-{% endif %}
-<div class="pred-section-grid pred-section-grid--wide-first">
-{% if m3_summary.champions and m3_summary.champions.classes %}
-{% set champions = m3_summary.champions %}
-<section class="pred-section" id="campeones-por-clase">
-  <h2>Campeones por clase de demanda</h2>
-  <p class="pred-meta">Productos con veredicto de cada clase, según la familia campeona de cada uno. Puede diferir de la campeona de la clase (en «Por clase») cuando el producto no tenía modelo de esa familia y la evaluación usó la siguiente.</p>
-  {{ table_start(["Clase"] + CHAMPION_HEADERS + ["SKU"], "SKU por clase y familia campeona") }}
-  {% for row in champions.classes %}
-  <tr>
-    <th scope="row" class="pred-nowrap" tabindex="0" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</th>
-    {% for family in CHAMPION_FAMILIES %}
-    <td class="num{% if not row.counts[family] %} is-zero{% endif %}">{{ format_count(row.counts[family]) }}</td>
+  <div class="pred-table-wrap" role="region" aria-label="Respuesta por tipo de demanda" tabindex="0">
+  <table class="pred-table pred-results-bytype"><thead><tr><th scope="col">Tipo de demanda</th><th scope="col">Familia campeona</th><th scope="col">Error frente a la línea base</th><th scope="col">Mejora verificada producto por producto</th></tr></thead><tbody>
+    {% for row in m3_classes.rows %}
+    {% set confirmation = by_class.get(row.sku_class) %}
+    {% set significance = product_tests | selectattr('sku_class', 'equalto', row.sku_class) | first %}
+    <tr>
+      <th scope="row"><strong>{{ sku_class_label(row.sku_class) }}</strong><span class="pred-subvalue">{{ sku_class_term(row.sku_class).hint }}</span></th>
+      <td data-label="Familia campeona"><strong>{{ family(row.familia_campeona, family_colors) }}</strong><span class="pred-subvalue">{% if confirmation %}{{ claim(CONFIRMATION_STATES[confirmation.estado], 'ok' if confirmation.estado == 'confirmado' else 'warn') }}{% elif answers.unread %}No se pudo leer la confirmación{% else %}Sin confirmación publicada{% endif %}</span></td>
+      <td data-label="Error frente a la línea base">{% if confirmation and confirmation.efecto_mediana_r is not none %}{% set r = confirmation.efecto_mediana_r %}<strong>{{ effect_phrase(r) }}</strong><span class="pred-subvalue" title="{{ exact_text(r) }}">r = {{ ratio_text(r) }}{% if confirmation.efecto_ic_inferior is not none %} · IC {{ interval_text(confirmation.efecto_ic_inferior, confirmation.efecto_ic_superior) }}{% endif %}</span>{% elif answers.unread %}No se pudo leer{% else %}Sin efecto publicado{% endif %}</td>
+      <td data-label="Mejora verificada producto por producto">{% if significance %}<div class="pred-results-bytype__bar">{{ inline_bar(significance.n_mejores, significance.n_probados - significance.n_mejores - significance.n_peores, significance.n_peores, significance.n_probados) }}<strong>{{ fraction(significance.n_mejores, significance.n_probados) }}</strong></div><span class="pred-subvalue">{{ format_count(significance.n_mejores) }} de {{ format_count(significance.n_probados) }} productos{% if significance.n_peores %} · {{ format_count(significance.n_peores) }} {{ 'peor' if significance.n_peores == 1 else 'peores' }}{% endif %}</span>{% elif answers.unread %}No se pudo leer{% else %}Sin prueba publicada{% endif %}</td>
+    </tr>
     {% endfor %}
-    <td class="num">{{ format_count(row.total) }}</td>
-  </tr>
-  {% endfor %}
-  {{ table_end() }}
-</section>
-{% endif %}
-{% if m3_summary.dm %}
-{% set dm = m3_summary.dm %}
-<section class="pred-section" id="prueba-dm">
-  <h2>Prueba Diebold-Mariano</h2>
-  <p class="pred-meta">Dice si la diferencia de error entre el modelo campeón y la línea base es real o puede ser azar: prueba {{ gloss("HLN-DM") }}, con el ajuste {{ gloss("BH") }} dentro de cada clase de demanda. Esta vista cuenta los resultados publicados; no calcula la prueba. «{{ verdict_label("VALIDADO") }}» no equivale a significativo.</p>
-  <dl class="pred-kpis pred-kpis--compact">
-    <div class="pred-kpis__item"><dt>Con prueba</dt><dd>{{ format_count(dm.con_prueba) }}</dd></div>
-    <div class="pred-kpis__item"><dt>Significativas tras el ajuste {{ gloss("BH") }}</dt><dd>{{ format_count(dm.significativas) }}</dd></div>
-    <div class="pred-kpis__item"><dt>No significativas</dt><dd>{{ format_count(dm.no_significativas) }}</dd></div>
-    <div class="pred-kpis__item"><dt>Sin prueba</dt><dd>{{ format_count(dm.sin_prueba.values() | sum) }}</dd></div>
-  </dl>
-  {% if dm.sin_prueba %}
-  {{ table_start(["Por qué no tienen prueba", "SKU"], "SKU sin prueba HLN-DM por causa") }}
-  {% for causa, count in dm.sin_prueba.items() %}
-  <tr>
-    <td title="Código {{ causa }}">{{ cause_text(causa) | capitalize_first }}</td>
-    <td class="num">{{ format_count(count) }}</td>
-  </tr>
-  {% endfor %}
-  {{ table_end() }}
+  </tbody></table></div>
+  {{ outcome_legend() }}
+  {% if m3_classes.problem %}<p class="pred-note">{{ m3_classes.problem.title }} {{ m3_classes.problem.detail }}</p>{% endif %}
+  {% if m3_summary.champions_problem %}<p class="pred-note">{{ m3_summary.champions_problem.title }} {{ m3_summary.champions_problem.detail }}</p>{% endif %}
+  {% if m3_summary.champions %}
+  {% set champions = m3_summary.champions %}
+  <details class="pred-details" id="campeones-por-familia"><summary>Campeona de cada producto, por familia</summary>
+    <p class="pred-meta">Fracciones de los {{ format_count(champions.published_total) }} SKU con veredicto. Es evidencia sobre el historial reservado, no una estimación del desempeño futuro.</p>
+    {% if not champions.consistent %}<p class="pred-note"><strong>Las cifras no cuadran.</strong> Las familias suman {{ format_count(champions.counted_total) }} productos y el embudo publicó {{ format_count(champions.published_total) }} con veredicto. Se muestran tal como se publicaron.</p>{% endif %}
+    <div id="campeones-por-clase">
+    {{ table_start(["Tipo de demanda"] + CHAMPION_HEADERS + ["Productos"], "SKU por clase y familia campeona") }}
+    {% for row in champions.classes %}<tr><th scope="row">{{ sku_class_label(row.sku_class) }}</th>{% for code in CHAMPION_FAMILIES %}<td class="num">{{ format_count(row.counts[code]) }}</td>{% endfor %}<td class="num">{{ format_count(row.total) }}</td></tr>{% endfor %}
+    <tr class="pred-table__total"><th scope="row">Total</th>{% for row in champions.portfolio %}<td class="num">{{ format_count(row.n_skus) }}</td>{% endfor %}<td class="num">{{ format_count(champions.counted_total) }}</td></tr>
+    {{ table_end() }}
+    </div>
+    {{ table_start(["Familia campeona", "Evaluados", "No evaluados", "SKU", "% con veredicto"], "SKU por familia campeona") }}
+    {% for row in champions.portfolio %}<tr><th scope="row">{{ family(row.familia, family_colors) }}</th><td class="num">{{ format_count(row.n_evaluados) }}</td><td class="num">{{ format_count(row.n_no_evaluados) }}</td><td class="num">{{ format_count(row.n_skus) }}</td><td class="num">{{ percent_text(row.share) if row.share is not none else '—' }}</td></tr>{% endfor %}
+    <tr class="pred-table__total"><th scope="row">Con veredicto</th><td class="num">{{ format_count(funnel.evaluados) }}</td><td class="num">{{ format_count(funnel.no_evaluados) }}</td><td class="num">{{ format_count(funnel.tras_exclusiones) }}</td><td class="num">{{ percent_text(1.0) if funnel.tras_exclusiones else '—' }}</td></tr>
+    {{ table_end() }}
+    <p class="pred-meta">Cuenta los productos con veredicto según la familia campeona publicada para cada uno. Puede diferir de la campeona del tipo cuando un producto no tenía un modelo de esa familia.</p>
+    <p class="pred-meta">Un producto con «{{ verdict_label("FALLO_TECNICO") }}» no tiene un modelo campeón con pronóstico y cuenta en la familia que la evaluación le asignó.</p>
+  </details>
   {% endif %}
 </section>
+<section class="pred-panel">
+  <h2>Respuestas</h2>
+  <ol class="pred-results-questions">
+    <li><span class="pred-results-questions__number">1</span><div><p>¿Qué familia pronostica mejor cada tipo de demanda?</p><strong>{{ answers.selection }}</strong><div>{{ claim(answers.label, answers.tone) }}</div></div><a href="{{ results_base }}/p1?{{ chapter_query }}">Ver la evidencia →</a></li>
+    <li><span class="pred-results-questions__number">2</span><div><p>¿En qué tipos se verifica la mejora producto por producto?</p><strong>{{ answers.verification }}</strong><div>{% if answers.unread %}{{ claim('Sin responder') }}{% else %}{{ claim('Respaldada para ' ~ format_count(answers.better) ~ ' productos', 'ok') }} · {{ claim('No concluyente para ' ~ format_count(answers.unchanged), 'warn') }}{% endif %}</div></div><a href="{{ results_base }}/p2?{{ chapter_query }}">Ver la evidencia →</a></li>
+    <li><span class="pred-results-questions__number">3</span><div><p>¿Se sostiene si se repite la corrida con otra semilla?</p><strong>{% if stability_rows and stability_rows | rejectattr('stable') | list | length == 0 %}La misma campeona gana y se confirma en las tres semillas.{% else %}La estabilidad exige la misma campeona confirmada en las tres semillas.{% endif %}</strong><div>{{ claim('Respaldada', 'ok') if stability_rows and stability_rows | rejectattr('stable') | list | length == 0 else claim('Sin responder' if published_seed_count < 3 or stability_rows | selectattr('unread') | list else 'No concluyente', 'neutral') }}</div></div><a href="{{ results_base }}/estabilidad?{{ chapter_query }}">Ver la evidencia →</a></li>
+  </ol>
+  <p class="pred-meta">Respaldada: la prueba la sostiene. No concluyente: no alcanza para decidir. Sin responder: falta evidencia.</p>
+</section>
+<section class="pred-panel" id="embudo">
+  <h2>Qué productos se evaluaron</h2>
+  <p class="pred-results-lead">{{ format_count(funnel.evaluados) }} de {{ format_count(funnel.total_productos) }} productos ({{ fraction(funnel.evaluados, funnel.total_productos) }}) llegan a la comparación final.</p>
+  <ol class="pred-results-flow">
+    <li><p>Productos en los datos</p><strong>{{ format_count(funnel.total_productos) }}</strong><div class="pred-flow-meter"><i style="width:100%"></i></div><h3>Quedan fuera</h3><ul><li>{{ format_count(funnel.excluded_count) }} empezaron a venderse después del corte</li>{% for code, reason, count in m3_summary.eligibility or [] %}<li title="{{ code }}">{{ format_count(count) }}: {{ reason }}</li>{% endfor %}{% if m3_summary.eligibility is none %}<li>Exclusiones previas: no informadas</li>{% endif %}</ul></li>
+    <li><p>Con veredicto</p><strong>{{ format_count(funnel.tras_exclusiones) }}</strong><div class="pred-flow-meter"><i style="width:{{ 100 * funnel.tras_exclusiones / funnel.total_productos if funnel.total_productos else 0 }}%"></i></div><h3>No se pudieron evaluar</h3><ul>{% for code in ('NO_EVALUABLE', 'EVIDENCIA_INSUFICIENTE', 'FALLO_TECNICO') %}<li>{{ verdict_label(code) }}: {{ format_count(funnel.conteos[code]) }}</li>{% endfor %}</ul></li>
+    <li><p>Evaluados frente a la línea base</p><strong>{{ format_count(funnel.evaluados) }}</strong><div class="pred-flow-meter"><i style="width:{{ 100 * funnel.evaluados / funnel.total_productos if funnel.total_productos else 0 }}%"></i></div><h3>Veredictos</h3><ul>{% for code in ('VALIDADO', 'EXPLORATORIO') %}<li>{{ verdict_label(code) }}: {{ format_count(funnel.conteos[code]) }}</li>{% endfor %}</ul></li>
+  </ol>
+  <details class="pred-details"><summary>Ver las cifras del recorrido</summary>
+    {{ table_start(["Paso", "Productos"], "Embudo de la ejecución") }}
+    <tr><th scope="row">Productos de la ejecución</th><td class="num">{{ format_count(funnel.total_productos) }}</td></tr><tr><th scope="row">Empezaron a venderse después de la fecha de corte</th><td class="num">− {{ format_count(funnel.excluded_count) }}</td></tr><tr><th scope="row">Excluidos antes de evaluar</th><td class="num">{{ '− ' ~ format_count(funnel.eligibility_excluded_count) if funnel.eligibility_excluded_count is not none else 'No informado' }}</td></tr>{% for code, reason, count in m3_summary.eligibility or [] %}<tr><th scope="row" title="Código {{ code }}">{{ reason }}</th><td class="num">{{ format_count(count) }}</td></tr>{% endfor %}<tr><th scope="row">Con veredicto</th><td class="num">{{ format_count(funnel.tras_exclusiones) }}</td></tr>
+    {% for group, code, count in funnel_rows(funnel) %}{% if loop.first or group != loop.previtem[0] %}<tr><th scope="row">{{ group }}</th><td class="num">{{ format_count(funnel.evaluados if group == 'Evaluados' else funnel.no_evaluados) }}</td></tr>{% endif %}<tr><th scope="row">{{ verdict_status(code) }}</th><td class="num">{{ format_count(count) }}</td></tr>{% endfor %}
+    {{ table_end() }}
+    <p class="pred-meta">Evaluados: Validado y Exploratorio. No evaluados: Error técnico, No evaluable y Evidencia insuficiente.</p>
+    {% if m3_summary.dm %}<h3>Prueba Diebold-Mariano</h3><dl class="pred-kv"><dt>Con prueba</dt><dd>{{ format_count(m3_summary.dm.con_prueba) }}</dd><dt>Significativas tras el ajuste BH</dt><dd>{{ format_count(m3_summary.dm.significativas) }}</dd><dt>No significativas</dt><dd>{{ format_count(m3_summary.dm.no_significativas) }}</dd><dt>Sin prueba</dt><dd>{{ format_count(m3_summary.dm.sin_prueba.values() | sum) }}</dd></dl>{% if m3_summary.dm.sin_prueba %}{{ table_start(["Por qué no tienen prueba", "SKU"], "SKU sin prueba HLN-DM por causa") }}{% for cause, count in m3_summary.dm.sin_prueba.items() %}<tr><th scope="row" title="{{ cause }}">{{ cause_text(cause) | capitalize_first }}</th><td class="num">{{ format_count(count) }}</td></tr>{% endfor %}{{ table_end() }}{% endif %}{% endif %}
+  </details>
+</section>
 {% endif %}
-</div>

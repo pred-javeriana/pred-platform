@@ -61,7 +61,7 @@ def test_polled_navigation_moves_from_queue_to_published_without_reloading(
     assert _launch(client, env).status_code == 303
     queued = client.get("/corridas/1/ejecucion").text
     assert "En cola" in _navigation(queued, "barra-pasos")
-    assert "Parciales" in _navigation(queued, "navegacion-pasos")
+    assert "Se abre cuando la evaluación final publique" in _navigation(queued, "navegacion-pasos")
     first = client.get("/ejecucion/estado?ejecucion=1")
     assert first.status_code == 200
     assert 'id="barra-pasos"' in first.text and 'hx-swap-oob="true"' in first.text

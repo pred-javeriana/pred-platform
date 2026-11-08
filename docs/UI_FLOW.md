@@ -43,7 +43,8 @@ y Siguiente.
 | `/corridas/nueva/ejecucion`, `/corridas/nueva/resultados` | Bloqueados hasta lanzar: dicen qué falta y llevan al primer paso por hacer |
 | `/corridas/{id}/datos`, `/corridas/{id}/ajustes`, `/corridas/{id}/revisar` | Registro de lo que eligió la corrida lanzada |
 | `/corridas/{id}/ejecucion` | Paso 4: avance, acciones y tareas de la corrida |
-| `/corridas/{id}/resultados` | Paso 5: pestañas Resumen, Por clase, SKU y Perfiles de error (`?vista=resumen`, `clase`, `sku` o `errores`). Sin `?vista=` abre Resumen si la corrida tiene evidencia M3 publicada y, si no, SKU. La pestaña SKU tiene dos lecturas: «Veredictos» (`?vista=sku`; `?vista=consulta` es su nombre anterior) y «Resultados por familia» (`?vista=sku&lista=familias`). Mientras la evaluación final no publica, el paso muestra lo que ya hay y lo dice |
+| `/corridas/{id}/resultados` | Paso 5: abre el capítulo Resumen cuando hay una evaluación publicada. Mientras una corrida sigue sin publicar, muestra «Los resultados todavía no existen». Una corrida terminada sin evaluación conserva la lectura de M2 en Productos |
+| `/corridas/{id}/resultados/{resumen,p1,p2,estabilidad,productos}` | Resumen, selección y confirmación por tipo, prueba producto por producto, comparación entre semillas y Productos. Los filtros, el orden, la página y la evaluación exacta quedan en la consulta. `?lista=familias` abre «Ver por familia» |
 | `/corridas/{id}/…` de una corrida que no existe | 404 con el enlace a Corridas |
 | `/datos`, `/ejecucion`, `/resultados` | Rutas anteriores: redirigen (307) al paso que corresponde con la misma consulta. `/datos` va a Datos de la corrida nueva. `/ejecucion?ingest_id=` va a Ajustes de la corrida nueva; `?lanzar=1`, a su Datos; `?ejecucion=<id>` o, sin ella, la corrida más reciente, al paso Ejecución. `/resultados?ejecucion=<id>` o, sin ella, la corrida más nueva con evidencia publicada (o la más reciente), al paso Resultados. Sin corridas, a la corrida nueva |
 | `/ejecucion/estado` | El cuerpo de Ejecución para el sondeo HTMX |
@@ -148,20 +149,17 @@ determina si el contraste es aplicable. La plataforma no implementa funcionalida
 
 ## 3. Resultados
 
-**Responsabilidad:** mostrar lo que M3 publicó para una ejecución, de la vista general al
-detalle de un SKU. Resumen muestra el embudo publicado de toda la corrida, la distribución de
-campeones por familia y por clase, y cuenta los resultados HLN-DM publicados (BH dentro de cada
-clase de demanda). Por clase muestra la familia campeona que M3
-congeló en cada clase con el bloque de selección, su motivo, la mediana de r de cada familia y los
-veredictos de la clase. Debajo, «Confirmación del campeón» muestra el estado de cada campeona en el
-bloque de prueba con su p IUT y su p Holm, la mediana de r frente a la línea base con su intervalo
-bootstrap y una fila por competidora (SKU, mediana de la razón con intervalo, Hodges-Lehmann,
-victorias con intervalo de Wilson, p de Wilcoxon y p IUT). «Significancia frente a la línea base»
-muestra por clase los SKU probados y los significativos por BH y por BY, con el nivel FCR. SKU
-lista el campeón y el veredicto de cada SKU de una corrida M3 exacta, o la selección de cada
-familia; el detalle de un SKU muestra su evidencia (contrato v2). Perfiles de error muestra los
-perfiles de error de la cartera en el bloque de prueba, una métrica a la vez. La interfaz no
-selecciona ganadores ni recalcula métricas.
+**Responsabilidad:** mostrar lo que M3 publicó para una corrida, con una respuesta por pregunta.
+Resumen cita la pregunta de investigación, muestra las respuestas por tipo y conserva los conteos
+por familia y el recorrido desde los datos hasta los productos evaluados. El capítulo 1 presenta
+la selección, la confirmación del campeón y los perfiles de error. El capítulo 2 presenta la
+significancia HLN-DM por tipo, los histogramas de r y los veredictos descriptivos. El capítulo 3
+compara las campeonas y sus efectos entre semillas, solo con publicaciones que el grupo final
+acepta junto a la abierta (mismos datos, identidad, protocolo y productos). Productos
+conserva las lecturas de veredictos y de familias, los filtros, el orden y la paginación.
+Los gráficos son SVG del servidor. Las tablas cerradas «Ver las cifras» conservan medianas,
+intervalos, Hodges-Lehmann, victorias e intervalos de Wilson, p IUT, p Holm, p Wilcoxon, conteos
+BH/BY y nivel FCR. La interfaz no elige ganadores ni recalcula pruebas o métricas.
 
 **Operaciones:** `list_sku_selections(...)`, `get_sku_selection(...)`, `list_m3_runs(...)`,
 `get_m3_run(...)`, `get_m3_evidence(...)`, `get_m3_categories(...)`,
@@ -181,11 +179,13 @@ veredicto. `/resultados` sin `?ejecucion=` lleva a la corrida más nueva con una
 PUBLICADA. Sin `?m3=`, la vista usa la corrida PUBLICADA más nueva de la ejecución y avisa
 cuando varias corridas PUBLICADA comparten identidad.
 
-Pestañas internas (misma ruta, `?vista=resumen|clase|sku|errores`): Resumen | Por clase | SKU |
-Perfiles de error, en orden de lectura de lo general al detalle. No son pantallas nuevas. Sin
-`?vista=`, la página abre Resumen cuando la ejecución tiene evidencia M3 publicada y, si no, SKU.
-**SKU** tiene dos lecturas, elegidas con un control segmentado. «Veredictos» (`?vista=sku`)
-filtra por clase, familia campeona y veredicto, y exporta CSV. «Resultados por familia»
+Los capítulos tienen rutas propias bajo `/corridas/{id}/resultados/`: `resumen`, `p1`, `p2`,
+`estabilidad`, `productos` y `exportar`. Los enlaces anteriores conservan su consulta: `vista=clase`
+lleva a `p1`; `vista=errores`, a `p1#perfiles-error`; `vista=sku` y `vista=consulta`, a
+`productos`; `vista=exportar`, a `exportar`.
+**Productos** tiene dos lecturas. «Veredictos» filtra por tipo, familia campeona, veredicto y
+resultado de la prueba (`prueba=mejora|sin_diferencia|peor|sin_prueba`), y exporta CSV. La dirección
+sale del estadístico HLN-DM publicado, nunca del veredicto ni de r. «Ver por familia»
 (`lista=familias`) muestra una columna por familia con su estado y su valor; se abre por defecto
 sin evidencia M3 o con un filtro de familia o de estado. Las dos enlazan al detalle
 `/resultados/sku/{sku_id}`. Su ruta de migas (Resultados › SKU › el SKU) vuelve al Resumen de la
@@ -223,7 +223,7 @@ inesperado.
 
 ## Jerarquía de Resultados
 
-Resumen de cartera → Por clase de demanda → SKU → Decisión y comparación → Evidencia técnica bajo demanda.
+Resumen → Tres preguntas y su evidencia → Productos → Decisión y comparación → Evidencia técnica bajo demanda.
 
 Resumen es la entrada de Resultados cuando hay evidencia M3 publicada: primero la vista general y después el detalle (Shneiderman). La lista «Veredictos» tiene una fila por SKU con su clase, la familia y el modelo campeones, el veredicto, r frente a la línea base, las ventanas válidas y la significancia, con la prueba desplegable. La lista «Resultados por familia» tiene una fila por SKU con su clase, la familia campeona y una columna por familia. Los filtros y la paginación se delegan al repositorio. En el detalle, configuraciones y ensayos comienzan cerrados; ventanas solo se solicitan con ventanas=1. El código queda en los filtros, el CSV, los atributos `data-*` y el texto del motor, no en `title`.
 
@@ -247,7 +247,7 @@ Datos: el resumen del archivo (nombre, estado, conteos y mezcla de clases) en un
 
 Ejecución: un panel de la corrida con su estado y sus acciones (detener, reanudar, ver resultados), los hechos de la corrida, las etapas del motor, el progreso circular y los conteos por estado; debajo, las pestañas Tareas y Configuración. Panel y pestañas están dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él.
 
-Resultados: la barra de contexto, las pestañas y una hoja blanca con la vista elegida. Detalle SKU: ruta de migas, decisión con sus cifras en una fila, familias, y la trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
+Resultados: la barra de contexto, los capítulos y paneles con la respuesta, sus gráficos y las tablas cerradas. Detalle SKU: ruta de migas, decisión con sus cifras en una fila, familias, y la trazabilidad en un bloque inferior de referencia. El número mostrado en Resultados es el total de la consulta, nunca un agregado de la cartera inferido de una página.
 
 ## Navegación secundaria
 

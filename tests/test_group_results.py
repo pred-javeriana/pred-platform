@@ -14,8 +14,9 @@ from fastapi.testclient import TestClient
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.dal import grupo
+from tests.m3_publicada import publish
+from tests.test_group_evidence import SHA, sql
 from tests.test_group_evidence import group_db as group_db  # noqa: F401
-from tests.test_group_evidence import sql
 from tests.test_group_lumpy import lumpy_db as lumpy_db  # noqa: F401
 
 CHOICES = {"semilla0": "seed-0", "semilla1": "seed-1", "semilla2": "seed-2"}
@@ -48,7 +49,8 @@ def test_results_links_to_the_group_and_the_group_shows_both_computations(lumpy_
         assert "semilla0=seed-0" in html and "semilla2=seed-2" in html
         assert "sin cambiar sus publicaciones" in html
         # Each publication reads by its time; the run and data identifiers stay in its title.
-        assert ">Publicada el 27 oct 2026, 5:00 a. m.</option>" in html
+        assert ">Creada el 27 oct 2026, 5:00 a. m.</option>" in html
+        assert "2026-10-27 10:00:00 UTC" in html
         assert 'title="Evaluación final seed-0 · huella de los datos ' in html
         assert "UTC (hora universal coordinada)" in html
         assert ">seed-0 ·" not in html and "Seasonal Naive" not in html
@@ -266,8 +268,8 @@ def test_seed_options_same_minute_disambiguation_and_utc_title(lumpy_db: Path) -
     with client(lumpy_db) as browser:
         html = browser.get("/resultados/grupo").text
         # Both options for seed 2 should have distinct text with seconds
-        assert "Publicada el 27 oct 2026, 5:00:00 a. m." in html
-        assert "Publicada el 27 oct 2026, 5:00:40 a. m." in html
+        assert "Creada el 27 oct 2026, 5:00:00 a. m." in html
+        assert "Creada el 27 oct 2026, 5:00:40 a. m." in html
         assert 'title="Evaluación final seed-2 · huella de los datos ' in html
         assert "2026-10-27 10:00:00 UTC (hora universal coordinada)" in html
         assert "2026-10-27 10:00:40 UTC (hora universal coordinada)" in html
@@ -314,6 +316,75 @@ def test_seed_group_page_wording_has_no_internal_jargon(lumpy_db: Path) -> None:
         resp_json = browser.get("/resultados/grupo.json", params=CHOICES)
         assert resp_json.status_code == 400
         assert resp_json.json()["error"] == "Las corridas no comparten la ingesta."
+
+
+def _add_completed_executions(db: Path) -> None:
+    with closing(sqlite3.connect(db)) as conn, conn:
+        for seed in range(3):
+            settings = {
+                "min_train": 40,
+                "horizon": 7,
+                "step": 7,
+                "metric": "rmse",
+                "seasonality": 7,
+                "families": ["classical", "foundation"],
+            }
+            config = conn.execute(
+                "INSERT INTO configuraciones(version,descripcion,parametros) "
+                "VALUES ((SELECT COALESCE(MAX(version),0)+1 FROM configuraciones),'grupo',?)",
+                (json.dumps(settings),),
+            ).lastrowid
+            conn.execute(
+                "INSERT INTO ejecuciones(ingesta_id,configuracion_id,seed,estado,run_id) "
+                "VALUES ((SELECT id FROM ingestas WHERE sha256=?),?,?,'completada',?)",
+                (SHA, config, seed, f"m2-{seed}"),
+            )
+
+
+def test_stability_chapter_shares_group_values_sources_and_explicit_selection(
+    lumpy_db: Path,
+) -> None:
+    _add_completed_executions(lumpy_db)
+    with client(lumpy_db) as browser:
+        base = "/corridas/1/resultados/estabilidad"
+        initial = browser.get(base, params={"m3": "seed-0"})
+        assert initial.status_code == 200
+        assert "Significancia del grupo por clase" not in initial.text
+        assert "El grupo final requiere tres evaluaciones publicadas" in initial.text
+        response = browser.get(base, params={"m3": "seed-0", **CHOICES, "sku": "X"})
+        assert response.status_code == 200
+        html = response.text
+        assert "Significancia del grupo por clase" in html
+        assert "Grumosa: población completa y común" in html
+        assert "0,207" in html and "0,725" in html
+        assert "Fuentes del SKU X" in html
+        assert 'action="/corridas/1/resultados/estabilidad"' in html
+        assert '<input type="hidden" name="m3" value="seed-0">' in html
+        assert (
+            "/resultados/grupo.json?semilla0=seed-0&amp;semilla1=seed-1&amp;semilla2=seed-2" in html
+        )
+        assert "No se suman descubrimientos de evaluaciones distintas" in html
+        assert browser.get("/resultados/grupo.json", params=CHOICES).json()["significance"][
+            "complete"
+        ]
+
+
+def test_stability_group_must_include_the_current_exact_publication(lumpy_db: Path) -> None:
+    _add_completed_executions(lumpy_db)
+    publish(
+        lumpy_db,
+        ingesta_sha256=SHA,
+        run_id_m2="m2-0",
+        run_id="other-current",
+        verdicts={sku: ("lumpy", "VALIDADO") for sku in "WXYZ"},
+    )
+    with client(lumpy_db) as browser:
+        response = browser.get(
+            "/corridas/1/resultados/estabilidad", params={"m3": "other-current", **CHOICES}
+        )
+        assert response.status_code == 200
+        assert "El grupo debe incluir la evaluación de la corrida mostrada" in response.text
+        assert "Significancia del grupo por clase" not in response.text
 
 
 @pytest.mark.parametrize(

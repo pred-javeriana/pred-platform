@@ -142,6 +142,7 @@ class RunFacts:
     published: bool
     # Si una corrida detenida se puede reanudar (``ejecucion.offers_resume``).
     resumable: bool
+    publicada_en: datetime | None = None
 
     @property
     def finished(self) -> bool:
@@ -362,11 +363,11 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
     else:
         execution = ("done", f"Terminó en {run.duration}" if run.duration else "Terminó", None)
     if run.published:
-        results: tuple[StepState, str, datetime | None] = ("done", "Publicados", run.finalizada_en)
+        results: tuple[StepState, str, datetime | None] = ("done", "Publicados", run.publicada_en)
     elif run.finished:
         results = ("todo", "Sin evaluación final publicada", None)
     else:
-        results = ("todo", "Parciales hasta que la evaluación final publique", None)
+        results = ("locked", "Se abre cuando la evaluación final publique", None)
     rail = _rail(
         run.id,
         current,
@@ -396,13 +397,13 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
             NavLink("Atrás: Revisar y lanzar", step_href(run.id, "revisar")),
             NavNext(
                 "Continuar a Resultados",
-                step_href(run.id, "resultados"),
+                step_href(run.id, "resultados") if run.published else None,
                 hint=""
                 if run.published
                 else (
                     "Sin evaluación final publicada."
                     if run.finished
-                    else "Parciales hasta que la evaluación final publique."
+                    else "Se abre cuando la evaluación final publique."
                 ),
             ),
         ),

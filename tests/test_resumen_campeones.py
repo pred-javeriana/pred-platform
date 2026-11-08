@@ -24,7 +24,7 @@ from pred_platform.contract import models_v2
 from pred_platform.contract.errors import ArtifactMissing
 from tests.m3_publicada import TWO_FAMILIES_CAUSE
 from tests.test_consulta import M3_RUN, _client
-from tests.test_resultados import _publish_for_the_run, _text
+from tests.test_resultados import _publish_for_the_run, _table_rows, _text
 from tests.test_seleccion import _run
 from tests.test_worker import Env
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
@@ -79,18 +79,11 @@ def _section(html: str, name: str) -> str:
 
 def _portfolio(html: str) -> dict[str, tuple[int, int, int, str]]:
     """familia -> (evaluados, no evaluados, SKU, porcentaje) de la tabla de cartera."""
-    section = _section(html, "campeones-por-familia")
-    found: dict[str, tuple[int, int, int, str]] = {}
-    for family, label in LABELS.items():
-        match = re.search(
-            rf'<th scope="row" class="pred-nowrap"[^>]*>{label}</th>\s*'
-            r'<td class="num">(\d+)</td>\s*<td class="num">(\d+)</td>\s*'
-            r'<td class="num">(\d+)</td>\s*<td class="num">([^<]+)</td>',
-            section,
-        )
-        assert match is not None, label
-        found[family] = (int(match[1]), int(match[2]), int(match[3]), match[4].strip())
-    return found
+    rows = {row[0]: row[1:] for row in _table_rows(html, "SKU por familia campeona")}
+    return {
+        family: (int(rows[label][0]), int(rows[label][1]), int(rows[label][2]), rows[label][3])
+        for family, label in LABELS.items()
+    }
 
 
 # ------------------------------------------------------------------------------ la tabla
@@ -140,15 +133,9 @@ def test_the_class_matrix_sums_to_each_family_of_the_portfolio(
 ) -> None:
     _publish(env, monkeypatch)
     html = _page(env)
-    section = _section(html, "campeones-por-clase")
-
-    rows = re.findall(
-        r'<th scope="row" class="pred-nowrap"[^>]*>([^<]+)</th>'
-        r'((?:\s*<td class="num(?: is-zero)?">\d+</td>){6})',
-        section,
-    )
-    assert [name for name, _ in rows] == ["Suave", "Errática", "Intermitente", "Grumosa"]
-    matrix = [[int(n) for n in re.findall(r"(\d+)</td>", cells)] for _, cells in rows]
+    rows = _table_rows(html, "SKU por clase y familia campeona")
+    assert [row[0] for row in rows] == ["Suave", "Errática", "Intermitente", "Grumosa", "Total"]
+    matrix = [[int(n) for n in row[1:]] for row in rows[:-1]]
     for index, family in enumerate(CHAMPION_FAMILIES):
         assert sum(row[index] for row in matrix) == _portfolio(html)[family][2], family
     # Cada fila cierra con los SKU de su clase.
@@ -156,20 +143,23 @@ def test_the_class_matrix_sums_to_each_family_of_the_portfolio(
     assert all(sum(row[:-1]) == row[-1] for row in matrix)
 
 
-def test_the_chart_says_what_the_table_says(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_summary_keeps_the_family_counts_accessible_in_a_closed_table(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _publish(env, monkeypatch)
     html = _page(env)
-    start = html.index('<svg role="img"')
-    svg = html[start : html.index("</svg>", start) + 6]
-
-    assert 'role="img"' in svg and "<title>Distribución de campeones por familia</title>" in svg
-    values = re.findall(r'class="pred-champion__value">([^<]+)</text>', svg)
-    table = _portfolio(html)
-    assert values == [f"{table[f][2]} SKU · {table[f][3]}" for f in CHAMPION_FAMILIES]
-    # Una barra por familia con SKU; las de cero no se dibujan pero sí se rotulan.
-    assert svg.count("<path") == sum(1 for f in CHAMPION_FAMILIES if table[f][2])
-    for label in LABELS.values():
-        assert f'class="pred-champion__label">{label}</text>' in svg
+    disclosure = re.search(r'<details[^>]*id="campeones-por-familia"[^>]*>', html)
+    assert disclosure is not None and "open" not in disclosure.group()
+    assert "<summary>Campeona de cada producto, por familia</summary>" in html
+    assert _table_rows(html, "SKU por familia campeona") == [
+        ["Clásica", "2", "2", "4", "66,7 %"],
+        ["Aprendizaje automático", "1", "0", "1", "16,7 %"],
+        ["Aprendizaje profundo", "0", "0", "0", "0,0 %"],
+        ["Fundacional", "0", "0", "0", "0,0 %"],
+        ["Línea base estacional", "0", "1", "1", "16,7 %"],
+        ["Con veredicto", "3", "3", "6", "100,0 %"],
+    ]
+    assert "pred-champion__svg" not in html
 
 
 # ------------------------------------------------------------------------- coherencia y fallos

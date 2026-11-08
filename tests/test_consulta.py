@@ -14,11 +14,10 @@ from urllib.parse import unquote
 import pytest
 from fastapi.testclient import TestClient
 
-from pred_platform.app.consulta import ConsultaQuery, parse_consulta_query
+from pred_platform.app.consulta import PRODUCT_PAGE_SIZE, ConsultaQuery, parse_consulta_query
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract.errors import InvalidQuery
-from pred_platform.data.query import DEFAULT_SIZE
 from tests.test_resultados import _notice, _publish_for_the_run, _text
 from tests.test_seleccion import _run
 from tests.test_worker import Env
@@ -86,7 +85,7 @@ def test_the_http_query_is_read_without_judging_its_values() -> None:
         True,
         2,
     )
-    assert (query.sort, query.size, query.ejecucion) == ("sku", DEFAULT_SIZE, "latest")
+    assert (query.sort, query.size, query.ejecucion) == ("sku", PRODUCT_PAGE_SIZE, "latest")
     with pytest.raises(InvalidQuery):
         parse_consulta_query({"page": "dos"})
 
@@ -118,7 +117,7 @@ def test_the_tab_lists_the_published_verdicts_and_keeps_the_run_totals(
         in html
     )
     assert 'class="pred-legend"' in html
-    assert "Evaluación final Publicada ·" in text
+    assert "Evaluación publicada Fecha de publicación no informada" in text
 
 
 def test_the_three_filters_sort_and_page_reach_the_repository_together(
@@ -152,7 +151,7 @@ def test_the_three_filters_sort_and_page_reach_the_repository_together(
                 "sort": "razon_sn",
                 "descending": True,
                 "page": 1,
-                "size": DEFAULT_SIZE,
+                "size": PRODUCT_PAGE_SIZE,
             },
         )
     ]
@@ -204,7 +203,8 @@ def test_an_unknown_filter_value_is_shown_not_ignored(
     # No se muestra una lista que parezca filtrada ni un conteo inventado.
     assert 'href="/resultados/sku/' not in html and "coinciden con la consulta" not in text
     # La corrida y el formulario siguen: quien se equivocó puede corregir.
-    assert 'id="filtros-consulta"' in html and "Evaluación final Publicada ·" in text
+    assert 'id="filtros-consulta"' in html
+    assert "Evaluación publicada Fecha de publicación no informada" in text
 
 
 def test_a_page_that_is_not_a_number_is_a_warning(
@@ -266,8 +266,9 @@ def test_a_verdict_is_not_called_significant_and_a_missing_test_shows_its_cause(
 
     # Validado es descriptivo: puede no ser significativo, y se dice por separado.
     validated = _row(html, "FIL-0001")
-    assert "Validado" in validated and "p ajustado 0,080" in validated
-    assert "No significativa" in validated
+    assert "Validado" in validated and "p ajustado (BH) 0,080" in validated
+    assert "Sin diferencia demostrada" in validated
+    assert "Significativa no" in validated
     # Sin prueba, la causa de M3 en palabras, con el código publicado aparte; nunca un p-valor.
     missing = _row(html, "FIL-0004")
     assert "Sin prueba: el veredicto es «Evidencia insuficiente», que no lleva prueba" in missing
@@ -282,8 +283,10 @@ def test_a_validated_verdict_whose_test_rejects_after_bh_is_called_significant(
     row = _row(_client(env).get("/resultados?vista=sku").text, "FIL-0001")
 
     # Significativa y a favor de la campeona: el estadístico HLN-DM es negativo.
-    assert "Validado" in row and "Significativa, a favor de la campeona p ajustado 0,020" in row
-    assert "No significativa" not in row.split("Ver prueba")[0]
+    assert "Validado" in row and "Mejora verificada" in row
+    assert "p ajustado (BH) 0,020" in row
+    assert "Significativa sí, a favor de la campeona" in row
+    assert "Sin diferencia demostrada" not in row.split("Ver prueba")[0]
 
 
 def test_an_unpublished_run_explains_why_there_is_nothing_to_query(
@@ -299,7 +302,7 @@ def test_an_unpublished_run_explains_why_there_is_nothing_to_query(
     assert 'href="/resultados/sku/' not in html and 'id="filtros-consulta"' not in html
     # Without a published run, the SKU tab opens on what M2 left, with the same explanation.
     default = _client(env).get("/resultados?vista=sku").text
-    assert 'aria-current="page">Resultados por familia</a>' in default
+    assert 'aria-current="page">Ver por familia</a>' in default
     assert "La evaluación más reciente está evaluada, sin publicar." in _text(default)
 
 
@@ -339,11 +342,11 @@ def test_the_selection_tab_is_untouched_by_the_query_tab(
     _published(env, monkeypatch)
     html = _client(env).get("/resultados?vista=sku&lista=familias").text
 
-    assert 'aria-current="page">Resultados por familia<' in html
+    assert 'aria-current="page">Ver por familia<' in html
     # «Resultados por familia» sigue siendo la selección de M2: sus filtros no cambian.
     assert 'name="estado"' in html and 'name="family"' in html
     assert 'name="familia_campeona"' not in html and 'name="veredicto"' not in html
-    assert 'href="/resultados?vista=sku&amp;ejecucion=1&amp;m3=m3-real-1"' in html
+    assert 'href="/corridas/1/resultados/productos?m3=m3-real-1"' in html
 
 
 def test_the_old_consulta_link_still_opens_the_verdict_list(

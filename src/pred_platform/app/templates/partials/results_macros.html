@@ -1,0 +1,36 @@
+{% macro claim(label, tone="neutral") -%}
+<span class="pred-result-claim pred-result-claim--{{ tone }}"><svg aria-hidden="true"><use href="#{{ 'i-check-circle' if tone == 'ok' else 'i-minus-circle' if tone == 'warn' else 'i-clock' }}"></use></svg>{{ label }}</span>
+{%- endmacro %}
+{% macro family(code, colors) -%}
+<span class="pred-family-key" style="--family-color:{{ colors.get(code, '#8d9198') }}" aria-hidden="true"></span>{{ family_label(code) }}
+{%- endmacro %}
+{% macro family_legend(colors) -%}
+<ul class="pred-chart-legend" aria-label="Familias">{% for code, color in colors.items() %}<li tabindex="0" data-family="{{ code }}">{{ family(code, colors) }}</li>{% endfor %}</ul>
+{%- endmacro %}
+{% macro key(items) -%}
+<ul class="pred-chart-legend pred-chart-key" aria-label="Qué es cada marca">{% for shape, label in items %}<li><span class="pred-key-mark pred-key-mark--{{ shape }}" aria-hidden="true"></span>{{ label }}</li>{% endfor %}</ul>
+{%- endmacro %}
+{% macro outcome_legend() -%}
+<ul class="pred-chart-legend" aria-label="Resultados de la prueba">
+  <li><span class="pred-outcome-swatch pred-outcome-swatch--better" aria-hidden="true"></span>Mejora verificada</li>
+  <li><span class="pred-outcome-swatch pred-outcome-swatch--unchanged" aria-hidden="true"></span>Sin diferencia demostrada</li>
+  <li><span class="pred-outcome-swatch pred-outcome-swatch--worse" aria-hidden="true"></span>Peor que la línea base</li>
+  <li><span class="pred-outcome-swatch pred-outcome-swatch--untested" aria-hidden="true"></span>Sin prueba</li>
+</ul>
+{%- endmacro %}
+{% macro problem(found) -%}
+{% if found.problem %}<section class="pred-unavailable"><h2>{{ found.problem.title }}</h2><p>{{ found.problem.detail }}</p></section>{% endif %}
+{%- endmacro %}
+{% macro unread_note(found) -%}
+{% if found.confirmation is none and found.confirmation_problem %}<p class="pred-note">{{ found.confirmation_problem.title }} {{ found.confirmation_problem.detail }}</p>{% endif %}
+{%- endmacro %}
+{% macro missing_confirmation_note(found) -%}
+{% if found.confirmation is none and not found.confirmation_problem and found.run %}<p class="pred-note">Esta evaluación se publicó sin la confirmación por clase. Las pruebas por producto salen de los veredictos publicados; los conteos BY y el nivel FCR no se publicaron.</p>{% endif %}
+{%- endmacro %}
+{% macro answer(question, sentence, label, tone="neutral") -%}
+<section class="pred-results-answer"><div class="pred-results-answer__top"><p>{{ question }}</p>{{ claim(label, tone) }}</div><p class="pred-results-answer__sentence">{{ sentence }}</p>{{ caller() }}</section>
+{%- endmacro %}
+{% macro fraction(value, total) -%}{{ percent_text(value / total) if total else "Sin prueba" }}{%- endmacro %}
+{% macro inline_bar(better, unchanged, worse, total) -%}
+<span class="pred-inline-bar" aria-hidden="true">{% if total %}<i class="better" style="width:{{ 100 * better / total }}%"></i><i class="unchanged" style="width:{{ 100 * unchanged / total }}%"></i><i class="worse" style="width:{{ 100 * worse / total }}%"></i>{% endif %}</span>
+{%- endmacro %}

@@ -14,7 +14,7 @@ import math
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from decimal import Decimal
 
@@ -26,6 +26,7 @@ from pred_platform.app.presentation import (
     evaluation_state_label,
     family_label,
     format_count,
+    format_decimal,
     metric_label,
     verdict_label,
 )
@@ -40,7 +41,7 @@ from pred_platform.data.m3_confirmation import (
 )
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import LATEST, MAX_SIZE
-from pred_platform.data.repository import DataRepository, M3ReserveBlocks
+from pred_platform.data.repository import DataRepository, M3ReserveBlocks, StageTiming
 
 
 @dataclass(frozen=True, slots=True)
@@ -374,6 +375,8 @@ class M3Summary:
     champions: ChampionDistribution | None = None
     champions_problem: M3Problem | None = None
     eligibility: list[tuple[str, str, int]] | None = None
+    # Las mismas filas que alimentan los conteos, para el histograma (sin recalcular la prueba).
+    verdicts: tuple[models_v2.M3Verdict, ...] = ()
 
 
 def _champions(
@@ -424,6 +427,7 @@ def _summary(repository: DataRepository, m2_run_id: str, wanted: str | None) -> 
         champions=champions,
         champions_problem=champions_problem,
         eligibility=eligibility_rows(evidence.eligibility_exclusions),
+        verdicts=tuple(rows),
     )
 
 
@@ -453,6 +457,7 @@ class ExecutionChoice:
     estado: str
     iniciada_en: datetime | None
     m3_run_id: str
+    seed: int
 
 
 def champion_available(repository: DataRepository) -> bool:
@@ -487,7 +492,9 @@ def published_executions(
             continue
         if status.ejecucion is not None:
             run = status.ejecucion
-            found[m2_run_id] = ExecutionChoice(run.id, run.estado, run.iniciada_en, m3_run.run_id)
+            found[m2_run_id] = ExecutionChoice(
+                run.id, run.estado, run.iniciada_en, m3_run.run_id, run.seed
+            )
     choices = sorted(
         {choice.ejecucion_id: choice for choice in found.values()}.values(),
         key=lambda choice: (len(choice.ejecucion_id), choice.ejecucion_id),
@@ -524,7 +531,17 @@ def consulta(repository: DataRepository, m2_run_id: str, query: ConsultaQuery) -
     if isinstance(resolved, M3Problem):
         return M3Consulta(problem=resolved)
     try:
-        evidence = repository.get_m3_evidence(resolved.run_id, **query.as_kwargs())
+        kwargs = query.as_kwargs()
+        if query.prueba:
+            unfiltered = export_evidence(
+                repository, m2_run_id, replace(query, prueba=None, m3=resolved.run_id)
+            )
+            if unfiltered.problem:
+                return M3Consulta(run=resolved, problem=unfiltered.problem)
+            kwargs["skus"] = [
+                row.sku for row in unfiltered.items if test_result(row) == query.prueba
+            ]
+        evidence = repository.get_m3_evidence(resolved.run_id, **kwargs)
     except (InvalidQuery, DataLayerError) as exc:
         return M3Consulta(run=resolved, problem=_read_problem(exc))
     if evidence.availability.status != "available":
@@ -567,6 +584,13 @@ def export_evidence(
     if isinstance(resolved, M3Problem):
         return M3Export(problem=resolved)
     kwargs = {**query.as_kwargs(), "page": 1, "size": MAX_SIZE if rows else 1}
+    if rows and query.prueba:
+        unfiltered = export_evidence(
+            repository, m2_run_id, replace(query, prueba=None, m3=resolved.run_id)
+        )
+        if unfiltered.problem:
+            return unfiltered
+        kwargs["skus"] = [row.sku for row in unfiltered.items if test_result(row) == query.prueba]
     try:
         first = repository.get_m3_evidence(resolved.run_id, **kwargs)
         if first.availability.status != "available":
@@ -707,6 +731,55 @@ def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = Non
     return M3Classes(run=resolved, rows=rows, confirmation=confirmation)
 
 
+@dataclass(frozen=True, slots=True)
+class ClassTests:
+    """Los productos probados de una clase y cuántos mejoran o empeoran frente a la línea base.
+
+    Con la confirmación publicada salen de ``m3_significancia``, con sus conteos BY y el nivel FCR.
+    Una evaluación anterior no los publicó por clase: sus conteos salen de las pruebas HLN-DM de
+    los veredictos publicados, sin recalcular nada, y BY y FCR quedan ausentes (``None``).
+    """
+
+    sku_class: str
+    n_probados: int
+    n_mejores: int
+    n_peores: int
+    n_mejores_by: int | None = None
+    n_peores_by: int | None = None
+    nivel_fcr: float | None = None
+
+
+def product_tests(
+    found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()
+) -> list[ClassTests]:
+    """Las pruebas por producto de cada clase, de la confirmación o de los veredictos publicados.
+
+    Si la confirmación existe pero no se pudo leer, no hay nada que afirmar y la lista queda vacía.
+    """
+    if found.confirmation is not None:
+        return [
+            ClassTests(
+                row.sku_class,
+                row.n_probados,
+                row.n_mejores,
+                row.n_peores,
+                row.n_mejores_by,
+                row.n_peores_by,
+                row.nivel_fcr,
+            )
+            for row in found.significance
+        ]
+    if found.confirmation_problem is not None:
+        return []
+    result = []
+    for code in SKU_CLASS_ORDER:
+        outcomes = Counter(test_result(row) for row in verdicts if row.sku_class == code)
+        tested = sum(n for outcome, n in outcomes.items() if outcome != "sin_prueba")
+        if tested:
+            result.append(ClassTests(code, tested, outcomes["mejora"], outcomes["peor"]))
+    return result
+
+
 def verdict_counts(row: models_v2.M3Category) -> list[tuple[str, int]]:
     """Los cinco conteos de veredictos de una clase, en el orden de los grupos del contrato."""
     return [(v, getattr(row.conteos, v)) for veredictos in GROUPS.values() for v in veredictos]
@@ -783,6 +856,17 @@ def origin_label(run: models_v2.M3Run | None) -> str:
     return "desconocido: no se declaró si los datos son reales"
 
 
+def origin_fact(run: models_v2.M3Run | None) -> tuple[str, str]:
+    """Los mismos bits en la fila de contexto, tras «Datos»: el origen y la nota que lo matiza."""
+    if run is None:
+        return "sin informar", ""
+    if run.datos_sinteticos:
+        return "sintéticos o aumentados", "(declarados)"
+    if run.origen_declarado:
+        return "reales", "(declarados)"
+    return "de origen desconocido", "(no se declaró si son reales)"
+
+
 def verdict_group(veredicto: str) -> str:
     return "Evaluado" if veredicto in GROUPS["evaluados"] else "No evaluado"
 
@@ -808,6 +892,19 @@ def _direction(row: models_v2.M3Verdict) -> str | None:
     if not row.dm_significativa or row.dm_estadistico is None or row.dm_estadistico == 0:
         return None
     return "a favor de la campeona" if row.dm_estadistico < 0 else "en contra de la campeona"
+
+
+def test_result(row: models_v2.M3Verdict) -> str:
+    """La dirección publicada por HLN-DM, no la posición de r ni el veredicto descriptivo."""
+    if row.dm_causa is not None or row.dm_significativa is None:
+        return "sin_prueba"
+    if not row.dm_significativa:
+        return "sin_diferencia"
+    if row.dm_estadistico is not None and row.dm_estadistico < 0:
+        return "mejora"
+    if row.dm_estadistico is not None and row.dm_estadistico > 0:
+        return "peor"
+    return "sin_direccion"
 
 
 def significance_text(row: models_v2.M3Verdict) -> str:
@@ -1152,6 +1249,31 @@ def ratio_text(value: float | None) -> str:
     return _decimal(value, max(_side_digits(value, 1.0, 3), _side_digits(value, 0.0, 3)))
 
 
+def effect_parts(ratio: float) -> tuple[str, str]:
+    """La cifra y la leyenda del efecto de una razón mediana publicada.
+
+    ∞ es un valor legal (la línea base no se equivoca y la campeona sí), no un efecto ausente.
+    """
+    if ratio == math.inf:
+        return "Sin límite", "más error que la línea base (r = ∞)"
+    if ratio < 1:
+        return f"{format_decimal((1 - ratio) * 100, 1)} %", "menos error que la línea base"
+    if ratio > 1:
+        return f"{format_decimal((ratio - 1) * 100, 1)} %", "más error que la línea base"
+    return "0,0 %", "el mismo error que la línea base"
+
+
+def effect_phrase(ratio: float) -> str:
+    """El efecto de una razón mediana en una frase corta."""
+    if ratio == math.inf:
+        return "Sin límite (r = ∞)"
+    if ratio < 1:
+        return f"{format_decimal((1 - ratio) * 100, 1)} % menos"
+    if ratio > 1:
+        return f"{format_decimal((ratio - 1) * 100, 1)} % más"
+    return "El mismo error"
+
+
 def gap_digits(upper: float, tail: float, digits: int = 3) -> int:
     """Los decimales necesarios para que los dos tramos de un intervalo se distingan."""
     d = max(
@@ -1164,6 +1286,48 @@ def gap_digits(upper: float, tail: float, digits: int = 3) -> int:
     while d < 17 and upper != tail and f"{upper:.{d}f}" == f"{tail:.{d}f}":
         d += 1
     return d
+
+
+def publication_time(
+    timings: Sequence[StageTiming], publication: models_v2.M3Run | None = None
+) -> datetime | None:
+    """El fin de la etapa L4 que publicó: la última que terminó bien o, con ``publication``, la
+    que la creó (``creado_en`` cae en ese L4). Una publicación de otro intento no hereda esa fecha.
+
+    Sin tiempos de etapa la fecha queda sin informar: ``creado_en`` es el inicio de L4, no su fin.
+    """
+    for timing in reversed(timings):
+        if timing.code != "L4" or timing.finished_at is None:
+            continue
+        if (
+            publication is not None
+            and not timing.started_at <= publication.creado_en <= timing.finished_at
+        ):
+            continue
+        return timing.finished_at
+    return None
+
+
+def r_interval_text(
+    lower: float | None, upper: float | None, tail: float | None = None, *, exact: bool = False
+) -> str:
+    """El conjunto de Fieller publicado: acotado, sin cota superior o con dos regiones."""
+    if lower is None:
+        return "No publicado"
+    show = exact_text if exact else ratio_text
+    digits = gap_digits(upper, tail) if upper is not None and tail is not None else 3
+    shown_upper = (
+        exact_text(upper)
+        if exact and upper is not None
+        else _decimal(upper, digits)
+        if upper is not None and tail is not None
+        else ratio_text(upper)
+    )
+    text = f"[{show(lower)}; " + (f"{shown_upper}]" if upper is not None else "+∞)")
+    if tail is not None:
+        shown_tail = exact_text(tail) if exact else _decimal(tail, digits)
+        text += f" o [{shown_tail}; +∞)"
+    return text
 
 
 def interval_text(lower: float | None, upper: float | None, *, percent: bool = False) -> str:

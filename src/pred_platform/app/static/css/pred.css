@@ -1037,18 +1037,6 @@ p.pred-runs__meta {
     padding-left: 0;
   }
 
-  .wz-action {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .wz-action__do {
-    align-items: flex-start;
-  }
-
-  .wz-action__do select {
-    min-width: 0;
-  }
-
   .wz-answer {
     padding: var(--space-3);
   }
@@ -3895,6 +3883,21 @@ abbr[title] {
   margin: 0;
   width: 100%;
   min-width: 340px;
+}
+
+/* After the base rules, so the narrow layout wins: the action goes under its text. */
+@media (max-width: 900px) {
+  .wz-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wz-action__do {
+    align-items: flex-start;
+  }
+
+  .wz-action__do select {
+    min-width: 0;
+  }
 }
 
 .wz-ptable {

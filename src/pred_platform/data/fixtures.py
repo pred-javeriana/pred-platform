@@ -40,7 +40,7 @@ from pred_platform.data.query import (
     paginate,
     sort_items,
 )
-from pred_platform.data.repository import ArtifactDownload
+from pred_platform.data.repository import ArtifactDownload, StageTiming
 from pred_platform.data.run_status import CauseSnapshot, StageReference, TaskCause
 from pred_platform.data.scenarios import DEFAULT_SCENARIO, Scenario, get_scenario
 
@@ -195,6 +195,9 @@ class FixtureRepository(M3FixtureSource):
 
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         return None  # the examples record no run error
+
+    def get_stage_timings(self, run_id: str) -> tuple[StageTiming, ...]:
+        return ()  # the examples keep no engine progress log
 
     def get_run_status(
         self,

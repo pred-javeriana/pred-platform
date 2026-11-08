@@ -505,5 +505,5 @@ def test_result_navigation_remains_links_and_preserves_run() -> None:
     html = client_for().get("/resultados?ejecucion=1").text
     assert 'role="tab"' not in html
     hrefs = [unescape(a.get("href") or "") for a in Markup(html).select("a")]
-    for vista in ("resumen", "clase", "sku"):
-        assert any(f"vista={vista}" in h and "ejecucion=1" in h for h in hrefs)
+    for chapter in ("resumen", "p1", "p2", "estabilidad", "productos"):
+        assert any(h.startswith(f"/corridas/1/resultados/{chapter}") for h in hrefs)

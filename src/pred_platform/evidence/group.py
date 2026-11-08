@@ -38,33 +38,7 @@ def calculate_significance(
         raise EvidenceInvalid(f"Se requieren las semillas {expected}; no se reemplazan corridas.")
     if len({r.run_id for r in ordered}) != len(ordered):
         raise EvidenceInvalid("Cada semilla debe tener una corrida distinta.")
-    reference = ordered[0]
-    for run in ordered:
-        if run.ingesta_sha256 != reference.ingesta_sha256:
-            raise EvidenceInvalid("Las corridas no comparten la ingesta.")
-        # The configuration fingerprint includes the seed. All other identity and
-        # protocol fields, including policy, block limits and versions, stay fixed.
-        identity = {k: v for k, v in run.identity.items() if k != "configuracion_id"}
-        base_identity = {k: v for k, v in reference.identity.items() if k != "configuracion_id"}
-        if identity != base_identity or _fixed_protocol(run) != _fixed_protocol(reference):
-            raise EvidenceInvalid("Las corridas difieren en algo distinto de la semilla.")
-    try:
-        alpha = float(reference.protocol["politica"]["alfa_dm"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise EvidenceInvalid("Falta alfa_dm en la política publicada.") from exc
-    if not math.isfinite(alpha) or not 0 < alpha < 1:
-        raise EvidenceInvalid("alfa_dm no es válido.")
-
-    populations = []
-    for run in ordered:
-        population = {v.sku: v.sku_class for v in (*run.verdicts, *run.exclusions)}
-        if len(population) != len(run.verdicts) + len(run.exclusions):
-            raise EvidenceInvalid("Un producto aparece más de una vez en una corrida.")
-        populations.append(population)
-        if population != populations[0]:
-            raise EvidenceInvalid("Las corridas no comparten los productos y sus clases.")
-        if any(v.dm_p_valor is not None and v.dm_alfa != alpha for v in run.verdicts):
-            raise EvidenceInvalid("Una prueba no usa el alfa de la política.")
+    alpha, populations = check_comparable(ordered)
 
     sources: dict[str, list[ProductSource]] = defaultdict(list)
     for run in ordered:
@@ -151,6 +125,44 @@ def calculate_significance(
         for r in ordered
     )
     return GroupSignificance(references, not preview, alpha, tuple(products), tuple(classes))
+
+
+def check_comparable(runs: Sequence[RunEvidence]) -> tuple[float, list[dict[str, str]]]:
+    """Reject runs that differ in anything but the seed; return the shared alpha and population.
+
+    The runs share the ingest, the identity and the protocol (policy, block limits and versions)
+    except for the seed, the configuration fingerprint (which includes it) and each product's
+    class. Equality is transitive: a run comparable with a reference is comparable with every
+    other run that is.
+    """
+    reference = runs[0]
+    for run in runs:
+        if run.ingesta_sha256 != reference.ingesta_sha256:
+            raise EvidenceInvalid("Las corridas no comparten la ingesta.")
+        # The configuration fingerprint includes the seed. All other identity and
+        # protocol fields, including policy, block limits and versions, stay fixed.
+        identity = {k: v for k, v in run.identity.items() if k != "configuracion_id"}
+        base_identity = {k: v for k, v in reference.identity.items() if k != "configuracion_id"}
+        if identity != base_identity or _fixed_protocol(run) != _fixed_protocol(reference):
+            raise EvidenceInvalid("Las corridas difieren en algo distinto de la semilla.")
+    try:
+        alpha = float(reference.protocol["politica"]["alfa_dm"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise EvidenceInvalid("Falta alfa_dm en la política publicada.") from exc
+    if not math.isfinite(alpha) or not 0 < alpha < 1:
+        raise EvidenceInvalid("alfa_dm no es válido.")
+
+    populations = []
+    for run in runs:
+        population = {v.sku: v.sku_class for v in (*run.verdicts, *run.exclusions)}
+        if len(population) != len(run.verdicts) + len(run.exclusions):
+            raise EvidenceInvalid("Un producto aparece más de una vez en una corrida.")
+        populations.append(population)
+        if population != populations[0]:
+            raise EvidenceInvalid("Las corridas no comparten los productos y sus clases.")
+        if any(v.dm_p_valor is not None and v.dm_alfa != alpha for v in run.verdicts):
+            raise EvidenceInvalid("Una prueba no usa el alfa de la política.")
+    return alpha, populations
 
 
 def _fixed_protocol(run: RunEvidence) -> dict:

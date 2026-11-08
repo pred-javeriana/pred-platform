@@ -13,11 +13,19 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
-from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
+from pred_platform.contract.errors import InvalidQuery
+from pred_platform.data.query import LATEST, int_param
 
 # El orden por defecto de la evidencia de M3 es el SKU; el repositorio acepta las claves de
 # ``m3_query.EVIDENCE_SORT`` y rechaza las demás.
 DEFAULT_SORT = "sku"
+PRODUCT_PAGE_SIZE = 25
+TEST_RESULTS = {
+    "mejora": "Mejora verificada",
+    "sin_diferencia": "Sin diferencia demostrada",
+    "peor": "Peor que la línea base",
+    "sin_prueba": "Sin prueba",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,10 +39,11 @@ class ConsultaQuery:
     familia_campeona: str | None = None
     veredicto: str | None = None
     q: str | None = None
+    prueba: str | None = None
     sort: str = DEFAULT_SORT
     descending: bool = False
     page: int = 1
-    size: int = DEFAULT_SIZE
+    size: int = PRODUCT_PAGE_SIZE
 
     def as_kwargs(self) -> dict[str, Any]:
         return {
@@ -58,10 +67,11 @@ class ConsultaQuery:
             "familia_campeona": self.familia_campeona or "",
             "veredicto": self.veredicto or "",
             "q": self.q or "",
+            "prueba": self.prueba or "",
             "sort": "" if self.sort == DEFAULT_SORT else self.sort,
             "descending": "1" if self.descending else "",
             "page": self.page if self.page > 1 else "",
-            "size": "" if self.size == DEFAULT_SIZE else self.size,
+            "size": "" if self.size == PRODUCT_PAGE_SIZE else self.size,
         }
         values.update(overrides)
         return urlencode(
@@ -85,7 +95,11 @@ class ConsultaQuery:
 
 def parse_consulta_query(params: Mapping[str, str]) -> ConsultaQuery:
     """Lee la query HTTP; los valores desconocidos los rechaza el repositorio (``InvalidQuery``)."""
+    prueba = params.get("prueba") or None
+    if prueba is not None and prueba not in TEST_RESULTS:
+        raise InvalidQuery("El resultado de la prueba no es válido: «" + prueba + "».")
     return ConsultaQuery(
+        prueba=prueba,
         ejecucion=(params.get("ejecucion") or "").strip() or LATEST,
         m3=(params.get("m3") or "").strip() or None,
         sku_class=params.get("sku_class") or None,
@@ -95,5 +109,5 @@ def parse_consulta_query(params: Mapping[str, str]) -> ConsultaQuery:
         sort=params.get("sort") or DEFAULT_SORT,
         descending=params.get("descending") in {"1", "true", "on"},
         page=int_param(params.get("page"), 1, "page"),
-        size=int_param(params.get("size"), DEFAULT_SIZE, "size"),
+        size=int_param(params.get("size"), PRODUCT_PAGE_SIZE, "size"),
     )

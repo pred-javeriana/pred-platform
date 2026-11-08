@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from pred_platform.dal.evidencia import _utc
 from pred_platform.dal.lectura import _open_readonly
-from pred_platform.evidence.group import calculate_significance
+from pred_platform.evidence.group import calculate_significance, check_comparable
 from pred_platform.evidence.lumpy import LumpyEvidence, calculate_lumpy
 from pred_platform.evidence.models import (
     EvidenceInvalid,
@@ -63,6 +63,34 @@ def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) 
         if len(_cache) > 4:
             _cache.popitem(last=False)
         return result
+
+
+def comparable_runs(db_path: Path, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
+    """The published runs that differ from ``reference`` in nothing but the seed.
+
+    The final group applies the same rules (ingest, identity, protocol, population). A run that
+    cannot be read as seed evidence is not comparable. A reference that cannot be read raises.
+    """
+    with _snapshot(db_path) as conn:
+        base = _run(conn, reference)
+        found = set()
+        for run_id in run_ids:
+            try:
+                other = _run(conn, run_id)
+                if other.run_id != base.run_id and other.seed != base.seed:
+                    check_comparable((base, other))
+                    found.add(run_id)
+            except (
+                EvidenceInvalid,
+                sqlite3.Error,
+                ValidationError,
+                KeyError,
+                TypeError,
+                ValueError,
+                ArithmeticError,
+            ):
+                continue
+        return frozenset(found)
 
 
 @contextmanager

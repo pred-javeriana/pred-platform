@@ -111,6 +111,9 @@ class M3DalSource:
     def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
         return grupo.read_group(self.db_path, run_ids)
 
+    def comparable_m3_runs(self, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
+        return grupo.comparable_runs(self.db_path, reference, run_ids)
+
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """La confirmación del campeón y la significancia por clase de la corrida, o ``None``."""
         rows = evidencia.confirmation(self.db_path, run_id)
