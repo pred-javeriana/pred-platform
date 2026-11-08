@@ -4,6 +4,7 @@
 {% from "components/metrics.html" import metrics_row %}
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/evidence.html" import evidence_panel %}
+{% from "components/terms.html" import day %}
 
 {% set ingest_status = describe_status("ingest", report.status) %}
 {% if not diagnosis_details %}
@@ -33,7 +34,7 @@
     </div>
   {% elif report.status == "needs_confirmation" %}
     {{ alert("Esta carga esperaba una confirmación que ya no está disponible: la página se abrió desde el historial o la confirmación venció. Vuelva a cargar el archivo para confirmar.", variant="info") }}
-    <p class="pred-actions">{{ button("Volver a cargar el archivo", variant="primary", href="#carga", icon="i-upload") }}</p>
+    <p class="pred-actions">{{ button("Volver a cargar el archivo", variant="primary", href=request.url.include_query_params(carga="1") ~ "#carga", icon="i-upload") }}</p>
   {% endif %}
 
   {% if report.status == "rejected" %}
@@ -60,17 +61,18 @@
     {% if report.error.retryable %}
     <p class="pred-actions">{{ button("Reintentar", variant="secondary", href=datos_path, icon="i-rotate") }}</p>
     {% elif report.status in ("rejected", "failed") %}
-    <p class="pred-actions">{{ button("Cargar el archivo corregido", variant="primary", href="#carga", icon="i-upload") }}</p>
+    <p class="pred-actions">{{ button("Cargar el archivo corregido", variant="primary", href=request.url.include_query_params(carga="1") ~ "#carga", icon="i-upload") }}</p>
     {% endif %}
   {% elif report.status == "rejected" %}
-    <p class="pred-actions">{{ button("Cargar el archivo corregido", variant="primary", href="#carga", icon="i-upload") }}</p>
+    <p class="pred-actions">{{ button("Cargar el archivo corregido", variant="primary", href=request.url.include_query_params(carga="1") ~ "#carga", icon="i-upload") }}</p>
   {% endif %}
 
   {% if report.validation %}
-  <dl class="pred-kpis pred-kpis--compact">
+  <dl class="pred-kpis pred-kpis--compact pred-file-figures">
+    <div class="pred-kpis__item"><dt>Productos</dt><dd>{{ format_count(report.validation.n_skus) }}</dd></div>
     <div class="pred-kpis__item"><dt>Filas validadas</dt><dd>{{ format_count(report.validation.rows_validated) }}</dd></div>
     <div class="pred-kpis__item"><dt>Panel diario</dt><dd>{{ format_count(report.validation.rows_daily_panel) }}</dd><dd class="pred-kpis__note">Filas publicadas: una por SKU y día del calendario.</dd></div>
-    <div class="pred-kpis__item"><dt>SKU</dt><dd>{{ format_count(report.validation.n_skus) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Fecha de corte</dt><dd class="pred-kpis__text">{{ day(topology.t_star) if topology and topology.t_star else 'Sin fecha publicada' }}</dd><dd class="pred-kpis__note">Después de esta fecha, los datos se reservan para probar.</dd></div>
   </dl>
   {% endif %}
 

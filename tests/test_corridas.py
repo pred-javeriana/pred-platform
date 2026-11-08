@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi import Response
+from fastapi import Request, Response
 from fastapi.testclient import TestClient
 
 from pred_platform.app.borrador import COOKIE, Draft, save_draft
@@ -18,6 +18,7 @@ from pred_platform.app.configuracion import FORMAT, FORMAT_VERSION
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
+from pred_platform.dal.importacion import import_reports
 from pred_platform.data.fixtures import FixtureRepository
 from tests import formulario_html
 from tests.m3_publicada import publish
@@ -68,11 +69,17 @@ def _rail(html: str) -> list[tuple[str, str | None]]:
     rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
     assert rail is not None
     items = re.findall(
-        r'<li class="is-(\w+)[^"]*"[^>]*>\s*<(?:a|span) class="pred-rail__item"'
-        r'(?: href="([^"]+)")?',
+        r'<li class="is-(\w+)[^"]*"[^>]*>\s*<(a|button|span) class="pred-rail__item"([^>]*)>',
         rail.group(0),
     )
-    return [(state, href or None) for state, href in items]
+    result = []
+    for state, tag, attrs in items:
+        destination = re.search(r' (?:value|href)="([^"]+)"', attrs)
+        href = destination.group(1) if destination else None
+        if tag == "button" and href is not None:
+            href = f"/corridas/nueva/{href}"
+        result.append((state, href))
+    return result
 
 
 def _footer(html: str) -> str:
@@ -105,6 +112,10 @@ def _main(html: str) -> str:
         ),
         ("/ejecucion?ejecucion=99", "/corridas/99/ejecucion"),
         ("/ejecucion?lanzar=1", "/corridas/nueva/datos"),
+        (
+            "/ejecucion?lanzar=1&q=keep&families=ml&families=dl",
+            "/corridas/nueva/datos?q=keep&families=ml&families=dl",
+        ),
         (
             f"/ejecucion?ingest_id={SOME_INGEST}&lanzar=1&families=ml&families=dl",
             f"/corridas/nueva/ajustes?ingest_id={SOME_INGEST}&families=ml&families=dl",
@@ -169,6 +180,10 @@ def test_without_runs_the_old_addresses_start_a_new_run() -> None:
     client = _fixture_client("vacio")
     for old, new in (
         ("/ejecucion", "/corridas/nueva/datos"),
+        (
+            "/ejecucion?estado=fallida&page=2",
+            "/corridas/nueva/datos?estado=fallida&page=2",
+        ),
         ("/resultados", "/corridas/nueva/resultados"),
     ):
         response = client.get(old, follow_redirects=False)
@@ -484,7 +499,9 @@ def _choose(client: TestClient, ingest_id: str) -> None:
 
 def _draft_cookie(ingest_id: str) -> str:
     response = Response()
-    save_draft(response, Draft(ingest_id=ingest_id))
+    save_draft(
+        Request({"type": "http", "headers": []}), response, Draft(ingest_id=ingest_id, rev=1)
+    )
     found = re.search(rf"{COOKIE}=([^;]+)", response.headers["set-cookie"])
     assert found is not None
     return found.group(1)
@@ -580,10 +597,13 @@ def test_after_a_rail_exit_and_browser_back_continuar_goes_to_revisar(env: Env) 
     left = client.post("/corridas/nueva/ajustes", data=rail, follow_redirects=False)
     assert left.headers["location"] == "/corridas/nueva/datos"
 
-    # Browser Back shows the same Ajustes page with what was typed; the destination of the
-    # earlier exit travelled only with that submit, so Continuar and Enter go forward.
+    # Browser Back asks for the Ajustes page again (it is never cached, so it carries the draft
+    # revision the exit wrote) and shows what was typed; the destination of the earlier exit
+    # travelled only with that submit, so Continuar and Enter go forward.
     for button in (_CONTINUAR, None):
-        data = formulario_html.submit(page, _AJUSTES_FORM, typed=typed, button=button)
+        again = client.get("/corridas/nueva/ajustes")
+        assert again.headers["cache-control"] == "no-store"
+        data = formulario_html.submit(again.text, _AJUSTES_FORM, typed=typed, button=button)
         assert "destino" not in data
         forward = client.post("/corridas/nueva/ajustes", data=data, follow_redirects=False)
         assert forward.headers["location"] == "/corridas/nueva/revisar"
@@ -592,21 +612,41 @@ def test_after_a_rail_exit_and_browser_back_continuar_goes_to_revisar(env: Env) 
 
     # Atrás is still the way back, with what was typed.
     back = formulario_html.submit(
-        page, _AJUSTES_FORM, typed={"seed": "7"}, button={"value": "datos"}
+        client.get("/corridas/nueva/ajustes").text,
+        _AJUSTES_FORM,
+        typed={"seed": "7"},
+        button={"value": "datos"},
     )
     assert back["destino"] == ["datos"]
     assert client.post("/corridas/nueva/ajustes", data=back).url.path == "/corridas/nueva/datos"
     assert re.search(r'name="seed"[^>]*value="7"', client.get("/corridas/nueva/ajustes").text)
 
 
-def test_the_rail_script_leaves_no_destination_in_the_page() -> None:
-    """The rail sends its destination in a field the script removes right after ``submit()``
-    (which reads the form at once); a field left in the form would ride along with Continuar
-    and Enter after browser Back."""
-    script = (Path(__file__).parent.parent / "src/pred_platform/app/static/js/pred.js").read_text()
-    handler = script.split('closest(".pred-rail a', 1)[1].split("});", 1)[0]
-    assert "formulario.submit();\n    destino.remove();" in handler
-    assert handler.count("appendChild(") == 1
+@pytest.mark.parametrize("step", ["datos", "ajustes", "revisar"])
+def test_the_rail_keeps_edits_without_script_and_leaves_no_destination_in_the_page(
+    env: Env, step: str
+) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    page = client.get("/corridas/nueva/ajustes").text
+    rail = formulario_html.submit(
+        page,
+        _AJUSTES_FORM,
+        typed={"seed": "99"},
+        button={"class": "pred-rail__item", "value": step},
+    )
+    assert rail["destino"] == [step]
+    left = client.post("/corridas/nueva/ajustes", data=rail, follow_redirects=False)
+    assert left.headers["location"] == f"/corridas/nueva/{step}"
+    assert (
+        '<input type="hidden" name="seed" value="99">' in client.get("/corridas/nueva/revisar").text
+    )
+    # Browser Back asks for the never-cached page again. Only the clicked submitter carries destino.
+    enter = formulario_html.submit(
+        client.get("/corridas/nueva/ajustes").text, _AJUSTES_FORM, typed={"seed": "99"}
+    )
+    assert "destino" not in enter
+    assert client.post("/corridas/nueva/ajustes", data=enter).url.path == "/corridas/nueva/revisar"
 
 
 def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
@@ -616,12 +656,69 @@ def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
     ajustes = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
 
     assert COOKIE in ajustes.headers["set-cookie"]
-    assert re.search(rf'<option value="{env.ingest_id}"[^>]*selected', ajustes.text)
+    assert formulario_html.submit(ajustes.text, _AJUSTES_FORM)["ingest_id"] == [env.ingest_id]
     # Datos, the rail and Revisar read the file the page shows, not the earlier draft.
     assert [state for state, _ in _rail(ajustes.text)][0] == "done"
     revisar = client.get("/corridas/nueva/revisar").text
     assert f'<input type="hidden" name="ingest_id" value="{env.ingest_id}">' in revisar
     assert SOME_INGEST not in revisar
+
+
+def test_opening_ajustes_does_not_choose_a_file_on_behalf_of_the_person(env: Env) -> None:
+    client = _dal_client(env)
+    page = client.get("/corridas/nueva/ajustes").text
+    assert '<option value="" selected disabled>Elija un archivo de datos</option>' in page
+    back = formulario_html.submit(page, _AJUSTES_FORM, button={"value": "datos"})
+    assert "ingest_id" not in back
+    client.post("/corridas/nueva/ajustes", data=back)
+    assert _rail(client.get("/corridas/nueva/datos").text)[0][0] == "todo"
+    assert "Primero elija los datos" in client.get("/corridas/nueva/revisar").text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_a_new_file_requires_reviewing_settings_again(env: Env) -> None:
+    root = env.settings.data_root
+    report = json.loads((root / "ingestas" / f"{env.ingest_id}.json").read_text())
+    report["ingest_id"] = SOME_INGEST
+    report["source_file"]["sha256"] = SOME_INGEST
+    (root / "ingestas" / f"{SOME_INGEST}.json").write_text(json.dumps(report))
+    assert import_reports(env.db, root).ok
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM})
+    assert _rail(client.get("/corridas/nueva/datos").text)[1][0] == "done"
+    # The same file keeps completion; another accepted file requires a fresh review.
+    same = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text
+    assert _rail(same)[1][0] == "done"
+    other = client.get(f"/corridas/nueva/ajustes?ingest_id={SOME_INGEST}").text
+    assert formulario_html.submit(other, _AJUSTES_FORM)["ingest_id"] == [SOME_INGEST]
+    assert _rail(other)[1][0] == "todo"
+    assert (
+        '<input type="hidden" name="seed" value="0">' in client.get("/corridas/nueva/revisar").text
+    )
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_saving_each_edit_keeps_the_new_value_for_revisar_without_validating(env: Env) -> None:
+    client = _dal_client(env)
+    _choose(client, env.ingest_id)
+    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM, "seed": "64"})
+    saved = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "99", "destino": "ajustes"},
+        follow_redirects=False,
+    )
+    assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/ajustes")
+    assert COOKIE in saved.headers["set-cookie"]
+    assert (
+        '<input type="hidden" name="seed" value="99">' in client.get("/corridas/nueva/revisar").text
+    )
+    client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "ajustes"},
+    )
+    assert "Estos ajustes no se pueden lanzar" in client.get("/corridas/nueva/revisar").text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
 def test_a_link_with_a_file_that_cannot_run_leaves_the_draft_alone(env: Env) -> None:
@@ -630,6 +727,9 @@ def test_a_link_with_a_file_that_cannot_run_leaves_the_draft_alone(env: Env) -> 
     for ingest_id in (SOME_INGEST, _fixture_id("failed")):
         response = client.get(f"/corridas/nueva/ajustes?ingest_id={ingest_id}")
         assert "set-cookie" not in response.headers
+        assert formulario_html.submit(response.text, _AJUSTES_FORM)["ingest_id"] == [env.ingest_id]
+        back = formulario_html.submit(response.text, _AJUSTES_FORM, button={"value": "datos"})
+        client.post("/corridas/nueva/ajustes", data=back)
     revisar = client.get("/corridas/nueva/revisar").text
     assert f'<input type="hidden" name="ingest_id" value="{env.ingest_id}">' in revisar
 

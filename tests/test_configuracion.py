@@ -251,7 +251,7 @@ def test_a_file_from_another_ingestion_imports_the_settings_but_chooses_no_data(
     assert re.search(r'name="horizon"[^>]*value="2"', page.text)  # los ajustes sí se importan
     # Ninguna ingesta queda elegida: hay que escoger y la opción vacía lo dice.
     assert '<option value="" selected disabled>Elija un archivo de datos</option>' in page.text
-    assert f'<option value="{env.ingest_id}" selected>' not in page.text
+    assert not re.search(rf'<option value="{env.ingest_id}" selected(?: |>).*?</option>', page.text)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 

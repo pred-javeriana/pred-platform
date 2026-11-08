@@ -16,18 +16,26 @@ written by an older engine, which carry none, fall back to the class name or the
 (`worker/errores.py`). A stopped run does not show
 its closed tasks as progress: its bar counts the successful ones.
 
-**Export and import the configuration** (RF-CON-07, task A3 of section 4.5). The Configuración tab
-of the shown run has an "Exportar configuración (JSON)" button
+**Copy, export and import the configuration** (RF-CON-07, task A3 of section 4.5). Ajustes
+shows the families × demand-type matrix, evaluation fields and seed. Its copy form
+(`POST /corridas/nueva/copiar`) preserves every stored launch setting, including trials and
+parallel processes, in the draft without launching. Revisar shows a checklist and the recorded
+stage durations of the two latest completed runs with the same data, never a time estimate.
+A duplicate identity disables Lanzar and links to the existing run. A replayed launch also
+opens that run without resuming it, including when it stopped or completed with failures.
+After launch, Ajustes and Revisar become read-only records with the complete stored settings.
+
+The Configuración tab and the Ajustes/Revisar records have an "Exportar configuración (JSON)" button
 (`GET /ejecucion/configuracion.json?ejecucion=<id>`, the latest run when omitted), and the
-Ajustes step of a new run has a "Reproducir una ejecución anterior" disclosure with the import form
+Ajustes step of a new run has an "Importar un archivo de configuración" disclosure with the import form
 (`POST /ejecucion/configuracion`, multipart field `archivo`). The file is JSON with its own format
 (`pred-platform.configuracion-ejecucion`, `schema_version` 1) and holds the stored `run_id`, the
 `identidad` (`run_id_for`, the id the platform uses to recognise the same run), the SHA-256 of the
 ingestion, the nine parameters (`min_train`, `horizon`, `step`, `seasonality`, `metric`, `families`,
 `trials`, `seed`, `workers`) and the versions that read it (platform, contract v1 and v2, format of
-`parametros`). Nothing local travels (no execution id, no dates). Importing only **fills the launch
-form**: it validates with the same rule as a launch (`parse_launch_form`), never writes to the
-database and never launches; the operator reviews and presses "Lanzar ejecución". A file that is
+`parametros`). Nothing local travels (no execution id, no dates). Importing **fills the draft**:
+it validates with the same rule as a launch (`parse_launch_form`), never writes to the database
+and never launches. The operator reviews and presses "Lanzar la corrida". A file that is
 empty, over 64 KB, not JSON, of another format or major version, with unknown or missing fields, a
 wrong type or a value the launch rejects is refused (400) with its cause. If the file's ingestion is
 not accepted here, its settings are imported but no ingestion is chosen and the notice names the
@@ -92,6 +100,10 @@ fingerprint (`run.incompatible_config`).
   also says the run waits for `make worker`. If the app's own worker thread has ended, for example
   because it could not create its lock file in a read-only folder, the screen says that worker
   stopped and the app log says why.
+- **Earlier durations** read `stage_started`/`stage_finished` pairs from `progreso.jsonl` in
+  `app/historial.py`. A missing or incomplete trace shows no invented duration. A new attempt
+  resets the pairs. Copying and duplicate detection use read-only DAL reads, because the public
+  `RunSettings` does not expose every launch field.
 
 ## Where
 
@@ -103,7 +115,7 @@ fingerprint (`run.incompatible_config`).
 | Page and partials | `templates/pages/execution.html`, `templates/partials/execution_{launch,body}.html` |
 | CSV upload | `src/pred_platform/worker/ingesta.py`, `DalRepository.submit_ingest` |
 | Progress presentation | `app/execution_display.py`, `app/static/js/live.js`, `app/static/css/live.css` |
-| Tests | `tests/test_ejecucion.py`, `tests/test_execution_live.py`, `tests/test_control.py`, `tests/test_carga.py` |
+| Tests | `tests/test_wizard_steps.py`, `tests/test_ejecucion.py`, `tests/test_execution_live.py`, `tests/test_control.py`, `tests/test_carga.py` |
 
 ## Known limits
 

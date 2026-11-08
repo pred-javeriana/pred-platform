@@ -13,8 +13,9 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from pred_platform.app.borrador import read_draft, save_draft
+from pred_platform.app.borrador import next_revision, read_draft, save_draft
 from pred_platform.app.charts import topology_scatter_svg
+from pred_platform.app.charts_datos import demand_scatter_svg
 from pred_platform.app.corridas import draft_facts, run_facts
 from pred_platform.app.datos import (
     CSV_COLUMNS,
@@ -34,7 +35,7 @@ from pred_platform.app.datos import (
     upload_blocked,
     validate_upload,
 )
-from pred_platform.app.ejecucion import accepted_ingests
+from pred_platform.app.ejecucion import accepted_ingests, families_hint
 from pred_platform.app.pasos import NEW, Wizard, draft_wizard, run_wizard, step_href
 from pred_platform.app.routers.corridas import (
     Locked,
@@ -45,7 +46,7 @@ from pred_platform.app.routers.corridas import (
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, TopologyReport
 from pred_platform.data.deps import get_repository
-from pred_platform.data.query import MAX_PAGE
+from pred_platform.data.query import MAX_PAGE, MAX_SIZE
 from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
@@ -106,6 +107,7 @@ def _runnable(repository: DataRepository, ingest_id: str) -> bool:
 def elegir_datos(
     request: Request,
     ingest_id: Annotated[str | None, Form()] = None,
+    mostrar: Annotated[bool, Form()] = False,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> RedirectResponse:
     """«Continuar a Ajustes»: guarda el archivo elegido en el borrador. Solo un archivo aceptado
@@ -113,8 +115,15 @@ def elegir_datos(
     if ingest_id is None or not _runnable(repository, ingest_id):
         query = f"?{urlencode({'ingest_id': ingest_id})}" if ingest_id else ""
         return RedirectResponse(f"{_DRAFT_PATH}{query}", status_code=303)
-    response = RedirectResponse(step_href(NEW, "ajustes"), status_code=303)
-    save_draft(response, read_draft(request).with_ingest(ingest_id))
+    target = (
+        f"{_DRAFT_PATH}?{urlencode({'ingest_id': ingest_id})}"
+        if mostrar
+        else step_href(NEW, "ajustes")
+    )
+    response = RedirectResponse(target, status_code=303)
+    save_draft(
+        request, response, next_revision(request, read_draft(request).with_ingest(ingest_id))
+    )
     return response
 
 
@@ -203,7 +212,11 @@ def _submit(
     )
     # Un archivo cargado y aceptado queda elegido para la corrida nueva.
     if report.ingest_id and _runnable(repository, report.ingest_id):
-        save_draft(response, read_draft(request).with_ingest(report.ingest_id))
+        save_draft(
+            request,
+            response,
+            next_revision(request, read_draft(request).with_ingest(report.ingest_id)),
+        )
     return response
 
 
@@ -245,9 +258,11 @@ def _render_page(
     report_error = layer_error
     topology: TopologyReport | None = None
     topology_error = None
+    overview_error = None
     topology_query = None
     topology_pages = None
     chart_svg = None
+    summary_chart_svg = None
     query_error = history_query_error
 
     if pending_token:
@@ -282,6 +297,22 @@ def _render_page(
             topology_pages = page_meta(topology.page)
             if topology.availability.status == "available":
                 chart_svg = topology_scatter_svg(topology)
+                try:
+                    whole = repository.get_topology_report(report.ingest_id, size=MAX_SIZE)
+                    items = list(whole.items)
+                    for page in range(2, (whole.page.total + MAX_SIZE - 1) // MAX_SIZE + 1):
+                        items.extend(
+                            repository.get_topology_report(
+                                report.ingest_id, size=MAX_SIZE, page=page
+                            ).items
+                        )
+                    summary_chart_svg = demand_scatter_svg(
+                        whole.model_copy(update={"items": items})
+                    )
+                except DataLayerError as exc:
+                    overview_error = error_view(exc)
+                except InvalidQuery as exc:
+                    query_error = str(exc)
             else:
                 topology_error = {
                     "code": topology.availability.reason_code,
@@ -349,9 +380,12 @@ def _render_page(
         else None,
         "topology": topology,
         "topology_error": topology_error,
+        "overview_error": overview_error,
         "topology_query": topology_query,
         "topology_pages": topology_pages,
         "chart_svg": chart_svg,
+        "summary_chart_svg": summary_chart_svg,
+        "families_hint": dict(families_hint()),
         "can_continue": can_continue,
         "source": source,
         "csv_hint": CSV_HINT,

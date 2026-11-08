@@ -166,7 +166,9 @@ def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
     # Without runs, the old Ejecución link starts a new run at Datos, with the upload first.
     first = client.get("/ejecucion")
     assert first.url.path == "/corridas/nueva/datos"
-    assert 'id="titulo-carga">Cargar un archivo<' in first.text
+    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in first.text
+    assert 'id="carga" open' in first.text
+    assert 'action="/datos/cargar"' in first.text
     # Ajustes says what is missing and cannot continue.
     ajustes = client.get("/corridas/nueva/ajustes").text
     assert "Todavía no hay ningún archivo de datos aceptado" in _text(ajustes)
@@ -336,20 +338,28 @@ def test_the_launch_form_lists_the_families_each_class_admits() -> None:
     )
     html = client.get(f"/ejecucion?ingest_id={ingest_id}").text
 
-    hint = re.search(r'id="families-hint">(.*?)</ul>', html, re.S)
-    assert hint is not None
-    items = [
-        _text(item).strip() for item in re.findall(r"<li[^>]*>(.*?)</li>", hint.group(1), re.S)
+    matrix = re.search(r'<table class="pred-family-matrix">(.*?)</table>', html, re.S)
+    assert matrix is not None
+    headers = re.findall(r'<th scope="col"[^>]*>(.*?)</th>', matrix[1], re.S)
+    assert [_text(header).split()[0] for header in headers] == [
+        "Familia",
+        "Suave",
+        "Errática",
+        "Intermitente",
+        "Grumosa",
     ]
-    assert items == [
-        "Suave Clásica Aprendizaje automático Aprendizaje profundo Fundacional",
-        "Errática Clásica Aprendizaje automático Aprendizaje profundo Fundacional",
-        "Intermitente Clásica Aprendizaje automático Fundacional",
-        "Grumosa Clásica Fundacional",
+    rows = re.findall(r'<tr>\s*<th scope="row">.*?</tr>', matrix[1], re.S)
+    assert len(rows) == 5  # cuatro familias y los conteos por clase
+    assert [
+        [_text(cell).strip() for cell in re.findall(r"<td>(.*?)</td>", row, re.S)]
+        for row in rows[:4]
+    ] == [
+        ["Compite", "Compite", "Compite", "Compite"],
+        ["Compite", "Compite", "Compite", "No admite este tipo"],
+        ["Compite", "Compite", "No admite este tipo", "No admite este tipo"],
+        ["Compite", "Compite", "Compite", "Compite"],
     ]
-    # Each class explains itself on demand; the families are short tags, not a sentence.
-    assert 'title="Vende casi todos los días, en cantidades parecidas."' in hint.group(1)
-    assert hint.group(1).count('class="pred-tag"') == 4 + 4 + 3 + 2
+    assert 'title="Vende casi todos los días, en cantidades parecidas."' in matrix[1]
 
 
 # -------------------------------------------------------------------------- con el DAL real

@@ -5,6 +5,19 @@ conservan lo elegido, y el borrador se descarta al lanzar. No es un secreto ni u
 lo que la persona escribió, y lanzar lo vuelve a validar con la regla del worker
 (``ejecucion.parse_launch_form``). Una cookie ilegible o con otra forma se trata como un borrador
 vacío.
+
+El borrador lleva una revisión que sube con cada escritura y una marca propia de esa escritura.
+Cada página de Ajustes recuerda la revisión y la marca que vio, y el servidor rechaza un guardado
+o un envío cuando no son las del borrador vigente: una pestaña vieja nunca pisa una copia, una
+importación o una edición hechas después, ni siquiera en la misma revisión. Una cookie de antes de
+la revisión sigue valiendo como la revisión 0 sin marca.
+
+Una respuesta que llega tarde no puede borrar una cookie más nueva, porque el navegador aplica su
+``Set-Cookie`` cuando llega. Por eso el guardado automático escribe una cookie propia por revisión
+(``pred_borrador_a<rev>``) y el borrador vigente es la de mayor revisión; con la misma revisión
+gana la cookie principal, que solo escriben las acciones que cambian de página (Siguiente, Atrás,
+copiar, importar). Una respuesta tardía de una página ya abandonada deja, como mucho, una cookie con
+una revisión que ya no gana.
 """
 
 from __future__ import annotations
@@ -15,13 +28,17 @@ import json
 import re
 from dataclasses import dataclass, field, replace
 from typing import Any
+from uuid import uuid4
 
 from fastapi import Request, Response
 
 from pred_platform.app.ejecucion import default_form_values
 
 COOKIE = "pred_borrador"
+_AUTOSAVE = COOKIE + "_a"
 _PATH = "/"
+_MAX_REV = 2**31
+_TOKEN = re.compile(r"[0-9a-f]{12}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 # Los campos del formulario de lanzamiento que guarda el borrador, todos como texto.
 _TEXT_FIELDS = (
@@ -43,9 +60,20 @@ class Draft:
     values: dict[str, Any] = field(default_factory=default_form_values)
     # Si Ajustes se completó con «Continuar».
     settings_ready: bool = False
+    # Sube con cada escritura; 0 es un borrador que nunca se guardó (o de antes de la revisión).
+    rev: int = 0
+    # Identifica la escritura: dos escrituras de la misma revisión no se confunden.
+    token: str = ""
+
+    @property
+    def stamp(self) -> str:
+        """Lo que una página recuerda del borrador que vio y devuelve con lo que envía."""
+        return f"{self.rev}.{self.token}"
 
     def with_ingest(self, ingest_id: str) -> Draft:
-        return replace(self, ingest_id=ingest_id)
+        """Otro archivo pide revisar los ajustes de nuevo; el mismo conserva Ajustes completo."""
+        ready = self.settings_ready and ingest_id == self.ingest_id
+        return replace(self, ingest_id=ingest_id, settings_ready=ready)
 
     def with_settings(self, ingest_id: str, values: dict[str, Any]) -> Draft:
         return Draft(ingest_id=ingest_id, values=_clean(values), settings_ready=True)
@@ -75,37 +103,99 @@ def _clean(raw: object) -> dict[str, Any]:
     return values
 
 
-def read_draft(request: Request) -> Draft:
-    raw = request.cookies.get(COOKIE)
-    if not raw:
-        return Draft()
+def _parse(raw: str) -> Draft | None:
     try:
         data = json.loads(base64.urlsafe_b64decode(raw.encode("ascii") + b"==="))
     except (ValueError, binascii.Error, UnicodeError):
-        return Draft()
+        return None
     if not isinstance(data, dict):
-        return Draft()
+        return None
     ingest = data.get("ingest_id")
+    rev = data.get("rev")
+    token = data.get("token")
     return Draft(
         ingest_id=ingest if isinstance(ingest, str) and _SHA256.fullmatch(ingest) else None,
         values=_clean(data.get("values")),
         settings_ready=data.get("settings_ready") is True,
+        rev=rev if type(rev) is int and 0 < rev < _MAX_REV else 0,
+        token=token if isinstance(token, str) and _TOKEN.fullmatch(token) else "",
     )
 
 
-def save_draft(response: Response, draft: Draft) -> None:
+def _autosave_cookies(request: Request) -> list[str]:
+    return [name for name in request.cookies if name.startswith(_AUTOSAVE)]
+
+
+def read_draft(request: Request) -> Draft:
+    """El borrador vigente: el de mayor revisión; con la misma, el de la cookie principal."""
+    best: tuple[int, int] | None = None
+    draft = Draft()
+    for name in (COOKIE, *_autosave_cookies(request)):
+        found = _parse(request.cookies.get(name) or "")
+        if found is None:
+            continue
+        rank = (found.rev, int(name == COOKIE))
+        if best is None or rank > best:
+            best, draft = rank, found
+    return draft
+
+
+def next_revision(request: Request, draft: Draft) -> Draft:
+    """El borrador como la elección más nueva: una revisión más que la vigente, con marca nueva."""
+    return replace(
+        draft, rev=min(read_draft(request).rev + 1, _MAX_REV - 1), token=uuid4().hex[:12]
+    )
+
+
+def is_stale(request: Request, page_stamp: str | None) -> bool:
+    """Si la página que envía no vio el borrador vigente: otra página lo escribió después.
+
+    Sin marca (un cliente que no la conoce) no hay con qué comparar; una ilegible se rechaza.
+    """
+    if page_stamp is None or not page_stamp.strip():
+        return False
+    return page_stamp != read_draft(request).stamp
+
+
+def _encode(draft: Draft) -> str:
     payload = json.dumps(
         {
             "ingest_id": draft.ingest_id,
             "values": _clean(draft.values),
             "settings_ready": draft.settings_ready,
+            "rev": draft.rev,
+            "token": draft.token,
         },
         separators=(",", ":"),
     )
-    value = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
-    # Sin fecha de vencimiento: dura lo que la sesión del navegador.
-    response.set_cookie(COOKIE, value, path=_PATH, httponly=True, samesite="lax")
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
 
 
-def clear_draft(response: Response) -> None:
-    response.delete_cookie(COOKIE, path=_PATH, httponly=True, samesite="lax")
+def _expire(response: Response, name: str) -> None:
+    response.delete_cookie(name, path=_PATH, httponly=True, samesite="lax")
+
+
+def save_draft(
+    request: Request, response: Response, draft: Draft, *, autosave: bool = False
+) -> None:
+    """Escribe ``draft`` (ya con su revisión, ``next_revision``) en la respuesta.
+
+    El guardado automático escribe su cookie de la revisión y no toca la principal; cualquier otro
+    guardado reemplaza la principal y retira las de guardado automático que ya no valen.
+    """
+    value = _encode(draft)
+    stale = _autosave_cookies(request)
+    if autosave:
+        name = f"{_AUTOSAVE}{draft.rev}"
+        # Sin fecha de vencimiento: dura lo que la sesión del navegador.
+        response.set_cookie(name, value, path=_PATH, httponly=True, samesite="lax")
+        stale = [other for other in stale if other != name]
+    else:
+        response.set_cookie(COOKIE, value, path=_PATH, httponly=True, samesite="lax")
+    for other in stale:
+        _expire(response, other)
+
+
+def clear_draft(request: Request, response: Response) -> None:
+    for name in (COOKIE, *_autosave_cookies(request)):
+        _expire(response, name)

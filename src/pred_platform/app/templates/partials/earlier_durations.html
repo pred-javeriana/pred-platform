@@ -1,0 +1,22 @@
+{% from "components/terms.html" import when %}
+<section class="pred-panel" aria-labelledby="titulo-duraciones">
+  <h2 id="titulo-duraciones">Qué va a pasar</h2>
+  <p class="pred-lead">El motor recorre cuatro etapas. PRED no estima cuánto falta; estas son las duraciones reales de las corridas anteriores con estos datos.</p>
+  {% if earlier_runs %}
+  <ul class="pred-duration-legend" aria-label="Corridas anteriores">
+    {% for previous in earlier_runs %}<li><span class="pred-duration-key pred-duration-key--{{ loop.index }}" aria-hidden="true"></span><a href="/corridas/{{ previous.run.id }}/ejecucion">#{{ previous.run.id }} · semilla {{ previous.run.seed }}</a>{% if previous.finished %} · terminada {{ when(previous.finished) }}{% endif %}</li>{% endfor %}
+    <li>Misma escala para todas las barras; parten de cero.</li>
+  </ul>
+  {% endif %}
+  <ol class="pred-earlier-stages{% if not earlier_runs %} pred-earlier-stages--unmeasured{% endif %}">
+    {% for code, label in stage_choices %}
+    <li><span class="pred-earlier-stages__mark" aria-hidden="true">{{ loop.index }}</span><span class="pred-earlier-stages__name">{{ label }}<small>{{ stage_term(code).hint }}</small></span>
+      {% if earlier_runs %}
+      <div class="pred-duration-bars" aria-hidden="true">{% for previous in earlier_runs %}{% set duration = previous.stages.get(code) %}<div class="pred-duration-bar pred-duration-bar--{{ loop.index }}"><i style="width: {{ (100 * duration.seconds / duration_max) | round(2) if duration else 0 }}%"></i></div>{% endfor %}</div>
+      <div class="pred-earlier-stages__durations">{% for previous in earlier_runs %}{% set duration = previous.stages.get(code) %}<span title="Corrida #{{ previous.run.id }} · semilla {{ previous.run.seed }}{% if duration %} · {{ exact_when(duration.started) }} a {{ exact_when(duration.finished) }}{% endif %}"><span class="pred-sr-only">Corrida #{{ previous.run.id }}: </span>{{ format_duration(duration.seconds) if duration else 'Sin duración publicada' }}</span>{% endfor %}</div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if not earlier_runs %}<p class="pred-meta">Todavía no hay corridas terminadas con estos datos. No hay duraciones anteriores que mostrar.</p>{% elif not earlier_runs | selectattr('stages') | list %}<p class="pred-meta">Las corridas anteriores no tienen una traza de etapas disponible. No se estiman sus duraciones.</p>{% endif %}
+</section>

@@ -11,6 +11,7 @@ from pred_platform.app.datos import PendingUpload, PendingUploads
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract import models
+from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures import FixtureRepository
@@ -66,6 +67,23 @@ def _client(tmp_path: Path, scenario: str = "normal") -> tuple[TestClient, Recor
     return TestClient(app), repo
 
 
+def test_overview_failure_keeps_the_filtered_products(tmp_path: Path, monkeypatch) -> None:
+    client, repo = _client(tmp_path)
+    read = repo.get_topology_report
+
+    def topology(ingest_id, **kwargs):
+        if kwargs.get("size") == 500:
+            raise ArtifactMissing("No se pudo leer el mapa completo")
+        return read(ingest_id, **kwargs)
+
+    monkeypatch.setattr(repo, "get_topology_report", topology)
+    html = client.get(f"/corridas/nueva/datos?ingest_id={ACCEPTED}&q=FIL-0001&size=10").text
+    assert "No se pudo leer el mapa completo" in html
+    assert "Topología por SKU de la página filtrada" in html
+    assert 'class="mono">FIL-0001</span>' in html
+    assert 'id="filtros-topologia"' in html
+
+
 def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     response = client.get("/datos")
@@ -79,8 +97,9 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
     assert "Administración" not in html
     assert "Iniciar sesión" not in html
     assert "Datos de prueba" in html
-    # Sin ingesta elegida, cargar es la acción principal y dice qué columnas espera el motor.
-    assert 'id="titulo-carga">Cargar un archivo<' in html
+    # Sin elegir ingesta, el paso ofrece archivos validados y la carga con sus columnas.
+    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in html
+    assert "Cargar un archivo nuevo" in html
     for column in ("sku_id", "timestamp", "demand_qty", "lead_time_days"):
         assert f'<span class="mono">{column}</span>' in html
 
@@ -91,8 +110,8 @@ def test_the_expected_columns_are_open_both_as_first_upload_and_as_another_file(
     client, _ = _client(tmp_path)
     first = client.get("/datos").text
     another = client.get(f"/datos?ingest_id={ACCEPTED}#carga").text
-    assert 'id="titulo-carga">Cargar un archivo<' in first
-    assert "Cargar otro archivo" in another
+    for html in (first, another):
+        assert "<summary>Cargar un archivo nuevo</summary>" in html
     # Folded, the list left the right half of the upload card empty.
     for html in (first, another):
         assert re.search(r'<details [^>]*id="columnas-csv" open>', html)
@@ -126,7 +145,8 @@ def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path)
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text
     assert "Todavía no hay archivos cargados." in html
-    assert 'id="titulo-carga">Cargar un archivo<' in html
+    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in html
+    assert 'id="carga" open' in html
     assert "No hay SKU que coincidan" not in html
     assert "La caracterización todavía no está disponible." not in html
     # El historial no queda como subsección de «Cargar un archivo» en el esquema de títulos.
@@ -273,7 +293,9 @@ def test_topology_filters_are_delegated(tmp_path: Path) -> None:
         f"/datos?ingest_id={ACCEPTED}&sku_class=smooth&q=FIL-0001&sort=adi&descending=1&page=1"
     ).text
     assert repo.topology_calls
-    call = repo.topology_calls[-1]
+    filtered = [call for call in repo.topology_calls if call.get("q") == "FIL-0001"]
+    assert len(filtered) == 1
+    call = filtered[0]
     assert call["ingest_id"] == ACCEPTED
     assert call["sku_class"] == "smooth"
     assert call["q"] == "FIL-0001"
@@ -290,7 +312,7 @@ def test_filter_miss_has_specific_empty_message(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, "normal")
     html = client.get(f"/datos?ingest_id={ACCEPTED}&q=NO-EXISTE").text
     assert "No hay SKU que coincidan con los filtros seleccionados." in html
-    assert 'id="titulo-carga"' not in html  # con una ingesta, cargar otra es una pestaña
+    assert 'id="titulo-carga"' not in html  # la carga está en un desplegable del paso
 
 
 def test_vacio_accepted_upload_shows_topology_unavailable(tmp_path: Path) -> None:

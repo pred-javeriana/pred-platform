@@ -3,6 +3,8 @@
 {% from "components/buttons.html" import button %}
 {% from "components/terms.html" import when %}
 
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1">{% endblock %}
+
 {# Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por fila, y el botón Lanzar. En una
    corrida lanzada (record), lo que se lanzó. #}
 {% block content %}
@@ -15,17 +17,35 @@
     <dl class="pred-check">
       {% if record %}
       <div><dt>Datos</dt><dd>{{ facts.file_name or abbreviate_id(facts.ingest_id or "") }}{% if facts.n_skus is not none %}<span class="pred-subvalue">{{ format_count(facts.n_skus) }} productos</span>{% endif %}</dd></div>
-      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
-      <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
-      <div><dt>Lanzada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
       {% else %}
       <div><dt>Datos</dt><dd><span>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}{% if ingest and ingest.n_skus is not none %}<span class="pred-subvalue">{{ format_count(ingest.n_skus) }} productos</span>{% endif %}{% if form_errors.get("ingest_id") %}<span class="pred-subvalue pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}</span> <a href="/corridas/nueva/datos">Cambiar</a></dd></div>
-      {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd><span>{{ value }}</span> <a href="/corridas/nueva/ajustes">Cambiar</a></dd></div>{% endfor %}
+      {% endif %}
+      {% for label, value in review_rows if not form or label not in ('Mínimo de entrenamiento', 'Horizonte', 'Paso entre ventanas', 'Estacionalidad', 'Configuraciones por SKU y familia') %}
+      <div><dt>{{ label }}</dt><dd><span>{{ value }}</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>
+      {% if form and label == 'Métrica de selección' %}<div><dt>Ventana</dt><dd><span>Entrena con al menos {{ form.min_train }} días y pronostica {{ form.horizon }} días; una ventana cada {{ form.step }} días.</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>{% endif %}
+      {% endfor %}
+      {% if record %}
+      {% if not form %}<div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>{% endif %}
+      <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
       {% endif %}
     </dl>
+    {% if form %}
+    <details class="pred-details" id="detalle-ajustes-revisados">
+      <summary>Ajustes de búsqueda y reproducibilidad</summary>
+      <dl class="pred-check">{% for label, value in review_rows if label in ('Estacionalidad', 'Configuraciones por SKU y familia') %}<div><dt>{{ label }}</dt><dd><span>{{ value }}</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>{% endfor %}</dl>
+    </details>
+    {% endif %}
+    {% if record_error %}{{ alert(record_error, variant="error") }}{% endif %}
     {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
+    {% if duplicate %}
+    {{ alert("Estos ajustes son los de la corrida #" ~ duplicate.id ~ ". Lanzar no crea una corrida nueva. Para una corrida nueva del grupo, cambie la semilla.", variant="warning") }}
+    <p class="pred-actions">{{ button("Abrir la corrida existente", variant="secondary", href="/corridas/" ~ duplicate.id ~ "/ejecucion") }}</p>
+    {% endif %}
+    {% if record and source != 'fixture' %}<p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>{% endif %}
     {% if form_errors and not record %}{{ alert("Estos ajustes no se pueden lanzar: " ~ (form_errors.values() | join(" ")) ~ " Corríjalos en Ajustes.", variant="error") }}{% endif %}
   </section>
+
+  {% include "partials/earlier_durations.html" %}
 
   {% if not record %}
   <section class="pred-panel pred-action-card" aria-labelledby="titulo-lanzar">
@@ -42,7 +62,7 @@
       {% for family in form.families %}<input type="hidden" name="families" value="{{ family }}">{% endfor %}
       {% for name in ("metric", "min_train", "horizon", "step", "seasonality", "trials", "seed", "workers") %}<input type="hidden" name="{{ name }}" value="{{ form[name] }}">{% endfor %}
       {% if exclusion_confirmation %}<input type="hidden" name="confirmar" value="{{ exclusion_confirmation }}">{% endif %}
-      {{ button("Lanzar de todos modos" if exclusion_confirmation else "Lanzar la corrida", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none or form_errors, extra="pred-btn--large") }}
+      {{ button("Lanzar de todos modos" if exclusion_confirmation else "Lanzar la corrida", variant="primary", type="submit", icon="i-play", disabled=control_reason is not none or form_errors or duplicate is not none, extra="pred-btn--large") }}
     </form>
   </section>
   {% endif %}

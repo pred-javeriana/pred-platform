@@ -25,10 +25,18 @@ inicio, nombra la corrida que se ve y ofrece «Nueva corrida».
 
 Una corrida nueva vive en `/corridas/nueva/<paso>` hasta que se lanza. Su borrador (el archivo
 y los ajustes elegidos) se guarda en una cookie de sesión del navegador (`app/borrador.py`). El
-borrador se escribe con Siguiente en Datos o en Ajustes; al salir de Ajustes por Atrás o por la
-barra de pasos guarda lo escrito sin validarlo, y también lo escriben un enlace que elige un
-archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`) y una configuración importada. Revisar
-y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. Una corrida lanzada vive en
+borrador se escribe con Siguiente en Datos o en Ajustes; Ajustes guarda cada cambio en cuanto se
+hace, sin validarlo, y Atrás y los pasos de la barra lo guardan también sin JavaScript. Ajustes no
+elige un archivo por la persona, y elegir otro archivo deja Ajustes por revisar. También lo
+escriben un enlace que elige un archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`), la
+copia de una corrida (`?copiar_de=` o el formulario de copia) y una configuración importada. Revisar
+y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. El borrador
+lleva una revisión y una marca por escritura, y cada página de Ajustes devuelve las que vio: si otra
+página escribió después (una copia, una importación o una edición en otra pestaña), el servidor no
+guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. El guardado
+automático escribe una cookie propia por revisión (`pred_borrador_a<rev>`); gana la de mayor
+revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
+abandonada no reemplace lo elegido después. Una corrida lanzada vive en
 `/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
 se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
 «Después» de cada paso, su estado (hecho, por hacer, en curso o bloqueado) y adónde llevan Atrás
@@ -38,8 +46,10 @@ y Siguiente.
 | --- | --- |
 | `/` | Corridas: el inicio |
 | `/corridas/nueva/datos` | Paso 1 de una corrida nueva. `POST` elige el archivo y lleva a Ajustes |
-| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; `?ingest_id=` llega con el archivo ya elegido |
-| `/corridas/nueva/revisar` | Paso 3: lo que se va a lanzar, con «Cambiar» por fila, y Lanzar (`POST /ejecucion/lanzar`). Sin archivo elegido está bloqueado |
+| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; con `destino` guarda lo escrito sin validar y va a ese paso. `?ingest_id=` llega con el archivo ya elegido y `?copiar_de=` copia los ajustes de una corrida |
+| `/corridas/nueva/revisar` | Paso 3: lista con «Cambiar» por fila, duraciones publicadas de corridas anteriores y Lanzar (`POST /ejecucion/lanzar`). Un duplicado deshabilita Lanzar y enlaza a la corrida existente. Sin archivo elegido está bloqueado |
+| `POST /corridas/nueva/copiar` | Copia todos los ajustes de una corrida al borrador, sin lanzarla |
+| `POST /corridas/nueva/ajustes/comprobar` | Actualiza la matriz y sus avisos al cambiar un campo; no guarda ni lanza |
 | `/corridas/nueva/ejecucion`, `/corridas/nueva/resultados` | Bloqueados hasta lanzar: dicen qué falta y llevan al primer paso por hacer |
 | `/corridas/{id}/datos`, `/corridas/{id}/ajustes`, `/corridas/{id}/revisar` | Registro de lo que eligió la corrida lanzada |
 | `/corridas/{id}/ejecucion` | Paso 4: avance, acciones y tareas de la corrida |
@@ -49,7 +59,7 @@ y Siguiente.
 | `/datos`, `/ejecucion`, `/resultados` | Rutas anteriores: redirigen (307) al paso que corresponde con la misma consulta. `/datos` va a Datos de la corrida nueva. `/ejecucion?ingest_id=` va a Ajustes de la corrida nueva; `?lanzar=1`, a su Datos; `?ejecucion=<id>` o, sin ella, la corrida más reciente, al paso Ejecución. `/resultados?ejecucion=<id>` o, sin ella, la corrida más nueva con evidencia publicada (o la más reciente), al paso Resultados. Sin corridas, a la corrida nueva |
 | `/ejecucion/estado` | El cuerpo de Ejecución para el sondeo HTMX |
 | `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
-| `POST /ejecucion/configuracion` | Importa ese JSON y rellena Ajustes de la corrida nueva; no lanza ni guarda nada |
+| `POST /ejecucion/configuracion` | Importa ese JSON y rellena el borrador en Ajustes; no escribe la base de datos ni lanza |
 | `/resultados/sku/{sku_id}` | Detalle de un SKU: ruta de migas, decisión, familias y evidencia bajo demanda |
 | `/resultados/exportar.csv` | Descarga CSV de los veredictos filtrados en «Veredictos», sin el límite de página |
 | `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la evaluación final (lanzamientos tardíos y elegibilidad) |
@@ -233,7 +243,7 @@ Los agregados de cartera/clase y los exportables se construyen en las vistas de 
 
 ## Exploración progresiva
 
-Datos comienza con cargar un archivo cuando no hay selección. Con una ingesta aceptada, comienza con el resumen del archivo: nombre, estado, conteos y mezcla de clases de demanda, y Siguiente, al pie del paso, la elige; diagnóstico, gráfico/tabla de clases y SKU, cargar otro archivo e historial se consultan en las pestañas de detalle. Un filtro o página explícitos activan la pestaña correspondiente.
+Datos ofrece los archivos validados y «Cargar un archivo nuevo». El resumen del archivo elegido muestra cuatro cifras y el mapa ADI × CV² de todos sus productos junto a la tabla de tipos y familias admitidas. Siguiente elige el archivo al pie del paso. El diagnóstico, la consulta filtrada de productos y el historial completo quedan en desplegables. Una consulta o página explícita abre el desplegable correspondiente.
 
 Ejecución sin contexto comienza con la corrida actual: estado, acciones, etapas del motor, progreso circular y conteos por estado. Los conteos por estado son enlaces al panel de tareas filtrado. Configuración/trazabilidad se explora bajo demanda. La configuración de lanzamiento es el paso Ajustes; un envío inválido vuelve a Ajustes con cada error junto a su campo. Los parámetros de búsqueda/reproducibilidad están en un disclosure sin cambiar sus valores ni validación.
 
@@ -243,7 +253,7 @@ Resultados comienza en Resumen cuando hay evidencia M3 publicada y en la lista d
 
 Cada paso tiene, a su izquierda, la barra de pasos: una columna fija de 88 px con la marca y el nombre corto de cada paso. Al pasar el puntero o al enfocarla se abre a 340 px sobre la página, con el nombre completo y la línea de estado de cada paso, sin mover la página; un paso bloqueado no es un enlace. Con movimiento reducido se abre sin animación. Bajo 900 px la barra se oculta y un resumen compacto («Paso N de 5» con una barra de cinco segmentos) va arriba del encabezado. El paso usa una sola columna a todo el ancho: el encabezado («Paso N de 5», el nombre, el propósito, «Después: …» y a lo sumo una acción); el resumen de la situación; debajo, pestañas horizontales de detalle con un panel a la vez; y al pie, Atrás y Siguiente. Siguiente deshabilitado lleva un candado y dice por qué. El contexto va arriba y a lo ancho, las tablas ocupan el ancho del panel y dos bloques cortos se reparten en dos columnas desde 64rem. Dentro de cada tarjeta, los hechos y las cifras se reparten en columnas iguales que llenan el ancho, los gráficos ocupan el ancho de la tarjeta y los estados vacíos, de error o no disponibles se centran. La prosa larga conserva una línea legible de a lo sumo 80 caracteres (`max-width: 80ch`); una explicación de método larga se pliega bajo un enlace. Cada fecha y hora se lee en la hora de Bogotá («4 nov 2026, 4:36 p. m.»), con el instante exacto en UTC en el `title`.
 
-Datos: el resumen del archivo (nombre, estado, conteos y mezcla de clases) en un panel; debajo, las pestañas Diagnóstico, Clases y SKU, Cargar otro archivo e Historial. Una consulta de topología o historial selecciona la pestaña correspondiente.
+Datos: elección del archivo, cuatro cifras y mapa junto a la tabla de clases; diagnóstico y consulta de productos bajo demanda. Ajustes: copiar o importar, matriz de familias y evaluación. Revisar: lista de comprobación, duraciones anteriores y Lanzar. Tras lanzar, los tres pasos conservan un registro de solo lectura.
 
 Ejecución: un panel de la corrida con su estado y sus acciones (detener, reanudar, ver resultados), los hechos de la corrida, las etapas del motor, el progreso circular y los conteos por estado; debajo, las pestañas Tareas y Configuración. Panel y pestañas están dentro del mismo fragmento HTMX; el control de pausa y el anuncio accesible siguen fuera de él.
 
@@ -251,6 +261,6 @@ Resultados: la barra de contexto, los capítulos y paneles con la respuesta, sus
 
 ## Navegación secundaria
 
-Datos ofrece pestañas horizontales: Diagnóstico, Clases y SKU (cuando hay topología disponible), Cargar otro archivo e Historial. Solo se muestra un panel con JS; sin JS, los enlaces llevan a las secciones visibles. El hash conserva la sección al recargar y las consultas activan el panel apropiado. El gráfico/tabla, los registros, los filtros y la paginación siguen usando los mismos datos del repositorio.
+Datos ofrece el diagnóstico, los productos y el historial en desplegables nativos, también utilizables sin JavaScript. El mapa general lee todas las páginas del repositorio; el gráfico y la tabla de la consulta conservan sus filtros y su paginación. La carga de archivos tiene su propio desplegable, fuera del registro de una corrida lanzada.
 
 Ejecución presenta Tareas y Configuración con el mismo patrón dentro del fragmento que se sondea; la pestaña elegida se conserva al actualizar. La configuración de lanzamiento es el paso Ajustes, fuera del fragmento de polling; Resultados llega a él con `ingest_id`. Detener/reanudar dependen de las capacidades declaradas. En SKU, la única sección inferior de trazabilidad se muestra directamente con sus pares etiqueta/valor, sin un control de despliegue redundante. Los detalles técnicos de familias siguen bajo demanda.

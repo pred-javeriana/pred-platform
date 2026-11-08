@@ -18,9 +18,11 @@ _OWN_FILES = {
     "css/pred.css",
     "css/live.css",
     "css/results.css",
+    "css/wizard_steps.css",
     "js/pred.js",
     "js/live.js",
     "js/charts.js",
+    "js/wizard_steps.js",
 }
 
 _ASSETS = [

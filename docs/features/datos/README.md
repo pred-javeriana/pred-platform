@@ -1,20 +1,24 @@
 # datos
 
-Session that lands TASK-UI-1.2-C1 and TASK-UI-1.2-C3 on the existing `/datos` surface.
+Step 1 of a new run at `/corridas/nueva/datos`; `/datos` redirects with the same query.
 
 ## What
 
-`/datos` is no longer a B3 placeholder. The operator can upload a CSV, read the ingest
-diagnosis (`accepted` / `rejected` / `failed` / `needs_confirmation`), and — only after
-an accepted ingest — inspect demand topology (summary, thresholds, ADI–CV² SVG, SKU
-table, filters, pagination) before continuing to `/ejecucion`.
+The operator chooses a validated file or uploads a CSV. Four file figures and an ADI × CV²
+map beside the class/family table summarize an accepted file. Diagnosis, the filtered product
+table and the complete ingest history stay in disclosures. The four diagnosis states
+(`accepted`, `rejected`, `failed`, `needs_confirmation`) keep their actions. Continuing chooses
+the file and opens Ajustes. `/corridas/<id>/datos` shows a launched run's file without upload
+or file-selection controls.
 
 ## How
 
 Views call only `DataRepository` (`submit_ingest`, `get_ingest_report`, `list_ingests`,
 `get_topology_report`). Fixtures demonstrate the full path. DAL gaps G1/G5 render as
-`unavailable`, never as HTTP 500. The SVG is generated in `app/charts.py` from
-`TopologyReport.items`; ADI, CV² and class are never recalculated.
+`unavailable`, never as HTTP 500. The summary SVG in `app/charts_datos.py` reads every page
+of topology, uses logarithmic axes and names the nearest product on pointer or keyboard input.
+CV² zero is shown at the lower border and declared in the caption. The filtered detail chart
+stays in `app/charts.py`. Neither chart recalculates ADI, CV² or class.
 
 ## Where
 
@@ -22,7 +26,8 @@ Views call only `DataRepository` (`submit_ingest`, `get_ingest_report`, `list_in
 | --- | --- |
 | Router | `src/pred_platform/app/routers/data.py` |
 | Helpers | `src/pred_platform/app/datos.py` |
-| Chart | `src/pred_platform/app/charts.py` |
+| Charts | `src/pred_platform/app/charts_datos.py`, `src/pred_platform/app/charts.py` |
+| Map interaction | `src/pred_platform/app/static/js/wizard_steps.js` |
 | Presentation | `src/pred_platform/app/presentation.py` |
 | Page | `src/pred_platform/app/templates/pages/data.html` |
 | Partials | `src/pred_platform/app/templates/partials/data_*.html` |

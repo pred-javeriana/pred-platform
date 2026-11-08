@@ -40,6 +40,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "format_count",
         "format_date",
         "format_decimal",
+        "format_duration",
         "format_when",
         "glossary_hint",
         "group_lumpy_cause_text",
