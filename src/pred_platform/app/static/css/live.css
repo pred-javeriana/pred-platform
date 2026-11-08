@@ -1,0 +1,111 @@
+/* Paso 4: el avance ocupa la primera tarjeta; las causas y las tareas quedan debajo. */
+.pred-live {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+  margin: 12px 0 20px;
+}
+
+.pred-live__ring .pred-progress--circular { flex-direction: column; gap: 6px; }
+.pred-live__ring .pred-progress__reading { flex: auto; text-align: center; }
+.pred-live__ring .pred-progress__label { font-size: 12px; }
+.pred-live__ring .pred-progress__counts { font-size: 13px; }
+.pred-live__reading > p,
+.pred-live__reading .pred-run__pulse p { max-width: none; }
+.pred-live__reading .pred-run__outcome { margin: 8px 0; }
+.pred-live__reading .pred-facts { margin: 12px 0 0; }
+.pred-live__reading .pred-run__pulse { font-size: 15px; margin: 0; }
+.pred-live__reading .pred-run__pulse-now { font-size: 18px; margin-bottom: 6px; }
+.pred-live__reading .pred-run__pulse-time { padding: 0; margin-top: 8px; font-size: 14px; }
+.pred-live__hint { color: var(--muted-text); }
+.pred-live__finished { font-size: 20px; margin: 0; }
+.pred-stage-key { margin: 16px 0 8px; max-width: none; }
+
+.pred-live-stages { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--border); }
+.pred-live-stages > li {
+  display: grid;
+  grid-template-columns: 26px minmax(180px, 260px) minmax(0, 1fr) 200px;
+  gap: 8px 16px;
+  align-items: center;
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+.pred-live-stages__name { font-size: 15px; font-weight: 650; color: var(--ink-soft); }
+.pred-live-stages__name small { display: block; font-size: 13px; font-weight: 400; color: var(--muted-text); }
+.pred-live-stages__bars { display: grid; gap: 4px; }
+.pred-live-stages__bar { display: block; height: 8px; overflow: hidden; background: var(--border); border-radius: 3px; }
+.pred-live-stages__bar i { display: block; height: 100%; background: var(--ok); border-radius: 3px; }
+.pred-live-stages__duration { text-align: right; font: 13px var(--font-mono); color: var(--ink-soft); }
+.pred-live-stages__duration small { display: block; color: var(--info); font-family: var(--font-body); }
+.pred-live-stages__duration .pred-stage-before { color: var(--muted-text); font-size: 12px; white-space: nowrap; }
+.pred-stage-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
+.pred-stage-legend li { display: flex; align-items: center; gap: 6px; margin: 0; }
+.pred-stage-legend i { width: 14px; height: 10px; background: var(--ok); }
+.pred-stage-legend .is-reference-0, .pred-live-stages__bar.is-reference-0 i { background: #a9ada7; }
+.pred-stage-legend .is-reference-1, .pred-live-stages__bar.is-reference-1 i { background: #d3d5d1; }
+.pred-live-stages .is-hecha .pred-steps__mark { background: var(--ok); border-color: var(--ok); color: white; }
+.pred-live-stages .is-en_curso .pred-steps__mark { border: 2px solid var(--info); color: var(--info); }
+.pred-live-stages .is-detenida .pred-steps__mark { border-color: var(--warn); color: var(--warn-text); }
+.pred-live-stages .is-detenida .pred-live-stages__duration small { color: var(--warn-text); }
+.pred-live-stages .is-fallida .pred-steps__mark { border-color: var(--err); color: var(--err); }
+.pred-live-stages .is-fallida .pred-live-stages__duration small { color: var(--err); }
+.pred-live-stages .is-fallida .pred-live-stages__bar:not(.pred-stage-reference) i { background: var(--err); }
+.pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i {
+  position: relative;
+  overflow: hidden;
+  background: var(--info);
+}
+.pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 55%), transparent);
+  transform: translateX(-100%);
+  animation: pred-live-sheen 2.4s ease-in-out var(--pred-reloj, 0s) infinite;
+}
+/* Sin sondeo la página no se actualiza sola: el destello no promete avance. */
+.pred-live-stages.is-fija .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i::after { animation: none; }
+@keyframes pred-live-sheen { to { transform: translateX(100%); } }
+.pred-close-page { border-style: dashed; }
+.pred-close-page p,
+.pred-live-tasks > p { max-width: none; margin-bottom: 0; }
+.pred-close-page h2,
+.pred-live-tasks h2 { font-size: 18px; }
+.pred-live-tasks .pred-statelist { margin: 12px 0; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap .pred-table { min-width: 0; table-layout: fixed; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap th:first-child { width: 58%; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap th:nth-child(2) { width: 28%; }
+.pred-live-tasks #causas-corrida > .pred-table-wrap .wrap { overflow-wrap: anywhere; }
+.pred-live-tasks > .pred-details { margin-top: 12px; }
+.pred-live-tasks .pred-evidence-area { margin-top: 16px; }
+.pred-since { padding: 12px 16px; margin-bottom: 20px; border-left: 4px solid var(--info); background: var(--info-soft); }
+.pred-since p { margin: 0; }
+.pred-since ul { margin: 6px 0 0; padding-left: 20px; }
+
+@media (max-width: 900px) {
+  .pred-live { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .pred-live__ring { justify-self: start; }
+  .pred-live__ring .pred-progress--circular { flex-direction: row; }
+  .pred-live__ring .pred-progress__reading { text-align: left; }
+  .pred-live-stages > li { grid-template-columns: 26px minmax(0, 1fr); gap: 4px 12px; }
+  .pred-live-stages__bars,
+  .pred-live-stages__duration { grid-column: 2; text-align: left; }
+}
+
+@media (max-width: 600px) {
+  .pred-live-tasks #causas-corrida > .pred-table-wrap thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) 52px; border-bottom: 1px solid var(--border); padding: 8px 0; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody th:first-child { width: auto; grid-column: 1; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody td:nth-child(2) { grid-column: 1; padding-top: 0; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody td:nth-child(2)::before { content: "Familias: "; font-weight: 600; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody .num { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+  .pred-live-tasks #causas-corrida > .pred-table-wrap tbody :is(th, td) { border: 0; max-width: none; overflow-wrap: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pred-live-stages .is-en_curso .pred-live-stages__bar:not(.pred-stage-reference) i::after { animation: none; display: none; }
+  .pred-progress__arc { transition: none; }
+}

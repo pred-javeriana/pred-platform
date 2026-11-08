@@ -14,17 +14,25 @@ _APP_DIR = Path(__file__).parent.parent / "src" / "pred_platform" / "app"
 _STATIC_DIR = _APP_DIR / "static"
 _LOCK = json.loads((_STATIC_DIR / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
 
-_OWN_ASSETS = ("css/pred.css", "js/pred.js", "css/wizard_steps.css", "js/wizard_steps.js")
+_OWN_FILES = {
+    "css/pred.css",
+    "css/live.css",
+    "css/results.css",
+    "css/wizard_steps.css",
+    "js/pred.js",
+    "js/live.js",
+    "js/charts.js",
+    "js/wizard_steps.js",
+}
 
 _ASSETS = [
     "css/pico.min.css",
-    *_OWN_ASSETS,
     "js/htmx.min.js",
     "fonts/Archivo-Variable.woff2",
     "fonts/Archivo-Italic.woff2",
     "fonts/JetBrainsMono-Variable.woff2",
     "favicon.svg",
-]
+] + sorted(_OWN_FILES)
 
 _TEMPLATES = sorted(
     p.relative_to(_APP_DIR / "templates").as_posix()
@@ -72,18 +80,17 @@ def test_vendored_file_matches_lock(path: str) -> None:
 
 
 def test_lock_covers_every_third_party_file() -> None:
-    own_files = set(_OWN_ASSETS)
     shipped = {
         p.relative_to(_STATIC_DIR).as_posix()
         for p in _STATIC_DIR.rglob("*")
         if p.is_file() and p.suffix in {".css", ".js", ".woff2"}
     }
-    assert shipped - own_files == set(_LOCK)
+    assert shipped - _OWN_FILES == set(_LOCK)
 
 
 @pytest.mark.parametrize(
     "path",
-    [path for path in _ASSETS if path.endswith((".css", ".js"))],
+    ["css/pico.min.css", "js/htmx.min.js"] + sorted(_OWN_FILES),
 )
 def test_static_code_has_no_external_references(path: str) -> None:
     text = (_STATIC_DIR / path).read_text(encoding="utf-8")

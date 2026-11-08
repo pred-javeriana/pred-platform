@@ -1,7 +1,7 @@
 # ejecucion
 
-Session that lands TASK-UI-1.2-C4 (Ejecución y monitoreo) on the `/ejecucion` surface and the real
-CSV upload of `/datos`.
+Step 4, Ejecución y monitoreo, at `/corridas/{id}/ejecucion`. The old `/ejecucion` URL redirects
+with its query preserved. Launch settings and review belong to steps 2 and 3.
 
 ## What
 
@@ -77,8 +77,24 @@ fingerprint (`run.incompatible_config`).
   identity, families that give no class two to compare, or an L2 stage that failed because the
   engine's policy gave no decisions or no unit was left to run.
 - **Live view.** The body (`partials/execution_body.html`) polls `/ejecucion/estado` every 2 s while
-  the run is in progress; the server answers 286 when it is not, so htmx stops. The task filter form
-  is `hx-preserve`d so typing is not lost. The launch form folds away once there is a run to show.
+  the run is in progress; the server answers 286 when it is not, so htmx stops. The ring, current
+  stage, product count and clock come first. `static/js/live.js` animates those values without
+  requests; reduced motion disables the transitions. Pausing, focused controls and selected text
+  prevent replacement. The task filter form is `hx-preserve`d so typing is not lost.
+- **Stages and causes.** `data/run_status.py` adds local display fields without modifying the
+  packaged contract. Durations use recorded stage timestamps from the current attempt, never
+  an estimate. The parsed progress summary is reused while the log is unchanged. One task
+  page-load query reads causes for the whole run, independent of filters and paging. Its
+  timestamped snapshot stays across swaps; “Actualizar causas” reloads it explicitly. Polling
+  uses the original state-count query and never aggregates causes. Initial page load also reads
+  cached stage references for up to two comparable
+  completed seeds (same data and evaluation settings) from earlier runs, never the run itself or
+  a later one, matching the “Antes” label. The browser retains those references
+  across polling swaps; polling never reads history. Missing history leaves only the current
+  run's bars. The full task list and configuration remain in a disclosure below the causes.
+- **Returning to a run.** The browser stores its last visible snapshot locally. After at least a
+  minute away, “Desde su última visita” reports observed stage, task and product-count changes.
+  No previous snapshot means no comparison. Storage failure does not stop progress updates.
 - **One worker, one run at a time.** A second launch waits in the queue and the screen says so; with
   `PRED_WORKER=off` and no other worker holding the database lock (`WorkerLock.held_elsewhere`) it
   also says the run waits for `make worker`. If the app's own worker thread has ended, for example
@@ -98,14 +114,14 @@ fingerprint (`run.incompatible_config`).
 | Commands | `src/pred_platform/worker/control.py`, `dal/ejecuciones.py` (`request_stop`, `resume_run`) |
 | Page and partials | `templates/pages/execution.html`, `templates/partials/execution_{launch,body}.html` |
 | CSV upload | `src/pred_platform/worker/ingesta.py`, `DalRepository.submit_ingest` |
-| Tests | `tests/test_wizard_steps.py`, `tests/test_ejecucion.py`, `tests/test_control.py`, `tests/test_carga.py` |
+| Progress presentation | `app/execution_display.py`, `app/static/js/live.js`, `app/static/css/live.css` |
+| Tests | `tests/test_wizard_steps.py`, `tests/test_ejecucion.py`, `tests/test_execution_live.py`, `tests/test_control.py`, `tests/test_carga.py` |
 
 ## Known limits
 
-- The run-level error (for example the engine could not be launched) is stored in
-  `ejecuciones.error_json` but the `run_status` read model has no field for it (contract 1.0.0);
-  the screen shows the errors of the tasks and, for a run without tasks, points to `motor.log`.
-  An optional `ejecucion.error` would be an additive contract change.
+- The packaged `RunStatus` has no run-level error field. The screen reads
+  `ejecuciones.error_json` through `get_run_error`; it shows the cause and whether resuming is
+  possible. Missing stage timestamps show “Sin registro de duración”, not an inferred duration.
 - Skipping completed units requires the accompanying `pred-engine` checkpoint implementation and
   preserving the run directory. Earlier engine versions reuse HPO studies but repeat L2/L3 work.
   See [recovery](../reanudacion/README.md) for deployment, compatibility and verification.

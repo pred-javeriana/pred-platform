@@ -263,6 +263,8 @@ class RunDetail:
     reserva_json: str | None
     error_json: str | None
     ruta_corrida: str | None
+    pid: int | None
+    intento: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +285,8 @@ class TaskRow:
 
 _RUN_COLUMNS = (
     "e.id, e.run_id, e.estado, e.seed, e.iniciada_en, e.finalizada_en, e.configuracion_id, "
-    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json, e.ruta_corrida"
+    "c.version, c.parametros, i.sha256, e.reserva_json, e.error_json, e.ruta_corrida, "
+    "e.pid, e.intento"
 )
 _RUN_FROM = (
     "FROM ejecuciones e JOIN configuraciones c ON c.id = e.configuracion_id "
@@ -377,6 +380,22 @@ def task_state_counts(db_path: Path, ejecucion_id: int) -> dict[str, int]:
             (ejecucion_id,),
         ).fetchall()
     return {estado: int(n) for estado, n in rows}
+
+
+def task_causes(db_path: Path, ejecucion_id: int) -> list[tuple[str | None, str, int]]:
+    """Whole-run causes for a timestamped page-load snapshot; never called by polling."""
+    with _open_readonly(db_path) as conn:
+        if conn is None:
+            return []
+        rows = conn.execute(
+            "SELECT CASE WHEN json_valid(detalle_error) "
+            "THEN json_extract(detalle_error, '$.code') END AS code, "
+            "substr(modelo, 1, instr(modelo, ':') - 1) AS family, COUNT(*) "
+            "FROM tareas WHERE ejecucion_id = ? AND estado IN ('fallida', 'no_ejecutable') "
+            "GROUP BY code, family",
+            (ejecucion_id,),
+        ).fetchall()
+    return [(code if isinstance(code, str) else None, family, int(n)) for code, family, n in rows]
 
 
 def list_tasks(

@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from pred_platform.config import DataSource
@@ -36,6 +37,7 @@ from pred_platform.contract.models import (
 from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.data.run_status import CauseSnapshot, StageReference
 from pred_platform.evidence.models import GroupEvidence, GroupRunOption
 
 
@@ -69,6 +71,18 @@ class M3DateRange:
     start: str | None
     end: str | None
     count: int
+
+
+@dataclass(frozen=True, slots=True)
+class StageTiming:
+    """El inicio y el fin de una etapa del motor (L1 a L4) en un intento de la corrida.
+
+    ``finished_at`` queda vacío si la etapa no terminó bien: una etapa fallida no publica.
+    """
+
+    code: str
+    started_at: datetime
+    finished_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,8 +153,23 @@ class DataRepository(Protocol):
         """
         ...
 
+    def get_run_causes(self, run_id: str) -> CauseSnapshot:
+        """Whole-run cause snapshot, read only when the execution page opens."""
+        ...
+
+    def get_run_stage_history(self, run_id: str) -> list[StageReference]:
+        """Cached stage timestamps of comparable completed runs; initial page load only."""
+        ...
+
     def get_run_error(self, run_id: str) -> ErrorInfo | None:
         """The error a stopped or failed run recorded; ``Ejecucion`` (contract v1) has none."""
+        ...
+
+    def get_stage_timings(self, run_id: str) -> tuple[StageTiming, ...]:
+        """When each engine stage of the run started and ended, every attempt in log order.
+
+        Empty when the source keeps no stage times; Results then says the time is unknown.
+        """
         ...
 
     def list_sku_selections(
@@ -261,6 +290,14 @@ class DataRepository(Protocol):
 
     def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
         """Compute the final three-seed evidence on read, without persisting derived rows."""
+        ...
+
+    def comparable_m3_runs(self, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
+        """The PUBLICADA runs of ``run_ids`` the final group accepts beside ``reference``.
+
+        Applies the group's own rules: same ingest, identity, protocol and population, and a
+        different seed. ``EvidenceInvalid`` if ``reference`` itself is not usable seed evidence.
+        """
         ...
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:

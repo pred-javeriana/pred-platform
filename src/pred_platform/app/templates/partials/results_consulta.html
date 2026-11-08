@@ -4,6 +4,7 @@
 {% from "components/status.html" import status_indicator, verdict_legend %}
 {% from "components/terms.html" import gloss, term %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
+{% from "partials/results_macros.html" import key %}
 {# Los veredictos de la evaluación final resuelta, uno por SKU (RF-CON-05). m3_consulta es un
    M3Consulta; cq, su consulta. El repositorio filtra, ordena y pagina; aquí solo se muestra. #}
 {% set found = m3_consulta %}
@@ -27,9 +28,10 @@
     <input type="hidden" name="vista" value="sku">
     {% if cq.ejecucion != "latest" %}<input type="hidden" name="ejecucion" value="{{ cq.ejecucion }}">{% endif %}
     {% if cq.m3 %}<input type="hidden" name="m3" value="{{ cq.m3 }}">{% endif %}
-    {{ field("q", "Buscar SKU", value=cq.q or "") }}
+    {{ field("q", "Producto", value=cq.q or "") }}
     {{ field("veredicto", "Veredicto", value=cq.veredicto or "", input_type="select", options=verdict_options()) }}
-    {{ field("sku_class", "Clase", value=cq.sku_class or "", input_type="select", options=sku_class_options()) }}
+    {{ field("sku_class", "Tipo de demanda", value=cq.sku_class or "", input_type="select", options=sku_class_options()) }}
+    {{ field("prueba", "Prueba frente a la línea base", value=cq.prueba or "", input_type="select", options=[('', 'Todas')] + (test_results.items() | list)) }}
     {{ field("familia_campeona", "Familia campeona", value=cq.familia_campeona or "", input_type="select", options=family_options(baseline=true)) }}
     {{ field("sort", "Ordenar por", value=cq.sort, input_type="select", options=[
       ("sku", "SKU"), ("sku_class", "Clase"), ("veredicto", "Veredicto"),
@@ -38,7 +40,7 @@
     {{ field("descending", "Descendente", value=cq.descending, input_type="checkbox") }}
     <input type="hidden" name="size" value="{{ cq.size }}">
     {{ button("Aplicar", variant="secondary", type="submit", icon="i-filter") }}
-    <a href="/resultados?{{ cq.query_string(sku_class='', familia_campeona='', veredicto='', q='', sort='', descending='', page='') }}">Limpiar filtros</a>
+    <a href="/resultados?{{ cq.query_string(sku_class='', familia_campeona='', veredicto='', q='', prueba='', sort='', descending='', page='') }}">Limpiar filtros</a>
   </form>
   {% endif %}
 
@@ -55,7 +57,10 @@
   <p class="pred-meta">En toda la ejecución, {{ format_count(evidence.funnel.tras_exclusiones) }} de {{ format_count(evidence.funnel.total_productos) }} productos tienen veredicto; ese conteo no cambia con los filtros. El CSV trae todos los SKU de la consulta, no solo esta página, con la evaluación y la ingesta de cada fila. Las exclusiones son las de toda la ejecución.</p>
   {% endif %}
   {% if evidence.items %}{{ verdict_legend() }}{% endif %}
-  {{ table_start(["SKU", "Clase", "Modelo campeón", "Veredicto", "r frente a la línea base", "Ventanas de prueba", "Significancia"], "Veredictos publicados") }}
+  {{ key([('dot', 'r de la campeona; el color indica el resultado de la prueba'), ('interval', 'intervalo de r sin ajuste BH'), ('reference', '1 = línea base; escala logarítmica de 0,4 a 2,5')]) }}
+  <p class="pred-meta">El intervalo de r corresponde a la prueba sin ajuste BH. La prueba y el p ajustado se muestran aparte; un intervalo bajo 1 no equivale a una mejora verificada tras BH.</p>
+  {% if product_intervals_error %}<p class="pred-note">No fue posible leer los intervalos de r: {{ product_intervals_error }}</p>{% endif %}
+  {{ table_start(["Producto", "Tipo", "Modelo campeón", "Veredicto", "Razón de error frente a la línea base", "r", "Ventanas de prueba", "Prueba"], "Veredictos publicados") }}
   {% if evidence.items %}
     {% for row in evidence.items %}
     <tr>
@@ -64,14 +69,14 @@
       {% set model = champion_model(row) %}
       <td><span class="pred-nowrap">{{ term(family_term(row.familia_campeona)) }}</span>{% if model %}<span class="pred-subvalue">{{ term(model_term(model)) }}</span>{% endif %}</td>
       <td class="pred-verdict-cell">{{ status_indicator(describe_status("verdict", row.veredicto)) }}</td>
-      <td class="num">{{ ratio_text(row.razon_sn) }}</td>
+      <td>{{ ratio_svgs.get(row.sku, '') | safe }}</td>
+      <td class="num"{% if row.razon_sn is not none %} title="{{ exact_text(row.razon_sn) }}"{% endif %}>{{ ratio_text(row.razon_sn) }}{% set interval = product_intervals.get(row.sku) %}{% if interval %}<span class="pred-subvalue" title="{{ r_interval_text(interval.inferior, interval.superior, interval.inferior_cola, exact=true) }}">{{ r_interval_text(interval.inferior, interval.superior, interval.inferior_cola) }}</span>{% else %}<span class="pred-subvalue">Intervalo no publicado</span>{% endif %}</td>
       <td class="num">{{ format_count(row.n_ventanas) }}<span class="pred-subvalue">mínimo {{ format_count(row.n_min) }}</span></td>
       <td class="pred-significance">
         {% if row.dm_causa %}
         <span class="pred-cell--none" title="Causa publicada: {{ row.dm_causa }}">Sin prueba: {{ cause_text(row.dm_causa) }}</span>
         {% else %}
-        <span>{{ significance_text(row) }}</span>
-        <span class="pred-subvalue">p ajustado {{ p_text(row.dm_p_ajustado, row.dm_alfa) }}</span>
+        <span>{{ test_results.get(test_result(row), significance_text(row)) }}</span>
         {% endif %}
         <details class="pred-details pred-details--inline">
           <summary>Ver prueba<span class="pred-sr-only"> de {{ row.sku }}</span></summary>
@@ -85,7 +90,7 @@
     </tr>
     {% endfor %}
   {% else %}
-    {{ table_empty(7, "Sin coincidencias", "No hay SKU con veredicto que coincidan con los filtros seleccionados.") }}
+    {{ table_empty(8, "Sin coincidencias", "No hay SKU con veredicto que coincidan con los filtros seleccionados.") }}
   {% endif %}
   {{ table_end() }}
 

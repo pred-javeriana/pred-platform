@@ -10,8 +10,11 @@
 | `uvicorn` | ASGI server |
 | `bcrypt` | Password hashing for session auth |
 | `itsdangerous` | Signed session cookies |
-| `psutil` | Waits for the engine's process pool to close before a resume on Windows |
+| `psutil` | Checks engine ownership and liveness, and waits for its process pool to close on Windows |
 | `pydantic` | Models of the data contract (declared directly; `>=2.13`, the version the contract's JSON Schemas were exported with) |
+
+On Linux, `setpriv` from util-linux must be on `PATH`. The worker uses it to request a kernel
+SIGTERM for the engine when its supervisor dies before cleanup can run.
 
 ## Development dependencies
 

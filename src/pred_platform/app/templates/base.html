@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ static_url('css/pred.css') }}?v=ux-10">
   <link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
   <script src="{{ static_url('js/htmx.min.js') }}" defer></script>
-  <script src="{{ static_url('js/pred.js') }}?v=ux-9" defer></script>
+  <script src="{{ static_url('js/pred.js') }}?v=wz-live-1" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body class="pred-shell{% if wizard %} has-rail{% endif %}">
@@ -19,7 +19,7 @@
   <main class="pred-main" id="contenido" tabindex="-1">
     {% if wizard %}{% include "partials/wizard_header.html" %}{% endif %}
     {% block content %}{% endblock %}
-    {% if wizard and not locked %}{% include "partials/wizard_footer.html" %}{% endif %}
+    {% block step_footer %}{% if wizard and not locked %}{% include "partials/wizard_footer.html" %}{% endif %}{% endblock %}
   </main>
   {% block scripts %}{% endblock %}
 </body>

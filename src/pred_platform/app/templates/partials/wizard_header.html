@@ -7,7 +7,7 @@
     <p class="pred-stephead__eyebrow">Paso {{ here.number }} de {{ wizard.steps | length }}</p>
     <h1>{{ wizard.step.label }}</h1>
     <p class="pred-stephead__what">{{ wizard.purpose }}</p>
-    <p class="pred-stephead__next">{% if wizard.after_lead %}<strong>{{ wizard.after_lead }}</strong> {% endif %}{{ wizard.after_text }}</p>
+    {% include "partials/wizard_after.html" %}
   </div>
   {% if step_actions is defined and step_actions %}<div class="pred-stephead__actions">{{ step_actions }}</div>{% endif %}
 </header>

@@ -78,6 +78,9 @@ class M3FixtureSource:
     def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
         raise EvidenceInvalid("Los datos de prueba no contienen un grupo final de semillas.")
 
+    def comparable_m3_runs(self, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
+        raise EvidenceInvalid("Los datos de prueba no contienen un grupo final de semillas.")
+
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
         """Los ejemplos v2 no tienen la confirmación del campeón: el contrato no la describe."""
         return None

@@ -17,6 +17,12 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     slow_m3       L2 and L3 complete, M3 stores the first SKU, then waits until it is killed
     m3_ok         like ok, but M3 is published (exit 0) without L4 events, as a resume reusing it
+    m3_published_then_malformed
+                  like m3_ok, but records the run as completada in the platform database before
+                  its final files, as M3 does, and writes a progress record without keys after
+                  run_finished
+    malformed_progress / malformed_after_publication
+                  writes a progress record without keys, before or after publishing its state
     future_schema writes a progress stream of an unsupported major version
     incompatible  refuses the run_id (its stored identity differs) without writing anything
 
@@ -25,6 +31,9 @@ upload launches: it leaves ``ingestas/<sha256>.json`` (copied from ``tests/fixtu
 by a marker in the file's content: ``BADHEADER`` (rejected), ``BADVALUE`` (failed), ``CONFLICT``
 (needs confirmation, exit 7, accepted keeping both files once confirmed), ``BOOM`` (dies without
 a report) and ``SLOW`` (hangs); anything else is accepted.
+
+``FAKE_ENGINE_UNITS=bad_line`` ends ``unidades.jsonl`` with a unit without its keys, so the
+platform cannot import the final files.
 
 ``FAKE_ENGINE_SELECTION`` shapes ``seleccion.jsonl`` (contract section 20): ``ok`` (default),
 ``none`` (an engine that predates it), ``future`` (an unsupported major version) or ``bad_line``
@@ -36,6 +45,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sqlite3
 import sys
 import time
@@ -328,6 +338,9 @@ def _classify(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    if os.environ.get("FAKE_ENGINE_IGNORE_SIGTERM"):
+        # Un motor que sobrevive al cierre de su supervisor (el worker lo detiene con SIGTERM).
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     parser = argparse.ArgumentParser()
     parser.add_argument("command")
     parser.add_argument("--ingest-id")
@@ -401,6 +414,16 @@ def main() -> int:
     stream.emit(
         "run_started", schema=schema, run_id=args.run_id, attempt=attempt, workers=args.workers
     )
+
+    if scenario in ("malformed_progress", "malformed_after_publication"):
+        if scenario == "malformed_after_publication":
+            with sqlite3.connect(os.environ["PRED_DB_PATH"]) as conn:
+                conn.execute(
+                    "UPDATE ejecuciones SET estado='completada' WHERE run_id=?", (args.run_id,)
+                )
+        stream.emit("unit_started", stage="L2")
+        time.sleep(60)
+        return 0
 
     # Before L2 the engine excludes a SKU that cannot run at all; at the close of L2 the
     # two-family rule excludes one with a single evaluable family.
@@ -523,22 +546,26 @@ def main() -> int:
             message="evaluación M3 falló: timeout",
         )
         stages.append({"id": "L4", "state": "failed", "message": "evaluación M3 falló: timeout"})
-    elif scenario == "m3_ok":
+    elif scenario in ("m3_ok", "m3_published_then_malformed"):
         stages.append({"id": "L4", "state": "completed"})
     else:
         stages.append({"id": "L4", "state": "blocked"})
 
-    if scenario == "publishes_before_exit":
+    if scenario in ("publishes_before_exit", "m3_published_then_malformed"):
         with sqlite3.connect(os.environ["PRED_DB_PATH"]) as conn:
             conn.execute(
                 "UPDATE ejecuciones SET estado=? WHERE run_id=?",
                 (os.environ.get("FAKE_ENGINE_TERMINAL_STATE", "completada"), args.run_id),
             )
-        # El motor ya confirmo M3 y aun debe publicar los artefactos de la CLI.
-        time.sleep(0.7)
+        if scenario == "publishes_before_exit":
+            # El motor ya confirmo M3 y aun debe publicar los artefactos de la CLI.
+            time.sleep(float(os.environ.get("FAKE_ENGINE_PUBLISH_EXIT_DELAY", "0.7")))
 
+    unit_lines = [json.dumps(r) for r in unit_rows]
+    if os.environ.get("FAKE_ENGINE_UNITS") == "bad_line":
+        unit_lines.append(json.dumps({"stage": "L3", "state": "completada"}))
     (folder / "unidades.jsonl").write_text(
-        "".join(json.dumps(r) + "\n" for r in unit_rows), encoding="utf-8"
+        "".join(f"{line}\n" for line in unit_lines), encoding="utf-8"
     )
     _write_selection(
         folder,
@@ -571,7 +598,7 @@ def main() -> int:
             if r["state"] == "fallida"
         ],
     }
-    published = scenario == "m3_ok"
+    published = scenario in ("m3_ok", "m3_published_then_malformed")
     if published:
         summary.update(complete=True, blocked_stage=None, m3={"estado": "PUBLICADA"})
     corrida = {"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}
@@ -587,6 +614,8 @@ def main() -> int:
         failed_stage=failed_stage,
         blocked_stage=None if failed_stage == "L4" or published else "L4",
     )
+    if scenario == "m3_published_then_malformed":
+        stream.emit("unit_started", stage="L4")
     return 1 if failed else 0 if published else 7
 
 

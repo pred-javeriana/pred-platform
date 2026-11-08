@@ -177,6 +177,7 @@ def publish(
     windows: dict[str, list[tuple[str, float, float, float | None, str | None]]] | None = None,
     excluded_from_class: dict[str, str] | None = None,
     eligibility: tuple[tuple[str, ...], ...] | None = (),
+    seed: int | None = None,
 ) -> None:
     """Insert one M3 run whose SKUs have ``verdicts`` (SKU -> (Syntetos-Boylan class, verdict)).
 
@@ -187,6 +188,8 @@ def publish(
     p75) beside the RMSE of the classical family and the baseline. ``windows`` publishes, per SKU,
     the reserve windows (fecha, RMSE of the champion, RMSE of the baseline, r, cause of a null r).
     ``excluded_from_class`` leaves SKUs (SKU -> cause) out of their class's champion selection.
+
+    ``seed`` publishes the M2 configuration the engine records, so the run can join a seed group.
 
     ``eligibility`` lists each product M2 excluded (SKU, class, published cause and, optionally,
     the code; the two-family rule by default). ``None`` writes the run the way the engine did
@@ -221,6 +224,7 @@ def publish(
                     {
                         "horizonte": 7,
                         "politica": POLICY,
+                        **({} if seed is None else {"configuracion_m2": {"seed": seed}}),
                         **({} if eligibility is None else {"bloques": BLOCKS}),
                     },
                     sort_keys=True,

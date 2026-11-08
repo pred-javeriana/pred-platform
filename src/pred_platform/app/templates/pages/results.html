@@ -1,17 +1,14 @@
 {% extends "base.html" %}
 {% from "components/states.html" import empty_state, missing_run_state, unavailable_state %}
 {% from "components/run_picker.html" import run_picker %}
-{% from "components/tabs.html" import tabs %}
 {% from "components/buttons.html" import button %}
+{% from "partials/results_macros.html" import claim %}
 
-{# El encabezado del paso lleva el grupo de semillas y lanzar otra corrida con los mismos datos. #}
 {% set step_actions %}{{ button("Grupo de semillas", variant="subtle", href="/resultados/grupo") }}{% include "partials/results_action.html" %}{% endset %}
-
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/results.css') }}?v=1">{% endblock %}
 {% block content %}
-  {% if source == "fixture" %}
-  <p class="pred-meta">Datos de prueba</p>
-  {% endif %}
-
+<div class="pred-results">
+  {% if source == "fixture" %}<p class="pred-meta">Datos de prueba</p>{% endif %}
   {% include "partials/results_context.html" %}
 
   {% if missing_execution and executions %}
@@ -21,51 +18,43 @@
   {% elif missing_execution %}
     {{ missing_run_state(missing_execution, "Todavía no hay ejecuciones con resultados. Abra Ejecución para ver las que existen.", "Ir a Ejecución", "/ejecucion") }}
   {% elif not run %}
-    {{ empty_state(
-      "Todavía no hay resultados.",
-      "Cuando una ejecución termine y se publique su evaluación final, sus resultados aparecerán aquí.",
-      "Ir a Ejecución",
-      "/ejecucion"
-    ) }}
+    {{ empty_state("Todavía no hay resultados.", "Aparecerán cuando se publique la evaluación final.", "Ir a Ejecución", "/ejecucion") }}
   {% else %}
-  {{ tabs(
-    [
-      {"id": "resumen", "label": "Resumen", "href": "/corridas/" ~ reference ~ "/resultados?vista=resumen" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "clase", "label": "Por clase", "href": "/corridas/" ~ reference ~ "/resultados?vista=clase" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "sku", "label": "SKU", "href": "/corridas/" ~ reference ~ "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "errores", "label": "Perfiles de error", "href": "/corridas/" ~ reference ~ "/resultados?vista=errores" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "exportar", "label": "Exportar y reproducir", "href": "/corridas/" ~ reference ~ "/resultados/exportar"}
-    ] if champion_capability.available else [
-      {"id": "sku", "label": "SKU", "href": "/corridas/" ~ reference ~ "/resultados?vista=sku" ~ ("&" ~ tab_query if tab_query else "")},
-      {"id": "exportar", "label": "Exportar y reproducir", "href": "/corridas/" ~ reference ~ "/resultados/exportar"}
-    ],
-    vista
-  ) }}
-
-  <div class="pred-sheet pred-sheet--tabbed">
+  <nav class="pred-chapters" aria-label="Capítulos de resultados">
+    {% for key, label, number in chapters %}
+    <a href="{{ results_base }}/{{ key }}{{ '?' ~ chapter_query if chapter_query else '' }}"{% if chapter == key %} aria-current="page"{% endif %}>{% if number %}<span class="pred-chapters__number">{{ number }}</span>{% endif %}{{ label }}</a>
+    {% endfor %}
+  </nav>
   {% if vista == "exportar" %}
     {% include "partials/results_exportar.html" %}
   {% elif vista == "sku" %}
-    {% if champion_capability.available %}
-    <nav class="pred-segmented" aria-label="Lectura de la lista de SKU">
-      <a href="/resultados?vista=sku{{ '&' ~ tab_query if tab_query else '' }}"{% if lista == "veredictos" %} aria-current="page"{% endif %}>Veredictos</a>
-      <a href="/resultados?vista=sku&amp;lista=familias{{ '&' ~ tab_query if tab_query else '' }}"{% if lista == "familias" %} aria-current="page"{% endif %}>Resultados por familia</a>
-    </nav>
-    {% endif %}
-    {% if lista == "familias" %}{% include "partials/results_sku_list.html" %}
-    {% else %}{% include "partials/results_consulta.html" %}{% endif %}
+    <section class="pred-panel">
+      <h2>Productos</h2>
+      <p class="pred-results-lead">Cada producto con su veredicto y su razón de error. Abra uno para ver su demanda, su pronóstico y la prueba.</p>
+      {% if champion_capability.available %}
+      <nav class="pred-segmented" aria-label="Lectura de la lista de productos">
+        <a href="{{ results_base }}/productos?{{ chapter_query }}"{% if lista == "veredictos" %} aria-current="page"{% endif %}>Veredictos</a>
+        <a href="{{ results_base }}/productos?lista=familias{{ '&' ~ chapter_query if chapter_query else '' }}"{% if lista == "familias" %} aria-current="page"{% endif %}>Ver por familia</a>
+      </nav>
+      {% endif %}
+      {% if lista == "familias" %}{% include "partials/results_sku_list.html" %}{% else %}{% include "partials/results_consulta.html" %}{% endif %}
+    </section>
   {% elif champion_capability.available %}
     {% if vista == "resumen" %}{% include "partials/results_summary.html" %}
-    {% elif vista == "errores" %}{% include "partials/results_profiles.html" %}
-    {% else %}{% include "partials/results_classes.html" %}{% endif %}
+    {% elif vista == "clase" %}{% include "partials/results_classes.html" %}
+    {% elif vista == "prueba" %}{% include "partials/results_verification.html" %}
+    {% elif vista == "estabilidad" %}{% include "partials/results_stability.html" %}{% endif %}
   {% else %}
-    {{ unavailable_state(
-      "Todavía no hay campeón por SKU.",
-      "Esta vista todavía no dispone del resumen por clase y por familia. Mientras tanto, la pestaña SKU permite consultar los resultados de cada familia.",
-      champion_capability.reason_code or "not_implemented",
-      champion_capability.blocked_by
-    ) }}
+    {{ unavailable_state("Todavía no hay campeón por SKU.", "La lista de Productos conserva los resultados de cada familia.", champion_capability.reason_code or "not_implemented", champion_capability.blocked_by) }}
   {% endif %}
-  </div>
+  {# El mismo pie que los demás pasos (partials/wizard_footer.html), entre capítulos. #}
+  {% set back_href = results_base ~ "/" ~ previous_chapter[0] ~ ("?" ~ chapter_query if chapter_query else "") if previous_chapter else "/corridas/" ~ reference ~ "/ejecucion" %}
+  <nav class="pred-footnav pred-chapter-footer" aria-label="Navegación entre capítulos">
+    <div class="pred-footnav__side"><a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ back_href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>Atrás: {{ previous_chapter[1] if previous_chapter else "Ejecución" }}</a></div>
+    {% if next_chapter %}<div class="pred-footnav__side pred-footnav__side--end"><a class="pred-btn pred-btn--primary pred-btn--large" href="{{ results_base }}/{{ next_chapter[0] }}{{ '?' ~ chapter_query if chapter_query else '' }}">Siguiente: {{ next_chapter[1] }}<svg aria-hidden="true"><use href="#i-arrow-right"></use></svg></a></div>{% endif %}
+  </nav>
   {% endif %}
+</div>
 {% endblock %}
+{% block step_footer %}{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/charts.js') }}?v=1" defer></script>{% endblock %}

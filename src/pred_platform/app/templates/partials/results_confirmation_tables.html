@@ -1,0 +1,34 @@
+{% from "components/tables.html" import table_start, table_end %}
+{% macro exact(value) %}{% if value is not none %} title="{{ exact_text(value) }}"{% endif %}{% endmacro %}
+{% macro exact_interval(lower, upper) %}{% if lower is not none and upper is not none %} title="[{{ exact_text(lower) }}; {{ exact_text(upper) }}]"{% endif %}{% endmacro %}
+{% set confirmation = m3_classes.confirmation %}
+<details class="pred-details"><summary>Ver las cifras de la prueba</summary>
+  <p class="pred-meta">La campeona queda confirmada si p Holm ≤ α y el intervalo de la mediana queda bajo 1 frente a cada competidora. La confirmación no cambia la campeona. {% if confirmation.alfa is not none %}α = {{ exact_text(confirmation.alfa) }}; intervalos al {{ level_text(1 - confirmation.alfa) }}.{% endif %}</p>
+  {{ table_start(["Clase", "Campeona", "Estado", "p IUT", "p Holm", "Mediana de r frente a la línea base (IC)", "SKU comparados"], "Confirmación del campeón por clase", "confirmation") }}
+  {% for row in m3_classes.rows %}{% set found = m3_classes.confirmations.get(row.sku_class) %}
+  <tr><th scope="row">{{ sku_class_label(row.sku_class) }}</th><td class="pred-nowrap">{{ family_label(found.familia_campeona if found else row.familia_campeona) }}</td>
+  {% if found %}
+    <td>{{ CONFIRMATION_STATES[found.estado] }}{% if found.causa %}<span class="pred-subvalue pred-cause">{{ cause_text(found.causa) }}</span>{% endif %}</td>
+    <td class="num"{{ exact(found.p_iut) }}>{{ p_text(found.p_iut, found.alfa) }}</td><td class="num"{{ exact(found.p_holm) }}>{{ p_text(found.p_holm, found.alfa) }}</td>
+    <td class="num"{{ exact(found.efecto_mediana_r) }}>{{ ratio_text(found.efecto_mediana_r) }}{% if found.efecto_ic_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(found.efecto_ic_inferior, found.efecto_ic_superior) }}>{{ interval_text(found.efecto_ic_inferior, found.efecto_ic_superior) }}</span>{% endif %}{% if found.efecto_causa %}<span class="pred-subvalue">{{ cause_text(found.efecto_causa) }}</span>{% endif %}</td>
+    <td class="num">{{ format_count(found.efecto_n_skus) if found.efecto_n_skus is not none else '—' }}</td>
+  {% else %}<td colspan="5">Sin confirmación publicada para esta clase.</td>{% endif %}</tr>
+  {% endfor %}
+  {{ table_end() }}
+  {% for found in m3_classes.confirmations.values() if found.comparaciones %}
+  <h3>{{ sku_class_label(found.sku_class) }}: {{ family_label(found.familia_campeona) }} frente a cada competidora</h3>
+  {% if found.contendiente and found.contendiente != found.familia_campeona %}<p class="pred-meta">Mejor familia sin la fundacional: {{ family_label(found.contendiente) }}.</p>{% endif %}
+  {{ table_start(["Competidora", "SKU", "Mediana de la razón", "Hodges-Lehmann", "Victorias de la campeona", "p Wilcoxon", "p IUT", "Estadístico Wilcoxon", "Mejores", "Peores"], "Campeona de " ~ sku_class_label(found.sku_class) ~ " frente a cada competidora", "competitors") }}
+  {% for row in found.comparaciones %}<tr>
+    <th scope="row">{{ family_label(row.competidora) }}{% if row.causa %}<span class="pred-subvalue">{{ cause_text(row.causa) }}</span>{% endif %}</th>
+    <td class="num">{{ format_count(row.n_skus) }}</td>
+    <td class="num"{{ exact(row.mediana_razon) }}>{{ ratio_text(row.mediana_razon) }}{% if row.ic_mediana_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(row.ic_mediana_inferior, row.ic_mediana_superior) }}>{{ interval_text(row.ic_mediana_inferior, row.ic_mediana_superior) }}</span>{% endif %}</td>
+    <td class="num"{{ exact(row.hodges_lehmann) }}>{{ ratio_text(row.hodges_lehmann) }}{% if row.ic_hodges_lehmann_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(row.ic_hodges_lehmann_inferior, row.ic_hodges_lehmann_superior) }}>{{ interval_text(row.ic_hodges_lehmann_inferior, row.ic_hodges_lehmann_superior) }}</span>{% endif %}</td>
+    <td class="num">{{ wins_text(row.n_victorias, row.n_skus) }}{% if row.ic_victorias_inferior is not none %}<span class="pred-subvalue"{{ exact_interval(row.ic_victorias_inferior, row.ic_victorias_superior) }}>{{ interval_text(row.ic_victorias_inferior, row.ic_victorias_superior, percent=true) }}</span>{% endif %}</td>
+    <td class="num"{{ exact(row.p_wilcoxon) }}>{{ p_text(row.p_wilcoxon, found.alfa) }}</td><td class="num"{{ exact(row.p_iut) }}>{{ p_text(row.p_iut, found.alfa) }}</td>
+    <td class="num"{{ exact(row.estadistico_wilcoxon) }}>{{ format_decimal(row.estadistico_wilcoxon, 3) if row.estadistico_wilcoxon is not none else '—' }}</td><td class="num">{{ format_count(row.n_mejores) if row.n_mejores is not none else '—' }}</td><td class="num">{{ format_count(row.n_peores) if row.n_peores is not none else '—' }}</td>
+  </tr>{% endfor %}
+  {{ table_end() }}
+  {% endfor %}
+  <p class="pred-meta">La razón de un producto es RMSE de la campeona / RMSE de la competidora. Hodges-Lehmann estima la razón típica. Las victorias cuentan razones menores que 1, con su intervalo de Wilson. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y Holm lo ajusta entre clases.</p>
+</details>

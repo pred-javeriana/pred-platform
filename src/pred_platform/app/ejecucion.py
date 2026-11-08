@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -284,13 +284,15 @@ def parse_launch_form(
             trials = _form_int(values["trials"])
         except ValueError:
             errors["trials"] = (
-                "Configuraciones por familia: escriba un número entero o déjelo vacío."
+                "Configuraciones por SKU y familia: escriba un número entero o déjelo vacío."
             )
         else:
             if trials < 1:
-                errors["trials"] = "Configuraciones por familia: debe ser mayor que cero."
+                errors["trials"] = "Configuraciones por SKU y familia: debe ser mayor que cero."
             elif trials > SQLITE_MAX_INTEGER:
-                errors["trials"] = "Configuraciones por familia: el número es demasiado grande."
+                errors["trials"] = (
+                    "Configuraciones por SKU y familia: el número es demasiado grande."
+                )
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
     elif not set(values["families"]) <= {key for key, _ in FAMILY_CHOICES}:
@@ -600,7 +602,7 @@ def offers_resume(estado: str, error: RunError | None, *, nothing_to_compare: bo
     """
     return (
         estado in RESUMABLE_STATES
-        and (error is None or error.code not in (INCOMPATIBLE_CONFIG, "platform.input_missing"))
+        and (error is None or error.code != INCOMPATIBLE_CONFIG)
         and not nothing_to_compare
         and not _same_on_resume(error)
     )
@@ -664,18 +666,26 @@ def run_actions(
 
 
 def should_poll(
-    estado: str | None, counts: Mapping[EstadoTarea, int], *, reason: str | None
+    estado: str | None,
+    counts: Mapping[EstadoTarea, int],
+    *,
+    reason: str | None,
+    stopped_at: datetime | None = None,
 ) -> bool:
     """Si la página sigue preguntando por el avance.
 
     Mientras la corrida está en cola o en curso y, después de Detener, hasta que el worker cierra
-    las tareas que quedaron abiertas: antes de eso los conteos todavía cambian.
+    las tareas que quedaron abiertas, hasta dos minutos: antes de eso los conteos todavía cambian.
     """
     if reason is not None or estado is None:
         return False
     if estado in ACTIVE_STATES:
         return True
-    return estado == "detenida" and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
+    return (
+        estado == "detenida"
+        and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
+        and (stopped_at is None or (datetime.now(UTC) - stopped_at).total_seconds() < 120)
+    )
 
 
 # Las etapas del motor, en orden (contrato 1.2.0, ``Progress.etapa_actual``); sus nombres son los
@@ -732,7 +742,7 @@ def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
         ("Paso entre ventanas", f"{values.get('step')} días"),
         ("Estacionalidad", f"{values.get('seasonality')} días"),
         (
-            "Configuraciones a probar por familia",
+            "Configuraciones por SKU y familia",
             trials if trials else "Las que cada familia prueba por defecto",
         ),
         ("Semilla", str(values.get("seed"))),

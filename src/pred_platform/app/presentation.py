@@ -517,7 +517,9 @@ def group_option_label(
     options_for_seed: Sequence[Any],
     index: int = 1,
 ) -> str:
-    """Etiqueta para una opción de semilla: «Publicada el 27 oct 2026, 5:00 a. m.».
+    """Etiqueta para una opción de semilla: «Creada el 27 oct 2026, 5:00 a. m.».
+
+    La fecha es la creación de la evaluación final, no el fin de su publicación.
 
     Si dos opciones de la misma semilla caen en el mismo minuto (su etiqueta sin segundos se
     repite), muestra también los segundos (p. ej. «5:00:40 a. m.»). Si no tiene fecha, usa
@@ -535,7 +537,7 @@ def group_option_label(
         time_text = format_when(option.creado_en, with_seconds=True)
     else:
         time_text = my_label
-    return f"Publicada el {time_text}"
+    return f"Creada el {time_text}"
 
 
 _GROUP_PROBLEM_MAP: dict[str, str] = {
@@ -628,6 +630,11 @@ def group_lumpy_cause_text(cause: str) -> str:
     return _GROUP_LUMPY_CAUSES.get(cause, cause)
 
 
+def closing_period(text: str) -> str:
+    """Una sola marca de cierre, también cuando una hora termina en «a. m.» o «p. m.»."""
+    return "" if text.rstrip().endswith(".") else "."
+
+
 def exact_when(value: datetime | None) -> str:
     """El instante exacto que se guardó, para un title: «2026-11-04 21:36:38 UTC (hora universal
     coordinada)»."""
@@ -635,10 +642,11 @@ def exact_when(value: datetime | None) -> str:
         return ""
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    precision = ".%f" if value.microsecond else ""
-    return value.astimezone(UTC).strftime(
-        f"%Y-%m-%d %H:%M:%S{precision} UTC (hora universal coordinada)"
-    )
+    value = value.astimezone(UTC)
+    stamp = value.strftime("%Y-%m-%d %H:%M:%S")
+    if value.microsecond:
+        stamp += f".{value.microsecond:06d}"
+    return stamp + " UTC (hora universal coordinada)"
 
 
 def format_date(value: str | date | None) -> str:

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import signal
 import sqlite3
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -29,13 +32,15 @@ from pred_platform.app.ejecucion import (
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract import models
-from pred_platform.contract.errors import InvalidQuery
+from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.data.fixtures import FixtureRepository
+from pred_platform.worker import engine
+from pred_platform.worker.bucle import Worker
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
-from tests.test_worker import Env, _escribir_progreso, _guardar_origen, _scenario, _wait
+from tests.test_worker import _FAKE, Env, _escribir_progreso, _guardar_origen, _scenario, _wait
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
@@ -285,15 +290,16 @@ def test_a_working_run_shows_what_it_is_doing_and_that_it_is_still_alive() -> No
     html = client.get("/ejecucion").text
 
     pulse = re.search(
-        r'<div class="pred-run__pulse" id="pulso-ejecucion"[^>]*>(.*?)</div>', html, re.S
+        r'<div class="pred-run__pulse is-fija" id="pulso-ejecucion"[^>]*>(.*?)</div>', html, re.S
     )
     assert pulse is not None
-    assert 'data-pred-started="' in pulse.group(0)
+    assert 'data-pred-started="' not in pulse.group(0)
+    assert "no se actualiza sola; recárguela para ver el avance" in _text(pulse.group(1))
     text = _text(pulse.group(1))
     assert text.strip().startswith("Trabajando")
     assert re.search(r"Lleva \S+", text)
-    # The ring and the counts carry the hooks that let them move instead of jump.
-    assert "pred-progress__sweep" in html and 'data-pred-tween="avance-pct"' in html
+    # Una vista sin sondeo no simula actividad con el anillo ni con las etapas.
+    assert "pred-progress__sweep" not in html and 'data-pred-tween="avance-pct"' in html
 
 
 def test_execution_state_in_stage_l3_uses_stage_qualified_skus_terminados_tween(
@@ -371,7 +377,7 @@ FORM: dict[str, Any] = {
     "metric": "mae",
     "min_train": "40",
     "horizon": "2",
-    "step": "14",
+    "step": "7",
     "seasonality": "7",
     "trials": "1",
     "seed": "17",
@@ -417,7 +423,7 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     assert (parsed["min_train"], parsed["horizon"], parsed["step"], parsed["metric"]) == (
         40,
         2,
-        14,
+        7,
         "mae",
     )
     page = client.get(response.headers["location"]).text
@@ -425,6 +431,239 @@ def test_launching_from_the_form_queues_a_run_with_those_parameters(env: Env) ->
     # No worker in this app: the page says who must start it, without an environment variable.
     assert "Pendiente" in _text(page) and "make worker" in page and "PRED_WORKER" not in page
     assert "no procesa ejecuciones por sí sola" in _text(page)
+
+
+@pytest.mark.parametrize("state", ["detenida", "completada_con_fallos"])
+def test_launching_identical_settings_does_not_resume_a_published_run(env: Env, state: str) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = ?, finalizada_en = '2026-11-01T12:00:00+00:00'",
+            (state,),
+        )
+    before = env.rows("SELECT * FROM ejecuciones")
+    again = _launch(client, env)
+    assert again.headers["location"] == "/corridas/1/ejecucion?aviso=existente"
+    assert env.rows("SELECT * FROM ejecuciones") == before
+
+
+@pytest.mark.parametrize("state", ["ejecutando", "completada"])
+def test_resumed_elapsed_time_is_labelled_from_first_start(env: Env, state: str) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = ?, intento = 2, "
+            "iniciada_en = '2026-11-01T12:00:00+00:00'",
+            (state,),
+        )
+    html = client.get("/ejecucion?ejecucion=1").text
+    assert "Desde el primer inicio" in _text(html)
+    assert "<dt>Duración</dt>" not in html
+    assert "<dt>Tiempo transcurrido</dt>" not in html
+
+
+@pytest.mark.parametrize("seconds, polling", [(119, True), (120, False), (180, False)])
+def test_stopped_open_tasks_stop_polling_after_two_minutes(
+    env: Env, seconds: int, polling: bool
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        dal.task_started(
+            conn,
+            run.id,
+            sku="FIL-0001",
+            modelo="ml:lightgbm",
+            corte=run.t_star,
+            seed=run.seed,
+            iniciada_en=dal.now_iso(),
+        )
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?",
+            ((datetime.now(UTC) - timedelta(seconds=seconds)).isoformat(),),
+        )
+    response = client.get("/ejecucion/estado?ejecucion=1")
+    assert response.status_code == (200 if polling else 286)
+    if not polling:
+        note = "Las tareas abiertas se cerrarán cuando vuelva el procesador de ejecuciones."
+        assert note in response.text
+    assert env.rows("SELECT estado FROM tareas") == [("ejecutando",)]
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_engine_terminal_state_keeps_polling_until_worker_finishes(env: Env, state: str) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ejecuciones SET estado = ?, pid = 12345", (state,))
+    owner = WorkerLock.for_database(env.db)
+    assert owner.acquire()
+    try:
+        response = client.get("/ejecucion/estado?ejecucion=1")
+        assert response.status_code == 200
+        assert 'data-pred-poll="true"' in response.text
+        with closing(dal.connect(env.db)) as conn:
+            dal.finish_run(conn, 1, estado=state)
+        settled = client.get("/ejecucion/estado?ejecucion=1")
+        assert settled.status_code == 286
+        assert f'data-pred-run-state="{state}"' in settled.text
+    finally:
+        owner.release()
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
+    env: Env, state: str
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    process = subprocess.Popen(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env={
+            **os.environ,
+            "PRED_DATA_ROOT": str(env.settings.data_root),
+            "PRED_DB_PATH": str(env.db),
+            "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+            "FAKE_ENGINE_SCENARIO": "publishes_before_exit",
+            "FAKE_ENGINE_TERMINAL_STATE": state,
+            "FAKE_ENGINE_PUBLISH_EXIT_DELAY": "5",
+            # El worker muerto deja al motor sin padre; este motor ignora la señal que el
+            # núcleo le envía entonces, para que el sondeo cubra el motor aún activo.
+            "FAKE_ENGINE_IGNORE_SIGTERM": "1",
+        },
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    pid = None
+    try:
+        _wait(
+            lambda: bool(env.rows("SELECT pid FROM ejecuciones WHERE estado = ?", state)),
+            what="engine publication before worker cleanup",
+        )
+        [(pid,)] = env.rows("SELECT pid FROM ejecuciones")
+        assert pid is not None and engine.engine_owner(pid, env.db) == "this"
+        process.kill()
+        process.wait(timeout=10)
+        # Sin procesador, el motor todavía activo debe mantener el seguimiento.
+        assert client.get("/ejecucion/estado?ejecucion=1").status_code == 200
+        _wait(
+            lambda: engine.engine_owner(pid, env.db) == "none",
+            what="orphan engine exit",
+        )
+
+        def assert_terminal_without_writes() -> None:
+            before = env.db.read_bytes()
+            fragment = client.get("/ejecucion/estado?ejecucion=1")
+            assert fragment.status_code == 286
+            assert 'data-pred-poll="false"' in fragment.text
+            assert f'data-pred-run-state="{state}"' in fragment.text
+            for path, region in (
+                ("/", r'<ul class="pred-runs">(.*?)</ul>'),
+                ("/corridas/1/ejecucion", r'<div class="pred-run__identity">(.*?)</div>'),
+                ("/resultados?ejecucion=1", r'<dl class="pred-context__facts">(.*?)</dl>'),
+            ):
+                response = client.get(path)
+                assert response.status_code == 200
+                shown = re.search(region, response.text, re.S)
+                assert shown is not None
+                labels = re.findall(r'pred-status__label">\s*([^<]+)', shown.group(1))
+                assert labels and all(label.startswith("Completada") for label in labels), path
+            assert env.db.read_bytes() == before
+
+        assert_terminal_without_writes()
+        # Un proceso ajeno que reutilice el PID tampoco vuelve activa la ejecución.
+        with closing(dal.connect(env.db)) as conn, conn:
+            conn.execute("UPDATE ejecuciones SET pid = ?", (os.getpid(),))
+        assert_terminal_without_writes()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=10)
+        if pid is not None and engine.engine_owner(pid, env.db) == "this":
+            engine.terminate(pid)
+
+
+@pytest.mark.parametrize("parameter", ["estado", "family"])
+def test_unknown_filter_keeps_the_run_and_all_tasks(parameter: str) -> None:
+    client, _ = _fixture_client()
+    response = client.get(f"/ejecucion?{parameter}=bogus")
+    assert "Ese filtro no existe; se muestran todas las tareas." in response.text
+    assert "Ejecución #1" in _text(response.text)
+    assert "7 tareas coinciden con la consulta." in _text(response.text)
+    assert "Valor desconocido" not in response.text
+
+
+@pytest.mark.parametrize("failure", [ArtifactMissing, InvalidQuery])
+def test_failed_focus_read_falls_back_to_complete_task_list(
+    env: Env, monkeypatch: pytest.MonkeyPatch, failure: type[Exception]
+) -> None:
+    app = create_app(replace(env.settings, worker="off"))
+    client = TestClient(app)
+    assert _launch(client, env).status_code == 303
+    with closing(dal.connect(env.db)) as conn, conn:
+        run = dal.claim_pending(conn)
+        assert run is not None and run.t_star is not None
+        dal.plan_tasks(
+            conn,
+            run.id,
+            corte=run.t_star,
+            seed=run.seed,
+            units=[(f"SKU-{i:03}", "ml:lightgbm") for i in range(60)],
+        )
+        conn.execute(
+            "UPDATE tareas SET estado = 'fallida', detalle_error = ? WHERE sku = 'SKU-000'",
+            (json.dumps(run_stopped_error()),),
+        )
+    repo = app.state.repository
+    original = repo.get_run_status
+
+    def read(run_id: str, **kwargs: Any) -> models.RunStatus:
+        if kwargs.get("size") == 5 and kwargs.get("estado"):
+            raise failure("lectura temporalmente no disponible")
+        return original(run_id, **kwargs)
+
+    monkeypatch.setattr(repo, "get_run_status", read)
+    html = client.get("/ejecucion").text
+    assert "tareas fallaron hasta ahora" not in _text(html)
+    assert "60 tareas coinciden con la consulta." in _text(html)
+    assert "Tareas de la ejecución filtrada" in html
+    assert 'aria-label="Paginación de tareas"' in html
+    assert "Página 1 de 2" in _text(html) and "Siguiente" in html
+
+
+def test_origin_timeout_does_not_expose_command(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _dal_client(env)
+
+    def timeout(*args: Any, **kwargs: Any) -> None:
+        raise subprocess.TimeoutExpired(["/private/engine", "origen"], 60)
+
+    monkeypatch.setattr("pred_platform.worker.engine.subprocess.run", timeout)
+    response = _launch(client, env)
+    message = (
+        "No se pudo consultar al motor el origen de los datos. Intente de nuevo en unos minutos."
+    )
+    assert message in response.text
+    assert "Command" not in response.text and "/private/engine" not in response.text
+
+
+def test_launch_refuses_when_no_sku_has_enough_history(env: Env) -> None:
+    response = _launch(_dal_client(env), env, min_train="400", step="14")
+    assert response.status_code == 200
+    assert "Con estos ajustes ningún SKU tiene historia suficiente" in response.text
+    assert "se necesitan 444 días antes del corte" in response.text
+    assert 'id="min_train"' in response.text and 'aria-invalid="true"' in response.text
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
+
+
+def test_launch_accepts_the_exact_history_required(env: Env) -> None:
+    # 49 + 2 + 3 * 7 = 72, los días que tienen los SKU de esta ingesta.
+    response = _launch(_dal_client(env), env, min_train="49")
+    assert response.status_code == 303
+    assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
 
 
 def test_the_launch_form_has_no_data_origin_option(env: Env) -> None:
@@ -471,7 +710,8 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
         {"event": "unit_finished", "stage": "L4", "sku_id": "B", "state": "completada"},
     )
     texto = fragmento()
-    assert "Trabajando en Evaluación final · 2 de 3 SKU terminados en esta etapa" in texto
+    assert "Trabajando en Evaluación final." in texto
+    assert "2 de 3 productos terminados en esta etapa" in texto
     # The working line counts the elapsed time and says when progress was read.
     assert "Lleva " in texto and "avance leído" in texto
     page = client.get("/ejecucion?ejecucion=1").text
@@ -586,15 +826,14 @@ def test_the_form_reports_each_wrong_field_and_creates_nothing(env: Env) -> None
     assert response.status_code == 200
     assert "Mínimo de entrenamiento (días): escriba un número entero." in text
     assert "Horizonte (días): debe ser mayor que cero." in text
-    assert "Configuraciones por familia: debe ser mayor que cero." in text
+    assert "Configuraciones por SKU y familia: debe ser mayor que cero." in text
     assert "Elija al menos una familia de modelos." in text
     assert "Elija una de las métricas de la lista." in text
     assert 'value="abc"' in response.text  # what the operator typed is kept
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
-# Each SKU of the test ingest has 72 days, 54 before the cut. The engine needs min_train +
-# horizon + 3 steps before the cut: 84 with FORM (every SKU too short), 43 with these.
+# Each SKU of the test ingest has 72 days. These settings need 43 days before the cut.
 LONG_ENOUGH = {"min_train": "20", "step": "7"}
 
 
@@ -620,9 +859,37 @@ def test_launching_without_a_family_for_a_class_creates_nothing_and_says_which(
 def test_a_class_without_family_whose_skus_are_all_too_short_does_not_block_the_launch(
     env: Env,
 ) -> None:
-    # With FORM every SKU is shorter than the 84 days the engine needs: it excludes them with any
-    # family before L2, so a class without family does not make L2 fail.
-    response = _launch(_dal_client(env), env, families=["ml", "dl"])
+    # Solo la clase suave alcanza 84 días; las demás quedan fuera antes de L2.
+    ingest = _ingest_with(
+        env,
+        [
+            {
+                "sku_id": "FIL-0001",
+                "n_periods": 200,
+                "n_positive": 200,
+                "adi": 1.0,
+                "cv2": 0.1,
+                "sku_class": "smooth",
+            },
+            {
+                "sku_id": "FIL-0002",
+                "n_periods": 72,
+                "n_positive": 36,
+                "adi": 2.0,
+                "cv2": 0.1,
+                "sku_class": "intermittent",
+            },
+            {
+                "sku_id": "FIL-0003",
+                "n_periods": 72,
+                "n_positive": 36,
+                "adi": 2.0,
+                "cv2": 1.0,
+                "sku_class": "lumpy",
+            },
+        ],
+    )
+    response = _launch(_dal_client(env), env, ingest_id=ingest, families=["ml", "dl"], step="14")
     text = _text(response.text)
 
     assert "queda sin modelo" not in text
@@ -651,7 +918,30 @@ def test_one_family_for_a_class_warns_which_skus_lose_the_comparison(env: Env) -
 
 
 def test_a_sku_too_short_for_any_family_is_not_told_to_add_one(env: Env) -> None:
-    response = _launch(_dal_client(env), env, families=["classical", "ml"])
+    ingest = _ingest_with(
+        env,
+        [
+            {
+                "sku_id": "FIL-0001",
+                "n_periods": 200,
+                "n_positive": 200,
+                "adi": 1.0,
+                "cv2": 0.1,
+                "sku_class": "smooth",
+            },
+            {
+                "sku_id": "FIL-0003",
+                "n_periods": 72,
+                "n_positive": 36,
+                "adi": 2.0,
+                "cv2": 1.0,
+                "sku_class": "lumpy",
+            },
+        ],
+    )
+    response = _launch(
+        _dal_client(env), env, ingest_id=ingest, families=["classical", "ml"], step="14"
+    )
     text = _text(response.text)
 
     assert (
@@ -787,14 +1077,14 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         (
             "trials",
             str(2**63),
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         ("workers", str(2**63), "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "9" * 4301, "Semilla: el número es demasiado grande."),
         (
             "trials",
             "9" * 4301,
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         ("workers", "9" * 4301, "Procesos en paralelo: el número es demasiado grande."),
         ("seed", "+" + "9" * 4301, "Semilla: el número es demasiado grande."),
@@ -802,18 +1092,18 @@ def test_a_family_outside_the_list_is_a_field_error_in_plain_words(env: Env) -> 
         (
             "trials",
             "+" + "9" * 4301,
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         (
             "trials",
             "\u0669" * 4301,
-            "Configuraciones por familia: el número es demasiado grande.",
+            "Configuraciones por SKU y familia: el número es demasiado grande.",
         ),
         ("seed", "-" + "9" * 4301, "Semilla: debe ser cero o más."),
         (
             "trials",
             "-" + "9" * 4301,
-            "Configuraciones por familia: debe ser mayor que cero.",
+            "Configuraciones por SKU y familia: debe ser mayor que cero.",
         ),
     ],
 )
@@ -1357,7 +1647,7 @@ def _wal_copy_in_a_read_only_folder(env: Env) -> sqlite3.Connection:
     return reader
 
 
-def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
+def test_an_embedded_worker_that_cannot_create_its_lock_waits_and_resumes(
     env: Env, caplog: pytest.LogCaptureFixture
 ) -> None:
     client = _dal_client(env)
@@ -1367,17 +1657,34 @@ def test_an_embedded_worker_that_cannot_create_its_lock_is_reported_as_stopped(
     try:
         with TestClient(app) as served:
             thread = app.state.worker_thread
-            _wait(lambda: not thread.is_alive(), timeout=10, what="the worker thread to stop")
+            _wait(lambda: "no puede crear su candado" in caplog.text)
+            assert thread.is_alive()
+            assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
             run_page = _text(served.get("/ejecucion?ejecucion=1").text)
             form = _text(_review(served, env, seed="5"))
+            assert "procesador de ejecuciones de esta instalación se detuvo" not in run_page
+            assert "procesador de ejecuciones de esta instalación se detuvo" not in form
+            env.db.parent.chmod(0o755)
+            _wait(lambda: env.rows("SELECT estado FROM ejecuciones") == [("completada",)])
     finally:
         env.db.parent.chmod(0o755)
         reader.close()
 
+    assert not thread.is_alive()
+    assert env.rows("SELECT estado, pid FROM ejecuciones") == [("completada", None)]
+
+
+def test_a_stopped_embedded_worker_is_reported_in_the_run_and_launch_form(env: Env, monkeypatch):
+    _launch(_dal_client(env), env)
+    monkeypatch.setattr(Worker, "run_forever", lambda self, stop: None)
+    app = create_app(replace(env.settings, worker="embedded"))
+    with TestClient(app) as served:
+        _wait(lambda: not app.state.worker_thread.is_alive())
+        run_page = _text(served.get("/ejecucion?ejecucion=1").text)
+        form = _text(_review(served, env, seed="5"))
     assert "el procesador de ejecuciones de esta instalación se detuvo" in run_page
     assert "empezará cuando termine" not in run_page and "worker" not in run_page
     assert "El procesador de ejecuciones de esta instalación se detuvo" in form
-    assert "no puede crear su candado" in caplog.text
     assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
 
 
@@ -1387,7 +1694,8 @@ def test_once_without_a_lock_file_logs_why_and_leaves_the_queue(
     _launch(_dal_client(env), env)
     reader = _wal_copy_in_a_read_only_folder(env)
     try:
-        env.worker().drain()
+        with pytest.raises(PermissionError):
+            env.worker().drain()
     finally:
         env.db.parent.chmod(0o755)
         reader.close()
@@ -1524,6 +1832,61 @@ def test_a_run_stopped_by_an_error_that_retrying_cannot_fix_offers_no_resume(
     assert 'pred-callout--err" id="error-ejecucion"' in html
     assert _run_state_tone(html) == "err"
     assert _run_state_tone(client.get("/resultados").text) == "err"
+
+
+def test_reuploading_missing_input_allows_the_same_run_to_resume(env: Env) -> None:
+    client = TestClient(create_app(env.settings))
+    content = b"sku_id,timestamp,demand_qty,lead_time_days\nFIL-0001,2026-01-01,4,7\n"
+    env = replace(env, ingest_id=hashlib.sha256(content).hexdigest())
+
+    def upload() -> None:
+        response = client.post(
+            "/datos/cargar", files={"archivo": ("ventas.csv", content)}, follow_redirects=False
+        )
+        assert response.status_code == 303
+        assert env.ingest_id in response.headers["location"]
+
+    def drain() -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "pred_platform.worker", "--once"],
+            env={
+                **os.environ,
+                "PRED_DATA_ROOT": str(env.settings.data_root),
+                "PRED_DB_PATH": str(env.db),
+                "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+                "FAKE_ENGINE_SCENARIO": "ok",
+            },
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+    upload()
+    assert _launch(client, env).status_code == 303
+    [(run_id,)] = env.rows("SELECT run_id FROM ejecuciones")
+    parquet = env.settings.data_root / "processed/ventas.parquet"
+    parquet.unlink()  # El archivo se perdió después del lanzamiento y antes de la toma.
+    drain()
+    assert "No se encontró el archivo de datos" in client.get("/corridas/1/ejecucion").text
+
+    upload()
+    assert parquet.is_file()
+    before = env.rows("SELECT * FROM ejecuciones")
+    assert "aviso=existente" in _launch(client, env).headers["location"]
+    assert env.rows("SELECT * FROM ejecuciones") == before
+    page = client.get("/corridas/1/ejecucion").text
+    assert _resume_button(page) == "enabled"
+    assert "reanude esta ejecución" in _text(page)
+    resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+    assert "aviso=reanudada" in resumed.headers["location"]
+    drain()
+    assert env.rows("SELECT run_id, estado, intento FROM ejecuciones") == [
+        (run_id, "completada", 2)
+    ]
+    assert env.rows("SELECT COUNT(*) FROM configuraciones") == [(1,)]
+    assert 'data-pred-run-state="completada"' in client.get("/corridas/1/ejecucion").text
 
 
 def test_a_run_whose_engine_died_offers_to_resume_even_if_stored_as_not_retryable(
@@ -1874,3 +2237,12 @@ def test_un_solo_sku_dice_evaluarlo_y_varios_evaluarlos() -> None:
         needed=40,
     )
     assert any("Para evaluarlos, agregue" in (part.advice or "") for part in warn_multi.parts)
+
+
+def test_the_search_budget_field_says_it_applies_to_each_sku(env: Env) -> None:
+    client = _dal_client(env)
+    page = _text(client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text)
+    assert "Configuraciones por SKU y familia" in page
+    assert "Vacío: las que cada familia prueba por defecto en cada SKU." in page
+    refused = _text(_launch(client, env, trials="0").text)
+    assert "Configuraciones por SKU y familia: debe ser mayor que cero." in refused

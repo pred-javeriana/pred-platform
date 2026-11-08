@@ -217,7 +217,8 @@ uv run python -m pred_platform.evidence --db path/to/pred.db \
 ```
 
 For a provisional two-seed check, pass only seeds 0 and 1 and add `--preview`.
-The result then carries `complete: false` and is not a final-group result.
+The result then carries a top-level `complete: false`, which covers every number in the file;
+it is not a final-group result.
 
 ## Importing ingest reports
 
@@ -257,8 +258,13 @@ data contract), so tasks move from `pendiente` to `ejecutando` to `exitosa`/`fal
 make import                                     # ingest reports -> DAL (needs an accepted ingestion)
 make launch ARGS="--ingest <sha256> --min-train 40 --horizon 7 --trials 2 --once"
 make worker ARGS=--status                       # runs and how many tasks per state
+make worker ARGS="--resume 1 --once"             # explicitly resume run #1 and process the queue
 make worker                                     # follow the queue in its own process
 ```
+
+Repeating `make launch` with the same input and settings only returns the existing run. Use
+`--resume <id>` to queue a stopped run or one completed with failures, preserving its saved studies
+and tasks. Without `--once`, the command only queues the run for the worker.
 
 - **Where it runs.** With `PRED_DATA_SOURCE=dal` and `PRED_WORKER=embedded` (the default) the app
   starts the worker as a thread, so one `make run` is enough; `PRED_WORKER=off` leaves it to
@@ -267,11 +273,12 @@ make worker                                     # follow the queue in its own pr
   with a readable error and the app keeps working.
 - **One worker per database.** A worker holds an exclusive lock on `<database>.worker.lock`
   (beside `PRED_DB_PATH`) for as long as it runs; the operating system frees it when the worker
-  exits or crashes. A worker that cannot create that file, as in a read-only folder, logs why and
-  runs nothing. A second `make worker` or app worker waits without touching any run and takes
-  over when the first stops. `--once` next to a running worker exits and leaves the queue to it,
-  so `make launch ARGS="... --once"` while the app runs only queues the run. Do not delete the
-  lock file while a worker runs.
+  exits or crashes. A worker that cannot open or lock that file logs why and retries until
+  shutdown; `--once` reports the error and exits with code 1. A second `make worker` or app worker
+  waits without touching any run and takes over when the first stops. `--once` next to a running
+  worker exits without executing anything: queued runs wait for that worker or the next one,
+  with no guarantee that either will execute them. Thus `make launch ARGS="... --once"` while the
+  app runs only queues the run. Do not delete the lock file while a worker runs.
 - **One task per engine unit** (SKU × model, decision D6): `modelo` is `familia:algoritmo`, `corte`
   is the reserve cut t\*. A SKU the engine skips becomes one `no_ejecutable` task per configured
   family, with the cause.
@@ -279,12 +286,19 @@ make worker                                     # follow the queue in its own pr
   `fallida` or `no_ejecutable`; `detenida` when the engine process died, the operator stopped it or a
   stage left no results (see the table in section 7.4 of the contract).
 - **Resume.** The run id derives from the ingestion and the settings (not the number of
-  processes, nor the order in which the families are given), so launching the same run again
-  resumes it with the same task rows. Successful tasks retain their state; historical progress is not replayed as live work. Graceful app shutdown
+  processes, nor the order in which the families are given). Launching the same settings again
+  only opens the existing run and never changes its state. Use Reanudar or Reintentar las tareas
+  con fallos to queue it again with the same task rows. Successful tasks retain their state;
+  historical progress is not replayed as live work. Graceful app shutdown
   queues interrupted work, and a crash is recovered on startup. Ctrl-C stops the worker's engine
-  and leaves the run `ejecutando`; the next worker that takes the database, `--once` included,
-  queues it again. Closing a browser tab leaves the server worker running. The accompanying engine checkpoint change also skips successful L2/L3
-  units; updating platform alone cannot provide that guarantee. See
+  and leaves the run `ejecutando`; SIGTERM and SIGHUP do the same. The next worker that takes
+  the database, `--once` included, queues it again. Stopping one worker does not stop the work
+  while another waits on the same database: that worker resumes it immediately, outside any
+  resource guard of the stopped worker. Run the app with `PRED_WORKER=off` while a guarded CLI
+  worker serves its queue. On Linux, launching the engine requires `setpriv` (util-linux): the
+  kernel sends SIGTERM to the engine even if the supervisor dies before cleanup can run.
+  Closing a browser tab leaves the server worker running. The accompanying engine checkpoint
+  change also skips successful L2/L3 units; updating platform alone cannot provide that guarantee. See
   [recovery and verification](docs/features/reanudacion/README.md).
 - **Reading it.** `get_run_status` returns the run, its settings, reserve cut, progress over all its
   tasks and a filtered, paged list of tasks; `/ejecucion` will show it (task C4).
@@ -327,6 +341,13 @@ make format      # apply ruff fixes and formatting
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
 runtime dependencies only and requests `/health` and `/` (the Corridas home).
+
+The test suite also runs `pred.js` and HTMX in real headless Chromium through Node's built-in
+runner. Install Chromium and Node >= 22 to run `uv run pytest tests/test_browser.py` locally;
+`CHROME_BIN` selects the browser executable. Without either executable the browser test is
+skipped locally. CI sets `PRED_BROWSER_REQUIRED=1`, so a missing executable fails the suite.
+The browser checks fixed demo pages, pause/resume, connection loss, request timeout and recovery.
+
 Run the tests as a regular user, as CI does: root may write a file without write permission, so
 the read-only database tests fail under root.
 CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches

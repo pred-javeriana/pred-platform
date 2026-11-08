@@ -16,7 +16,7 @@
       <div class="pred-settings-grid">
         {{ field("step", "Paso entre ventanas (días)", value=form.step, input_type="number", disabled=record, error=evaluation_errors.get("step", "")) }}
         {{ field("seasonality", "Estacionalidad (días)", value=form.seasonality, input_type="number", disabled=record, error=evaluation_errors.get("seasonality", "")) }}
-        {{ field("trials", "Configuraciones por familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto.", disabled=record, error=evaluation_errors.get("trials", "")) }}
+        {{ field("trials", "Configuraciones por SKU y familia", value=form.trials, input_type="number", hint="Vacío: las que cada familia prueba por defecto en cada SKU.", disabled=record, error=evaluation_errors.get("trials", "")) }}
         {{ field("workers", "Procesos en paralelo", value=form.workers, input_type="number", disabled=record, error=evaluation_errors.get("workers", "")) }}
       </div>
       {% if not record %}

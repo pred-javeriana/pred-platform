@@ -32,7 +32,7 @@ FORM: dict[str, Any] = {
     "metric": "mae",
     "min_train": "40",
     "horizon": "2",
-    "step": "14",
+    "step": "7",
     "seasonality": "7",
     "trials": "1",
     "seed": "0",
@@ -69,7 +69,7 @@ def _rail(html: str) -> list[tuple[str, str | None]]:
     rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
     assert rail is not None
     items = re.findall(
-        r'<li class="is-(\w+)[^"]*">\s*<(a|button|span) class="pred-rail__item"([^>]*)>',
+        r'<li class="is-(\w+)[^"]*"[^>]*>\s*<(a|button|span) class="pred-rail__item"([^>]*)>',
         rail.group(0),
     )
     result = []
@@ -120,12 +120,15 @@ def _main(html: str) -> str:
             f"/ejecucion?ingest_id={SOME_INGEST}&lanzar=1&families=ml&families=dl",
             f"/corridas/nueva/ajustes?ingest_id={SOME_INGEST}&families=ml&families=dl",
         ),
-        ("/resultados", "/corridas/1/resultados"),
+        ("/resultados", "/corridas/1/resultados/productos"),
         (
             "/resultados?ejecucion=1&vista=sku&lista=familias&q=FIL&page=2",
-            "/corridas/1/resultados?vista=sku&lista=familias&q=FIL&page=2",
+            "/corridas/1/resultados/productos?vista=sku&lista=familias&q=FIL&page=2",
         ),
-        ("/resultados?vista=resumen&m3=m3-a", "/corridas/1/resultados?vista=resumen&m3=m3-a"),
+        (
+            "/resultados?vista=resumen&m3=m3-a",
+            "/corridas/1/resultados/resumen?vista=resumen&m3=m3-a",
+        ),
     ],
 )
 def test_the_old_addresses_lead_to_their_step_with_the_same_query(old: str, new: str) -> None:
@@ -157,7 +160,9 @@ def test_an_old_link_opens_the_run_it_names(env: Env, surface: str, reference: s
     page = client.get(f"/{surface}?ejecucion={wanted}", follow_redirects=True)
 
     assert page.status_code == 200
-    assert page.url.path == f"/corridas/{expected}/{surface}"
+    # Results opens a chapter: Resumen for a publication, Productos for a run without one.
+    chapter = {"ejecucion": "", "resultados": "/productos" if expected == "2" else "/resumen"}
+    assert page.url.path == f"/corridas/{expected}/{surface}{chapter[surface]}"
     assert f"Corrida #{expected} · semilla" in page.text
     # Only an absent reference chooses the most recent published evaluation.
     if surface == "resultados":
@@ -167,7 +172,7 @@ def test_an_old_link_opens_the_run_it_names(env: Env, surface: str, reference: s
         assert product.url.path == f"/corridas/{expected}/resultados/producto/FIL-0001"
         assert f"Corrida #{expected} · semilla" in product.text
         default = client.get("/resultados", follow_redirects=True)
-        assert default.url.path == "/corridas/1/resultados"
+        assert default.url.path == "/corridas/1/resultados/resumen"
         assert "Corrida #1 · semilla 11" in default.text
 
 
@@ -291,7 +296,7 @@ def test_a_launched_run_keeps_datos_ajustes_and_revisar_as_a_record() -> None:
             ("done", "/corridas/1/ajustes"),
             ("done", "/corridas/1/revisar"),
             ("live", "/corridas/1/ejecucion"),
-            ("todo", "/corridas/1/resultados"),
+            ("locked", None),
         ], key
     record = _main(client.get("/corridas/1/datos").text)
     assert "Archivo de esta corrida demo_canonico.csv" in record
@@ -304,10 +309,11 @@ def test_each_rail_step_reads_as_its_number_name_status_and_state() -> None:
     assert rail is not None
     # What a screen reader reads: the marks and the short names are hidden from it.
     shown = re.sub(r'<span [^>]*aria-hidden="true">.*?</span>', "", rail.group(0), flags=re.S)
-    names = [_text(item) for item in re.findall(r'<a class="pred-rail__item".*?</a>', shown, re.S)]
+    names = [_text(item) for item in re.findall(r'<li class="is-.*?</li>', shown, re.S)]
     assert [name.split(" ", 2)[:2] for name in names] == [["Paso", str(n)] for n in range(1, 6)]
     assert names[3].startswith("Paso 4 Ejecución Aquí")
     assert names[3].endswith(": en curso")
+    assert names[4].endswith(": todavía no disponible")
 
 
 def test_the_compact_step_date_keeps_the_exact_utc_time() -> None:
@@ -349,8 +355,7 @@ def test_back_and_next_follow_the_steps_of_a_launched_run() -> None:
         "datos": ("/", "/corridas/1/ajustes"),
         "ajustes": ("/corridas/1/datos", "/corridas/1/revisar"),
         "revisar": ("/corridas/1/ajustes", "/corridas/1/ejecucion"),
-        "ejecucion": ("/corridas/1/revisar", "/corridas/1/resultados"),
-        "resultados": ("/corridas/1/ejecucion", None),
+        "ejecucion": ("/corridas/1/revisar", None),
     }
     for key, (back, nxt) in expected.items():
         footer = _footer(client.get(f"/corridas/1/{key}").text)
@@ -359,7 +364,12 @@ def test_back_and_next_follow_the_steps_of_a_launched_run() -> None:
         assert (links[1] if len(links) > 1 else (None, None))[1] == nxt, key
     # While the final evaluation has not published, Resultados says so before it opens.
     footer = _footer(client.get("/corridas/1/ejecucion").text)
-    assert "Parciales hasta que la evaluación final publique." in footer
+    assert "Se abre cuando la evaluación final publique." in footer
+    assert re.search(r'<button [^>]*disabled aria-describedby="siguiente-motivo"', footer)
+    locked = client.get("/corridas/1/resultados").text
+    assert "Los resultados todavía no existen" in _main(locked)
+    assert 'href="/corridas/1/ejecucion"' in locked
+    assert '<nav class="pred-footnav"' not in locked
 
 
 def test_a_run_that_does_not_exist_is_a_404_on_every_step() -> None:
@@ -735,7 +745,7 @@ def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
         "parametros": {
             "min_train": 40,
             "horizon": 2,
-            "step": 14,
+            "step": 7,
             "seasonality": 7,
             "metric": "mae",
             "families": ["classical", "ml"],
@@ -874,11 +884,11 @@ def _ingest_of_the_fixture() -> str:
         (
             "/resultados?ejecucion=1&vista=sku&lista=familias&q=FIL&page=2",
             "1",
-            "sku",
+            "productos",
             r'name="q"[^>]*value="FIL"',
         ),
         ("/resultados?vista=resumen&m3=m3-a", "1", "resumen", None),
-        ("/resultados?ejecucion=latest&vista=clase", "1", "clase", None),
+        ("/resultados?ejecucion=latest&vista=clase", "1", "p1", None),
     ],
 )
 def test_an_old_address_shows_its_run_tab_and_filters(
@@ -889,13 +899,21 @@ def test_an_old_address_shows_its_run_tab_and_filters(
     assert page.status_code == 200
     assert f"Corrida #{run} · semilla" in page.text
     if tab is not None:
-        current = [
-            attrs["href"] or ""
-            for attrs in Markup(page.text).select("a")
-            if attrs.get("aria-current") == "page"
-            and f"/corridas/{run}/resultados?" in (attrs["href"] or "")
-        ]
-        assert [f"vista={tab}" in href for href in current] == [True]
+        # The chapter is the address; this fixture run is still running, so only Productos
+        # opens and the other chapters say the results do not exist yet.
+        assert page.url.path == f"/corridas/{run}/resultados/{tab}"
+        chapters = re.search(r'<nav class="pred-chapters".*?</nav>', page.text, re.S)
+        if tab == "productos":
+            assert chapters is not None
+            current = [
+                attrs["href"] or ""
+                for attrs in Markup(chapters.group(0)).select("a")
+                if attrs.get("aria-current") == "page"
+            ]
+            assert [href.split("?")[0] for href in current] == [page.url.path]
+        else:
+            assert chapters is None
+            assert "Los resultados todavía no existen" in page.text
     if kept is not None:
         assert re.search(kept, page.text)
 
@@ -1020,7 +1038,7 @@ def test_the_record_steps_of_a_launched_run_do_not_promise_a_summary(step: str) 
 def test_the_scenario_errores_has_the_selections_of_its_current_run() -> None:
     client = _fixture_client("errores")
     page = client.get("/resultados", follow_redirects=True)
-    assert page.url.path == "/corridas/2/resultados"
+    assert page.url.path == "/corridas/2/resultados/productos"
     sku = client.get("/corridas/2/resultados?vista=sku")
     assert sku.status_code == 200
     assert "No hay selecciones para la ejecución" not in sku.text

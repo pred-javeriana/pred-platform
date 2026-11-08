@@ -95,7 +95,7 @@ def test_the_export_describes_the_stored_run_and_nothing_local(env: Env) -> None
     assert document["parametros"] == {
         "min_train": 40,
         "horizon": 2,
-        "step": 14,
+        "step": 7,
         "seasonality": 7,
         "metric": "mae",
         "families": ["classical", "ml", "foundation"],
@@ -116,7 +116,7 @@ def test_the_export_describes_the_stored_run_and_nothing_local(env: Env) -> None
         LaunchSettings(
             min_train=40,
             horizon=2,
-            step=14,
+            step=7,
             seasonality=7,
             metric="mae",
             families=("classical", "ml", "foundation"),
@@ -172,7 +172,7 @@ def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
     text = _text(page.text)
     assert "Configuración importada" in text and "Revise los valores y continúe" in text
     # El formulario trae exactamente los ajustes de la corrida exportada.
-    for field, value in (("horizon", "2"), ("step", "14"), ("trials", "1"), ("seed", "17")):
+    for field, value in (("horizon", "2"), ("step", "7"), ("trials", "1"), ("seed", "17")):
         assert re.search(rf'name="{field}"[^>]*value="{value}"', page.text), field
     assert 'value="mae" selected' in page.text
     assert re.search(r'value="classical"[^>]*checked', page.text)
