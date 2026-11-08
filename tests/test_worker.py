@@ -190,7 +190,9 @@ def test_una_consulta_agotada_no_encola(env: Env, monkeypatch):
         raise subprocess.TimeoutExpired(args[0], 60)
 
     monkeypatch.setattr(engine.subprocess, "run", timeout)
-    with pytest.raises(RunRequestError, match="No se pudo consultar el origen al motor.*60"):
+    with pytest.raises(
+        RunRequestError, match="No se pudo consultar al motor el origen de los datos"
+    ):
         enqueue_run(env.settings, env.ingest_id)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
@@ -891,7 +893,9 @@ def test_resuming_a_stopped_run_reuses_its_rows(env: Env, monkeypatch: pytest.Mo
 
     _scenario(monkeypatch, "ok")
     again = enqueue_run(env.settings, env.ingest_id, SMALL)
-    assert (again.ejecucion_id, again.queued) == (first.ejecucion_id, True)
+    assert (again.ejecucion_id, again.queued) == (first.ejecucion_id, False)
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, first.ejecucion_id)
     env.worker().run_next()
 
     ((estado, intento),) = env.rows("SELECT estado, intento FROM ejecuciones")
@@ -1734,6 +1738,52 @@ def test_the_cli_rejects_a_launch_without_a_valid_ingestion(
     assert "no existe la ingesta" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("once", [False, True])
+def test_cli_explicitly_resumes_a_stopped_run_with_tasks(env: Env, once: bool) -> None:
+    cli_env = {
+        **os.environ,
+        "PRED_DATA_ROOT": str(env.settings.data_root),
+        "PRED_DB_PATH": str(env.db),
+        "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+        "FAKE_ENGINE_SCENARIO": "crash",
+    }
+
+    def cli(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "pred_platform.worker", *args],
+            env=cli_env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+    launch_args = ("--launch", "--ingest", env.ingest_id)
+    first = cli(*launch_args, "--once")
+    assert first.returncode == 0, first.stderr
+    assert _run_state(env)[0] == "detenida"
+    tasks = env.rows("SELECT * FROM tareas")
+    assert tasks
+    before = env.rows("SELECT * FROM ejecuciones")
+    repeated = cli(*launch_args)
+    assert repeated.returncode == 0 and "ya existía" in repeated.stdout
+    assert env.rows("SELECT * FROM ejecuciones") == before
+    assert env.rows("SELECT * FROM tareas") == tasks
+
+    cli_env["FAKE_ENGINE_SCENARIO"] = "ok"
+    resumed = cli("--resume", "1", *(["--once"] if once else []))
+    assert resumed.returncode == 0, resumed.stderr
+    assert "en cola" in resumed.stdout
+    if not once:
+        assert _run_state(env)[0] == "pendiente"
+        assert cli("--once").returncode == 0
+    assert env.rows("SELECT id, estado, intento FROM ejecuciones") == [(1, "completada", 2)]
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado != 'exitosa'") == [(0,)]
+    assert env.rows("SELECT id FROM tareas") == [(row[0],) for row in tasks]
+    refused = cli("--resume", "1")
+    assert refused.returncode == 1 and "no se puede reanudar" in refused.stderr
+
+
 def test_lanzamiento_por_linea_de_comandos_declara_datos_reales(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2177,3 +2227,21 @@ def test_a_diagnostic_that_never_arrives_fails_the_outage_drive_in_time_and_clea
     with closing(sqlite3.connect(env.db, timeout=0)) as conn:
         conn.execute("BEGIN IMMEDIATE")  # no writer lock is left behind
         conn.rollback()
+
+
+def test_missing_input_parquet_records_platform_input_missing(env: Env) -> None:
+    run = enqueue_run(env.settings, env.ingest_id, SMALL)
+    with closing(sqlite3.connect(env.db)) as conn:
+        [(ruta_parquet,)] = conn.execute(
+            "SELECT ruta_parquet FROM ingestas WHERE sha256 = ?", (env.ingest_id,)
+        ).fetchall()
+    parquet = (env.settings.data_root / ruta_parquet).resolve()
+    assert parquet.is_file()
+    parquet.unlink()
+    worker = env.worker()
+    worker.run_next()
+    assert env.rows("SELECT estado FROM ejecuciones WHERE id = ?", run.ejecucion_id) == [
+        ("detenida",)
+    ]
+    err = env.repo().get_run_error(str(run.ejecucion_id))
+    assert err is not None and err.code == "platform.input_missing"

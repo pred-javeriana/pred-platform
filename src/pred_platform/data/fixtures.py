@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from functools import cache
 from typing import Any, get_args
 
@@ -24,7 +26,7 @@ from pydantic import BaseModel
 
 from pred_platform.config import DataSource
 from pred_platform.contract import models
-from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
+from pred_platform.contract.errors import ArtifactMissing, InvalidQuery, NotFound
 from pred_platform.contract.loader import parse_as
 from pred_platform.contract.resources import read_example
 from pred_platform.data.fixtures_m3 import M3FixtureSource
@@ -39,6 +41,7 @@ from pred_platform.data.query import (
     sort_items,
 )
 from pred_platform.data.repository import ArtifactDownload
+from pred_platform.data.run_status import CauseSnapshot, StageReference, TaskCause
 from pred_platform.data.scenarios import DEFAULT_SCENARIO, Scenario, get_scenario
 
 _SKU_CLASSES = get_args(models.SkuClass)
@@ -165,6 +168,31 @@ class FixtureRepository(M3FixtureSource):
         ]
         return sorted(runs, key=lambda run: int(run.id), reverse=True)
 
+    def _run_document(self, run_id: str) -> models.RunStatus:
+        return self._find(
+            models.RunStatus,
+            self.scenario.run_status,
+            run_id,
+            lambda d: d.ejecucion.id if d.ejecucion else None,
+            f"No existe la ejecución «{run_id}» en el escenario fixture",
+        )
+
+    def get_run_causes(self, run_id: str) -> CauseSnapshot:
+        causes = Counter(
+            (task.error.code if task.error else None, task.family or task.modelo.split(":")[0])
+            for task in self._run_document(run_id).tasks
+            if task.estado in ("fallida", "no_ejecutable")
+        )
+        return CauseSnapshot(
+            read_at=datetime.now(UTC),
+            causes=[
+                TaskCause(code=code, family=family, count=n) for (code, family), n in causes.items()
+            ],
+        )
+
+    def get_run_stage_history(self, run_id: str) -> list[StageReference]:
+        return []  # The examples publish no stage timestamps.
+
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         return None  # the examples record no run error
 
@@ -181,13 +209,7 @@ class FixtureRepository(M3FixtureSource):
         wanted_state = check_choice("estado", estado, _TASK_STATES)
         wanted_family = check_choice("family", family, _FAMILIES)
         request = PageRequest(page, size)
-        doc = self._find(
-            models.RunStatus,
-            self.scenario.run_status,
-            run_id,
-            lambda d: d.ejecucion.id if d.ejecucion else None,
-            f"No existe la ejecución {run_id!r} en el escenario fixture",
-        )
+        doc = self._run_document(run_id)
         tasks = [
             task
             for task in doc.tasks
@@ -196,7 +218,6 @@ class FixtureRepository(M3FixtureSource):
             and (wanted_family is None or task.family == wanted_family)
         ]
         items, paging = paginate(tasks, request)
-        # `progress` counts every task of the run, not only the filtered page.
         return _with(doc, tasks=items, page=paging)
 
     # ------------------------------------------------------------------ selections
@@ -218,13 +239,16 @@ class FixtureRepository(M3FixtureSource):
         wanted_state = check_choice("estado", estado, _FAMILY_STATES)
         key_name = check_sort(sort, _SELECTION_SORT)
         request = PageRequest(page, size)
+        shared = run_id in self.scenario.selection_runs
         doc = self._find(
             models.SkuSelectionList,
             (self.scenario.sku_selection_list,),
-            run_id,
+            LATEST if shared else run_id,
             lambda d: d.run_id,
-            f"No hay selecciones para la ejecución {run_id!r}",
+            f"No hay selecciones para la ejecución «{run_id}»",
         )
+        if shared:
+            doc = _with(doc, run_id=run_id)
 
         def keep(row: models.SkuSelectionRow) -> bool:
             if wanted_class is not None and row.sku_class != wanted_class:
@@ -254,17 +278,22 @@ class FixtureRepository(M3FixtureSource):
     def get_sku_selection(
         self, run_id: str, sku_id: str, *, include_windows: bool = False
     ) -> models.SkuSelection:
+        shared = run_id in self.scenario.selection_runs
         for example in self.scenario.sku_selections:
             data = json.loads(_text(example))
-            if data["sku_id"] != sku_id or not _matches(run_id, data.get("run_id")):
+            if data["sku_id"] != sku_id or not _matches(
+                LATEST if shared else run_id, data.get("run_id")
+            ):
                 continue
+            if shared:
+                data["run_id"] = run_id
             if not include_windows:
                 for entry in data["families"]:
                     if entry.get("walk_forward"):
                         entry["walk_forward"]["windows"] = None
             data["champion"] = None
             return parse_as(models.SkuSelection, data)
-        raise ArtifactMissing(f"No hay detalle del SKU {sku_id!r} en la ejecución {run_id!r}")
+        raise NotFound(f"No hay detalle del SKU «{sku_id}» en la ejecución «{run_id}»")
 
     # -------------------------------------------------------------- synthetic runs
     def list_synthetic_runs(
@@ -318,4 +347,4 @@ class FixtureRepository(M3FixtureSource):
             doc = _load(model, example)
             if _matches(wanted, identity(doc)):
                 return doc
-        raise ArtifactMissing(not_found)
+        raise NotFound(not_found)

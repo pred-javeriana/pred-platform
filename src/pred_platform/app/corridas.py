@@ -23,12 +23,13 @@ from pred_platform.app.presentation import (
     format_duration,
     stage_label,
 )
-from pred_platform.app.resultados_m3 import published_executions
+from pred_platform.app.resultados_m3 import published_executions, run_outcome
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestSummary, RunStatus
 from pred_platform.dal.lectura import run_number
 from pred_platform.data.query import MAX_SIZE
 from pred_platform.data.repository import DataRepository
+from pred_platform.data.run_status import comparison_key
 
 # El grupo final de la tesis: tres corridas con los mismos datos y ajustes que solo cambian la
 # semilla. La estabilidad de la campeona se lee cuando las tres publican.
@@ -57,6 +58,12 @@ def _status(repository: DataRepository, corrida: str) -> RunStatus | None:
     return status if status.ejecucion is not None else None
 
 
+def resolve_run_id(repository: DataRepository, reference: str) -> str | None:
+    """El número de corrida de una referencia anterior: número, id del motor o ``latest``."""
+    status = _status(repository, reference)
+    return status.ejecucion.id if status is not None and status.ejecucion is not None else None
+
+
 def _facts(
     repository: DataRepository,
     status: RunStatus,
@@ -66,8 +73,27 @@ def _facts(
     run = status.ejecucion
     assert run is not None
     ingest = ingests.get(run.ingest_id or "")
-    progress = status.progress
-    settings = status.settings
+    return facts_from_status(
+        status,
+        file_name=ingest.name if ingest else None,
+        n_skus=ingest.n_skus if ingest else None,
+        published=run.id in published,
+        resumable=run_resumable(repository, status),
+    )
+
+
+def facts_from_status(
+    status: RunStatus,
+    *,
+    published: bool,
+    resumable: bool,
+    file_name: str | None = None,
+    n_skus: int | None = None,
+) -> RunFacts:
+    """Reuse an already-read status for navigation without another repository call."""
+    run = status.ejecucion
+    assert run is not None
+    progress, settings = status.progress, status.settings
     return RunFacts(
         id=run.id,
         seed=run.seed,
@@ -75,13 +101,13 @@ def _facts(
         iniciada_en=run.iniciada_en,
         finalizada_en=run.finalizada_en,
         ingest_id=run.ingest_id,
-        file_name=ingest.name if ingest else None,
-        n_skus=ingest.n_skus if ingest else None,
+        file_name=file_name,
+        n_skus=n_skus,
         families=len(settings.families) if settings and settings.families else None,
         etapa=progress.etapa_actual if progress else None,
         avance_pct=progress.avance_pct if progress else None,
-        published=run.id in published,
-        resumable=run_resumable(repository, status),
+        published=published,
+        resumable=resumable,
     )
 
 
@@ -150,6 +176,9 @@ class Home:
 
 
 _RESULTS_READY = StatusPresentation("i-check", "Completada · resultados listos", "ok")
+_RESULTS_READY_WITH_FAILURES = StatusPresentation(
+    "i-warn", "Completada con fallos · resultados listos", "warn"
+)
 _NOT_PUBLISHED = StatusPresentation("i-check", "Completada · sin evaluación final publicada", "ok")
 _QUEUED = StatusPresentation("i-clock", "En cola", "neutral")
 _NOT_LAUNCHED = StatusPresentation("i-clock", "Sin lanzar", "neutral")
@@ -158,8 +187,13 @@ _SLOT_RUNNING = StatusPresentation("i-play", "En curso", "info")
 _SLOT_DONE = StatusPresentation("i-check", "Terminada, sin publicar", "ok")
 
 
-def _row(facts: RunFacts, now: datetime) -> RunRow:
+def _row(facts: RunFacts, now: datetime, outcome: str | None = None) -> RunRow:
     execution = step_href(facts.id, "ejecucion")
+    if facts.published and facts.estado == "completada_con_fallos":
+        return RunRow(
+            facts, _RESULTS_READY_WITH_FAILURES, outcome, 5, -1, False, "Ver resultados",
+            step_href(facts.id, "resultados"), False,
+        )  # fmt: skip
     if facts.published:
         return RunRow(
             facts, _RESULTS_READY, None, 5, -1, False, "Ver resultados",
@@ -208,15 +242,7 @@ def _group_key(status: RunStatus) -> tuple[object, ...] | None:
     run, settings = status.ejecucion, status.settings
     if run is None or settings is None:
         return None
-    return (
-        run.ingest_id,
-        tuple(sorted(settings.families or ())),
-        settings.metric,
-        settings.min_train,
-        settings.horizon,
-        settings.step,
-        settings.seasonality,
-    )
+    return comparison_key(run.ingest_id, settings.model_dump())
 
 
 def _thesis_group(
@@ -256,6 +282,15 @@ def _newest_first(statuses: Iterable[RunStatus]) -> list[RunStatus]:
     )
 
 
+def _failure_outcome(repository: DataRepository, status: RunStatus, facts: RunFacts) -> str | None:
+    """Qué dejó una corrida publicada que terminó con tareas fallidas; sin fallos, no hay frase."""
+    if not (facts.published and facts.estado == "completada_con_fallos"):
+        return None
+    run, progress = status.ejecucion, status.progress
+    assert run is not None
+    return run_outcome(repository, run, progress.tareas_por_estado if progress else None)
+
+
 def home(repository: DataRepository, now: datetime | None = None) -> Home:
     """Todas las corridas, con la que está en curso primero, y el grupo de la tesis."""
     try:
@@ -273,7 +308,12 @@ def home(repository: DataRepository, now: datetime | None = None) -> Home:
         if status.ejecucion is not None
     }
     moment = now or datetime.now(UTC)
-    rows = [_row(facts[s.ejecucion.id], moment) for s in statuses if s.ejecucion is not None]
-    # Una corrida en cola o en curso va primero: es la que la persona vuelve a mirar.
-    rows.sort(key=lambda row: row.facts.estado not in ("pendiente", "ejecutando"))
+    rows = [
+        _row(facts[s.ejecucion.id], moment, _failure_outcome(repository, s, facts[s.ejecucion.id]))
+        for s in statuses
+        if s.ejecucion is not None
+    ]
+    # La corrida en curso va primero y la que espera turno, después: son las que la persona
+    # vuelve a mirar.
+    rows.sort(key=lambda row: {"ejecutando": 0, "pendiente": 1}.get(row.facts.estado, 2))
     return Home(tuple(rows), _thesis_group(statuses, facts))

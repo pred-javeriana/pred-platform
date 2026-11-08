@@ -13,6 +13,7 @@ corresponde con la misma consulta.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from typing import Annotated, Any, Literal
@@ -29,7 +30,13 @@ from pred_platform.app.configuracion import (
     export_config,
     parse_config,
 )
-from pred_platform.app.corridas import draft_facts, ingests_by_id, run_facts
+from pred_platform.app.corridas import (
+    draft_facts,
+    facts_from_status,
+    ingests_by_id,
+    resolve_run_id,
+    run_facts,
+)
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import (
     FAMILY_CHOICES,
@@ -63,7 +70,11 @@ from pred_platform.app.ejecucion import (
     short_of_two,
     should_poll,
     single_family_classes,
-    stage_steps,
+)
+from pred_platform.app.execution_display import (
+    add_cause_snapshot,
+    add_stage_references,
+    execution_display,
 )
 from pred_platform.app.pasos import (
     AJUSTES_FORM,
@@ -77,7 +88,7 @@ from pred_platform.app.pasos import (
     step_href,
 )
 from pred_platform.app.presentation import describe_run
-from pred_platform.app.resultados_m3 import run_outcome
+from pred_platform.app.resultados_m3 import run_outcome_details
 from pred_platform.app.routers.corridas import (
     Locked,
     redirect_with_query,
@@ -180,8 +191,13 @@ def _context(
     status_error: dict[str, object] | None = None
     try:
         status = repository.get_run_status(query.ejecucion, **query.as_kwargs())
-    except InvalidQuery as exc:
-        query_error = str(exc)
+    except InvalidQuery:
+        query_error = "Ese filtro no existe; se muestran todas las tareas."
+        query = ExecutionQuery(ejecucion=query.ejecucion, todas=True)
+        try:
+            status = repository.get_run_status(query.ejecucion)
+        except DataLayerError as exc:
+            status_error = error_view(exc)
     except DataLayerError as exc:
         status_error = error_view(exc)
 
@@ -199,7 +215,16 @@ def _context(
             tasks = repository.get_run_status(run.id, estado=focus_estado, size=FOCUS_SIZE)
         except (InvalidQuery, DataLayerError):
             tasks = status
-    poll = should_poll(estado, counts, reason=control.reason)
+            focus = False
+            focus_estado = None
+    poll = should_poll(
+        estado, counts, reason=control.reason, stopped_at=run.finalizada_en if run else None
+    )
+    detail = (
+        lectura.get_run(request.app.state.settings.db_path, run.id)
+        if run is not None and repository.source == "dal"
+        else None
+    )
     error = run_error(repository.get_run_error(run.id)) if run is not None else None
     actions = run_actions(
         estado,
@@ -207,7 +232,10 @@ def _context(
         error=error,
         nothing_to_compare=run_compares_nothing(repository, run, status),
     )
+    now = datetime.now(UTC)
+    outcome = run_outcome_details(repository, run, counts) if run is not None else None
     return {
+        **execution_display(status, now),
         "capabilities": capabilities,
         "orchestration": orchestration,
         "source": repository.source,
@@ -219,10 +247,14 @@ def _context(
         # Un número de ejecución que no existe se dice con ese número, no con el error genérico.
         "missing_run": query.ejecucion
         if status_error is not None
-        and status_error["code"] == "platform.artifact_missing"
+        and status_error["code"] in ("platform.not_found", "platform.artifact_missing")
         and query.ejecucion != LATEST
         else None,
         "run": run,
+        "resumed": detail is not None and detail.intento > 1,
+        "stopped_open": estado == "detenida"
+        and not poll
+        and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0,
         "settings_rows": settings_items(status.settings) if status and status.settings else [],
         "reserve": status.reserve if status is not None else None,
         "progress": progress,
@@ -237,14 +269,12 @@ def _context(
         "focus": focus,
         "focus_estado": focus_estado,
         "focus_total": tasks.page.total if focus and tasks and tasks.page else 0,
-        "outcome": run_outcome(repository, run, counts) if run is not None else None,
+        "outcome": outcome.text if outcome else None,
+        "published": outcome.published if outcome else False,
         "run_ingest": ingest_name(repository, run.ingest_id) if run is not None else None,
         "run_error": error,
-        "steps": stage_steps(run.estado, progress.etapa_actual if progress else None)
-        if run is not None
-        else [],
         "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
-        "elapsed": elapsed_text(run, datetime.now(UTC)) if run is not None else None,
+        "elapsed": elapsed_text(run, now) if run is not None else None,
         "actions": actions,
         "run_status": describe_run(run.estado, resumable=actions.offers_resume)
         if run is not None
@@ -260,11 +290,7 @@ def _context(
 
 
 def _latest_run_id(repository: DataRepository) -> str | None:
-    try:
-        status = repository.get_run_status(LATEST, size=1)
-    except (DataLayerError, InvalidQuery):
-        return None
-    return status.ejecucion.id if status.ejecucion is not None else None
+    return resolve_run_id(repository, LATEST)
 
 
 def _render_execution(
@@ -280,6 +306,13 @@ def _render_execution(
         return render_missing_run(request, corrida)
     context = _context(request, repository, ejecucion=facts.id, action_error=action_error)
     context["wizard"] = run_wizard("ejecucion", facts)
+    try:
+        references = repository.get_run_stage_history(facts.id)
+    except DataLayerError:
+        references = []
+    add_stage_references(context, references)
+    with suppress(DataLayerError):
+        add_cause_snapshot(context, repository.get_run_causes(facts.id))
     return _render(request, "pages/execution.html", context, status_code)
 
 
@@ -298,7 +331,9 @@ def ejecucion(
     if params.get("lanzar"):
         return redirect_with_query(step_href(NEW, "datos"), [])
     wanted = (params.get("ejecucion") or "").strip()
-    target = _latest_run_id(repository) if wanted in ("", LATEST) else wanted
+    target = resolve_run_id(repository, wanted or LATEST)
+    if target is None and wanted not in ("", LATEST):
+        target = wanted  # Una referencia desconocida conserva la página 404.
     if target is None:
         return redirect_with_query(step_href(NEW, "datos"), [])
     return redirect_with_query(step_href(target, "ejecucion"), items, drop=("ejecucion",))
@@ -331,16 +366,26 @@ def ejecucion_estado(
     request: Request,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
-    """El cuerpo de la página para el sondeo. 286 le dice a htmx que deje de preguntar."""
+    """El cuerpo de la página para el sondeo, con la barra de pasos al día. 286 le dice a htmx
+    que deje de preguntar."""
     context = _context(request, repository)
+    status = context["status"]
+    if status is not None and status.ejecucion is not None:
+        facts = facts_from_status(
+            status,
+            published=context["published"],
+            resumable=context["actions"].offers_resume,
+            file_name=context["run_ingest"].file_name if context["run_ingest"] else None,
+        )
+        context["wizard"] = run_wizard("ejecucion", facts)
     return _render(
-        request, "partials/execution_body.html", context, 200 if context["poll"] else 286
+        request, "partials/execution_poll.html", context, 200 if context["poll"] else 286
     )
 
 
 # ---------------------------------------------------------------- Ajustes y Revisar
 def _class_skus(
-    repository: DataRepository, ingest_id: str, sku_class: SkuClass
+    repository: DataRepository, ingest_id: str, sku_class: SkuClass | None
 ) -> list[TopologyMetrics]:
     """Todos los SKU de una clase de la ingesta, en orden, página a página de la topología.
 
@@ -387,6 +432,17 @@ def _check_launch(
         form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
     chosen = form.values["families"]
     needed = history_needed(form.settings) if form.settings is not None else 0
+    history = _class_skus(repository, ingest_id, None) if by_class else []
+    # Una lectura parcial no demuestra que todos los SKU sean demasiado cortos.
+    if history and len(history) >= sum(by_class.values()):
+        longest = max(row.n_periods for row in history)
+        if longest < needed:
+            form.errors["min_train"] = (
+                "Con estos ajustes ningún SKU tiene historia suficiente: "
+                f"se necesitan {needed} días antes del corte y el SKU más largo tiene "
+                f"{longest}. Reduzca el mínimo de entrenamiento, el horizonte o el paso."
+            )
+            return None
     single = single_family_classes(by_class, chosen)
     skus: dict[SkuClass, list[TopologyMetrics]] = {
         c: _class_skus(repository, ingest_id, c) for c in short_of_two(by_class, chosen)
@@ -746,7 +802,7 @@ def exportar_configuracion(request: Request) -> Response:
     detail = lectura.get_run(settings.db_path, reference)
     if detail is None:
         return PlainTextResponse(
-            f"No existe la ejecución {reference!r}: no hay una configuración que exportar.\n",
+            f"No existe la ejecución «{reference}»: no hay una configuración que exportar.\n",
             status_code=404,
         )
     versions = {
@@ -780,20 +836,19 @@ def importar_configuracion(
         return _render_ajustes(request, repository, import_error=problem, status_code=400)
     known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
     form = FormResult(imported.values, None, {})
-    origin = f" de la ejecución {imported.source_run_id}" if imported.source_run_id else ""
     if imported.ingest_sha256 in known:
         form.values["ingest_id"] = imported.ingest_sha256
         notice = (
             "success",
-            f"Configuración importada{origin}. Revise los valores y continúe para lanzarla.",
+            "Configuración importada. Revise los valores y continúe para lanzarla.",
         )
     else:
         form.values["ingest_id"] = ""
         notice = (
             "warning",
-            f"Configuración importada{origin}, pero sus datos no están cargados en esta "
-            f"plataforma (ingesta {(imported.ingest_sha256 or '')[:12]}…). Elija otro archivo "
-            "antes de lanzar: los resultados solo son comparables sobre los mismos datos.",
+            "Configuración importada, pero sus datos no están cargados en esta plataforma. "
+            "Cargue ese archivo en Datos o elija otro antes de lanzar: los resultados solo son "
+            "comparables sobre los mismos datos.",
         )
     # El borrador guarda lo importado: salir de Ajustes no lo pierde (Revisar lo valida).
     save = read_draft(request).with_values(form.values["ingest_id"] or None, form.values)

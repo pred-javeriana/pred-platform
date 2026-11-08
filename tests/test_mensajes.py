@@ -203,3 +203,26 @@ def test_un_sku_con_menos_de_dos_familias_queda_fuera_y_no_se_reintenta() -> Non
 def test_los_errores_de_datos_no_se_reintentan_sin_cambiar_algo() -> None:
     assert mensajes.reintentable("ingest.schema_barrier") is False
     assert mensajes.reintentable("eligibility.calendar_gaps") is False
+
+
+def test_artifact_missing_sugiere_reanudar_y_es_reintentable() -> None:
+    assert mensajes.accion("platform.artifact_missing") == (
+        "Revise el registro del motor (motor.log) y reanude la ejecución."
+    )
+    assert mensajes.reintentable("platform.artifact_missing") is True
+
+
+def test_input_missing_pide_restaurar_y_reanudar_la_misma_ejecucion() -> None:
+    descripcion = mensajes.describir({"code": "platform.input_missing", "stage": "platform"})
+    assert descripcion.titulo == "No se encontró el archivo de datos de la ingesta."
+    assert descripcion.accion == (
+        "Vuelva a cargar el mismo archivo en Datos y reanude esta ejecución."
+    )
+    assert descripcion.reintentable is False
+
+
+def test_not_found_tiene_su_propio_mensaje() -> None:
+    descripcion = mensajes.describir({"code": "platform.not_found", "stage": "platform"})
+    assert descripcion.titulo == "No se encontró el recurso solicitado."
+    assert descripcion.accion == "Verifique el identificador o elija uno de la lista."
+    assert descripcion.reintentable is False

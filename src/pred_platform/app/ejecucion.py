@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
@@ -284,14 +284,14 @@ def parse_launch_form(
             trials = _form_int(values["trials"])
         except ValueError:
             errors["trials"] = (
-                "Configuraciones a probar por familia: escriba un número entero o déjelo vacío."
+                "Configuraciones por SKU y familia: escriba un número entero o déjelo vacío."
             )
         else:
             if trials < 1:
-                errors["trials"] = "Configuraciones a probar por familia: debe ser mayor que cero."
+                errors["trials"] = "Configuraciones por SKU y familia: debe ser mayor que cero."
             elif trials > SQLITE_MAX_INTEGER:
                 errors["trials"] = (
-                    "Configuraciones a probar por familia: el número es demasiado grande."
+                    "Configuraciones por SKU y familia: el número es demasiado grande."
                 )
     if not values["families"]:
         errors["families"] = "Elija al menos una familia de modelos."
@@ -473,6 +473,7 @@ def exclusion_warning(
             missing = [
                 family_label(f) for f in FAMILIES_BY_SKU_CLASS.get(sku_class, ()) if f != family
             ]
+            eval_verb = "evaluarlo" if eligible == 1 else "evaluarlos"
             parts.append(
                 WarningPart(
                     f"{format_count(eligible)} SKU {label} "
@@ -480,7 +481,7 @@ def exclusion_warning(
                     f"({family_label(family)})",
                     tuple(named),
                     more,
-                    f"Para evaluarlos, agregue {_either(missing)}.",
+                    f"Para {eval_verb}, agregue {_either(missing)}.",
                 )
             )
         if short:
@@ -497,7 +498,7 @@ def exclusion_warning(
     if compares_nothing(by_class, families):
         closing = (
             "Con estas familias ningún SKU tiene dos familias que comparar: la ejecución no elige "
-            f"ningún campeón y puede detenerse en la etapa «{stage_label('L2')}»."
+            "ningún campeón y puede detenerse en el ajuste de modelos."
         )
     else:
         closing = (
@@ -538,6 +539,7 @@ class RunError:
     code: str
     retryable: bool
     stage: str | None = None
+    cataloged: bool = False
 
 
 def run_error(info: ErrorInfo | None) -> RunError | None:
@@ -545,6 +547,7 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
     if info is None:
         return None
     title = error_title(info.code, info.stage, info.row_index, info.column)
+    is_cataloged = mensajes.mensaje(info.code) is not None
     return RunError(
         title=title,
         # Un detalle que repite el título no dice nada nuevo: se lee una sola vez.
@@ -553,6 +556,7 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
         code=info.code,
         retryable=info.retryable,
         stage=info.stage,
+        cataloged=is_cataloged,
     )
 
 
@@ -662,18 +666,26 @@ def run_actions(
 
 
 def should_poll(
-    estado: str | None, counts: Mapping[EstadoTarea, int], *, reason: str | None
+    estado: str | None,
+    counts: Mapping[EstadoTarea, int],
+    *,
+    reason: str | None,
+    stopped_at: datetime | None = None,
 ) -> bool:
     """Si la página sigue preguntando por el avance.
 
     Mientras la corrida está en cola o en curso y, después de Detener, hasta que el worker cierra
-    las tareas que quedaron abiertas: antes de eso los conteos todavía cambian.
+    las tareas que quedaron abiertas, hasta dos minutos: antes de eso los conteos todavía cambian.
     """
     if reason is not None or estado is None:
         return False
     if estado in ACTIVE_STATES:
         return True
-    return estado == "detenida" and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
+    return (
+        estado == "detenida"
+        and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0
+        and (stopped_at is None or (datetime.now(UTC) - stopped_at).total_seconds() < 120)
+    )
 
 
 # Las etapas del motor, en orden (contrato 1.2.0, ``Progress.etapa_actual``); sus nombres son los
@@ -730,7 +742,7 @@ def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
         ("Paso entre ventanas", f"{values.get('step')} días"),
         ("Estacionalidad", f"{values.get('seasonality')} días"),
         (
-            "Configuraciones a probar por familia",
+            "Configuraciones por SKU y familia",
             trials if trials else "Las que cada familia prueba por defecto",
         ),
         ("Semilla", str(values.get("seed"))),

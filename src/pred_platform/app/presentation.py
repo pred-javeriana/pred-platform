@@ -64,7 +64,8 @@ _TASK: dict[str, StatusPresentation] = {
         "i-ban",
         "No ejecutable",
         "warn",
-        "El producto no cumple las condiciones para este modelo; no es un error del sistema.",
+        "El motor no ejecutó o no comparó este modelo para este producto; la causa de la fila dice "
+        "por qué.",
     ),
 }
 
@@ -104,13 +105,13 @@ _VERDICT: dict[str, StatusPresentation] = {
         "i-x-circle",
         "Error técnico",
         "err",
-        "Ningún modelo produjo un pronóstico para este producto.",
+        "El modelo campeón o todos los modelos candidatos no dieron un pronóstico de prueba.",
     ),
     "NO_EVALUABLE": StatusPresentation(
         "i-ban",
         "No evaluable",
         "neutral",
-        "No hay demanda observada en el periodo de prueba.",
+        "No hay datos de demanda registrados en el periodo de prueba.",
     ),
     "EVIDENCIA_INSUFICIENTE": StatusPresentation(
         "i-minus-circle",
@@ -157,7 +158,10 @@ _RUN: dict[str, StatusPresentation] = {
         "i-check", "Completada", "ok", "Terminó y todas sus tareas se completaron."
     ),
     "completada_con_fallos": StatusPresentation(
-        "i-check", "Completada", "ok", "Terminó; algunas tareas de modelos fallaron."
+        "i-check",
+        "Completada",
+        "ok",
+        "Terminó; algunas tareas de modelos fallaron o no se pudieron ejecutar.",
     ),
     "detenida": StatusPresentation(
         "i-stop", "Detenida", "warn", "Se detuvo antes de terminar; puede reanudarse."
@@ -631,7 +635,11 @@ def exact_when(value: datetime | None) -> str:
         return ""
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC (hora universal coordinada)")
+    value = value.astimezone(UTC)
+    stamp = value.strftime("%Y-%m-%d %H:%M:%S")
+    if value.microsecond:
+        stamp += f".{value.microsecond:06d}"
+    return stamp + " UTC (hora universal coordinada)"
 
 
 def format_date(value: str | date | None) -> str:

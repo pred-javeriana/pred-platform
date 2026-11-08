@@ -95,7 +95,7 @@ def test_the_export_describes_the_stored_run_and_nothing_local(env: Env) -> None
     assert document["parametros"] == {
         "min_train": 40,
         "horizon": 2,
-        "step": 14,
+        "step": 7,
         "seasonality": 7,
         "metric": "mae",
         "families": ["classical", "ml", "foundation"],
@@ -116,7 +116,7 @@ def test_the_export_describes_the_stored_run_and_nothing_local(env: Env) -> None
         LaunchSettings(
             min_train=40,
             horizon=2,
-            step=14,
+            step=7,
             seasonality=7,
             metric="mae",
             families=("classical", "ml", "foundation"),
@@ -172,13 +172,13 @@ def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
     text = _text(page.text)
     assert "Configuración importada" in text and "Revise los valores y continúe" in text
     # El formulario trae exactamente los ajustes de la corrida exportada.
-    for field, value in (("horizon", "2"), ("step", "14"), ("trials", "1"), ("seed", "17")):
+    for field, value in (("horizon", "2"), ("step", "7"), ("trials", "1"), ("seed", "17")):
         assert re.search(rf'name="{field}"[^>]*value="{value}"', page.text), field
     assert 'value="mae" selected' in page.text
     assert re.search(r'value="classical"[^>]*checked', page.text)
     assert re.search(r'value="ml"[^>]*checked', page.text)
     assert not re.search(r'value="dl"[^>]*checked', page.text)
-    assert f'<option value="{env.ingest_id}" selected>' in page.text
+    assert re.search(rf'<option value="{env.ingest_id}"[^>]*selected', page.text)
     # Importar no creó nada.
     after = (
         env.rows("SELECT COUNT(*) FROM ejecuciones")[0]
@@ -247,7 +247,7 @@ def test_a_file_from_another_ingestion_imports_the_settings_but_chooses_no_data(
 
     text = _text(page.text)
     assert page.status_code == 200
-    assert "no están cargados en esta plataforma" in text and "aaaaaaaaaaaa" in text
+    assert "no están cargados en esta plataforma" in text and "aaaaaaaaaaaa" not in text
     assert re.search(r'name="horizon"[^>]*value="2"', page.text)  # los ajustes sí se importan
     # Ninguna ingesta queda elegida: hay que escoger y la opción vacía lo dice.
     assert '<option value="" selected disabled>Elija un archivo de datos</option>' in page.text

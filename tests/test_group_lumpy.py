@@ -15,7 +15,6 @@ from pred_platform.dal.grupo import read_group
 from pred_platform.dal.schema import create_db
 from pred_platform.evidence.__main__ import main
 from pred_platform.evidence.export import document
-from pred_platform.evidence.models import EvidenceInvalid
 from tests.m3_publicada import publish
 from tests.test_group_evidence import RUNS, SHA, sql
 
@@ -159,8 +158,29 @@ def test_every_ratio_keeps_its_source_window_keys_and_missing_window_cause(lumpy
 
 def test_full_population_reconciliation_refuses_unexplained_differences(lumpy_db: Path) -> None:
     sql(lumpy_db, "UPDATE m3_confirmaciones SET efecto_mediana_r=.1 WHERE run_id='seed-2'")
-    with pytest.raises(EvidenceInvalid, match="reproducen"):
-        read_group(lumpy_db, RUNS)
+    result = read_group(lumpy_db, RUNS)
+    assert result.significance.complete is True
+    assert result.lumpy.cause is not None and "reproducen" in result.lumpy.cause
+    assert result.lumpy.effects == ()
+
+
+def test_changed_champion_retains_the_confirmation_a_real_engine_wrote(lumpy_db: Path) -> None:
+    from tests.test_resultados import _ENGINE_CONFIRMATIONS
+
+    # Reuse the captured engine row, not a recomputed or rounded median.
+    row = next(row for row in _ENGINE_CONFIRMATIONS if row[0] == "lumpy")
+    sql(
+        lumpy_db,
+        "UPDATE m3_confirmaciones SET familia_campeona=?,efecto_n_skus=?,efecto_mediana_r=? "
+        "WHERE run_id='seed-2'",
+        (row[1], row[7], row[8]),
+    )
+    result = read_group(lumpy_db, RUNS).lumpy
+    effect = next(e for e in result.effects if e.seed == 2 and e.comparison == "seasonal_naive")
+    assert effect.champion == "classical"
+    assert effect.full_count == 3 and effect.full_median == 0.90076244944326556
+    assert effect.common_median is None and effect.common_cause == "campeona_distinta"
+    assert result.ranges == () and result.products == ()
 
 
 def test_two_seed_lumpy_preview_uses_only_those_two_populations(lumpy_db: Path) -> None:
@@ -259,8 +279,11 @@ def test_opposite_zero_loss_limits_keep_the_undefined_common_median(lumpy_db: Pa
 def test_cli_reads_the_group_and_labels_a_preview_without_writing(lumpy_db: Path, capsys) -> None:
     args = ["--db", str(lumpy_db), "--run", "seed-0", "--run", "seed-1"]
     assert main([*args, "--preview"]) == 0
-    assert json.loads(capsys.readouterr().out)["significance"]["complete"] is False
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["complete"] is False and preview["significance"]["complete"] is False
+    assert all("worsened" in p for p in preview["significance"]["products"])
     assert main(args) == 1
     assert "Seleccione" in capsys.readouterr().err
     assert main([*args, "--run", "seed-2"]) == 0
-    assert json.loads(capsys.readouterr().out)["significance"]["complete"] is True
+    final = json.loads(capsys.readouterr().out)
+    assert final["complete"] is True and final["significance"]["complete"] is True

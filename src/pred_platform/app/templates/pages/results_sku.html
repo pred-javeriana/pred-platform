@@ -2,7 +2,7 @@
 {% from "components/metrics.html" import metrics_row %}
 {% from "components/states.html" import unavailable_state %}
 {% from "components/status.html" import status_indicator, verdict_status %}
-{% from "components/terms.html" import day, gloss, when %}
+{% from "components/terms.html" import day, gloss, term, when %}
 {% from "components/tables.html" import table_start, table_end %}
 
 {% macro r_interval(row, exact=false) -%}
@@ -120,8 +120,8 @@
       {% if model.candidato_id == verdict.candidato_campeon %}{% set _ = roles.append("Campeón") %}{% endif %}
       {% if model.familia == "seasonal_naive" %}{% set _ = roles.append("Línea base") %}{% endif %}
       <tr{% if model.candidato_id == verdict.candidato_campeon %} class="is-champion"{% endif %}>
-        <td class="pred-nowrap" title="{{ family_term(model.familia).hint }}">{{ family_label(model.familia) }}</td>
-        <td title="{{ model_term(model.modelo).hint }}">{{ model_label(model.modelo) }}</td>
+        <td class="pred-nowrap">{{ term(family_term(model.familia)) }}</td>
+        <td>{{ term(model_term(model.modelo)) }}</td>
         <td class="num"{% if model.razon_sn is not none %} title="{{ exact_text(model.razon_sn) }}"{% endif %}>{% if model.razon_sn is not none %}{{ ratio_text(model.razon_sn) }}{% else %}no calculable{% endif %}</td>
         <td>{{ roles | join(" · ") or "—" }}</td>
       </tr>

@@ -1,6 +1,6 @@
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/status.html" import status_indicator, verdict_status %}
-{% from "components/terms.html" import gloss %}
+{% from "components/terms.html" import gloss, term %}
 {# El resumen de la evaluación final resuelta (contrato v2). m3_summary es un M3Summary. Primero
    las cifras que responden «¿qué se decidió?», después el embudo que las explica y el detalle. #}
 {% if m3_summary.problem %}
@@ -62,14 +62,14 @@
   <p class="pred-note"><strong>Las cifras no cuadran.</strong> Las familias suman {{ format_count(champions.counted_total) }} productos y el embudo publicó {{ format_count(champions.published_total) }} con veredicto. Se muestran tal como se publicaron.</p>
   {% endif %}
   {% if champion_svg %}
-  <figure class="pred-chart" aria-label="Gráfico: SKU por familia campeona">
+  <figure class="pred-chart" tabindex="0" role="region" aria-label="Gráfico desplazable de campeones por familia">
     {{ champion_svg | safe }}
   </figure>
   {% endif %}
   {{ table_start(["Familia campeona", "Evaluados", "No evaluados", "SKU", "% con veredicto"], "SKU por familia campeona") }}
   {% for row in champions.portfolio %}
   <tr>
-    <th scope="row" class="pred-nowrap" title="{{ family_term(row.familia).hint }}">{{ family_label(row.familia) }}</th>
+    <th scope="row" class="pred-nowrap" tabindex="0" title="{{ family_term(row.familia).hint }}">{{ family_label(row.familia) }}</th>
     <td class="num">{{ format_count(row.n_evaluados) }}</td>
     <td class="num">{{ format_count(row.n_no_evaluados) }}</td>
     <td class="num">{{ format_count(row.n_skus) }}</td>
@@ -84,7 +84,7 @@
     <td class="num">{{ percent_text(1.0) if funnel.tras_exclusiones else "—" }}</td>
   </tr>
   {{ table_end() }}
-  <p class="pred-meta">Un producto con «{{ verdict_label("FALLO_TECNICO") }}» no tiene modelo campeón y cuenta en la familia que la evaluación le asignó.</p>
+  <p class="pred-meta">Un producto con «{{ verdict_label("FALLO_TECNICO") }}» no tiene un modelo campeón con pronóstico y cuenta en la familia que la evaluación le asignó.</p>
 </section>
 {% endif %}
 </div>
@@ -98,7 +98,7 @@
   {{ table_start(["Clase"] + CHAMPION_HEADERS + ["SKU"], "SKU por clase y familia campeona") }}
   {% for row in champions.classes %}
   <tr>
-    <th scope="row" class="pred-nowrap" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</th>
+    <th scope="row" class="pred-nowrap" tabindex="0" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</th>
     {% for family in CHAMPION_FAMILIES %}
     <td class="num{% if not row.counts[family] %} is-zero{% endif %}">{{ format_count(row.counts[family]) }}</td>
     {% endfor %}

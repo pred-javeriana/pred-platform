@@ -1083,7 +1083,7 @@ dl.pred-check {
 
 dl.pred-check > div {
   display: grid;
-  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
   align-items: baseline;
   gap: var(--space-3);
   padding: 12px 0;
@@ -1101,6 +1101,14 @@ dl.pred-check dd {
   margin: 0;
   color: var(--ink-soft);
   font-size: 15px;
+}
+
+/* En las filas con «Cambiar», el valor queda a la izquierda y el enlace a la derecha, dentro del dd. */
+dl.pred-check dd:has(> a) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 dl.pred-check a {
@@ -1178,7 +1186,9 @@ button.pred-btn {
   background: var(--primary-dark);
 }
 
-.pred-btn--secondary {
+/* Con «button» delante, para ganarle al borde transparente de «button.pred-btn». */
+.pred-btn--secondary,
+button.pred-btn--secondary {
   background: var(--primary-soft);
   color: var(--primary-dark);
   border-color: var(--primary);
@@ -1680,6 +1690,23 @@ button.pred-btn--large {
   color: var(--primary-dark);
 }
 
+/* Ayudas cortas de clase, familia, modelo y etapa (#182). */
+.pred-term {
+  border-bottom: 1px dotted;
+  cursor: help;
+  text-decoration: none;
+}
+
+abbr[title] {
+  border-bottom: 1px dotted;
+  cursor: help;
+  text-decoration: none;
+}
+
+:is(.pred-term, abbr[title]):is(:hover, :focus)::after {
+  content: " (" attr(title) ")";
+}
+
 /* ------------------------------------------------------------- Estados */
 .pred-state {
   max-width: 30rem;
@@ -1889,6 +1916,11 @@ button.pred-btn--large {
   margin: 0;
   color: var(--ink-soft);
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+:is(.pred-facts, .pred-context__facts) dd > * {
+  min-width: 0;
 }
 
 :is(.pred-facts, .pred-context__facts) .pred-status {
@@ -2962,6 +2994,11 @@ button.pred-btn--large {
 }
 
 /* Sin respuesta del servidor o con la actualización pausada: el punto se detiene y se apaga. */
+.pred-run__pulse.is-fija .pred-run__pulse-dot,
+.pred-steps.is-fija .pred-steps__mark::before {
+  animation: none;
+}
+
 .pred-run__pulse.is-stale .pred-run__pulse-dot {
   background: var(--muted);
   animation: none;
@@ -3213,6 +3250,10 @@ button.pred-btn--large {
   margin: 0 0 var(--space-3);
 }
 
+.pred-launch__advanced .pred-launch__grid {
+  align-items: end;
+}
+
 .pred-launch__submit {
   display: flex;
   flex-wrap: wrap;
@@ -3236,6 +3277,11 @@ button.pred-btn--large {
 
 .pred-launch__import .pred-filters--bar {
   margin-top: var(--space-2);
+}
+
+#importar-configuracion .pred-field {
+  flex: 1 1 24rem;
+  max-width: none;
 }
 
 /* --------------------------------------------------- Superficie Resultados */
@@ -3395,6 +3441,10 @@ button.pred-btn--large {
   font-family: var(--font-mono);
   text-align: right;
   white-space: nowrap;
+}
+
+.pred-funnel .mono {
+  overflow-wrap: anywhere;
 }
 
 .pred-funnel .pred-status {

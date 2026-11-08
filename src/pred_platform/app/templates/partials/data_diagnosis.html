@@ -13,7 +13,7 @@
     <div>
       <p class="pred-eyebrow">{{ "Archivo de esta corrida" if record else "Archivo seleccionado" }}</p>
       <h2 class="pred-file-summary__name" id="estado-archivo">{{ report.source_file.name }}</h2>
-      <p class="pred-meta" title="Ingesta {{ report.ingest_id }}">{{ format_count(report.source_file.row_count) }} filas en el archivo</p>
+      <p class="pred-meta" title="Archivo cargado {{ report.ingest_id }}">{{ format_count(report.source_file.row_count) }} filas en el archivo</p>
     </div>
     <p class="pred-file-summary__status">{{ status_indicator(ingest_status) }}</p>
   </header>
@@ -86,8 +86,8 @@
       <dt>Filas publicadas</dt><dd class="mono">{{ format_count(report.published.rows) }}</dd>
       <dt>SKU publicados</dt><dd class="mono">{{ format_count(report.published.n_skus) }}</dd>
       <dt>Columnas</dt><dd>{{ report.published.columns | join(", ") }}</dd>
-      <dt>Identificador de la ingesta (SHA-256)</dt><dd class="mono">{{ report.ingest_id }}</dd>
     </dl>
+    <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Identificador del archivo (SHA-256): <span class="mono">{{ report.ingest_id }}</span></p></details>
   {% endif %}
 
   {% if report.header_diagnostic %}
@@ -111,7 +111,7 @@
     <details class="pred-details" id="bitacora-calidad">
     <summary>Bitácora de calidad · {{ format_count(report.quality_log | length) }} registros</summary>
     <div class="pred-evidence-scroll">
-    {{ table_start(["Severidad", "Mensaje", "Fila", "Columna"], "Registros de calidad de la ingesta") }}
+    {{ table_start(["Severidad", "Mensaje", "Fila", "Columna"], "Registros de calidad del archivo") }}
     {% for entry in report.quality_log %}
     <tr>
       <td>{{ status_indicator(describe_status("severity", entry.severity)) }}</td>

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import shutil
 import signal
@@ -77,7 +78,13 @@ def engine_origin(settings: Settings, ingest_id: str, declarada: bool | None) ->
         if origin is not None and type(origin) is not bool:
             raise ValueError("datos_sinteticos no es booleano o nulo")
         return origin
-    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+    except subprocess.TimeoutExpired as exc:
+        logging.getLogger(__name__).warning("Consulta de origen agotada: %s", exc)
+        raise RunRequestError(
+            "No se pudo consultar al motor el origen de los datos. "
+            "Intente de nuevo en unos minutos."
+        ) from exc
+    except (OSError, ValueError) as exc:
         raise RunRequestError(f"No se pudo consultar el origen al motor: {exc}") from exc
 
 

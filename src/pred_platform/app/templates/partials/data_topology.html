@@ -4,7 +4,7 @@
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/states.html" import unavailable_state %}
 {% from "components/evidence.html" import evidence_panel %}
-{% from "components/terms.html" import day, gloss %}
+{% from "components/terms.html" import day, gloss, term %}
 
 {% if not topology_details %}
 {# Dentro del resumen del archivo: cuántos SKU hay de cada clase y el paso siguiente. #}
@@ -46,8 +46,8 @@
     </dl>
 
     {% if topology.availability.status == "available" %}
-      <p class="pred-meta" id="alcance-topologia">Los conteos resumen toda la ingesta. El gráfico y la tabla muestran únicamente los SKU de la página filtrada actual.</p>
-      <div class="pred-chart" aria-describedby="alcance-topologia">
+      <p class="pred-meta" id="alcance-topologia">Los conteos resumen todo el archivo. El gráfico y la tabla muestran únicamente los SKU de la página filtrada actual.</p>
+      <div class="pred-chart" tabindex="0" role="region" aria-label="Gráfico desplazable de clases de demanda" aria-describedby="alcance-topologia">
         {{ chart_svg | safe }}
       </div>
 
@@ -84,7 +84,7 @@
         {% for row in topology.items %}
         <tr>
           <th scope="row" class="pred-sku"><span class="mono">{{ row.sku_id }}</span></th>
-          <td class="pred-demand-class" title="{{ sku_class_term(row.sku_class).hint }}">{{ sku_class_label(row.sku_class) }}</td>
+          <td class="pred-demand-class">{{ term(sku_class_term(row.sku_class)) }}</td>
           <td class="num">{{ format_decimal(row.adi, 3) }}</td>
           <td class="num">{{ format_decimal(row.cv2, 3) }}</td>
           <td class="num">{{ format_count(row.n_periods) }}</td>

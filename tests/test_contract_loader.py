@@ -11,6 +11,7 @@ from pred_platform.contract.errors import (
     DataLayerError,
     EngineUnavailable,
     InvalidQuery,
+    NotFound,
     SchemaVersionUnsupported,
 )
 from pred_platform.contract.loader import parse_as
@@ -103,6 +104,7 @@ def test_the_error_document_has_no_version_envelope() -> None:
         (ContractInvalid, "platform.contract_invalid"),
         (SchemaVersionUnsupported, "platform.schema_version_unsupported"),
         (ArtifactMissing, "platform.artifact_missing"),
+        (NotFound, "platform.not_found"),
         (EngineUnavailable, "platform.engine_unavailable"),
     ],
 )

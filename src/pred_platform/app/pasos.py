@@ -97,6 +97,7 @@ LAUNCHED_PURPOSE = (
     "Esta corrida ya se lanzó. Este paso muestra lo que se eligió y no se puede cambiar; para "
     "usar otros valores, empiece una corrida nueva con estos ajustes."
 )
+LAUNCHED_AFTER = "El avance está en Ejecución y los resultados, en Resultados."
 _RECORD_STEPS = ("datos", "ajustes", "revisar")
 # Una corrida en estos estados todavía no tiene resultados que leer.
 _UNFINISHED = ("pendiente", "ejecutando", "detenida")
@@ -372,7 +373,7 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
         [
             ("done", _data_sub(run.file_name, run.n_skus), None),
             ("done", _settings_sub(run.families, run.seed), None),
-            ("done", "Lanzada", run.iniciada_en),
+            ("done", "Lanzada" if run.iniciada_en else "Lanzada · en cola", run.iniciada_en),
             execution,
             results,
         ],
@@ -396,15 +397,26 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
             NavNext(
                 "Continuar a Resultados",
                 step_href(run.id, "resultados"),
-                hint="" if run.published else "Parciales hasta que la evaluación final publique.",
+                hint=""
+                if run.published
+                else (
+                    "Sin evaluación final publicada."
+                    if run.finished
+                    else "Parciales hasta que la evaluación final publique."
+                ),
             ),
         ),
         "resultados": (NavLink("Atrás: Ejecución", step_href(run.id, "ejecucion")), None),
     }
     back, nxt = navigation[current]
     after_lead, after_text = step.after_lead, step.after_text
-    if current == "ejecucion" and run.published:
-        after_text = "Ya están publicados."
+    if current == "ejecucion":
+        if run.published:
+            after_text = "Ya están publicados."
+        elif run.finished:
+            after_text = "No hay una evaluación final publicada."
+    elif current in _RECORD_STEPS:
+        after_lead, after_text = None, LAUNCHED_AFTER
     return Wizard(
         corrida=run.id,
         title=f"Corrida #{run.id} · semilla {run.seed}",

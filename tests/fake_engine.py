@@ -555,7 +555,7 @@ def main() -> int:
             )
         if scenario == "publishes_before_exit":
             # El motor ya confirmo M3 y aun debe publicar los artefactos de la CLI.
-            time.sleep(0.7)
+            time.sleep(float(os.environ.get("FAKE_ENGINE_PUBLISH_EXIT_DELAY", "0.7")))
 
     unit_lines = [json.dumps(r) for r in unit_rows]
     if os.environ.get("FAKE_ENGINE_UNITS") == "bad_line":

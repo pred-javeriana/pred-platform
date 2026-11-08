@@ -113,6 +113,10 @@ def test_each_verdict_has_a_spanish_label_and_a_one_line_explanation() -> None:
     for status in shown:
         assert status.hint and status.hint.endswith(".") and "\n" not in status.hint
         assert "_" not in status.hint and len(status.hint) <= 90
+    assert (
+        describe_status("verdict", "NO_EVALUABLE").hint
+        == "No hay datos de demanda registrados en el periodo de prueba."
+    )
     assert [status.code for status in shown] == list(verdicts)
     assert len({(status.icon, status.modifier) for status in shown}) == len(verdicts)
     # Filters send the contract code and show the label.
@@ -275,6 +279,19 @@ def test_the_bogota_offset_matches_the_time_zone_database() -> None:
         )
 
 
+def test_hover_preserves_the_exact_fractional_utc_instant() -> None:
+    stamp = datetime.fromisoformat("2026-11-04T16:36:12.123456-05:00")
+    assert exact_when(stamp) == "2026-11-04 21:36:12.123456 UTC (hora universal coordinada)"
+    assert exact_when(stamp.replace(tzinfo=None)) == (
+        "2026-11-04 16:36:12.123456 UTC (hora universal coordinada)"
+    )
+
+
+def test_an_instant_reads_as_its_day_in_bogota() -> None:
+    assert format_date(datetime(2026, 11, 3, 2, 2, tzinfo=UTC)) == "2 nov 2026"
+    assert format_date(datetime(2026, 11, 3, 5, 0, tzinfo=UTC)) == "3 nov 2026"
+
+
 def test_days_read_in_spanish_and_unknown_text_passes_through() -> None:
     assert format_date("2016-09-11") == "11 sept 2016"
     assert format_date(date(2017, 1, 5)) == "5 ene 2017"
@@ -288,3 +305,19 @@ def test_durations_read_at_a_glance() -> None:
     assert format_duration(3600 + 5 * 60) == "1 h 05 min"
     assert format_duration(2 * 86400 + 3 * 3600) == "2 d 3 h"
     assert format_duration(-3) == "0 s"
+
+
+def test_ayudas_de_estado_en_lenguaje_llano() -> None:
+    # Issue #228
+    assert describe_status("task", "no_ejecutable").hint == (
+        "El motor no ejecutó o no comparó este modelo para este producto; la causa de la fila dice "
+        "por qué."
+    )
+    # Issue #174
+    assert describe_status("run", "completada_con_fallos").hint == (
+        "Terminó; algunas tareas de modelos fallaron o no se pudieron ejecutar."
+    )
+    # Issue #173
+    assert describe_status("verdict", "FALLO_TECNICO").hint == (
+        "El modelo campeón o todos los modelos candidatos no dieron un pronóstico de prueba."
+    )

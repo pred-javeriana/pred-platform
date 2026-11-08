@@ -122,6 +122,189 @@ def test_definition_lists_hold_only_terms_and_descriptions(scenario: str, path: 
     assert page.definition_list_misuse() == []
 
 
+def test_scrollable_charts_have_tabindex_and_aria_label() -> None:
+    client = client_for("normal")
+    datos_html = client.get(f"/datos?ingest_id={ACCEPTED}").text
+    datos_page = Markup(datos_html)
+    charts_datos = [
+        attrs for _, attrs in datos_page.tags if "pred-chart" in (attrs.get("class") or "").split()
+    ]
+    assert any(
+        c.get("tabindex") == "0"
+        and c.get("role") == "region"
+        and c.get("aria-label") == "Gráfico desplazable de clases de demanda"
+        for c in charts_datos
+    )
+
+    env = build_templates(TEMPLATES, lambda path: f"/static/{path}").env
+    tmpl = env.from_string(
+        "{% if champion_svg %}"
+        '<figure class="pred-chart" tabindex="0" role="region" '
+        'aria-label="Gráfico desplazable de campeones por familia">'
+        "{{ champion_svg | safe }}"
+        "</figure>"
+        "{% endif %}"
+    )
+    res_html = tmpl.render(champion_svg="<svg></svg>")
+    res_page = Markup(res_html)
+    charts_res = [
+        attrs for _, attrs in res_page.tags if "pred-chart" in (attrs.get("class") or "").split()
+    ]
+    assert any(
+        c.get("tabindex") == "0"
+        and c.get("role") == "region"
+        and c.get("aria-label") == "Gráfico desplazable de campeones por familia"
+        for c in charts_res
+    )
+
+
+def test_results_class_and_family_cells_have_focusable_term_elements() -> None:
+    client = client_for("normal")
+    html = client.get("/resultados").text
+    page = Markup(html)
+    terms = [
+        attrs
+        for _, attrs in page.tags
+        if attrs.get("tabindex") == "0"
+        and "pred-term" in (attrs.get("class") or "").split()
+        and attrs.get("title")
+    ]
+    assert len(terms) >= 2
+
+
+def test_picker_options_and_selects_have_utc_titles() -> None:
+    from datetime import UTC, datetime
+
+    env = build_templates(TEMPLATES, lambda path: f"/static/{path}").env
+
+    class ExecChoice:
+        def __init__(self, id: str, estado: str, date: datetime) -> None:
+            self.ejecucion_id = id
+            self.estado = estado
+            self.iniciada_en = date
+
+    execs = [
+        ExecChoice("1", "completada", datetime(2026, 10, 2, 6, 0, tzinfo=UTC)),
+        ExecChoice(
+            "2",
+            "completada_con_fallos",
+            datetime(2026, 10, 3, 12, 0, tzinfo=UTC),
+        ),
+    ]
+    tmpl = env.from_string(
+        '{% from "components/run_picker.html" import run_picker %}'
+        '{{ run_picker(execs, "resumen", shown_id="1") }}'
+    )
+    picker_html = tmpl.render(execs=execs)
+    picker_page = Markup(picker_html)
+    options = [attrs for tag, attrs in picker_page.tags if tag == "option" and attrs.get("value")]
+    assert len(options) == 2
+    for opt in options:
+        assert (opt.get("title") or "").endswith("UTC (hora universal coordinada)")
+
+    client = client_for("normal")
+    ejec_html = client.get(f"/ejecucion?ingest_id={ACCEPTED}").text
+    assert 'id="ingest_id"' in ejec_html
+    assert 'title="2026-10-02 06:28:40 UTC (hora universal coordinada)"' in ejec_html
+
+
+def test_issue_111_funnel_code_breaks_anywhere_in_pred_css() -> None:
+    css_path = TEMPLATES.parent / "static/css/pred.css"
+    css = css_path.read_text(encoding="utf-8")
+    assert ".pred-funnel .mono" in css
+    block = css.split(".pred-funnel .mono", 1)[1].split("}", 1)[0]
+    assert "overflow-wrap: anywhere" in block
+
+
+def test_issue_115_ui_review_screenshots_are_present_and_valid() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    review_dir = repo_root / "docs/ui-review"
+    expected = [
+        "datos.png",
+        "detalle-datos.png",
+        "ejecucion.png",
+        "lanzamiento.png",
+        "resultados.png",
+        "sku.png",
+        "topologia.png",
+    ]
+    for name in expected:
+        img_path = review_dir / name
+        assert img_path.is_file(), f"Falta {name}"
+        assert img_path.stat().st_size > 50000, f"{name} parece incompleto o vacío"
+
+
+def test_issue_175_fact_lists_break_long_words_without_overflow() -> None:
+    css_path = TEMPLATES.parent / "static/css/pred.css"
+    css = css_path.read_text(encoding="utf-8")
+    assert ":is(.pred-facts, .pred-context__facts) dd" in css
+    dd_block = css.split(":is(.pred-facts, .pred-context__facts) dd", 1)[1].split("}", 1)[0]
+    assert "overflow-wrap: anywhere" in dd_block
+    assert ":is(.pred-facts, .pred-context__facts) dd > *" in css
+    child_block = css.split(":is(.pred-facts, .pred-context__facts) dd > *", 1)[1].split("}", 1)[0]
+    assert "min-width: 0" in child_block
+
+
+def test_issue_178_import_config_field_stretches_to_button() -> None:
+    css_path = TEMPLATES.parent / "static/css/pred.css"
+    css = css_path.read_text(encoding="utf-8")
+    assert "#importar-configuracion .pred-field" in css
+    block = css.split("#importar-configuracion .pred-field", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 24rem" in block
+    assert "max-width: none" in block
+
+
+def test_issue_179_launch_advanced_grid_aligns_bottom_and_uses_short_label() -> None:
+    css_path = TEMPLATES.parent / "static/css/pred.css"
+    css = css_path.read_text(encoding="utf-8")
+    assert ".pred-launch__advanced .pred-launch__grid" in css
+    block = css.split(".pred-launch__advanced .pred-launch__grid", 1)[1].split("}", 1)[0]
+    assert "align-items: end" in block
+
+    tmpl_path = TEMPLATES / "partials/execution_launch.html"
+    tmpl_text = tmpl_path.read_text(encoding="utf-8")
+    assert '"Configuraciones por SKU y familia"' in tmpl_text
+    assert '"Configuraciones a probar por familia"' not in tmpl_text
+
+
+def test_issue_182_help_terms_have_dotted_border_and_focus_content_in_css() -> None:
+    css_path = TEMPLATES.parent / "static/css/pred.css"
+    css = css_path.read_text(encoding="utf-8")
+    assert ".pred-term" in css
+    term_block = css.split(".pred-term", 1)[1].split("}", 1)[0]
+    assert "border-bottom: 1px dotted" in term_block
+    assert ":is(.pred-term, abbr[title]):is(:hover, :focus)::after" in css
+    focus_block = css.split(":is(.pred-term, abbr[title]):is(:hover, :focus)::after", 1)[1].split(
+        "}", 1
+    )[0]
+    assert 'content: " (" attr(title) ")"' in focus_block
+
+
+def test_issue_185_docs_state_task_limit_and_code_placement() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    ui_flow = (repo_root / "docs/UI_FLOW.md").read_text(encoding="utf-8")
+    assert (
+        "Debajo se listan solo las tareas fallidas (o, si no hay, las que corren), hasta 5"
+        in ui_flow
+    )
+    assert "no en `title`" in ui_flow.lower()
+
+    design = (repo_root / "docs/DESIGN.md").read_text(encoding="utf-8")
+    assert "not in `title`" in design.lower()
+
+    readme = (repo_root / "docs/features/resultados/README.md").read_text(encoding="utf-8")
+    assert "not in `title`" in readme.lower()
+
+
+def test_issue_203_docs_state_seed_group_picks_requested_sku() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    readme = (repo_root / "docs/features/resultados/README.md").read_text(encoding="utf-8")
+    assert (
+        "except the seed-group page, which picks the one SKU the reader "
+        "asked for from the computed group"
+    ) in readme
+
+
 @pytest.mark.parametrize("input_type", ["text", "select", "file", "checkbox"])
 def test_error_and_hint_are_both_associated(input_type: str) -> None:
     env = build_templates(TEMPLATES, lambda path: f"/static/{path}").env

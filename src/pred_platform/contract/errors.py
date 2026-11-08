@@ -69,6 +69,12 @@ class ArtifactMissing(DataLayerError):
     code = "platform.artifact_missing"
 
 
+class NotFound(ArtifactMissing):
+    """The requested document does not exist, or depends on an open gap."""
+
+    code = "platform.not_found"
+
+
 class EngineUnavailable(DataLayerError):
     """The operation needs the engine, which is not connected yet."""
 

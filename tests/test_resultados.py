@@ -596,6 +596,31 @@ def test_sku_shows_the_published_interval_beside_r(
     assert shown not in other
 
 
+def test_sku_explains_nonpositive_estimated_variance_without_claiming_constant_errors(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pred_platform.app.resultados_m3 import cause_text
+
+    expected = (
+        "la varianza estimada de las diferencias de error no es positiva, "
+        "así que la prueba no se puede calcular"
+    )
+    assert cause_text("varianza_no_positiva") == expected
+    _run(env, monkeypatch)
+    _publish_for_the_run(env)
+    with closing(sqlite3.connect(env.db)) as conn:
+        conn.execute(
+            "UPDATE m3_veredictos SET dm_estadistico=NULL,dm_p_valor=NULL,dm_p_ajustado=NULL,"
+            "dm_alfa=NULL,dm_significativa=NULL,dm_causa='varianza_no_positiva' "
+            "WHERE run_id='m3-real-1' AND sku='FIL-0001'"
+        )
+        conn.commit()
+    response = _dal_client(env).get("/resultados/sku/FIL-0001?m3=m3-real-1")
+    assert response.status_code == 200
+    assert expected in _text(response.text)
+    assert "no varían" not in _text(response.text)
+
+
 def test_sku_distinguishes_the_unadjusted_interval_from_bh_significance(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -885,7 +910,7 @@ def test_a_finished_run_says_what_it_left_and_reads_the_funnel_once(
     assert re.fullmatch(
         r"(Falló|Fallaron) \d+ de \d+ tareas de modelos\. Aun así, 2 de 3 productos tienen "
         r"veredicto; el otro se excluyó antes de evaluar, con su causa\. 1 tiene el veredicto "
-        r"«Error técnico»: ningún modelo lo pronosticó\.",
+        r"«Error técnico»: su modelo campeón o todos sus candidatos no lo pronosticaron\.",
         outcome.group(1).strip(),
     )
     # The context bar reuses the funnel the tab already read: no extra one-row evidence read.
@@ -989,13 +1014,22 @@ def test_an_m3_run_of_another_execution_is_refused_and_an_unpublished_one_explai
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _run(env, monkeypatch)
-    _publish_for_the_run(env, estado="EVALUADA")
+    _publish_for_the_run(env, run_id="m3-1", estado="EVALUADA")
     client = _dal_client(env)
 
     text = _text(client.get("/resultados").text)
     assert "Esta ejecución todavía no tiene una evaluación publicada." in text
     assert "La evaluación más reciente está evaluada, sin publicar." in text
     assert "Sin veredicto" in text
+
+    # Issue #187: abrir con ?m3= una evaluación no publicada
+    evaluada_text = _text(client.get("/resultados?m3=m3-1&vista=resumen").text)
+    assert (
+        "La evaluación todavía no está publicada; su evidencia aparece al publicarse."
+        in evaluada_text
+    )
+    assert "M3" not in evaluada_text and "m3-" not in evaluada_text
+    assert "EVALUADA" not in evaluada_text
 
     _publish_for_the_run(env, run_id="m3-ajena", run_id_m2="r-otra")
     other = client.get("/resultados?m3=m3-ajena").text
@@ -2105,3 +2139,49 @@ def test_unavailable_state_shows_detalle_tecnico_and_codigo(env: Env) -> None:
     assert "Código" in page
     assert "prerequisite_missing" in page
     assert "Disponibilidad y dependencias" not in page
+
+
+def test_fallo_tecnico_distingue_si_otros_modelos_pronosticaron(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(
+        env,
+        verdicts={
+            "FIL-0001": ("smooth", "FALLO_TECNICO"),
+            "FIL-0002": ("smooth", "FALLO_TECNICO"),
+        },
+        extra_models={
+            "FIL-0002": [("ml", "lightgbm", 1.05)],
+        },
+    )
+    client = _dal_client(env)
+
+    sku1_text = _text(client.get("/resultados/sku/FIL-0001").text)
+    assert "Ningún modelo candidato dio un pronóstico de prueba." in sku1_text
+    assert "Ni el modelo campeón ni los demás modelos" not in sku1_text
+
+    sku2_text = _text(client.get("/resultados/sku/FIL-0002").text)
+    assert (
+        "El modelo de la familia campeona no dio un pronóstico de prueba; otros modelos sí."
+        in sku2_text
+    )
+
+    summary_text = _text(client.get("/resultados?vista=resumen").text)
+    assert (
+        "Un producto con «Error técnico» no tiene un modelo campeón con pronóstico y cuenta "
+        "en la familia que la evaluación le asignó." in summary_text
+    )
+
+
+def test_no_evaluable_verdict_reason_explains_lack_of_recorded_demand_data() -> None:
+    from pred_platform.app.resultados_m3 import verdict_reason
+    from pred_platform.contract.models_v2 import M3Evidence
+    from pred_platform.contract.resources import read_example
+
+    evidence = M3Evidence.model_validate_json(read_example("m3_evidence.publicada"))
+    no_evaluable = next(r for r in evidence.items if r.veredicto == "NO_EVALUABLE")
+    assert (
+        verdict_reason(no_evaluable)
+        == "El periodo de prueba no tiene datos de demanda registrados con los que comparar."
+    )

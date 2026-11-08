@@ -265,7 +265,16 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     ),
     "platform.artifact_missing": Mensaje(
         "No se encontró el resultado esperado.",
-        _REVISAR_REGISTRO,
+        "Revise el registro del motor (motor.log) y reanude la ejecución.",
+        reintentable=True,
+    ),
+    "platform.not_found": Mensaje(
+        "No se encontró el recurso solicitado.",
+        "Verifique el identificador o elija uno de la lista.",
+    ),
+    "platform.input_missing": Mensaje(
+        "No se encontró el archivo de datos de la ingesta.",
+        "Vuelva a cargar el mismo archivo en Datos y reanude esta ejecución.",
     ),
     "platform.engine_unavailable": Mensaje(
         "El motor no está disponible.",
