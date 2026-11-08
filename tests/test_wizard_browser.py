@@ -455,6 +455,7 @@ def test_the_conflict_notice_offers_a_reload_and_blocks_a_stale_submit(browser: 
         if (notice.path !== '/corridas/nueva/ajustes' || !notice.shown || notice.seed !== '61' ||
             notice.reload !== '/corridas/nueva/ajustes')
             throw new Error('Sin aviso de conflicto: ' + JSON.stringify(notice));
+
         await page.click('#conflicto-borrador a');
         await page.wait('#seed');
         const seed = await page.eval(() => document.querySelector('#seed').value);
