@@ -521,6 +521,9 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
             "FAKE_ENGINE_SCENARIO": "publishes_before_exit",
             "FAKE_ENGINE_TERMINAL_STATE": state,
             "FAKE_ENGINE_PUBLISH_EXIT_DELAY": "5",
+            # El worker muerto deja al motor sin padre; este motor ignora la señal que el
+            # núcleo le envía entonces, para que el sondeo cubra el motor aún activo.
+            "FAKE_ENGINE_IGNORE_SIGTERM": "1",
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

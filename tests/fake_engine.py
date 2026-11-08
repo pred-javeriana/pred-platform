@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sqlite3
 import sys
 import time
@@ -337,6 +338,9 @@ def _classify(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    if os.environ.get("FAKE_ENGINE_IGNORE_SIGTERM"):
+        # Un motor que sobrevive al cierre de su supervisor (el worker lo detiene con SIGTERM).
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     parser = argparse.ArgumentParser()
     parser.add_argument("command")
     parser.add_argument("--ingest-id")
