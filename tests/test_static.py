@@ -14,7 +14,14 @@ _APP_DIR = Path(__file__).parent.parent / "src" / "pred_platform" / "app"
 _STATIC_DIR = _APP_DIR / "static"
 _LOCK = json.loads((_STATIC_DIR / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
 
-_OWN_FILES = {"css/pred.css", "js/pred.js", "css/results.css", "js/charts.js"}
+_OWN_FILES = {
+    "css/pred.css",
+    "css/live.css",
+    "css/results.css",
+    "js/pred.js",
+    "js/live.js",
+    "js/charts.js",
+}
 
 _ASSETS = [
     "css/pico.min.css",

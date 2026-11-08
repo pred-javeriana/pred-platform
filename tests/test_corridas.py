@@ -31,7 +31,7 @@ FORM: dict[str, Any] = {
     "metric": "mae",
     "min_train": "40",
     "horizon": "2",
-    "step": "14",
+    "step": "7",
     "seasonality": "7",
     "trials": "1",
     "seed": "0",
@@ -68,7 +68,8 @@ def _rail(html: str) -> list[tuple[str, str | None]]:
     rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
     assert rail is not None
     items = re.findall(
-        r'<li class="is-(\w+)[^"]*">\s*<(?:a|span) class="pred-rail__item"(?: href="([^"]+)")?',
+        r'<li class="is-(\w+)[^"]*"[^>]*>\s*<(?:a|span) class="pred-rail__item"'
+        r'(?: href="([^"]+)")?',
         rail.group(0),
     )
     return [(state, href or None) for state, href in items]
@@ -644,7 +645,7 @@ def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
         "parametros": {
             "min_train": 40,
             "horizon": 2,
-            "step": 14,
+            "step": 7,
             "seasonality": 7,
             "metric": "mae",
             "families": ["classical", "ml"],

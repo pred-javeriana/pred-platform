@@ -398,15 +398,24 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
             NavNext(
                 "Continuar a Resultados",
                 step_href(run.id, "resultados") if run.published else None,
-                hint="" if run.published else "Se abre cuando la evaluación final publique.",
+                hint=""
+                if run.published
+                else (
+                    "Sin evaluación final publicada."
+                    if run.finished
+                    else "Se abre cuando la evaluación final publique."
+                ),
             ),
         ),
         "resultados": (NavLink("Atrás: Ejecución", step_href(run.id, "ejecucion")), None),
     }
     back, nxt = navigation[current]
     after_lead, after_text = step.after_lead, step.after_text
-    if current == "ejecucion" and run.published:
-        after_text = "Ya están publicados."
+    if current == "ejecucion":
+        if run.published:
+            after_text = "Ya están publicados."
+        elif run.finished:
+            after_text = "No hay una evaluación final publicada."
     elif current in _RECORD_STEPS:
         after_lead, after_text = None, LAUNCHED_AFTER
     return Wizard(

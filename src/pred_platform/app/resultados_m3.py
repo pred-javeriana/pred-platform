@@ -1011,6 +1011,12 @@ def published_funnel(
     return evidence.funnel if evidence.availability.status == "available" else None
 
 
+@dataclass(frozen=True, slots=True)
+class RunOutcome:
+    text: str | None
+    published: bool
+
+
 def run_outcome(
     repository: DataRepository,
     run: Ejecucion,
@@ -1018,6 +1024,16 @@ def run_outcome(
     m3_run_id: str | None = None,
     funnel: models_v2.M3Funnel | None = None,
 ) -> str | None:
+    return run_outcome_details(repository, run, task_counts, m3_run_id, funnel).text
+
+
+def run_outcome_details(
+    repository: DataRepository,
+    run: Ejecucion,
+    task_counts: Mapping[EstadoTarea, int] | None,
+    m3_run_id: str | None = None,
+    funnel: models_v2.M3Funnel | None = None,
+) -> RunOutcome:
     """Qué dejó una ejecución terminada, en palabras: cuántas tareas fallaron y cuántos productos
     tienen veredicto. ``None`` mientras no termina.
 
@@ -1026,7 +1042,7 @@ def run_outcome(
     embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada.
     """
     if run.estado not in ("completada", "completada_con_fallos"):
-        return None
+        return RunOutcome(None, False)
     counts = dict(task_counts or {})
     failed = counts.get("fallida", 0)
     total = sum(counts.values())
@@ -1046,7 +1062,7 @@ def run_outcome(
         funnel = published_funnel(repository, run.id, m3_run_id)
     if funnel is None:
         parts.append("Todavía no hay veredictos publicados.")
-        return " ".join(parts)
+        return RunOutcome(" ".join(parts), False)
     lead = "Aun así, " if failed else ""
     products, with_verdict = funnel.total_productos, funnel.tras_exclusiones
     if with_verdict == products:
@@ -1071,7 +1087,7 @@ def run_outcome(
             f"«{verdict_label('FALLO_TECNICO')}»: su modelo campeón o todos sus candidatos no "
             f"{'lo' if technical == 1 else 'los'} pronosticaron."
         )
-    return " ".join(parts)
+    return RunOutcome(" ".join(parts), True)
 
 
 def funnel_rows(funnel: models_v2.M3Funnel) -> list[tuple[str, str, int]]:
@@ -1108,7 +1124,10 @@ _CAUSES: dict[str, str] = {
     "datos_sinteticos": "datos sintéticos",
     "sin_familias_competidoras": "sin familias competidoras",
     "pocas_ventanas": "muy pocas ventanas para la prueba",
-    "varianza_no_positiva": "las diferencias de error no varían y la prueba no se puede calcular",
+    "varianza_no_positiva": (
+        "la varianza estimada de las diferencias de error no es positiva, "
+        "así que la prueba no se puede calcular"
+    ),
     "sin_ventanas_comunes": "el campeón y la línea base no comparten ventanas",
     "no_entregada": "no entregó resultados",
     "no_elegible": "no está admitida para esta clase",

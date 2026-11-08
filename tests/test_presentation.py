@@ -279,6 +279,19 @@ def test_the_bogota_offset_matches_the_time_zone_database() -> None:
         )
 
 
+def test_hover_preserves_the_exact_fractional_utc_instant() -> None:
+    stamp = datetime.fromisoformat("2026-11-04T16:36:12.123456-05:00")
+    assert exact_when(stamp) == "2026-11-04 21:36:12.123456 UTC (hora universal coordinada)"
+    assert exact_when(stamp.replace(tzinfo=None)) == (
+        "2026-11-04 16:36:12.123456 UTC (hora universal coordinada)"
+    )
+
+
+def test_an_instant_reads_as_its_day_in_bogota() -> None:
+    assert format_date(datetime(2026, 11, 3, 2, 2, tzinfo=UTC)) == "2 nov 2026"
+    assert format_date(datetime(2026, 11, 3, 5, 0, tzinfo=UTC)) == "3 nov 2026"
+
+
 def test_days_read_in_spanish_and_unknown_text_passes_through() -> None:
     assert format_date("2016-09-11") == "11 sept 2016"
     assert format_date(date(2017, 1, 5)) == "5 ene 2017"

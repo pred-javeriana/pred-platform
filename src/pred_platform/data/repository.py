@@ -37,6 +37,7 @@ from pred_platform.contract.models import (
 from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import DEFAULT_SIZE
+from pred_platform.data.run_status import CauseSnapshot, StageReference
 from pred_platform.evidence.models import GroupEvidence, GroupRunOption
 
 
@@ -150,6 +151,14 @@ class DataRepository(Protocol):
 
         Each run's status, settings and progress come from ``get_run_status``.
         """
+        ...
+
+    def get_run_causes(self, run_id: str) -> CauseSnapshot:
+        """Whole-run cause snapshot, read only when the execution page opens."""
+        ...
+
+    def get_run_stage_history(self, run_id: str) -> list[StageReference]:
+        """Cached stage timestamps of comparable completed runs; initial page load only."""
         ...
 
     def get_run_error(self, run_id: str) -> ErrorInfo | None:

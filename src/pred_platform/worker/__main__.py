@@ -3,6 +3,7 @@
 python -m pred_platform.worker                         # follow the queue until stopped
 python -m pred_platform.worker --once                  # run what is queued, then exit
 python -m pred_platform.worker --launch --ingest <sha256> [--once]   # queue (and run) a run
+python -m pred_platform.worker --resume <id> [--once]    # explicitly resume a stopped run
 python -m pred_platform.worker --status                # list runs and their task counts
 """
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import sqlite3
 import sys
 import threading
@@ -22,6 +24,7 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.importacion import import_reports
 from pred_platform.dal.migrate import MigrationError, migrate
 from pred_platform.worker.bucle import Worker
+from pred_platform.worker.control import ControlUnavailable, DalRunControl
 from pred_platform.worker.service import LaunchSettings, RunRequestError, enqueue_run
 
 
@@ -47,8 +50,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="python -m pred_platform.worker", description="PRED run worker."
     )
     parser.add_argument("--once", action="store_true", help="run the queued runs and exit")
-    parser.add_argument("--status", action="store_true", help="list runs; change nothing")
-    parser.add_argument("--launch", action="store_true", help="queue a run for --ingest")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--status", action="store_true", help="list runs; change nothing")
+    action.add_argument("--launch", action="store_true", help="queue a run for --ingest")
+    action.add_argument("--resume", type=int, metavar="ID", help="resume a stopped or failed run")
     parser.add_argument("--ingest", help="SHA-256 of an accepted ingestion (with --launch)")
     defaults = LaunchSettings()
     parser.add_argument("--min-train", type=int, default=defaults.min_train)
@@ -78,6 +83,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
+    if args.resume is not None:
+        try:
+            if not DalRunControl(settings).resume(args.resume):
+                raise RunRequestError(f"la ejecución #{args.resume} no se puede reanudar")
+        except (ControlUnavailable, RunRequestError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"ejecución #{args.resume}: en cola")
+        if not args.once:
+            return 0
+
     if args.launch:
         if not args.ingest:
             print("error: --launch necesita --ingest <sha256>", file=sys.stderr)
@@ -104,15 +120,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
     worker = Worker(settings)
-    if args.once:
-        worker.drain()
-        return _status(settings.db_path)
-
     stop = threading.Event()
+    signals = [signal.SIGINT, signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):
+        signals.append(signal.SIGHUP)
+    previous = {sig: signal.getsignal(sig) for sig in signals}
+
+    def interrupt(signum: int, frame: object) -> None:
+        # A second signal must not interrupt the engine's termination and reaping.
+        for sig in signals:
+            signal.signal(sig, signal.SIG_IGN)
+        raise KeyboardInterrupt
+
     try:
+        for sig in signals:
+            signal.signal(sig, interrupt)
+        if args.once:
+            imported = worker.drain()
+            status = _status(settings.db_path)
+            return status if imported else 1
         worker.run_forever(stop)
     except KeyboardInterrupt:
         stop.set()
+        if args.once:
+            return 130  # interrupted, not a successfully drained queue
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
     return 0
 
 

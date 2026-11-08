@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+from collections import OrderedDict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from pydantic import ValidationError
@@ -22,30 +24,45 @@ from pred_platform.evidence.models import (
     Exclusion,
     GroupEvidence,
     GroupRunOption,
-    GroupSignificance,
     RunEvidence,
     Verdict,
 )
 
+_CacheKey = tuple[Path, tuple[str, ...], bool, tuple[int, int] | None, tuple[int, int] | None]
+_cache: OrderedDict[_CacheKey, GroupEvidence] = OrderedDict()
+_cache_lock = Lock()
 
-def read_significance(
-    db_path: Path, run_ids: Sequence[str], *, preview: bool = False
-) -> GroupSignificance:
-    """Read only PUBLICADA real-data runs; never migrate, publish or change rows."""
-    if len(run_ids) != (2 if preview else 3) or len(set(run_ids)) != len(run_ids):
-        raise EvidenceInvalid("Seleccione una corrida distinta por semilla.")
-    with _snapshot(db_path) as conn:
-        return calculate_significance(tuple(_run(conn, r) for r in run_ids), preview=preview)
+
+def _stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
 
 
 def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) -> GroupEvidence:
-    """Both computations from the same read-only snapshot, without a cache or sidecar."""
+    """One snapshot per calculation, shared by readers until the database or WAL changes."""
     if len(run_ids) != (2 if preview else 3) or len(set(run_ids)) != len(run_ids):
         raise EvidenceInvalid("Seleccione una corrida distinta por semilla.")
-    with _snapshot(db_path) as conn:
-        runs = tuple(sorted((_run(conn, r) for r in run_ids), key=lambda r: r.seed))
-        significance = calculate_significance(runs, preview=preview)
-        return GroupEvidence(significance, _lumpy(conn, runs))
+    db_path = db_path.resolve()
+    with _cache_lock:
+        key = (db_path, tuple(run_ids), preview, _stamp(db_path), _stamp(Path(f"{db_path}-wal")))
+        if key in _cache:
+            _cache.move_to_end(key)
+            return _cache[key]
+        with _snapshot(db_path) as conn:
+            runs = tuple(sorted((_run(conn, r) for r in run_ids), key=lambda r: r.seed))
+            significance = calculate_significance(runs, preview=preview)
+            try:
+                lumpy = _lumpy(conn, runs)
+            except (sqlite3.Error, KeyError, TypeError, ValueError, ArithmeticError) as exc:
+                lumpy = LumpyEvidence((), (), (), (), f"La evidencia lumpy no es válida: {exc}")
+        result = GroupEvidence(significance, lumpy)
+        _cache[key] = result
+        if len(_cache) > 4:
+            _cache.popitem(last=False)
+        return result
 
 
 def comparable_runs(db_path: Path, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
@@ -111,10 +128,13 @@ def list_group_runs(db_path: Path) -> tuple[GroupRunOption, ...]:
         )
         options = []
         for row in rows:
-            protocol = _object(row["protocolo"])
+            try:
+                protocol = _object(row["protocolo"])
+            except (TypeError, ValueError):
+                continue
             config = protocol.get("configuracion_m2", {})
             if not isinstance(config, dict):
-                raise EvidenceInvalid("La configuración M2 publicada no es un objeto.")
+                continue
             seed = config.get("seed")
             if type(seed) is int and seed in (0, 1, 2) and "bloques" in protocol:
                 options.append(
@@ -196,10 +216,12 @@ def _lumpy(conn: sqlite3.Connection, runs: Sequence[RunEvidence]) -> LumpyEviden
         ).fetchone()
         if confirmation is not None:
             champions[run.run_id] = confirmation["familia_campeona"]
-            published[run.run_id, "seasonal_naive"] = (
-                confirmation["efecto_n_skus"],
-                confirmation["efecto_mediana_r"],
-            )
+            # A baseline champion has no published effect (efecto_n_skus is NULL).
+            if confirmation["efecto_n_skus"] is not None:
+                published[run.run_id, "seasonal_naive"] = (
+                    confirmation["efecto_n_skus"],
+                    confirmation["efecto_mediana_r"],
+                )
         comparison = conn.execute(
             "SELECT n_skus,mediana_razon FROM m3_comparaciones "
             "WHERE run_id=? AND sku_class='lumpy' AND competidora='classical'",

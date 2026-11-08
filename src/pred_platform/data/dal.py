@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Never, get_args
+from typing import Never, get_args
 
 from pydantic import ValidationError
 
@@ -48,6 +48,16 @@ from pred_platform.data.query import (
     paginate,
 )
 from pred_platform.data.repository import ArtifactDownload, StageTiming
+from pred_platform.data.run_history import read_stage_references
+from pred_platform.data.run_status import (
+    CauseSnapshot,
+    DisplayRunStatus,
+    StageReference,
+    TaskCause,
+    read_run_progress,
+)
+from pred_platform.worker import engine
+from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.ingesta import IngestLaunchError, Submitter
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -58,47 +68,6 @@ _TASK_STATES = get_args(models.EstadoTarea)
 _FAMILY_STATES = get_args(models.EstadoFamilia)
 _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
-
-
-def _unidad(evento: dict[str, Any]) -> tuple[Any, Any, Any]:
-    return evento.get("sku_id"), evento.get("family"), evento.get("model")
-
-
-def _avance_en_curso(progreso: Path) -> tuple[str | None, int | None, int | None]:
-    """Etapa en curso y ``(total, terminados)`` de sus SKU según ``progreso.jsonl``.
-
-    El intento actual empieza en el último ``run_started``; cada etapa cuenta desde su último
-    ``planned``, así que lo que una reanudación vuelve a anunciar no se cuenta dos veces. Un SKU
-    termina la etapa cuando terminan, bien o mal, todas sus unidades de ese plan.
-    """
-    # shortcut: lee todo el archivo en cada consulta; leer solo la cola si a escala completa pesa.
-    try:
-        lineas = progreso.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return None, None, None
-    etapa, plan, terminadas = None, None, set()
-    for linea in lineas:
-        try:
-            evento = json.loads(linea)
-        except ValueError:
-            continue  # una línea rota por escrituras concurrentes no detiene la lectura
-        if not isinstance(evento, dict):
-            continue
-        tipo, de_la_etapa = evento.get("event"), evento.get("stage") == etapa
-        if tipo == "run_started":
-            etapa, plan, terminadas = None, None, set()
-        elif tipo == "stage_started" and not de_la_etapa:
-            etapa, plan, terminadas = evento.get("stage"), None, set()
-        elif tipo == "planned" and de_la_etapa:
-            # Cada etapa se anuncia por SKU x familia (o candidato); el avance cuenta SKU.
-            plan, terminadas = {_unidad(u) for u in evento.get("units", [])}, set()
-        elif tipo == "unit_finished" and de_la_etapa and plan is not None:
-            terminadas.add(_unidad(evento))
-    if plan is None:
-        return etapa, None, None
-    skus = {sku for sku, _, _ in plan}
-    pendientes = {sku for sku, _, _ in plan - terminadas}
-    return etapa, len(skus), len(skus - pendientes)
 
 
 def _stage_timings(progreso: Path) -> tuple[StageTiming, ...]:
@@ -165,15 +134,38 @@ def _missing(capability: CapabilityId, what: str) -> Never:
     )
 
 
-def _ejecucion(run: lectura.RunDetail) -> models.Ejecucion:
+def _stopped_by_operator(run: lectura.RunDetail) -> bool:
+    try:
+        error = json.loads(run.error_json) if run.error_json else None
+    except ValueError:
+        return False
+    return isinstance(error, dict) and error.get("code") == "platform.run_stopped"
+
+
+def _run_state(run: lectura.RunDetail, db_path: Path) -> str:
+    """El estado que se muestra: el motor publica el final antes de que el worker lo cierre.
+
+    Mientras el motor de esta base siga vivo, o un worker sostenga el candado de la base y cierre
+    la corrida, el final guardado se oculta como ``ejecutando``. Sin ninguno de los dos (el worker
+    murió entre la publicación y la limpieza del pid) se muestra el estado guardado. Solo lee.
+    """
+    if run.pid is None or run.estado not in ("completada", "completada_con_fallos"):
+        return run.estado
+    if engine.engine_owner(run.pid, db_path) == "this":
+        return "ejecutando"
+    return "ejecutando" if WorkerLock.for_database(db_path).held_elsewhere() else run.estado
+
+
+def _ejecucion(run: lectura.RunDetail, db_path: Path) -> models.Ejecucion:
+    estado = _run_state(run, db_path)
     return models.Ejecucion(
         id=str(run.id),
         ingest_id=run.ingest_sha256,
         configuracion_id=str(run.configuracion_id),
         seed=run.seed,
-        estado=run.estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
+        estado=estado,  # type: ignore[arg-type]  # CHECK-constrained in the DAL
         iniciada_en=run.iniciada_en,  # type: ignore[arg-type]  # ISO 8601 text
-        finalizada_en=run.finalizada_en,  # type: ignore[arg-type]
+        finalizada_en=run.finalizada_en if estado != "ejecutando" else None,  # type: ignore[arg-type]
     )
 
 
@@ -406,7 +398,20 @@ class DalRepository(M3DalSource):
 
     # -------------------------------------------------------------------- run status
     def list_runs(self) -> list[models.Ejecucion]:
-        return [_ejecucion(run) for run in lectura.list_runs(self.db_path)]
+        return [_ejecucion(run, self.db_path) for run in lectura.list_runs(self.db_path)]
+
+    def get_run_causes(self, run_id: str) -> CauseSnapshot:
+        run = lectura.get_run(self.db_path, run_id)
+        causes = lectura.task_causes(self.db_path, run.id) if run else []
+        return CauseSnapshot(
+            read_at=_now(),
+            causes=[TaskCause(code=code, family=family, count=n) for code, family, n in causes],
+        )
+
+    def get_run_stage_history(self, run_id: str) -> list[StageReference]:
+        if self.data_root is None:
+            return []
+        return read_stage_references(self.db_path, self.data_root, run_id)
 
     def get_run_error(self, run_id: str) -> models.ErrorInfo | None:
         # Written by the worker (``worker/errores.py``); one that is not an ErrorInfo is not shown.
@@ -467,15 +472,26 @@ class DalRepository(M3DalSource):
         by_state = {state: counts.get(state, 0) for state in _TASK_STATES}
         total_tasks = sum(by_state.values())
         finished = by_state["exitosa"] + by_state["fallida"] + by_state["no_ejecutable"]
+        estado_run = _run_state(run, self.db_path)
         etapa, skus_total, skus_terminados = None, None, None
-        if run.estado == "ejecutando" and run.ruta_corrida and self.data_root is not None:
-            etapa, skus_total, skus_terminados = _avance_en_curso(
+        timings = []
+        stopped_before_start = False
+        if run.ruta_corrida and self.data_root is not None:
+            etapa, skus_total, skus_terminados, timings, ended = read_run_progress(
                 self.data_root / run.ruta_corrida / "progreso.jsonl"
             )
+            # An operator stop that comes after the engine ended did not interrupt an attempt:
+            # the retry was still queued, so the log belongs to the attempt before it.
+            stopped_before_start = ended and run.estado == "detenida" and _stopped_by_operator(run)
+            if stopped_before_start:
+                etapa, skus_total, skus_terminados, timings = None, None, None, []
         parametros = json.loads(run.parametros)
-        return models.RunStatus(
+        return DisplayRunStatus(
+            stage_timings=timings,
+            last_stage=etapa,
+            stopped_before_start=stopped_before_start,
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
-            ejecucion=_ejecucion(run),
+            ejecucion=_ejecucion(run, self.db_path),
             settings=models.RunSettings(
                 schema_version=parametros.get("schema_version", 1),
                 configuracion_version=run.configuracion_version,
@@ -493,9 +509,9 @@ class DalRepository(M3DalSource):
                 tareas_total=total_tasks,
                 tareas_por_estado=by_state,  # type: ignore[arg-type]
                 avance_pct=round(100 * finished / total_tasks, 1) if total_tasks else 0.0,
-                etapa_actual=etapa,  # type: ignore[arg-type]  # lo escribe el motor (L1 a L4)
-                skus_total=skus_total,
-                skus_terminados=skus_terminados,
+                etapa_actual=etapa if estado_run == "ejecutando" else None,  # type: ignore[arg-type]
+                skus_total=skus_total if estado_run == "ejecutando" else None,
+                skus_terminados=skus_terminados if estado_run == "ejecutando" else None,
             ),
             tasks=[
                 models.Tarea(

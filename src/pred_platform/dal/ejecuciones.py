@@ -115,8 +115,8 @@ def create_run(
     """Queue a run for an accepted ingestion. Returns ``(ejecucion_id, queued)``.
 
     The engine's ``run_id`` is unique: asking again for the same one returns the existing run.
-    A run that was stopped or finished with failures is queued again to resume (``queued`` is
-    True); one pending, running or completed is left alone (``queued`` is False).
+    An existing run is left alone (``queued`` is False), whatever its state. Only an explicit
+    ``resume_run`` queues a stopped run or one that finished with failures again.
     """
     with conn:
         _begin_immediate(conn)
@@ -124,8 +124,7 @@ def create_run(
             "SELECT id, estado FROM ejecuciones WHERE run_id = ?", (run_id,)
         ).fetchone()
         if existing is not None:
-            ejecucion_id = int(existing[0])
-            return ejecucion_id, _resume(conn, ejecucion_id)
+            return int(existing[0]), False
 
         ingest_id = accepted_ingestion_id(conn, ingest_sha256)
         version = conn.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM configuraciones")
@@ -297,8 +296,10 @@ def stop_claimed(
 
     A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
     the meantime keeps its own error and time; both release the recorded process, which the worker
-    has already reaped. A later attempt, or any other state, belongs to someone else and is left
-    alone.
+    has already reaped. One the engine already published (``completada`` or
+    ``completada_con_fallos``) before the worker imported its final files is left as it is: its
+    recorded process marks it for ``interrupted_runs``, so the next worker start runs it again
+    and imports it. A later attempt or a fully settled run is left alone too.
     """
     with conn:
         _begin_immediate(conn)

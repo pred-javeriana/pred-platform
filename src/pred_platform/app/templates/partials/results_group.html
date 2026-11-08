@@ -47,17 +47,40 @@
   {% endfor %}
   {{ table_end() }}
   </details>
+  {% set untested = significance.products | selectattr("p_max", "none") | list %}
+  {% if untested %}
+  <details class="pred-details">
+    <summary>SKU sin prueba del grupo y su causa ({{ format_count(untested | length) }})</summary>
+    {% set headers = ["SKU", "Clase", "Semilla 0", "Semilla 1", "Semilla 2"] %}
+    {{ table_start(headers, "SKU sin prueba del grupo", "seed-group") }}
+    {% for p in untested %}
+    <tr><th scope="row">{{ p.sku }}</th><td data-label="{{ headers[1] }}">{{ sku_class_label(p.sku_class) }}</td>{% for row in p.sources %}<td data-label="Semilla {{ row.seed }}">{% if row.cause %}{{ term(source_cause(row.cause)) }}{% else %}—{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}
+    {{ table_end() }}
+  </details>
+  {% endif %}
   <p class="pred-meta"><span title="ADR-03-012">Regla del grupo final de evaluaciones (decisión 10)</span>. La corrección {{ gloss("BH") }} mantiene los supuestos de independencia o dependencia positiva de las pruebas por evaluación. Una diferencia no significativa no prueba equivalencia.</p>
   <p><a href="{{ download_url }}">Descargar valores y fuentes (JSON)</a></p>
   <details class="pred-details">
     <summary>Evaluaciones y fuentes de cada número</summary>
+    <ul>{% for seed in range(3) %}<li>Semilla {{ seed }}: {% for option in options[seed] %}<span class="mono">{{ option.run_id }}</span>{% if selected[seed] == option.run_id %} (elegida){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.</li>{% endfor %}</ul>
     <ul>{% for run in significance.runs %}<li>Semilla {{ run.seed }}: evaluación final <span class="mono">{{ run.run_id }}</span>, ajuste de modelos <span class="mono">{{ run.run_id_m2 }}</span>, huella de los datos <span class="mono">{{ run.ingesta_sha256 }}</span>.</li>{% endfor %}</ul>
     <p class="pred-meta">El archivo incluye p y dirección de cada SKU por evaluación, exclusiones y causas, p máximo y p ajustado. Para la clase {{ sku_class_label("lumpy") }} incluye el candidato, los orígenes y las sumas de pérdidas, que remiten a las métricas, las confirmaciones y las comparaciones de origen.</p>
   </details>
 </section>
 <section class="pred-section" id="lumpy-del-grupo">
   <h2>{{ sku_class_label("lumpy") }}: población completa y común</h2>
-  {% if group.lumpy.cause %}<p class="pred-note">{{ group_lumpy_cause_text(group.lumpy.cause) }}</p>{% else %}
+  {% if group.lumpy.cause %}
+  <p class="pred-note">{{ group_lumpy_cause_text(group.lumpy.cause) }}</p>
+  {% if group.lumpy.effects %}
+  {% set headers = ["Semilla", "Campeona", "Comparación", "SKU completos", "Mediana publicada"] %}
+  {{ table_start(headers, "Medianas publicadas por evaluación", "seed-group") }}
+  {% for effect in group.lumpy.effects %}
+  <tr><th scope="row" title="Evaluación final {{ effect.run_id }}">Semilla {{ effect.seed }}</th><td data-label="{{ headers[1] }}">{{ family_label(effect.champion) }}</td><td data-label="{{ headers[2] }}">{{ family_label(effect.comparison) }}</td><td class="num" data-label="{{ headers[3] }}">{{ format_count(effect.full_count) }}</td><td class="num" data-label="{{ headers[4] }}"{{ exact(effect.full_median) }}>{{ ratio_text(effect.full_median) }}</td></tr>
+  {% endfor %}
+  {{ table_end() }}
+  {% endif %}
+  {% else %}
   <p>Compiten en las tres evaluaciones {{ format_count(group.lumpy.common_competing | length) }} productos de la clase {{ sku_class_label("lumpy") }}. La población común de cada comparación conserva solo los que tienen suficientes ventanas comunes de prueba en las tres.</p>
   <p class="pred-meta">Se compara la mediana de confirmación en todos los productos de cada evaluación y en una población común fija. La mediana se calcula en logaritmos y vuelve a la escala de razones. Menos de 1 favorece a Fundacional. Los rangos son descriptivos: no se restan ni se aplica un umbral de estabilidad.</p>
   {% for comparison in ["seasonal_naive", "classical"] %}
@@ -94,7 +117,7 @@
   {% endfor %}
   {{ table_end() }}
   <p>p máximo: <strong {{ exact(product.p_max) }}>{{ p_text(product.p_max, significance.alpha) }}</strong>. p ajustado por {{ gloss("BH") }}: <strong {{ exact(product.p_adjusted) }}>{{ p_text(product.p_adjusted, significance.alpha) }}</strong>.</p>
-  <p>{% if product.improved %}Mejora significativa en las tres semillas.{% elif product.worsened %}Empeora de forma significativa en las tres semillas.{% elif product.significant %}Diferencia significativa sin mejora uniforme en las tres semillas.{% elif product.significant is none %}Sin prueba del grupo: falta alguna prueba válida.{% else %}Sin diferencia significativa del grupo.{% endif %}</p>
+  <p>{% if product.improved %}Mejora significativa en las tres semillas.{% elif product.worsened %}Empeora de forma significativa en las tres semillas.{% elif product.significant %}Diferencia significativa, pero la dirección cambia entre semillas (Otras direcciones).{% elif product.significant is none %}Sin prueba del grupo: falta alguna prueba válida.{% else %}Sin diferencia significativa del grupo.{% endif %}</p>
   {% elif sku %}<p>No hay un SKU «{{ sku }}» en este grupo.</p>{% endif %}
 </section>
 </div>

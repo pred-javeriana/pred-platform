@@ -2982,6 +2982,11 @@ abbr[title] {
 }
 
 /* Sin respuesta del servidor o con la actualización pausada: el punto se detiene y se apaga. */
+.pred-run__pulse.is-fija .pred-run__pulse-dot,
+.pred-steps.is-fija .pred-steps__mark::before {
+  animation: none;
+}
+
 .pred-run__pulse.is-stale .pred-run__pulse-dot {
   background: var(--muted);
   animation: none;

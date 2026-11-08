@@ -26,7 +26,7 @@ from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker import engine
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.errores import platform_error, run_stopped_error
-from pred_platform.worker.importacion import finalize
+from pred_platform.worker.importacion import finalize, fresh_summary
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.solo_lectura import database_read_only
 
@@ -52,20 +52,17 @@ class Worker:
         self._lock = lock or WorkerLock.for_database(settings.db_path)
         # The run this worker claimed but could not record as stopped, with the error to record.
         self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
+        # The runs whose final result import failed after the engine had finished.
+        self._import_failed: list[str] = []
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
         """Process queued runs until shutdown, leaving interrupted work queued for restart.
 
-        While another worker holds the database, or the database is read-only, this one waits
-        without touching any run. A lock file it cannot create, as in a read-only folder, stops
-        it with a logged reason, so the app reports that no worker follows the queue.
+        While another worker holds the database, the database is read-only, or its lock cannot
+        be opened, this worker waits without touching any run and retries until shutdown.
         """
-        try:
-            if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
-                return
-        except OSError as exc:
-            self._log_unlockable(exc)
+        if not self._wait_until_writable(stop) or not self._wait_for_lock(stop):
             return
         try:
             try:
@@ -83,29 +80,33 @@ class Worker:
         finally:
             self._lock.release()
 
-    def drain(self) -> None:
+    def drain(self) -> bool:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``).
 
-        While another worker holds the database, that worker runs the queue and this one exits;
-        on a read-only database there is nothing it may run.
+        Returns whether every final result import succeeded; a failed import leaves its run
+        recoverable and the caller exits non-zero.
+
+        While another worker holds the database, this one exits without running anything;
+        queued work waits for that worker or the next one. A read-only database is left alone.
         """
         if database_read_only(self.settings.db_path):
             _logger.warning(
                 "La base %s es de solo lectura: no se ejecuta ninguna corrida",
                 self.settings.db_path,
             )
-            return
+            return True
         try:
             locked = self._lock.acquire()
         except OSError as exc:
             self._log_unlockable(exc)
-            return
+            raise
         if not locked:
             _logger.warning(
-                "Otro worker ya atiende %s; ese worker ejecutará las corridas en cola",
+                "Otro worker ya atiende %s; --once no ejecutó nada: las corridas en cola quedan "
+                "para ese worker o para el siguiente que arranque",
                 self.settings.db_path,
             )
-            return
+            return True
         try:
             self.recover()
             while self.run_next() or self._unsettled is not None:
@@ -113,6 +114,7 @@ class Worker:
                     time.sleep(self.poll_interval)  # the database still fails: wait, then retry
         finally:
             self._lock.release()
+        return not self._import_failed
 
     def _log_unlockable(self, exc: OSError) -> None:
         _logger.error(
@@ -136,17 +138,22 @@ class Worker:
         return False
 
     def _wait_for_lock(self, stop: threading.Event) -> bool:
-        """Take the database for this worker, waiting while another holds it, until ``stop``."""
-        if self._lock.acquire():
-            return True
-        _logger.warning(
-            "Otro worker ya atiende %s; este espera a que termine para seguir la cola",
-            self.settings.db_path,
-        )
-        while not stop.wait(self.poll_interval):
-            if self._lock.acquire():
-                _logger.info("Este worker atiende ahora %s", self.settings.db_path)
-                return True
+        """Wait for the database lock, retrying access and system errors until ``stop``."""
+        waiting = False
+        while not stop.is_set():
+            try:
+                if self._lock.acquire():
+                    return True
+            except OSError as exc:
+                self._log_unlockable(exc)
+            else:
+                if not waiting:
+                    _logger.warning(
+                        "Otro worker ya atiende %s; este espera a que termine para seguir la cola",
+                        self.settings.db_path,
+                    )
+                    waiting = True
+            stop.wait(self.poll_interval)
         return False
 
     def recover(self) -> None:
@@ -200,6 +207,18 @@ class Worker:
                     retryable=True,
                 )
                 self._unsettled = (run, error)
+                self._settle(conn)
+            except Exception as exc:  # noqa: BLE001 - settle every unexpected supervision failure
+                _logger.exception("Corrida %s: falló la supervisión", run.run_id)
+                conn.rollback()
+                self._unsettled = (
+                    run,
+                    platform_error(
+                        "pipeline.stage_failed",
+                        f"Falló la supervisión del motor: {type(exc).__name__}: {exc}",
+                        retryable=True,
+                    ),
+                )
                 self._settle(conn)
         return True
 
@@ -308,6 +327,7 @@ class Worker:
             follower.poll()
         except ValueError as exc:  # a progress stream this platform cannot read
             engine.terminate(process.pid)
+            process.wait()
             dal.close_open_tasks(
                 conn,
                 run.id,
@@ -325,9 +345,23 @@ class Worker:
             engine.terminate(process.pid)
             process.wait()
             raise
+        except Exception:
+            # An unexpected supervision error, such as a progress record without its keys. An
+            # attempt the engine already finished (it exited, or sent run_finished after its
+            # final files) is imported from those files. Any other attempt is settled by
+            # run_next; a run the engine already published keeps its process for recovery.
+            finished = process.poll() is not None or follower.finished is not None
+            engine.terminate(process.pid)
+            process.wait()
+            if not (finished and fresh_summary(folder, previous_summary)):
+                raise
+            _logger.exception(
+                "Corrida %s: falló la supervisión; se importan los archivos finales del motor",
+                run.run_id,
+            )
         except BaseException:
-            # An interrupt or shutdown: the engine runs in its own session, so stop it here and
-            # leave the run `ejecutando` for `recover()` to queue again.
+            # An interrupt or a shutdown: the engine runs in its own session, so stop it here.
+            # The run stays `ejecutando` for recovery.
             engine.terminate(process.pid)
             process.wait()
             raise
@@ -347,14 +381,18 @@ class Worker:
                 dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
             return
 
-        estado = finalize(
-            conn,
-            run,
-            run_dir=folder,
-            returncode=process.returncode,
-            corte=corte,
-            families=follower.families,
-            log_path=log_path,
-            previous_summary=previous_summary,
-        )
+        try:
+            estado = finalize(
+                conn,
+                run,
+                run_dir=folder,
+                returncode=process.returncode,
+                corte=corte,
+                families=follower.families,
+                log_path=log_path,
+                previous_summary=previous_summary,
+            )
+        except Exception:
+            self._import_failed.append(run.run_id)
+            raise
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)

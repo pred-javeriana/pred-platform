@@ -263,7 +263,7 @@ def test_issue_179_launch_advanced_grid_aligns_bottom_and_uses_short_label() -> 
 
     tmpl_path = TEMPLATES / "partials/execution_launch.html"
     tmpl_text = tmpl_path.read_text(encoding="utf-8")
-    assert '"Configuraciones por familia"' in tmpl_text
+    assert '"Configuraciones por SKU y familia"' in tmpl_text
     assert '"Configuraciones a probar por familia"' not in tmpl_text
 
 
