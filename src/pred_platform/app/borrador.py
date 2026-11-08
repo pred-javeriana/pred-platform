@@ -1,30 +1,32 @@
 """El borrador de una corrida nueva: el archivo y los ajustes elegidos antes de lanzar.
 
-Vive en el servidor, en un archivo por sesión del navegador (``DraftStore``); la cookie de sesión
-solo lleva el identificador. Así Atrás, Siguiente y la barra de pasos conservan lo elegido, y el
-borrador se descarta al lanzar. No es un secreto ni una decisión: es lo que la persona escribió, y
-lanzar lo vuelve a validar con la regla del worker (``ejecucion.parse_launch_form``). Una cookie
-ilegible o sin borrador se trata como un borrador vacío.
+Vive en una cookie de sesión del navegador, así que Atrás, Siguiente y la barra de pasos
+conservan lo elegido, y el borrador se descarta al lanzar. No es un secreto ni una decisión: es
+lo que la persona escribió, y lanzar lo vuelve a validar con la regla del worker
+(``ejecucion.parse_launch_form``). Una cookie ilegible o con otra forma se trata como un borrador
+vacío.
 
-El borrador tiene una revisión que sube con cada escritura. El guardado automático de Ajustes
-escribe solo si la página aún tiene la última revisión; una página que ya se dejó, o cuya
-respuesta llega tarde, no puede reemplazar una elección más nueva: la cookie nunca lleva valores,
-así que una respuesta atrasada no tiene nada que escribir en el navegador.
+El borrador lleva una revisión que sube con cada escritura y una marca propia de esa escritura.
+Cada página de Ajustes recuerda la revisión y la marca que vio, y el servidor rechaza un guardado
+o un envío cuando no son las del borrador vigente: una pestaña vieja nunca pisa una copia, una
+importación o una edición hechas después, ni siquiera en la misma revisión. Una cookie de antes de
+la revisión sigue valiendo como la revisión 0 sin marca.
+
+Una respuesta que llega tarde no puede borrar una cookie más nueva, porque el navegador aplica su
+``Set-Cookie`` cuando llega. Por eso el guardado automático escribe una cookie propia por revisión
+(``pred_borrador_a<rev>``) y el borrador vigente es la de mayor revisión; con la misma revisión
+gana la cookie principal, que solo escriben las acciones que cambian de página (Siguiente, Atrás,
+copiar, importar). Una respuesta tardía de una página ya abandonada deja, como mucho, una cookie con
+una revisión que ya no gana.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
-import os
 import re
-import shutil
-import tempfile
-import threading
-import time
-import weakref
-from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -33,12 +35,11 @@ from fastapi import Request, Response
 from pred_platform.app.ejecucion import default_form_values
 
 COOKIE = "pred_borrador"
+_AUTOSAVE = COOKIE + "_a"
 _PATH = "/"
+_MAX_REV = 2**31
+_TOKEN = re.compile(r"[0-9a-f]{12}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-# El identificador de sesión es también el nombre del archivo: solo esta forma, nunca una ruta.
-_SESSION = re.compile(r"[0-9a-f]{32}")
-_TTL = 30 * 24 * 3600.0
-_PRUNE_EVERY = 3600.0
 # Los campos del formulario de lanzamiento que guarda el borrador, todos como texto.
 _TEXT_FIELDS = (
     "metric",
@@ -59,8 +60,15 @@ class Draft:
     values: dict[str, Any] = field(default_factory=default_form_values)
     # Si Ajustes se completó con «Continuar».
     settings_ready: bool = False
-    # Sube con cada escritura; 0 es un borrador que nunca se guardó.
+    # Sube con cada escritura; 0 es un borrador que nunca se guardó (o de antes de la revisión).
     rev: int = 0
+    # Identifica la escritura: dos escrituras de la misma revisión no se confunden.
+    token: str = ""
+
+    @property
+    def stamp(self) -> str:
+        """Lo que una página recuerda del borrador que vio y devuelve con lo que envía."""
+        return f"{self.rev}.{self.token}"
 
     def with_ingest(self, ingest_id: str) -> Draft:
         """Otro archivo pide revisar los ajustes de nuevo; el mismo conserva Ajustes completo."""
@@ -95,180 +103,99 @@ def _clean(raw: object) -> dict[str, Any]:
     return values
 
 
-def _parse(data: object, rev: int) -> Draft:
+def _parse(raw: str) -> Draft | None:
+    try:
+        data = json.loads(base64.urlsafe_b64decode(raw.encode("ascii") + b"==="))
+    except (ValueError, binascii.Error, UnicodeError):
+        return None
     if not isinstance(data, dict):
-        return Draft()
+        return None
     ingest = data.get("ingest_id")
+    rev = data.get("rev")
+    token = data.get("token")
     return Draft(
         ingest_id=ingest if isinstance(ingest, str) and _SHA256.fullmatch(ingest) else None,
         values=_clean(data.get("values")),
         settings_ready=data.get("settings_ready") is True,
-        rev=rev,
+        rev=rev if type(rev) is int and 0 < rev < _MAX_REV else 0,
+        token=token if isinstance(token, str) and _TOKEN.fullmatch(token) else "",
     )
 
 
-class DraftStore:
-    """Los borradores guardados, uno por sesión del navegador.
-
-    Son archivos pequeños en ``directory``, así que sobreviven a reiniciar la aplicación, y vencen a
-    los 30 días sin cambios. Sin ``directory`` (o si no se puede escribir en él) viven en una
-    carpeta temporal que se borra al cerrar la aplicación.
-    Una sola aplicación los usa a la vez: el candado ordena las escrituras de sus hilos.
-    """
-
-    def __init__(
-        self,
-        directory: Path | None = None,
-        *,
-        ttl: float = _TTL,
-        clock: Callable[[], float] = time.time,
-    ) -> None:
-        self._directory = directory or self._temporary()
-        self._ttl = ttl
-        self._clock = clock
-        self._lock = threading.Lock()
-        self._pruned = clock()
-
-    def read(self, session: str) -> Draft:
-        with self._lock:
-            return self._read(session)
-
-    def write(self, session: str, draft: Draft) -> Draft:
-        """Guarda el borrador como la elección más nueva y devuelve su revisión."""
-        with self._lock:
-            return self._write(session, draft)
-
-    def autosave(
-        self, session: str, rev: int, change: Callable[[Draft], Draft]
-    ) -> tuple[bool, Draft]:
-        """Aplica ``change`` solo si el borrador sigue en la revisión ``rev`` que vio la página.
-
-        Devuelve si se guardó y el borrador que quedó: con otra revisión no cambia nada, porque
-        una elección más nueva ya lo reemplazó.
-        """
-        with self._lock:
-            current = self._read(session)
-            if current.rev != rev:
-                return False, current
-            return True, self._write(session, change(current))
-
-    def discard(self, session: str) -> None:
-        with self._lock:
-            self._path(session).unlink(missing_ok=True)
-
-    def _temporary(self) -> Path:
-        directory = Path(tempfile.mkdtemp(prefix="pred-borradores-"))
-        weakref.finalize(self, shutil.rmtree, directory, ignore_errors=True)
-        return directory
-
-    def _path(self, session: str) -> Path:
-        return self._directory / f"{session}.json"
-
-    def _read(self, session: str) -> Draft:
-        try:
-            data = json.loads(self._path(session).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return Draft()
-        rev = data.get("rev") if isinstance(data, dict) else None
-        return _parse(data, rev if isinstance(rev, int) and rev > 0 else 0)
-
-    def _write(self, session: str, draft: Draft) -> Draft:
-        stored = replace(draft, values=_clean(draft.values), rev=self._read(session).rev + 1)
-        payload = json.dumps(
-            {
-                "rev": stored.rev,
-                "ingest_id": stored.ingest_id,
-                "values": stored.values,
-                "settings_ready": stored.settings_ready,
-            },
-            separators=(",", ":"),
-        )
-        try:
-            self._put(session, payload)
-        except OSError:
-            # Una carpeta de datos de solo lectura sigue sirviendo el recorrido: el borrador pasa
-            # a una carpeta temporal y dura lo que la aplicación.
-            self._directory = self._temporary()
-            self._put(session, payload)
-        self._prune()
-        return stored
-
-    def _put(self, session: str, payload: str) -> None:
-        self._directory.mkdir(parents=True, exist_ok=True)
-        pending = self._directory / f"{uuid4().hex}.tmp"
-        pending.write_text(payload, encoding="utf-8")
-        os.replace(pending, self._path(session))
-
-    def _prune(self) -> None:
-        now = self._clock()
-        if now - self._pruned < _PRUNE_EVERY:
-            return
-        self._pruned = now
-        for path in self._directory.iterdir():
-            try:
-                if now - path.stat().st_mtime > self._ttl:
-                    path.unlink(missing_ok=True)
-            except OSError:
-                continue
-
-
-def _store(request: Request) -> DraftStore:
-    store: DraftStore = request.app.state.drafts
-    return store
-
-
-def _cookie_session(request: Request) -> str | None:
-    raw = request.cookies.get(COOKIE)
-    return raw if raw and _SESSION.fullmatch(raw) else None
-
-
-def _session(request: Request) -> str:
-    """La sesión de esta petición: la de la cookie o, sin ella, una nueva (una por petición)."""
-    existing = _cookie_session(request) or getattr(request.state, "draft_session", None)
-    if existing:
-        return str(existing)
-    request.state.draft_session = uuid4().hex
-    return str(request.state.draft_session)
+def _autosave_cookies(request: Request) -> list[str]:
+    return [name for name in request.cookies if name.startswith(_AUTOSAVE)]
 
 
 def read_draft(request: Request) -> Draft:
-    session = _cookie_session(request)
-    return Draft() if session is None else _store(request).read(session)
+    """El borrador vigente: el de mayor revisión; con la misma, el de la cookie principal."""
+    best: tuple[int, int] | None = None
+    draft = Draft()
+    for name in (COOKIE, *_autosave_cookies(request)):
+        found = _parse(request.cookies.get(name) or "")
+        if found is None:
+            continue
+        rank = (found.rev, int(name == COOKIE))
+        if best is None or rank > best:
+            best, draft = rank, found
+    return draft
 
 
-def write_draft(request: Request, draft: Draft) -> Draft:
-    """Guarda ``draft`` como la elección más nueva; falta ``bind_session`` en la respuesta."""
-    return _store(request).write(_session(request), draft)
+def next_revision(request: Request, draft: Draft) -> Draft:
+    """El borrador como la elección más nueva: una revisión más que la vigente, con marca nueva."""
+    return replace(
+        draft, rev=min(read_draft(request).rev + 1, _MAX_REV - 1), token=uuid4().hex[:12]
+    )
 
 
-def bind_session(request: Request, response: Response, *, only_new: bool = False) -> None:
-    """Pone la cookie de sesión (con ``only_new``, solo si el navegador aún no tiene una). Es
-    siempre el mismo identificador, así que una respuesta que llega tarde no cambia el borrador al
-    que apunta el navegador."""
-    if only_new and _cookie_session(request) is not None:
-        return
-    # Sin expiración: dura lo que la sesión del navegador.
-    response.set_cookie(COOKIE, _session(request), path=_PATH, httponly=True, samesite="lax")
+def is_stale(request: Request, page_stamp: str | None) -> bool:
+    """Si la página que envía no vio el borrador vigente: otra página lo escribió después.
+
+    Sin marca (un cliente que no la conoce) no hay con qué comparar; una ilegible se rechaza.
+    """
+    if page_stamp is None or not page_stamp.strip():
+        return False
+    return page_stamp != read_draft(request).stamp
 
 
-def save_draft(request: Request, response: Response, draft: Draft) -> Draft:
-    stored = write_draft(request, draft)
-    bind_session(request, response)
-    return stored
+def _encode(draft: Draft) -> str:
+    payload = json.dumps(
+        {
+            "ingest_id": draft.ingest_id,
+            "values": _clean(draft.values),
+            "settings_ready": draft.settings_ready,
+            "rev": draft.rev,
+            "token": draft.token,
+        },
+        separators=(",", ":"),
+    )
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
 
 
-def autosave_draft(
-    request: Request, rev: str | None, change: Callable[[Draft], Draft]
-) -> tuple[bool, Draft]:
-    """El guardado automático de Ajustes: ``rev`` es la revisión que la página vio al cargar o al
-    guardar por última vez. Sin sesión o con otra revisión no se guarda nada."""
-    session = _cookie_session(request)
-    if session is None or rev is None or not rev.isascii() or not rev.isdigit():
-        return False, Draft()
-    return _store(request).autosave(session, int(rev), change)
+def _expire(response: Response, name: str) -> None:
+    response.delete_cookie(name, path=_PATH, httponly=True, samesite="lax")
+
+
+def save_draft(
+    request: Request, response: Response, draft: Draft, *, autosave: bool = False
+) -> None:
+    """Escribe ``draft`` (ya con su revisión, ``next_revision``) en la respuesta.
+
+    El guardado automático escribe su cookie de la revisión y no toca la principal; cualquier otro
+    guardado reemplaza la principal y retira las de guardado automático que ya no valen.
+    """
+    value = _encode(draft)
+    stale = _autosave_cookies(request)
+    if autosave:
+        name = f"{_AUTOSAVE}{draft.rev}"
+        # Sin fecha de vencimiento: dura lo que la sesión del navegador.
+        response.set_cookie(name, value, path=_PATH, httponly=True, samesite="lax")
+        stale = [other for other in stale if other != name]
+    else:
+        response.set_cookie(COOKIE, value, path=_PATH, httponly=True, samesite="lax")
+    for other in stale:
+        _expire(response, other)
 
 
 def clear_draft(request: Request, response: Response) -> None:
-    if (session := _cookie_session(request)) is not None:
-        _store(request).discard(session)
-    response.delete_cookie(COOKIE, path=_PATH, httponly=True, samesite="lax")
+    for name in (COOKIE, *_autosave_cookies(request)):
+        _expire(response, name)

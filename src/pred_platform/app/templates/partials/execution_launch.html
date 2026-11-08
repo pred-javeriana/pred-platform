@@ -2,6 +2,10 @@
 {% from "components/buttons.html" import button %}
 {% from "components/alerts.html" import alert %}
 
+<div class="pred-conflict" id="conflicto-borrador"{% if not conflict %} hidden{% endif %}>
+  {{ alert("El borrador cambió en otra página o pestaña después de abrir esta. No se guardó lo que escribió aquí; recargue para ver lo último.", variant="warning") }}
+  <p class="pred-actions">{{ button("Recargar Ajustes", variant="secondary", href="/corridas/nueva/ajustes", icon="i-rotate") }}</p>
+</div>
 <section class="pred-panel pred-action-card pred-copy-card" aria-labelledby="titulo-copiar">
   <div>
     <h2 id="titulo-copiar">Partir de una corrida anterior</h2>
@@ -10,6 +14,7 @@
   <div class="pred-action-card__do pred-copy-actions">
     {% if copy_runs %}
     <form method="post" action="/corridas/nueva/copiar" class="pred-copy-form" data-auto-choice data-replaces-draft>
+      <input type="hidden" name="draft_rev" value="{{ draft_rev|default("") }}">
       <label class="pred-sr-only" for="copiar">Copiar una corrida</label>
       <select id="copiar" name="copiar" class="pred-field__control" required>
         <option value="">Elija una corrida para copiar sus ajustes</option>
@@ -23,6 +28,7 @@
       {% if import_error %}{{ alert(import_error, variant="error") }}{% endif %}
       <p class="pred-meta">Reproducir una ejecución anterior no lanza nada: primero se revisan sus ajustes.</p>
       <form method="post" action="/ejecucion/configuracion" enctype="multipart/form-data" id="importar-configuracion" data-replaces-draft>
+        <input type="hidden" name="draft_rev" value="{{ draft_rev|default("") }}">
         {{ field("archivo", "Configuración exportada (.json)", input_type="file", accept=".json,application/json", hint="Rellena este formulario con los ajustes de otra ejecución; no lanza nada.") }}
         {{ button("Importar", variant="secondary", type="submit", icon="i-upload") }}
       </form>
@@ -35,8 +41,9 @@
 {% if not ingests %}
 <section class="pred-panel"><h2>Primero elija los datos</h2><p class="pred-note pred-note--muted">Todavía no hay ningún archivo de datos aceptado. Cargue y valide un archivo en <a href="/corridas/nueva/datos">Datos</a> para poder ejecutar.</p></section>
 {% else %}
-<form method="post" action="/corridas/nueva/ajustes" class="pred-launch pred-settings-form" id="{{ launch_form_id }}" data-autosave data-draft-rev="{{ draft_rev|default(0) }}"
+<form method="post" action="/corridas/nueva/ajustes" class="pred-launch pred-settings-form" id="{{ launch_form_id }}" data-autosave
       hx-post="/corridas/nueva/ajustes/comprobar" hx-trigger="change" hx-target="#matriz-familias" hx-select="#matriz-familias" hx-swap="outerHTML" hx-sync="this:replace">
+  <input type="hidden" name="draft_rev" value="{{ draft_rev|default("") }}">
   {% include "partials/families_matrix.html" %}
   {% include "partials/settings_evaluation.html" %}
 </form>

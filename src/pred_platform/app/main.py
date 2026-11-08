@@ -13,7 +13,6 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from pred_platform.app.borrador import DraftStore
 from pred_platform.app.datos import PendingUploads
 from pred_platform.app.routers import (
     catalog,
@@ -111,10 +110,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = active
     application.state.repository = build_repository(active)
     application.state.run_control = build_run_control(active)
-    # El borrador de la corrida nueva se guarda por sesión del navegador, en la raíz de datos.
-    application.state.drafts = DraftStore(
-        active.data_root / "borradores" if active.data_source == "dal" else None
-    )
     # Las cargas sin confirmar esperan en disco, junto a las demás cargas de la raíz de datos.
     application.state.pending_uploads = PendingUploads(
         directory=active.data_root / STAGING_DIR if active.data_source == "dal" else None

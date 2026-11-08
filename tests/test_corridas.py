@@ -8,12 +8,12 @@ import sqlite3
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import pytest
+from fastapi import Request, Response
 from fastapi.testclient import TestClient
 
-from pred_platform.app.borrador import COOKIE, Draft
+from pred_platform.app.borrador import COOKIE, Draft, save_draft
 from pred_platform.app.configuracion import FORMAT, FORMAT_VERSION
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
@@ -477,10 +477,9 @@ def test_settings_that_cannot_run_stay_in_ajustes_with_the_reason(env: Env) -> N
         follow_redirects=False,
     )
     assert response.status_code == 200
+    assert "set-cookie" not in response.headers
     assert "<title>Ajustes · Corrida nueva · PRED</title>" in response.text
     assert "is-error" in response.text
-    # The page opens a session for its autosave, but nothing invalid is kept in the draft.
-    assert "Primero elija los datos" in client.get("/corridas/nueva/revisar").text
 
 
 def _choose(client: TestClient, ingest_id: str) -> None:
@@ -488,11 +487,14 @@ def _choose(client: TestClient, ingest_id: str) -> None:
     assert chosen.url.path == "/corridas/nueva/ajustes"
 
 
-def _store_draft(client: TestClient, ingest_id: str) -> None:
-    """A draft that already chose a file, as an earlier visit left it."""
-    session = uuid4().hex
-    client.app.state.drafts.write(session, Draft(ingest_id=ingest_id))  # type: ignore[attr-defined]
-    client.cookies.set(COOKIE, session)
+def _draft_cookie(ingest_id: str) -> str:
+    response = Response()
+    save_draft(
+        Request({"type": "http", "headers": []}), response, Draft(ingest_id=ingest_id, rev=1)
+    )
+    found = re.search(rf"{COOKIE}=([^;]+)", response.headers["set-cookie"])
+    assert found is not None
+    return found.group(1)
 
 
 def test_leaving_ajustes_by_atras_keeps_what_was_typed(env: Env) -> None:
@@ -585,10 +587,13 @@ def test_after_a_rail_exit_and_browser_back_continuar_goes_to_revisar(env: Env) 
     left = client.post("/corridas/nueva/ajustes", data=rail, follow_redirects=False)
     assert left.headers["location"] == "/corridas/nueva/datos"
 
-    # Browser Back shows the same Ajustes page with what was typed; the destination of the
-    # earlier exit travelled only with that submit, so Continuar and Enter go forward.
+    # Browser Back asks for the Ajustes page again (it is never cached, so it carries the draft
+    # revision the exit wrote) and shows what was typed; the destination of the earlier exit
+    # travelled only with that submit, so Continuar and Enter go forward.
     for button in (_CONTINUAR, None):
-        data = formulario_html.submit(page, _AJUSTES_FORM, typed=typed, button=button)
+        again = client.get("/corridas/nueva/ajustes")
+        assert again.headers["cache-control"] == "no-store"
+        data = formulario_html.submit(again.text, _AJUSTES_FORM, typed=typed, button=button)
         assert "destino" not in data
         forward = client.post("/corridas/nueva/ajustes", data=data, follow_redirects=False)
         assert forward.headers["location"] == "/corridas/nueva/revisar"
@@ -597,7 +602,10 @@ def test_after_a_rail_exit_and_browser_back_continuar_goes_to_revisar(env: Env) 
 
     # Atrás is still the way back, with what was typed.
     back = formulario_html.submit(
-        page, _AJUSTES_FORM, typed={"seed": "7"}, button={"value": "datos"}
+        client.get("/corridas/nueva/ajustes").text,
+        _AJUSTES_FORM,
+        typed={"seed": "7"},
+        button={"value": "datos"},
     )
     assert back["destino"] == ["datos"]
     assert client.post("/corridas/nueva/ajustes", data=back).url.path == "/corridas/nueva/datos"
@@ -623,15 +631,17 @@ def test_the_rail_keeps_edits_without_script_and_leaves_no_destination_in_the_pa
     assert (
         '<input type="hidden" name="seed" value="99">' in client.get("/corridas/nueva/revisar").text
     )
-    # Browser Back restores the same DOM. Only the clicked submitter carries destino.
-    enter = formulario_html.submit(page, _AJUSTES_FORM, typed={"seed": "99"})
+    # Browser Back asks for the never-cached page again. Only the clicked submitter carries destino.
+    enter = formulario_html.submit(
+        client.get("/corridas/nueva/ajustes").text, _AJUSTES_FORM, typed={"seed": "99"}
+    )
     assert "destino" not in enter
     assert client.post("/corridas/nueva/ajustes", data=enter).url.path == "/corridas/nueva/revisar"
 
 
 def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
     client = _dal_client(env)
-    _store_draft(client, SOME_INGEST)
+    client.cookies.set(COOKIE, _draft_cookie(SOME_INGEST))
 
     ajustes = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
 
@@ -750,9 +760,7 @@ def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
 
 
-@pytest.mark.parametrize(
-    "cookie", ["no-es-base64", "eyJpbmdlc3RfaWQiOiAxfQ", "../" + "a" * 29, "0" * 32]
-)
+@pytest.mark.parametrize("cookie", ["no-es-base64", "eyJpbmdlc3RfaWQiOiAxfQ", "W10"])
 def test_an_unreadable_draft_is_an_empty_one(cookie: str) -> None:
     client = _fixture_client()
     client.cookies.set(COOKIE, cookie)

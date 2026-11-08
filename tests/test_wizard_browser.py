@@ -5,6 +5,7 @@ tests/test_wizard_browser.py. Cada prueba usa su servidor, base y sesión de nav
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import socket
@@ -362,3 +363,129 @@ def test_a_late_autosave_from_a_page_already_left_keeps_the_later_choice(
             review.horizon !== '3')
             throw new Error('Revisar perdió lo elegido: ' + JSON.stringify(review));
     """)
+
+
+def _expect_draft(browser: Browser, seed: str, horizon: str) -> None:
+    """Ajustes and Revisar both show these values, read from a fresh page."""
+    browser.open("/corridas/nueva/ajustes")
+    browser.run(f"""
+        const values = await page.eval(() => ({{
+            seed: document.querySelector('#seed').value,
+            horizon: document.querySelector('#horizon').value
+        }}));
+        if (values.seed !== '{seed}' || values.horizon !== '{horizon}')
+            throw new Error('Ajustes perdió lo elegido: ' + JSON.stringify(values));
+        await page.click('button[form=formulario-ajustes]:not([name])');
+        await page.wait('input[type=hidden][name=seed]');
+        const review = await page.eval(() => ({{
+            path: location.pathname,
+            seed: document.querySelector('input[type=hidden][name=seed]')?.value,
+            horizon: document.querySelector('input[type=hidden][name=horizon]')?.value
+        }}));
+        if (review.path !== '/corridas/nueva/revisar' || review.seed !== '{seed}' ||
+            review.horizon !== '{horizon}')
+            throw new Error('Revisar perdió lo elegido: ' + JSON.stringify(review));
+    """)
+
+
+def _selected_tab(browser: Browser) -> str:
+    """The id of the tab the next script runs in."""
+    for line in browser.command("pages").splitlines():
+        fields = line.strip().split(",")
+        if fields[-1] == "true":
+            return fields[0]
+    raise AssertionError("Ningún tab seleccionado")
+
+
+def _open_newer_tab(browser: Browser) -> tuple[str, str]:
+    """Opens Ajustes in a second tab; returns the ids of the older and the newer tab."""
+    older = _selected_tab(browser)
+    browser.command("newpage", browser.url + "/corridas/nueva/ajustes")
+    return older, _selected_tab(browser)
+
+
+@pytest.mark.parametrize("stage", ["none", "response", "request"])
+@pytest.mark.parametrize("choice", ["copy", "import"])
+def test_an_older_tab_never_overwrites_a_later_copy_or_import(
+    browser: Browser, env: Env, choice: str, stage: str
+):
+    """The older tab edits after a copy or import made in a newer tab: the server refuses its
+    save, the page says so, and it does not retry on its own."""
+    _launch(_dal_client(env), env, seed="61")
+    _complete(browser, env)
+    older = _selected_tab(browser)
+    if stage != "none":
+        browser.stage = stage
+        browser.hold = True
+        _type(browser, "seed", "99")
+        assert browser.waiting.wait(5), "El guardado de la pestaña vieja no llegó"
+    older, newer = _open_newer_tab(browser)
+    seed = _choose_settings(browser, choice)
+    browser.release.set()
+    browser.run("await page.wait(500);")
+    browser.command("selectpage", older)
+    if stage == "none":
+        _type(browser, "seed", "99")
+        browser.run("await page.wait(800);")
+        browser.run("""
+            const shown = await page.eval(
+                () => !document.getElementById('conflicto-borrador').hidden);
+            if (!shown) throw new Error('La pestaña vieja no avisó del conflicto');
+        """)
+    browser.command("selectpage", newer)
+    _expect_draft(browser, seed, "2")
+
+
+def test_the_conflict_notice_offers_a_reload_and_blocks_a_stale_submit(browser: Browser, env: Env):
+    _launch(_dal_client(env), env, seed="61")
+    _complete(browser, env)
+    older, newer = _open_newer_tab(browser)
+    _choose_settings(browser, "copy")
+    browser.command("selectpage", older)
+    # Continuar from the older tab is refused and shows the notice with the draft as it is.
+    browser.run("""
+        await page.click('button[form=formulario-ajustes]:not([name])');
+        await page.wait('#conflicto-borrador');
+        const notice = await page.eval(() => ({
+            path: location.pathname,
+            shown: !document.getElementById('conflicto-borrador').hidden,
+            seed: document.querySelector('#seed').value,
+            reload: document.querySelector('#conflicto-borrador a').getAttribute('href')
+        }));
+        if (notice.path !== '/corridas/nueva/ajustes' || !notice.shown || notice.seed !== '61' ||
+            notice.reload !== '/corridas/nueva/ajustes')
+            throw new Error('Sin aviso de conflicto: ' + JSON.stringify(notice));
+        await page.click('#conflicto-borrador a');
+        await page.wait('#seed');
+        const seed = await page.eval(() => document.querySelector('#seed').value);
+        if (seed !== '61') throw new Error('Recargar no mostró lo último: ' + seed);
+    """)
+    browser.command("selectpage", newer)
+
+
+def test_a_draft_cookie_from_before_the_revision_still_loads(browser: Browser, env: Env):
+    legacy = {
+        "ingest_id": env.ingest_id,
+        "values": {**FORM, "seed": "73", "horizon": "2"},
+        "settings_ready": True,
+    }
+    token = base64.urlsafe_b64encode(json.dumps(legacy).encode()).decode().rstrip("=")
+    browser.open("/corridas/nueva/datos")
+    browser.run(f"await page.eval(() => {{ document.cookie = 'pred_borrador={token}; path=/'; }});")
+    browser.open("/corridas/nueva/ajustes")
+    browser.run(f"""
+        const shown = await page.eval(() => ({{
+            seed: document.querySelector('#seed').value,
+            horizon: document.querySelector('#horizon').value,
+            ingest: document.querySelector('#ingest_id')?.value,
+            done: document.querySelector('#barra-pasos li:nth-child(2)')
+                .classList.contains('is-done')
+        }}));
+        if (shown.seed !== '73' || shown.horizon !== '2' || shown.ingest !== '{env.ingest_id}' ||
+            !shown.done)
+            throw new Error('El borrador anterior no cargó: ' + JSON.stringify(shown));
+    """)
+    # It keeps working after the upgrade: an edit saves over it and Revisar reads it.
+    _type(browser, "horizon", "3")
+    browser.run("await page.wait(800);")
+    _expect_draft(browser, "73", "3")

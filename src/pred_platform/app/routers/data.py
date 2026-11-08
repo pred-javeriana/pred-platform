@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from pred_platform.app.borrador import read_draft, save_draft
+from pred_platform.app.borrador import next_revision, read_draft, save_draft
 from pred_platform.app.charts import topology_scatter_svg
 from pred_platform.app.charts_datos import demand_scatter_svg
 from pred_platform.app.corridas import draft_facts, run_facts
@@ -121,7 +121,9 @@ def elegir_datos(
         else step_href(NEW, "ajustes")
     )
     response = RedirectResponse(target, status_code=303)
-    save_draft(request, response, read_draft(request).with_ingest(ingest_id))
+    save_draft(
+        request, response, next_revision(request, read_draft(request).with_ingest(ingest_id))
+    )
     return response
 
 
@@ -210,7 +212,11 @@ def _submit(
     )
     # Un archivo cargado y aceptado queda elegido para la corrida nueva.
     if report.ingest_id and _runnable(repository, report.ingest_id):
-        save_draft(request, response, read_draft(request).with_ingest(report.ingest_id))
+        save_draft(
+            request,
+            response,
+            next_revision(request, read_draft(request).with_ingest(report.ingest_id)),
+        )
     return response
 
 

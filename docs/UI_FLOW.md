@@ -24,15 +24,19 @@ conjunta (`/resultados/grupo`). Cada corrida recorre cinco pasos:
 inicio, nombra la corrida que se ve y ofrece «Nueva corrida».
 
 Una corrida nueva vive en `/corridas/nueva/<paso>` hasta que se lanza. Su borrador (el archivo
-y los ajustes elegidos) se guarda en el servidor, un archivo por sesión del navegador; la cookie solo
-lleva el identificador (`app/borrador.py`). Cada escritura sube su revisión, y el guardado automático de
-Ajustes solo escribe si la página aún tiene la última: una página que ya se dejó no pisa una copia o
-importación hecha después. El borrador se escribe con Siguiente en Datos o en Ajustes; Ajustes guarda cada cambio en cuanto se
+y los ajustes elegidos) se guarda en una cookie de sesión del navegador (`app/borrador.py`). El
+borrador se escribe con Siguiente en Datos o en Ajustes; Ajustes guarda cada cambio en cuanto se
 hace, sin validarlo, y Atrás y los pasos de la barra lo guardan también sin JavaScript. Ajustes no
 elige un archivo por la persona, y elegir otro archivo deja Ajustes por revisar. También lo
 escriben un enlace que elige un archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`), la
 copia de una corrida (`?copiar_de=` o el formulario de copia) y una configuración importada. Revisar
-y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. Una corrida lanzada vive en
+y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. El borrador
+lleva una revisión y una marca por escritura, y cada página de Ajustes devuelve las que vio: si otra
+página escribió después (una copia, una importación o una edición en otra pestaña), el servidor no
+guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. El guardado
+automático escribe una cookie propia por revisión (`pred_borrador_a<rev>`); gana la de mayor
+revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
+abandonada no reemplace lo elegido después. Una corrida lanzada vive en
 `/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
 se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
 «Después» de cada paso, su estado (hecho, por hacer, en curso o bloqueado) y adónde llevan Atrás

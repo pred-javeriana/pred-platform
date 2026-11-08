@@ -13,12 +13,11 @@
   /* Ajustes guarda cada cambio en el borrador en cuanto se hace (el mismo envío que Atrás, con
      destino=ajustes, que no valida), así ninguna salida lo pierde: la barra superior, recargar o
      el botón Atrás del navegador. «keepalive» deja terminar el envío aunque la página se vaya.
-     El borrador vive en el servidor con una revisión que sube en cada escritura. Cada envío lleva
-     la revisión que esta página vio y el servidor lo rechaza (409) si una elección más nueva, como
-     una copia o importación hecha desde otra página, ya lo reemplazó: una página que se dejó, o
-     una respuesta que llega tarde, nunca pisa lo elegido después. Un envío a la vez, para que
-     cada uno traiga la revisión del anterior, y Continuar, Atrás o un paso de la barra esperan
-     al que esté en camino. */
+     El borrador vive en la cookie con una revisión que sube en cada escritura. Cada envío lleva la
+     que esta página vio (draft_rev) y el servidor lo rechaza (409) si el borrador cambió después,
+     por ejemplo con una copia o una importación hechas en otra pestaña: la página avisa y no
+     reintenta por su cuenta. Un envío a la vez, para que cada uno traiga la revisión del
+     anterior, y Continuar, Atrás o un paso de la barra esperan al que esté en camino. */
   const ajustes = document.querySelector("form[data-autosave]");
   if (ajustes) {
     let pending = false;
@@ -26,20 +25,27 @@
     let timer = 0;
     let replacing = false;
     let submitting = false;
+    let conflict = false;
+    let failed = false;
+    const revision = function (value) {
+      document.querySelectorAll("input[name=draft_rev]").forEach(function (input) { input.value = value; });
+    };
     const save = function () {
       clearTimeout(timer);
-      if (!pending || inFlight || replacing) return;
+      if (!pending || inFlight || replacing || conflict) return;
       pending = false;
       const data = new FormData(ajustes);
       data.set("destino", "ajustes");
-      const sent = ajustes.dataset.draftRev || "0";
-      inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true", "X-Pred-Draft-Rev": sent }, credentials: "same-origin", keepalive: true })
+      inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true" }, credentials: "same-origin", keepalive: true })
         .then(function (response) {
+          if (response.status === 409) {
+            conflict = true;
+            const notice = document.getElementById("conflicto-borrador");
+            if (notice) { notice.hidden = false; notice.scrollIntoView({ block: "nearest" }); }
+            return null;
+          }
           const rev = response.headers.get("X-Pred-Draft-Rev");
-          if (rev !== null) ajustes.dataset.draftRev = rev;
-          // Otra página guardó antes: esta, que sigue abierta, es la que la persona edita ahora,
-          // así que vuelve a enviar lo suyo con la revisión actual.
-          if (response.status === 409) { if (rev !== null && rev !== sent) pending = true; return null; }
+          if (response.ok && rev !== null) revision(rev);
           return response.ok ? response.text() : null;
         })
         .then(function (html) {
@@ -51,8 +57,14 @@
             if (current && updated) current.replaceWith(updated);
           });
         })
-        .catch(function () {})
-        .finally(function () { inFlight = null; save(); });
+        .catch(function () { failed = true; })
+        .finally(function () {
+          inFlight = null;
+          // Un envío que falló (la red, o la página que se va) no se repite solo: la repetición
+          // saldría de una página que ya no es la vigente. Lo escrito sigue por guardar.
+          if (failed) { failed = false; pending = true; return; }
+          save();
+        });
     };
     ajustes.addEventListener("input", function () { pending = true; clearTimeout(timer); timer = setTimeout(save, 300); });
     ajustes.addEventListener("change", function () { pending = true; save(); });

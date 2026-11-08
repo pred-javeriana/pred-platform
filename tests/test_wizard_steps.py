@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
+import base64
 import json
-import os
 import re
 import sqlite3
 from contextlib import closing
 from datetime import datetime
 from html import unescape
-from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from pred_platform.app.borrador import Draft, DraftStore
+from pred_platform.app.borrador import COOKIE
 from pred_platform.data.fixtures import FixtureRepository
 from tests.test_corridas import _fixture_client
 from tests.test_ejecucion import FORM, _dal_client, _launch, _review, _text
@@ -181,7 +180,7 @@ def test_matrix_previews_exclusions_and_the_saved_edit_reaches_revisar(env: Env)
     )
     assert response.status_code == 200
     # The preview only redraws the matrix; the page saves each edit with destino=ajustes.
-    assert client.app.state.drafts.read(client.cookies["pred_borrador"]).rev == 0  # type: ignore[attr-defined]
+    assert "set-cookie" not in response.headers
     client.post("/corridas/nueva/ajustes", data={**typed, "destino": "ajustes"})
     assert 'aria-label="Familias por tipo de demanda"' in response.text
     assert (
@@ -350,86 +349,163 @@ def test_data_step_offers_validated_files_and_its_summary_keeps_all_four_types(e
         assert label in _text(page.text)
 
 
-def _rev(response: Any) -> str:
-    return response.headers["X-Pred-Draft-Rev"]
+def _draft_cookie(
+    ingest_id: str | None, *, rev: int | None = None, token: str | None = None, **values: str
+) -> str:
+    """A draft cookie as the browser stores it; without ``rev`` it is the pre-revision format."""
+    payload: dict[str, Any] = {
+        "ingest_id": ingest_id,
+        "values": {**FORM, **values},
+        "settings_ready": True,
+    }
+    if rev is not None:
+        payload.update(rev=rev, token=token)
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
 
 
-def _autosave(client: TestClient, env: Env, rev: str | None, **changes: str) -> Any:
-    headers = {"X-Pred-Autosave": "true", **({} if rev is None else {"X-Pred-Draft-Rev": rev})}
-    return client.post(
-        "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, **changes, "destino": "ajustes"},
-        headers=headers,
+def _shown(client: TestClient, path: str = "/corridas/nueva/ajustes") -> tuple[str, str]:
+    html = client.get(path).text
+    found = {
+        name: re.search(rf'name="{name}"[^>]*value="([^"]*)"', html) for name in ("seed", "horizon")
+    }
+    assert found["seed"] and found["horizon"]
+    return found["seed"].group(1), found["horizon"].group(1)
+
+
+def _stamp(client: TestClient) -> str:
+    found = re.search(
+        r'name="draft_rev" value="([^"]+)"', client.get("/corridas/nueva/ajustes").text
+    )
+    assert found is not None
+    return found.group(1)
+
+
+def _autosave(client: TestClient, env: Env, stamp: str | None, **changes: str) -> Any:
+    data = {"ingest_id": env.ingest_id, **FORM, **changes, "destino": "ajustes"}
+    if stamp is not None:
+        data["draft_rev"] = stamp
+    return client.post("/corridas/nueva/ajustes", data=data, headers={"X-Pred-Autosave": "true"})
+
+
+def test_a_draft_cookie_from_before_the_revision_still_loads(env: Env) -> None:
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, seed="73", horizon="2"))
+
+    assert _shown(client) == ("73", "2")
+    page = client.get("/corridas/nueva/ajustes").text
+    assert re.search(rf'<option value="{env.ingest_id}" selected', page)
+    assert _shown(client, "/corridas/nueva/revisar") == ("73", "2")
+
+    # It keeps working: an autosave over it raises the revision and keeps the chosen file.
+    saved = _autosave(client, env, _stamp(client), seed="74")
+    assert saved.status_code == 200 and _shown(client) == ("74", "2")
+    assert re.search(
+        rf'<option value="{env.ingest_id}" selected', client.get("/corridas/nueva/ajustes").text
     )
 
 
-def _seed(client: TestClient) -> str | None:
-    found = re.search(r'name="seed"[^>]*value="(\d+)"', client.get("/corridas/nueva/ajustes").text)
-    return found.group(1) if found else None
+def test_autosave_writes_its_own_cookie_and_never_the_main_one(env: Env) -> None:
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, seed="73"))
+
+    saved = _autosave(client, env, _stamp(client), seed="74")
+
+    written = [value.split("=", 1)[0] for value in saved.headers.get_list("set-cookie")]
+    assert written == [f"{COOKIE}_a1"]
+    # The next save retires the earlier autosave cookie and keeps naming the revision.
+    again = _autosave(client, env, saved.headers["X-Pred-Draft-Rev"], seed="75")
+    changed = [value.split("=", 1)[0] for value in again.headers.get_list("set-cookie")]
+    assert changed == [f"{COOKIE}_a2", f"{COOKIE}_a1"]
+    assert _shown(client) == ("75", "2")
 
 
-def test_autosave_only_writes_from_the_latest_draft_revision(env: Env) -> None:
+def test_the_current_draft_is_the_highest_revision_and_a_tie_goes_to_the_main_cookie(
+    env: Env,
+) -> None:
+    client = _dal_client(env)
+    main = _draft_cookie(env.ingest_id, rev=5, token="a" * 12, seed="61")
+    client.cookies.set(COOKIE, main)
+
+    client.cookies.set(
+        f"{COOKIE}_a4", _draft_cookie(env.ingest_id, rev=4, token="b" * 12, seed="99")
+    )
+    assert _shown(client)[0] == "61"
+    client.cookies.set(
+        f"{COOKIE}_a5", _draft_cookie(env.ingest_id, rev=5, token="c" * 12, seed="98")
+    )
+    assert _shown(client)[0] == "61"
+    client.cookies.set(
+        f"{COOKIE}_a6", _draft_cookie(env.ingest_id, rev=6, token="d" * 12, seed="55")
+    )
+    assert _shown(client)[0] == "55"
+    client.cookies.set(f"{COOKIE}_a7", "no-es-un-borrador")
+    assert _shown(client)[0] == "55"
+
+
+def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env) -> None:
     client = _dal_client(env)
     _launch(client, env, seed="61")
-    page = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
-    first = re.search(r'data-draft-rev="(\d+)"', page.text)
-    assert first is not None
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="44"))
+    old = _stamp(client)
+    # Another page copies, so the first page's stamp is no longer the draft's.
+    assert (
+        client.post("/corridas/nueva/copiar", data={"copiar": "1", "draft_rev": old}).status_code
+        == 200
+    )
+    assert _shown(client) == ("61", "2")
 
-    saved = _autosave(client, env, first.group(1), seed="99")
-    assert saved.status_code == 200 and "set-cookie" not in saved.headers
-    assert int(_rev(saved)) > int(first.group(1)) and _seed(client) == "99"
-
-    # A copy is a later choice: it raises the revision, so the page that saw the old one cannot
-    # replace it, whether its answer or the request itself arrives late.
-    client.post("/corridas/nueva/copiar", data={"copiar": "1"})
-    assert _seed(client) == "61"
-    stale = _autosave(client, env, _rev(saved), seed="98")
+    stale = _autosave(client, env, old, seed="99")
     assert stale.status_code == 409 and "set-cookie" not in stale.headers
-    assert int(_rev(stale)) > int(_rev(saved)) and _seed(client) == "61"
+    assert stale.headers["X-Pred-Draft-Rev"] == _stamp(client)
 
-    # The page rendered after the copy carries the new revision and saves again.
-    newest = re.search(r'data-draft-rev="(\d+)"', client.get("/corridas/nueva/ajustes").text)
-    assert newest is not None and newest.group(1) == _rev(stale)
-    assert _autosave(client, env, newest.group(1), seed="55").status_code == 200
-    assert _seed(client) == "55"
+    refused = [
+        client.post("/corridas/nueva/copiar", data={"copiar": "1", "draft_rev": old}),
+        client.post(
+            "/corridas/nueva/ajustes",
+            data={"ingest_id": env.ingest_id, **FORM, "seed": "99", "draft_rev": old},
+        ),
+        client.post(
+            "/corridas/nueva/ajustes",
+            data={
+                "ingest_id": env.ingest_id,
+                **FORM,
+                "seed": "99",
+                "draft_rev": old,
+                "destino": "datos",
+            },
+            follow_redirects=False,
+        ),
+        client.post(
+            "/ejecucion/configuracion",
+            data={"draft_rev": old},
+            files={"archivo": ("ajustes.json", b"{}", "application/json")},
+        ),
+    ]
+    for response in refused:
+        assert response.status_code == 409 and "set-cookie" not in response.headers
+        assert re.search(r'id="conflicto-borrador"(?![^>]*hidden)', response.text)
+        assert 'href="/corridas/nueva/ajustes"' in response.text
+    assert _shown(client) == ("61", "2")
+
+    # The page the refusal shows carries the current stamp, so the person can go on from it.
+    assert _autosave(client, env, _stamp(client), seed="55").status_code == 200
+    assert _shown(client)[0] == "55"
 
 
-@pytest.mark.parametrize("rev", [None, "", "-1", "x", "7"])
-def test_autosave_without_a_valid_revision_writes_nothing(env: Env, rev: str | None) -> None:
+@pytest.mark.parametrize("stamp", [None, ""])
+def test_a_client_without_a_stamp_is_not_compared(env: Env, stamp: str | None) -> None:
     client = _dal_client(env)
-    client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
-    response = _autosave(client, env, rev, seed="77")
-    assert response.status_code == 409 and _seed(client) != "77"
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12))
+    assert _autosave(client, env, stamp, seed="77").status_code == 200
+    assert _shown(client)[0] == "77"
 
 
-def test_autosave_without_a_session_writes_nothing(env: Env) -> None:
+def test_an_unreadable_stamp_is_refused(env: Env) -> None:
     client = _dal_client(env)
-    response = _autosave(client, env, "0", seed="77")
+    response = _autosave(client, env, "x.y", seed="77")
     assert response.status_code == 409 and "set-cookie" not in response.headers
 
 
-def test_the_draft_store_survives_a_restart_and_a_read_only_folder(tmp_path: Path) -> None:
-    session = "ab" * 16
-    first = DraftStore(tmp_path / "borradores")
-    stored = first.write(session, Draft(ingest_id="cd" * 32))
-    assert stored.rev == 1 and DraftStore(tmp_path / "borradores").read(session) == stored
-
-    # A folder that cannot be written keeps serving the draft from a temporary one.
-    blocked = tmp_path / "archivo"
-    blocked.write_text("no es una carpeta")
-    fallback = DraftStore(blocked / "borradores")
-    assert fallback.write(session, Draft(ingest_id="cd" * 32)).rev == 1
-    assert fallback.read(session).ingest_id == "cd" * 32
-
-
-def test_old_drafts_expire(tmp_path: Path) -> None:
-    now = [1000.0]
-    store = DraftStore(tmp_path, ttl=100.0, clock=lambda: now[0])
-    store.write("ab" * 16, Draft())
-    now[0] += 4000
-    store.write("cd" * 16, Draft())
-    os.utime(tmp_path / f"{'ab' * 16}.json", (0, 0))
-    now[0] += 4000
-    store.write("ef" * 16, Draft())
-    assert not (tmp_path / f"{'ab' * 16}.json").exists()
-    assert (tmp_path / f"{'ef' * 16}.json").exists()
+def test_the_conflict_notice_is_hidden_until_there_is_a_conflict(env: Env) -> None:
+    page = _dal_client(env).get("/corridas/nueva/ajustes").text
+    assert re.search(r'id="conflicto-borrador" hidden', page)
