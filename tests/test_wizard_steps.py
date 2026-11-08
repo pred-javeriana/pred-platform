@@ -76,7 +76,7 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
     for name, expected in {
         "min_train": "40",
         "horizon": "2",
-        "step": "14",
+        "step": "7",
         "seasonality": "14",
         "trials": "3",
         "seed": "1",
@@ -224,7 +224,7 @@ def test_records_include_trials_workers_and_seed_without_edit_or_launch_controls
         for name, label, value in (
             ("seed", "Semilla", "2"),
             ("workers", "Procesos en paralelo", "7"),
-            ("trials", "Configuraciones a probar por familia", "6"),
+            ("trials", "Configuraciones por SKU y familia", "6"),
         ):
             if step == "ajustes":
                 assert re.search(rf'name="{name}"[^>]*value="{value}"[^>]* disabled', html)
