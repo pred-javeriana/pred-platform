@@ -13,9 +13,9 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
+from pred_platform.dal import grupo
 from tests.m3_publicada import publish
 from tests.test_group_evidence import SHA, sql
-from pred_platform.dal import grupo
 from tests.test_group_evidence import group_db as group_db  # noqa: F401
 from tests.test_group_lumpy import lumpy_db as lumpy_db  # noqa: F401
 

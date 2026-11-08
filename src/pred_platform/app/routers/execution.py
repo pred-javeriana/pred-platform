@@ -88,7 +88,7 @@ from pred_platform.app.pasos import (
     step_href,
 )
 from pred_platform.app.presentation import describe_run
-from pred_platform.app.resultados_m3 import run_outcome_details
+from pred_platform.app.resultados_m3 import publication_time, run_outcome_details
 from pred_platform.app.routers.corridas import (
     Locked,
     redirect_with_query,
@@ -376,6 +376,11 @@ def ejecucion_estado(
             published=context["published"],
             resumable=context["actions"].offers_resume,
             file_name=context["run_ingest"].file_name if context["run_ingest"] else None,
+            publicada_en=(
+                publication_time(repository.get_stage_timings(status.ejecucion.id))
+                if context["published"]
+                else None
+            ),
         )
         context["wizard"] = run_wizard("ejecucion", facts)
     return _render(

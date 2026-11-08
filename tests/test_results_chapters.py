@@ -24,9 +24,9 @@ from tests.test_worker import env as env  # noqa: F401
 _FORM = {
     "families": ["classical", "ml", "dl"],
     "metric": "mae",
-    "min_train": "40",
+    "min_train": "20",
     "horizon": "2",
-    "step": "14",
+    "step": "7",
     "seasonality": "7",
     "trials": "1",
     "workers": "2",
@@ -492,12 +492,12 @@ def test_publication_time_is_l4_end_in_bogota_and_keeps_exact_utc_on_hover(
     assert response.status_code == 200
     text = _text(response.text)
     assert "Evaluación publicada 27 oct 2026, 9:36 a. m." in text
-    assert 'title="2026-10-27 14:36:00 UTC' in response.text
+    assert 'title="2026-10-27 14:36:00.500000 UTC' in response.text
     rail = re.search(r'<nav class="pred-rail".*?</nav>', response.text, re.S)
     assert rail is not None
     # The rail shows the Bogotá day; its title keeps the exact L4 end.
     assert "Publicados 27 oct 2026" in _text(rail.group())
-    assert "2026-10-27 14:36:00 UTC" in rail.group()
+    assert "2026-10-27 14:36:00.500000 UTC" in rail.group()
     # The group chooser below names each option by its creation time; the page header must not.
     assert "27 oct 2026, 5:00 a. m." not in text.split("Grupo final de semillas", 1)[0]
 

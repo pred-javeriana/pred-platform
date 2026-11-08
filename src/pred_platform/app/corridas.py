@@ -79,6 +79,10 @@ def _facts(
         n_skus=ingest.n_skus if ingest else None,
         published=run.id in published,
         resumable=run_resumable(repository, status),
+        # Solo una corrida publicada lee su registro de etapas: la portada no abre los demás.
+        publicada_en=publication_time(repository.get_stage_timings(run.id))
+        if run.id in published
+        else None,
     )
 
 
@@ -89,6 +93,7 @@ def facts_from_status(
     resumable: bool,
     file_name: str | None = None,
     n_skus: int | None = None,
+    publicada_en: datetime | None = None,
 ) -> RunFacts:
     """Reuse an already-read status for navigation without another repository call."""
     run = status.ejecucion
@@ -100,10 +105,7 @@ def facts_from_status(
         estado=run.estado,
         iniciada_en=run.iniciada_en,
         finalizada_en=run.finalizada_en,
-        # Solo una corrida publicada lee su registro de etapas: la portada no abre los demás.
-        publicada_en=publication_time(repository.get_stage_timings(run.id))
-        if run.id in published
-        else None,
+        publicada_en=publicada_en,
         ingest_id=run.ingest_id,
         file_name=file_name,
         n_skus=n_skus,
