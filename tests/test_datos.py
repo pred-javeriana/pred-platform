@@ -304,8 +304,8 @@ def test_topology_filters_are_delegated(tmp_path: Path) -> None:
     assert "FIL-0001" in html
     assert "Suave" in html
     assert 'role="img"' in html
-    assert "<title>" in html
-    assert "<desc>" in html
+    assert re.search(r"<title(?:\s[^>]*)?>[^<]+</title>", html)
+    assert re.search(r"<desc(?:\s[^>]*)?>[^<]+</desc>", html)
 
 
 def test_filter_miss_has_specific_empty_message(tmp_path: Path) -> None:

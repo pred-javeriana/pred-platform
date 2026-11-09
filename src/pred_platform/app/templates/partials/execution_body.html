@@ -209,7 +209,7 @@
       <th scope="row" class="pred-sku"><span class="mono">{{ task.sku or "—" }}</span></th>
       <td class="pred-nowrap">{{ family_label(task.family) if task.family else "—" }}</td>
       <td class="pred-nowrap" title="{{ model_term(task.modelo).hint }}">{{ model_label(task.modelo) }}</td>
-      <td>{{ status_indicator(describe_status("task", task.estado)) }}</td>
+      <td>{{ status_indicator(item.status) }}</td>
       <td class="num">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
       <td class="wrap">
         {% if item.error %}
@@ -220,7 +220,7 @@
           {% if item.error.detail %}<p>{{ item.error.detail }}</p>{% endif %}
           <p class="pred-meta">Etapa: {{ stage_label(item.error.stage) if item.error.stage else "no informada" }} · código <span class="mono">{{ item.error.code }}</span></p>
         </details>
-        {% else %}—{% endif %}
+        {% elif item.reason %}{{ item.reason }}{% else %}—{% endif %}
       </td>
     </tr>
     {% endfor %}

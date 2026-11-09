@@ -839,7 +839,7 @@ nav.pred-breadcrumb li a {
 }
 
 .pred-section {
-  padding: var(--space-4) 0;
+  padding-block: var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 
@@ -2223,8 +2223,9 @@ abbr[title] {
   min-width: 56rem;
 }
 
-.pred-table--competitors {
+.pred-table.pred-table--competitors {
   table-layout: fixed;
+  min-width: 72rem;
 }
 
 .pred-table--confirmation thead th,
@@ -2232,13 +2233,16 @@ abbr[title] {
   white-space: normal;
 }
 
-.pred-table--competitors th:nth-child(1) { width: 24%; }
-.pred-table--competitors th:nth-child(2) { width: 6%; }
-.pred-table--competitors th:nth-child(3) { width: 15%; }
-.pred-table--competitors th:nth-child(4) { width: 16%; }
-.pred-table--competitors th:nth-child(5) { width: 17%; }
+.pred-table--competitors th:nth-child(1) { width: 18%; }
+.pred-table--competitors th:nth-child(2) { width: 5%; }
+.pred-table--competitors th:nth-child(3),
+.pred-table--competitors th:nth-child(4) { width: 12%; }
+.pred-table--competitors th:nth-child(5) { width: 13%; }
 .pred-table--competitors th:nth-child(6),
-.pred-table--competitors th:nth-child(7) { width: 11%; }
+.pred-table--competitors th:nth-child(7) { width: 8%; }
+.pred-table--competitors th:nth-child(8) { width: 12%; }
+.pred-table--competitors th:nth-child(9),
+.pred-table--competitors th:nth-child(10) { width: 6%; }
 
 /* Evidencia técnica anidada sin paginación propia: altura acotada y desplazamiento local. */
 .pred-evidence-scroll {

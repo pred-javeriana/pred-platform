@@ -21,7 +21,7 @@
     {% set summary = topology.summary %}
     <p class="pred-meta">Los {{ format_count(summary.n_skus) }} SKU del archivo según cada cuánto venden ({{ gloss("ADI") }}) y cuánto varían sus cantidades ({{ gloss("CV²") }}). Cada clase admite familias de modelos distintas.</p>
     <div class="pred-data-split">
-    {% if summary_chart_svg %}<div class="pred-chart" data-demand-map><p class="pred-meta" aria-label="Qué es cada marca">Cada punto es un producto. Las líneas punteadas marcan los umbrales de ADI y CV². CV² cero aparece en el borde inferior.</p>{{ summary_chart_svg | safe }}<p class="pred-scatter-readout" role="status" aria-live="polite" data-demand-readout>Pase el puntero por un producto, o use las flechas con el mapa enfocado.</p></div>{% endif %}
+    {% if summary_chart_svg %}<div class="pred-chart" data-demand-map tabindex="0" role="region" aria-label="Gráfico desplazable de clases de demanda"><p class="pred-meta" aria-label="Qué es cada marca">Cada punto es un producto. Las líneas punteadas marcan los umbrales de ADI y CV². CV² cero aparece en el borde inferior.</p>{{ summary_chart_svg | safe }}<p class="pred-scatter-readout" role="status" aria-live="polite" data-demand-readout>Pase el puntero por un producto, o use las flechas con el mapa enfocado.</p></div>{% endif %}
     {% if overview_error %}<div>{{ unavailable_state(overview_error.title, overview_error.detail, overview_error.code, overview_error.blocked_by) }}</div>{% endif %}
     <table class="pred-class-mix pred-types-table">
       <caption class="pred-sr-only">SKU por clase de demanda</caption>
@@ -42,7 +42,7 @@
   {% endif %}
 </div>
 {% elif topology and not topology_error %}
-{% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Vea dónde cae cada SKU según cada cuánto vende (ADI) y cuánto varían sus cantidades (CV²), y consulte los SKU de la página filtrada.", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
+{% call evidence_panel("explorar-topologia", "Clases de demanda y SKU", "Consulte los productos y sus clases según cada cuánto venden (ADI) y cuánto varían sus cantidades (CV²).", active=topology_query.q or topology_query.sku_class or topology_query.page > 1 or "sort" in request.query_params, alias="detalle-topologia") %}
     <dl class="pred-evidence-facts">
       {% if topology.thresholds %}
       <div><dt>Umbral {{ gloss("ADI") }}</dt><dd class="mono">{{ format_decimal(topology.thresholds.adi) }}</dd></div>
@@ -52,10 +52,7 @@
     </dl>
 
     {% if topology.availability.status == "available" %}
-      <p class="pred-meta" id="alcance-topologia">Los conteos resumen todo el archivo. El gráfico y la tabla muestran únicamente los SKU de la página filtrada actual.</p>
-      <div class="pred-chart" tabindex="0" role="region" aria-label="Gráfico desplazable de clases de demanda" aria-describedby="alcance-topologia">
-        {{ chart_svg | safe }}
-      </div>
+      <p class="pred-meta" id="alcance-topologia">Los conteos y el gráfico de arriba resumen todo el archivo. La tabla muestra únicamente los SKU de la página filtrada actual.</p>
 
       <form method="get" action="{{ datos_path }}" class="pred-filters" id="filtros-topologia">
         <input type="hidden" name="ingest_id" value="{{ topology.ingest_id }}">

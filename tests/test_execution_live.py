@@ -324,6 +324,102 @@ def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(
     assert "selection.no_viable_trial" not in fragment.text.split('id="lista-tareas"')[0]
 
 
+@pytest.mark.parametrize(
+    ("exclusion", "label"),
+    [
+        ("not_in_policy_matrix", "No elegida para esta clase"),
+        ("not_configured", "No elegida en esta corrida"),
+    ],
+)
+def test_execution_distinguishes_unchosen_families_from_failure_and_comparison_stop(
+    env: Env, exclusion: str, label: str
+) -> None:
+    client, run = _running(env)
+    with closing(dal.connect(env.db)) as conn, conn:
+        selection = conn.execute(
+            "INSERT INTO selecciones (ejecucion_id, sku, clase, perfil) "
+            "VALUES (?, 'lumpy-sku', 'lumpy', 'sparse_variable')",
+            (run.id,),
+        ).lastrowid
+        for family, model in (
+            ("classical", "sarima"),
+            ("ml", "lightgbm"),
+            ("dl", "mlp"),
+            ("foundation", "chronos2"),
+        ):
+            failed = family == "classical"
+            ignored = family in ("ml", "dl")
+            code = "selection.no_viable_trial" if failed else "eligibility.fewer_than_two_families"
+            conn.execute(
+                "INSERT INTO tareas "
+                "(ejecucion_id, sku, modelo, corte, estado, seed, detalle_error) "
+                "VALUES (?, 'lumpy-sku', ?, '2026-06-29', ?, ?, ?)",
+                (
+                    run.id,
+                    f"{family}:{model}",
+                    "fallida" if failed else "no_ejecutable",
+                    run.seed,
+                    json.dumps({"code": code, "stage": "L2", "severity": "error"}),
+                ),
+            )
+            conn.execute(
+                "INSERT INTO seleccion_familias "
+                "(seleccion_id, familia, estado, exclusion_codigo, error_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    selection,
+                    family,
+                    "excluida" if ignored else "fallida" if failed else "no_ejecutable",
+                    exclusion if ignored else None if failed else "execution_failed",
+                    json.dumps({"code": code, "stage": "L2", "severity": "error"})
+                    if failed
+                    else None,
+                ),
+            )
+    for path in (
+        f"/corridas/{run.id}/ejecucion?sku=lumpy-sku&tareas=todas",
+        f"/ejecucion/estado?ejecucion={run.id}&sku=lumpy-sku&tareas=todas",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200
+        table = response.text.split('aria-label="Tareas de la ejecución filtrada"')[1].split(
+            "</table>"
+        )[0]
+        rows = re.findall(r"<tr>.*?</tr>", table, re.S)[1:]
+        assert len(rows) == 4
+        by_family = {
+            family: next(_text(row) for row in rows if family in _text(row))
+            for family in (
+                "Clásica",
+                "Aprendizaje automático",
+                "Aprendizaje profundo",
+                "Fundacional",
+            )
+        }
+        assert "Fallida" in by_family["Clásica"]
+        for family in ("Aprendizaje automático", "Aprendizaje profundo"):
+            assert label in by_family[family]
+            assert "Revise por qué fallaron" not in by_family[family]
+        assert "No ejecutable" in by_family["Fundacional"]
+        assert (
+            "quedaron menos de dos familias evaluables. Falló Clásica." in by_family["Fundacional"]
+        )
+        assert "El motor no pudo ejecutar" not in by_family["Fundacional"]
+        assert "eligibility.fewer_than_two_families" in by_family["Fundacional"]
+        if path.startswith("/corridas/"):
+            causes = response.text.split('aria-label="Causas de las tareas sin pronóstico"')[
+                1
+            ].split("</table>")[0]
+            assert "Aprendizaje automático" not in _text(causes)
+            assert "Aprendizaje profundo" not in _text(causes)
+            assert "Fundacional" in _text(causes)
+    product = client.get(f"/resultados/sku/lumpy-sku?ejecucion={run.id}")
+    assert product.status_code == 200
+    foundation = product.text.split('id="familia-foundation"')[1].split("</details>")[0]
+    assert "quedaron menos de dos familias evaluables. Falló Clásica." in _text(foundation)
+    assert "El motor no pudo ejecutar esta familia" not in _text(foundation)
+
+
 def test_stage_durations_and_product_progress_follow_the_log_and_retry(env: Env) -> None:
     client, run = _running(env)
     _escribir_progreso(

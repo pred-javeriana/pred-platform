@@ -61,7 +61,6 @@ from pred_platform.app.ejecucion import (
     classes_without_family,
     draft_items,
     elapsed_text,
-    error_action,
     exclusion_confirmation,
     exclusion_warning,
     families_hint,
@@ -83,6 +82,7 @@ from pred_platform.app.execution_display import (
     add_cause_snapshot,
     add_stage_references,
     execution_display,
+    task_rows,
 )
 from pred_platform.app.historial import earlier_runs, timestamp
 from pred_platform.app.pasos import (
@@ -104,7 +104,6 @@ from pred_platform.app.routers.corridas import (
     render_locked,
     render_missing_run,
 )
-from pred_platform.app.seleccion import error_title
 from pred_platform.contract import CONTRACT_VERSION, M3_CONTRACT_VERSION
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import RunStatus, SkuClass, TopologyMetrics
@@ -140,27 +139,6 @@ def _worker_state(request: Request) -> Literal["active", "off", "stopped"]:
     if WorkerLock.for_database(settings.db_path).held_elsewhere():
         return "active"
     return "stopped" if settings.worker == "embedded" else "off"
-
-
-def _task_rows(status: RunStatus) -> list[dict[str, Any]]:
-    rows = []
-    for task in status.tasks:
-        error = task.error
-        rows.append(
-            {
-                "task": task,
-                "error": None
-                if error is None
-                else {
-                    "title": error_title(error.code, error.stage, error.row_index, error.column),
-                    "detail": error.detail,
-                    "code": error.code,
-                    "stage": error.stage,
-                    "action": error_action(error.code),
-                },
-            }
-        )
-    return rows
 
 
 def _render(
@@ -273,7 +251,7 @@ def _context(
         ]
         if progress is not None
         else [],
-        "rows": _task_rows(tasks) if tasks is not None else [],
+        "rows": task_rows(tasks) if tasks is not None else [],
         "pages": page_meta(tasks.page) if tasks and tasks.page and not focus else None,
         "focus": focus,
         "focus_estado": focus_estado,
