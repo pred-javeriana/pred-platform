@@ -309,7 +309,7 @@ def test_the_engine_exclusions_and_the_policy_exclusions_read_back_with_their_re
     skipped = _families(env.repo().get_sku_selection(RUN, "FIL-0003"))
     assert skipped["classical"].estado == "no_ejecutable"
     assert skipped["classical"].exclusion is not None
-    assert skipped["classical"].exclusion.reason_code == "series_too_short"
+    assert skipped["classical"].exclusion.reason_code == "eligibility.no_reserved_observations"
     assert "termina antes de t*" in (skipped["classical"].exclusion.detail or "")
     assert skipped["ml"].exclusion is not None
     assert skipped["ml"].exclusion.reason_code == "not_in_policy_matrix"  # lumpy has no ml
@@ -318,6 +318,27 @@ def test_the_engine_exclusions_and_the_policy_exclusions_read_back_with_their_re
     assert skipped["foundation"].exclusion is not None
     assert skipped["foundation"].exclusion.reason_code == "not_configured"
     _conforms(env.repo().get_sku_selection(RUN, "FIL-0003"), "sku_selection")
+
+
+@pytest.mark.parametrize(
+    "reason", ["not_in_policy_matrix", "not_configured", "series_too_short", "execution_failed"]
+)
+def test_previous_selection_exclusion_reasons_still_read(
+    env: Env, monkeypatch: pytest.MonkeyPatch, reason: str
+) -> None:
+    _run(env, monkeypatch, "excluded")
+    with closing(connect(env.db)) as conn, conn:
+        conn.execute(
+            "UPDATE seleccion_familias SET exclusion_codigo = ? "
+            "WHERE familia = 'foundation' AND seleccion_id IN "
+            "(SELECT id FROM selecciones WHERE sku = 'FIL-0003')",
+            (reason,),
+        )
+    selection = env.repo().get_sku_selection(RUN, "FIL-0003")
+    foundation = _families(selection)["foundation"]
+    assert foundation.exclusion is not None
+    assert foundation.exclusion.reason_code == reason
+    _conforms(selection, "sku_selection")
 
 
 def test_the_list_validates_against_the_contract_schema_and_has_every_family(

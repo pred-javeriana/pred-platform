@@ -17,6 +17,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from pred_platform.dal.ejecuciones import reconcile_task_exclusions
+
 
 class SelectionImportError(Exception):
     """A SKU's selection cannot be stored (for example, its task does not exist)."""
@@ -205,6 +207,7 @@ def guardar_seleccion(
                             window["indice"],
                         ),
                     )
+        reconcile_task_exclusions(conn, ejecucion_id, seleccion.sku)
 
 
 def contar_selecciones(conn: sqlite3.Connection, ejecucion_id: int) -> int:

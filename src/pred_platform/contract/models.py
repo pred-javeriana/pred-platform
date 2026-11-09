@@ -29,6 +29,10 @@ Semver = Annotated[str, StringConstraints(pattern=r"^1\.[0-9]+\.[0-9]+$")]
 Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 GapId = Annotated[str, StringConstraints(pattern=r"^G[1-8]$")]
 ErrorCode = Annotated[str, StringConstraints(pattern=r"^[a-z_]+\.[a-z_]+$")]
+ExclusionReasonCode = (
+    Literal["not_in_policy_matrix", "not_configured", "series_too_short", "execution_failed"]
+    | ErrorCode
+)
 # Decision D5: el identificador de modelo es `familia:algoritmo` en minusculas
 # (por ejemplo `classical:sarima`); la familia se deduce del prefijo.
 ModeloId = Annotated[
@@ -121,7 +125,7 @@ class Page(_Base):
 class ErrorInfo(_Base):
     """Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`."""
 
-    code: ErrorCode
+    code: ExclusionReasonCode
     stage: Literal["L0", "L1", "L2", "L3", "L4", "platform"]
     severity: Severidad = "error"
     detail: str | None = None
@@ -465,9 +469,7 @@ Evidence = Annotated[
 
 
 class Exclusion(_Base):
-    reason_code: Literal[
-        "not_in_policy_matrix", "not_configured", "series_too_short", "execution_failed"
-    ]
+    reason_code: ExclusionReasonCode
     detail: str | None = None
 
 

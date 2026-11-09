@@ -434,7 +434,12 @@ def main() -> int:
     )
     runnable = [s for s in skus if s not in before_l2]
     delay = 0.3 if scenario == "slow_ok" else 0.0
-    units = [(s, f) for s in runnable for f in args.families]
+    units = [
+        (s, f)
+        for s in runnable
+        for f in args.families
+        if not (scenario == "excluded_after_l2" and s == "FIL-0003" and f not in MATRIX["lumpy"])
+    ]
     unit_rows: list[dict[str, Any]] = []
 
     stream.emit("stage_started", stage="L1")
@@ -497,7 +502,9 @@ def main() -> int:
         )
     after_l2 = {}
     if single:
-        failed = ", ".join(f"{f} (model.fit_failed)" for f in args.families if f != "foundation")
+        failed = ", ".join(
+            f"{f} (model.fit_failed)" for s, f in units if s == "FIL-0003" and f != "foundation"
+        )
         after_l2["FIL-0003"] = (
             f"menos de dos familias evaluables tras L2: evaluable foundation; fallidas {failed}",
             FEWER_THAN_TWO,

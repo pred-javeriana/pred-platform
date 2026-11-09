@@ -497,15 +497,26 @@ def test_a_skipped_sku_becomes_one_not_runnable_task_per_run_family(
         ("FIL-0003", "ml:lightgbm"),
     ]
     assert json.loads(skipped[0][2])["code"] == "eligibility.no_reserved_observations"
+    assert [(model, json.loads(detail)["code"]) for _, model, detail in skipped] == [
+        ("classical:sarima", "eligibility.no_reserved_observations"),
+        ("dl:mlp", "not_in_policy_matrix"),
+        ("foundation:chronos2", "eligibility.no_reserved_observations"),
+        ("ml:lightgbm", "not_in_policy_matrix"),
+    ]
+    env.repo().get_run_status("1")
 
 
+@pytest.mark.parametrize("follow_progress", [True, False])
 def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(
-    env: Env, monkeypatch: pytest.MonkeyPatch
+    env: Env, monkeypatch: pytest.MonkeyPatch, follow_progress: bool
 ) -> None:
-    # FIL-0003 delivers only foundation in L2: the two-family rule excludes it after its
-    # other units failed. They keep their error; foundation never ran L3.
+    # FIL-0003 is lumpy: classical fails in L2, foundation never runs L3, and the policy
+    # excludes ML and DL. Each task must keep its own family's reason.
     _scenario(monkeypatch, "excluded_after_l2")
-    enqueue_run(env.settings, env.ingest_id, SMALL)
+    poll = ProgressFollower.poll
+    if not follow_progress:
+        monkeypatch.setattr(ProgressFollower, "poll", lambda self: 0)
+    queued = enqueue_run(env.settings, env.ingest_id, SMALL)
 
     env.worker().run_next()
 
@@ -515,9 +526,9 @@ def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(
     )
     assert [(m, e, json.loads(d)["code"]) for m, e, d in tasks] == [
         ("classical:sarima", "fallida", "model.fit_failed"),
-        ("dl:mlp", "fallida", "model.fit_failed"),
+        ("dl:mlp", "no_ejecutable", "not_in_policy_matrix"),
         ("foundation:chronos2", "no_ejecutable", "eligibility.fewer_than_two_families"),
-        ("ml:lightgbm", "fallida", "model.fit_failed"),
+        ("ml:lightgbm", "no_ejecutable", "not_in_policy_matrix"),
     ]
     families = env.rows(
         "SELECT f.familia, f.estado FROM seleccion_familias f "
@@ -529,6 +540,42 @@ def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(
         ("foundation", "no_ejecutable"),
         ("ml", "excluida"),
     ]
+    assert env.rows(
+        "SELECT f.exclusion_codigo FROM seleccion_familias f "
+        "JOIN selecciones s ON s.id = f.seleccion_id "
+        "WHERE s.sku = 'FIL-0003' AND f.familia = 'foundation'"
+    ) == [("eligibility.fewer_than_two_families",)]
+    selection = env.repo().get_sku_selection("1", "FIL-0003")
+    foundation = next(f for f in selection.families if f.family == "foundation")
+    assert foundation.exclusion is not None
+    assert foundation.exclusion.reason_code == "eligibility.fewer_than_two_families"
+    env.repo().get_run_status("1")
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, 1)
+        assert run is not None
+        follower = ProgressFollower(
+            conn,
+            run,
+            env.settings.data_root / "runs" / queued.run_id / "progreso.jsonl",
+            corte="2026-03-13",
+        )
+        assert poll(follower) > 0
+        dal.task_excluded(
+            conn,
+            run.id,
+            sku="FIL-0003",
+            modelo="dl:mlp",
+            corte="2026-03-13",
+            seed=run.seed,
+            error=exclusion_info("causa general", "eligibility.fewer_than_two_families"),
+        )
+    assert (
+        env.rows(
+            "SELECT modelo, estado, detalle_error FROM tareas "
+            "WHERE sku = 'FIL-0003' ORDER BY modelo"
+        )
+        == tasks
+    )
 
 
 # ------------------------------------------------------------------- engine problems
@@ -1692,17 +1739,18 @@ def test_a_malformed_engine_code_is_ignored_not_stored() -> None:
 
 
 @pytest.mark.parametrize(
-    ("code", "reason"),
+    "code",
     [
-        ("eligibility.no_admissible_history", "series_too_short"),
-        ("eligibility.no_reserved_observations", "series_too_short"),
-        ("eligibility.insufficient_history", "series_too_short"),
-        ("eligibility.calendar_gaps", "execution_failed"),
-        ("eligibility.non_finite_demand", "execution_failed"),
+        "eligibility.no_admissible_history",
+        "eligibility.no_reserved_observations",
+        "eligibility.insufficient_history",
+        "eligibility.calendar_gaps",
+        "eligibility.non_finite_demand",
+        "eligibility.fewer_than_two_families",
     ],
 )
-def test_the_reason_code_comes_from_the_engine_code(code: str, reason: str) -> None:
-    assert exclusion_reason("texto que no se lee", code) == reason
+def test_the_reason_code_comes_from_the_engine_code(code: str) -> None:
+    assert exclusion_reason("texto que no se lee", code) == code
 
 
 def test_the_reason_code_falls_back_to_the_text_without_a_code() -> None:

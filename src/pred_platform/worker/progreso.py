@@ -38,7 +38,7 @@ def exclude_sku(
 
     The rows include the families its class never routes (for example ML and DL of a lumpy
     product). Every run counts an excluded SKU this way, so task counts stay comparable across
-    runs.
+    runs. A stored family selection supplies its own exclusion reason instead of the SKU's.
     """
     for family in families:
         dal.task_excluded(

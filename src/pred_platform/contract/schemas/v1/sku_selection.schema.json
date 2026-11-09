@@ -109,9 +109,22 @@
       "description": "Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`.",
       "properties": {
         "code": {
-          "pattern": "^[a-z_]+\\.[a-z_]+$",
-          "title": "Code",
-          "type": "string"
+          "anyOf": [
+            {
+              "enum": [
+                "not_in_policy_matrix",
+                "not_configured",
+                "series_too_short",
+                "execution_failed"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "^[a-z_]+\\.[a-z_]+$",
+              "type": "string"
+            }
+          ],
+          "title": "Code"
         },
         "stage": {
           "enum": [
@@ -494,14 +507,22 @@
       "additionalProperties": false,
       "properties": {
         "reason_code": {
-          "enum": [
-            "not_in_policy_matrix",
-            "not_configured",
-            "series_too_short",
-            "execution_failed"
+          "anyOf": [
+            {
+              "enum": [
+                "not_in_policy_matrix",
+                "not_configured",
+                "series_too_short",
+                "execution_failed"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "^[a-z_]+\\.[a-z_]+$",
+              "type": "string"
+            }
           ],
-          "title": "Reason Code",
-          "type": "string"
+          "title": "Reason Code"
         },
         "detail": {
           "anyOf": [

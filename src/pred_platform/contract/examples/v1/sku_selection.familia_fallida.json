@@ -28,7 +28,7 @@
       "estado": "no_ejecutable",
       "modelo": "ml:lightgbm",
       "exclusion": {
-        "reason_code": "series_too_short",
+        "reason_code": "model.series_too_short",
         "detail": "La serie no alcanza el minimo de la familia."
       }
     }
