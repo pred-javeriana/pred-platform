@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "summary": "Restore readable evidence and distinguish policy exclusions from model failures and stopped comparisons.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/execution_display.py",
+      "summary": "Use the stored family and task reasons in execution and product detail.",
+      "annotations": [
+        {
+          "newRange": [
+            167,
+            224
+          ],
+          "summary": "task_rows separates policy exclusions from failed tasks and comparison stops.",
+          "rationale": "Legacy tasks mark policy-excluded families with the same stop code as the remaining eligible family. Selection records provide the exclusion reason, while task codes explain the comparison stop. The public execution page, polling route and SKU detail tests cover both policy and configuration exclusions.",
+          "author": "fm/pred-platform-ux-refactor-bugs"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/static/css/pred.css",
+      "summary": "Preserve card padding and provide space for all comparison columns.",
+      "annotations": [
+        {
+          "newRange": [
+            2236,
+            2240
+          ],
+          "summary": "Comparison widths now reserve space for ten columns.",
+          "rationale": "The previous seven percentages consumed the full width, so the last three columns collapsed. Browser measurements on all classes show nonzero widths and normal header height at desktop and phone widths.",
+          "author": "fm/pred-platform-ux-refactor-bugs"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/app/templates/partials/data_topology.html",
+      "summary": "Keep the whole-file demand chart beside the class summary.",
+      "annotations": [
+        {
+          "newRange": [
+            55,
+            55
+          ],
+          "summary": "The product disclosure retains its table and refers to the whole-file chart above.",
+          "rationale": "The summary chart covers all products and supports the class counts beside it. Removing the second chart prevents the same chart from appearing again when product details open. Before and after browser screenshots cover both viewport widths.",
+          "author": "fm/pred-platform-ux-refactor-bugs"
+        }
+      ]
+    }
+  ]
+}
