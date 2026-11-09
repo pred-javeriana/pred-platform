@@ -31,16 +31,6 @@ _BY_CLASS: dict[str, str] = {
 }
 
 
-# Exclusions whose eligibility code means "the series has too little history" (7.5.1).
-_SHORT_SERIES = frozenset(
-    {
-        "eligibility.no_admissible_history",
-        "eligibility.no_reserved_observations",
-        "eligibility.insufficient_history",
-    }
-)
-
-
 def engine_code(value: object) -> str | None:
     """The engine's ``code`` if it is a well-formed contract code, else ``None``."""
     return value if isinstance(value, str) and _CODE.match(value) else None
@@ -97,13 +87,12 @@ def exclusion_info(cause: str, code: str | None = None) -> dict[str, Any]:
 def exclusion_reason(cause: str, code: str | None = None) -> str:
     """The contract's ``reason_code`` (7.5.1) of a SKU the engine could not run.
 
-    A history too short or ending before t* is ``series_too_short``; any other cause is
-    ``execution_failed``. The engine's ``code`` decides; the cause text is only the fallback for
-    runs that carry none.
+    Keep a valid engine code unchanged. For older runs without a code, a history too short
+    or ending before t* is ``series_too_short``; any other cause is ``execution_failed``.
     """
     code = engine_code(code)
     if code is not None:
-        return "series_too_short" if code in _SHORT_SERIES else "execution_failed"
+        return code
     lowered = cause.lower()
     short = "historia" in lowered or "termina antes" in lowered or "comienza" in lowered
     return "series_too_short" if short else "execution_failed"

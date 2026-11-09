@@ -488,6 +488,26 @@ def task_excluded(
             "AND estado <> 'fallida'",
             (json.dumps(error, ensure_ascii=False), ejecucion_id, sku, modelo, corte),
         )
+        reconcile_task_exclusions(conn, ejecucion_id, sku)
+
+
+def reconcile_task_exclusions(conn: sqlite3.Connection, ejecucion_id: int, sku: str) -> None:
+    """Give excluded tasks the engine's family reason once its selection is available."""
+    rows = conn.execute(
+        "SELECT t.id, f.exclusion_codigo, f.exclusion_detalle "
+        "FROM tareas t JOIN seleccion_familias f ON f.tarea_id = t.id "
+        "JOIN selecciones s ON s.id = f.seleccion_id "
+        "WHERE t.ejecucion_id = ? AND t.sku = ? AND t.estado = 'no_ejecutable' "
+        "AND s.ejecucion_id = t.ejecucion_id AND s.sku = t.sku "
+        "AND f.exclusion_codigo IS NOT NULL",
+        (ejecucion_id, sku),
+    ).fetchall()
+    for task_id, code, detail in rows:
+        conn.execute(
+            "UPDATE tareas SET detalle_error = "
+            "json_set(detalle_error, '$.code', ?, '$.detail', ?) WHERE id = ?",
+            (code, detail, task_id),
+        )
 
 
 def close_open_tasks(
