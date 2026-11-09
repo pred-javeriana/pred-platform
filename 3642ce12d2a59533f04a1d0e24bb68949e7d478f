@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "summary": "Preserves the engine's exclusion reason in each family selection and excluded task.",
+  "files": [
+    {
+      "path": "src/pred_platform/dal/ejecuciones.py",
+      "summary": "Reconciles excluded tasks from the stored family selection.",
+      "annotations": [
+        {
+          "newRange": [493, 511],
+          "summary": "Reconciliation replaces the SKU-wide reason with each family's selection reason while preserving failed task errors.",
+          "rationale": "Progress events describe the SKU, so they cannot distinguish policy exclusions from the two-family restriction. Selection ingestion supplies the family reasons. Regression tests passed with missing events and after replay, and the recorded execution 3 case produced matching task and family reasons.",
+          "author": "fm/pred-platform-keep-family-reason"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/worker/progreso.py",
+      "summary": "Preserves family reasons when progress events are replayed.",
+      "annotations": [
+        {
+          "newRange": [53, 55],
+          "summary": "Replaying a SKU exclusion reapplies any stored family reasons before committing the result.",
+          "rationale": "A later replay can otherwise overwrite the policy exclusions after selection ingestion corrected them. The replay regression keeps the same task rows and reasons.",
+          "author": "fm/pred-platform-keep-family-reason"
+        }
+      ]
+    }
+  ]
+}
