@@ -868,3 +868,19 @@ def test_an_older_publication_without_class_confirmation_keeps_its_product_tests
             f"/resultados/exportar.csv?ejecucion={number}&m3=m3-ui-0&prueba={result}"
         ).text
         assert len(list(csv.DictReader(io.StringIO(csv_text.lstrip("﻿"))))) == count
+
+
+def test_published_seed_without_a_class_champion_is_not_pending(env: Env) -> None:
+    client = _dal_client(env)
+    first, *_ = [_publish(env, client, seed) for seed in range(3)]
+    _sql(env, "DELETE FROM m3_categorias WHERE run_id = 'm3-ui-1' AND sku_class = 'erratic'")
+    _sql(env, "DELETE FROM m3_confirmaciones WHERE run_id = 'm3-ui-1' AND sku_class = 'erratic'")
+    html = client.get(f"/corridas/{first}/resultados/estabilidad").text
+    text = _text(html)
+    row = next(row for row in re.findall(r"<tr>.*?</tr>", html, re.S) if "Errática" in row)
+    assert "Semilla 1 · #2 Publicada" in text
+    assert "Sin campeona publicada" in _text(row)
+    assert "Pendiente" not in row
+    assert "Faltan corridas" not in row
+    assert "No confirmada en las tres" in _text(row)
+    assert "No concluyente" in text

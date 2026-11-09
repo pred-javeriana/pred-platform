@@ -471,9 +471,7 @@ def _fill_m3_view(
     if vista in ("resumen", "estabilidad"):
         seeds = seed_evidence(repository, context["run"], found_classes)
         context["seeds"] = seeds
-        context["published_seed_count"] = sum(
-            1 for seed in seeds if seed.evidence and seed.evidence.run and not seed.evidence.problem
-        )
+        context["published_seed_count"] = sum(1 for seed in seeds if seed.published)
         context["stability_rows"] = stability_rows(seeds)
         if vista == "estabilidad":
             group = group_context(repository, params)
