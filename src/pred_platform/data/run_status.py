@@ -53,6 +53,12 @@ class CauseSnapshot(BaseModel):
     causes: list[TaskCause]
 
 
+class FamilyTaskState(BaseModel):
+    estado: str
+    exclusion_code: str | None = None
+    sku_class: str
+
+
 class DisplayRunStatus(RunStatus):
     """Presentation evidence from the same status read, not a new contract document."""
 
@@ -61,6 +67,7 @@ class DisplayRunStatus(RunStatus):
     # True when a retry was stopped while queued: the log only holds the attempt that ended
     # before it, and none of that describes the retry.
     stopped_before_start: bool = Field(default=False, exclude=True)
+    family_states: dict[str, dict[str, FamilyTaskState]] = Field(default_factory=dict, exclude=True)
 
 
 def _timestamp(value: object) -> datetime | None:

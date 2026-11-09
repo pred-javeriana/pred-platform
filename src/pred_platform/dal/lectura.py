@@ -387,15 +387,43 @@ def task_causes(db_path: Path, ejecucion_id: int) -> list[tuple[str | None, str,
     with _open_readonly(db_path) as conn:
         if conn is None:
             return []
+        exclusions = (
+            "AND NOT EXISTS (SELECT 1 FROM selecciones s "
+            "JOIN seleccion_familias f ON f.seleccion_id = s.id "
+            "WHERE s.ejecucion_id = tareas.ejecucion_id AND s.sku = tareas.sku "
+            "AND f.familia = substr(tareas.modelo, 1, instr(tareas.modelo, ':') - 1) "
+            "AND tareas.estado = 'no_ejecutable' AND f.estado = 'excluida') "
+            if _has_selection_tables(conn)
+            else ""
+        )
         rows = conn.execute(
             "SELECT CASE WHEN json_valid(detalle_error) "
             "THEN json_extract(detalle_error, '$.code') END AS code, "
             "substr(modelo, 1, instr(modelo, ':') - 1) AS family, COUNT(*) "
             "FROM tareas WHERE ejecucion_id = ? AND estado IN ('fallida', 'no_ejecutable') "
-            "GROUP BY code, family",
+            + exclusions
+            + "GROUP BY code, family",
             (ejecucion_id,),
         ).fetchall()
     return [(code if isinstance(code, str) else None, family, int(n)) for code, family, n in rows]
+
+
+def task_family_states(
+    db_path: Path, ejecucion_id: int, skus: list[str]
+) -> list[tuple[str, str, str, str, str | None]]:
+    """Stored selection reasons for the current task page, in one bounded read."""
+    if not skus:
+        return []
+    with _open_readonly(db_path) as conn:
+        if conn is None or not _has_selection_tables(conn):
+            return []
+        slots = ",".join("?" for _ in skus)
+        return conn.execute(
+            "SELECT s.sku, s.clase, f.familia, f.estado, f.exclusion_codigo "
+            "FROM selecciones s JOIN seleccion_familias f ON f.seleccion_id = s.id "
+            f"WHERE s.ejecucion_id = ? AND s.sku IN ({slots})",
+            [ejecucion_id, *skus],
+        ).fetchall()
 
 
 def list_tasks(

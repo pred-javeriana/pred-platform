@@ -40,6 +40,7 @@ from pred_platform.app.consulta import (
 from pred_platform.app.corridas import draft_facts, resolve_run_id, run_facts
 from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import run_resumable
+from pred_platform.app.execution_display import task_rows
 from pred_platform.app.pasos import (
     NEW,
     Wizard,
@@ -117,7 +118,7 @@ from pred_platform.contract.errors import ArtifactMissing, DataLayerError, Inval
 from pred_platform.contract.models import RunStatus, SkuSelection, SkuSelectionList
 from pred_platform.data.deps import get_repository
 from pred_platform.data.m3_intervals import M3Interval
-from pred_platform.data.query import LATEST
+from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository
 
 router = APIRouter()
@@ -888,6 +889,13 @@ def _producto_detalle_page(
         if selection is not None
         else []
     )
+    family_task_reasons = {}
+    if any(entry.estado == "no_ejecutable" for entry in entries):
+        with suppress(DataLayerError):
+            tasks = repository.get_run_status(corrida, sku=sku_id, size=MAX_SIZE)
+            family_task_reasons = {
+                item["task"].family: item["reason"] for item in task_rows(tasks) if item["reason"]
+            }
 
     context.update(
         wizard=wizard,
@@ -895,6 +903,7 @@ def _producto_detalle_page(
         sku_id=sku_id,
         selection=selection,
         entries=entries,
+        family_task_reasons=family_task_reasons,
         with_windows=with_windows,
         reserve=reserve,
         windows_href=(

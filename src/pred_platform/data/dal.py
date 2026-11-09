@@ -52,6 +52,7 @@ from pred_platform.data.run_history import read_stage_references
 from pred_platform.data.run_status import (
     CauseSnapshot,
     DisplayRunStatus,
+    FamilyTaskState,
     StageReference,
     TaskCause,
     read_run_progress,
@@ -486,7 +487,15 @@ class DalRepository(M3DalSource):
             if stopped_before_start:
                 etapa, skus_total, skus_terminados, timings = None, None, None, []
         parametros = json.loads(run.parametros)
+        family_states: dict[str, dict[str, FamilyTaskState]] = {}
+        for sku_id, sku_class, code, state, exclusion in lectura.task_family_states(
+            self.db_path, run.id, sorted({task.sku for task in rows if task.sku is not None})
+        ):
+            family_states.setdefault(sku_id, {})[code] = FamilyTaskState(
+                estado=state, exclusion_code=exclusion, sku_class=sku_class
+            )
         return DisplayRunStatus(
+            family_states=family_states,
             stage_timings=timings,
             last_stage=etapa,
             stopped_before_start=stopped_before_start,

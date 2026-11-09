@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
 from pred_platform.app.ejecucion import FINISHED_STATES, STAGES, error_action
-from pred_platform.app.presentation import family_label, format_duration, stage_term
-from pred_platform.app.seleccion import error_title
+from pred_platform.app.presentation import (
+    describe_status,
+    family_label,
+    format_duration,
+    stage_term,
+)
+from pred_platform.app.seleccion import error_title, exclusion_text
 from pred_platform.contract.models import RunStatus
 from pred_platform.data.run_status import CauseSnapshot, DisplayRunStatus, StageReference
 
@@ -156,3 +162,63 @@ def add_cause_snapshot(context: dict[str, Any], snapshot: CauseSnapshot) -> None
         groups.values(), key=lambda item: (-item["count"], item["title"])
     )
     context["cause_snapshot_at"] = snapshot.read_at
+
+
+def task_rows(status: RunStatus) -> list[dict[str, Any]]:
+    rows = []
+    for task in status.tasks:
+        error = task.error
+        families = (
+            status.family_states.get(task.sku or "", {})
+            if isinstance(status, DisplayRunStatus)
+            else {}
+        )
+        family = families.get(task.family or "")
+        excluded = bool(
+            task.estado == "no_ejecutable"
+            and family
+            and family.estado == "excluida"
+            and family.exclusion_code
+        )
+        shown_status = describe_status("task", task.estado)
+        reason = None
+        if excluded and family is not None:
+            reason = exclusion_text(
+                family.exclusion_code or "", task.family or "", family.sku_class
+            )
+            shown_status = replace(
+                describe_status("family", "excluida"),
+                label="No elegida para esta clase"
+                if family.exclusion_code == "not_in_policy_matrix"
+                else "No elegida en esta corrida"
+                if family.exclusion_code == "not_configured"
+                else "Excluida",
+                hint=reason,
+            )
+        elif error and error.code == "eligibility.fewer_than_two_families":
+            reason = "No se ejecutó la comparación: quedaron menos de dos familias evaluables."
+            failed = [
+                family_label(code) for code, entry in families.items() if entry.estado == "fallida"
+            ]
+            if failed:
+                reason += (
+                    (" Falló " if len(failed) == 1 else " Fallaron ") + ", ".join(failed) + "."
+                )
+        rows.append(
+            {
+                "task": task,
+                "status": shown_status,
+                "reason": reason,
+                "error": None
+                if error is None
+                else {
+                    "title": reason
+                    or error_title(error.code, error.stage, error.row_index, error.column),
+                    "detail": error.detail,
+                    "code": error.code,
+                    "stage": error.stage,
+                    "action": None if excluded else error_action(error.code),
+                },
+            }
+        )
+    return rows

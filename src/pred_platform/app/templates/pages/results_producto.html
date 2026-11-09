@@ -305,7 +305,7 @@
         </summary>
 
         {% if entry.exclusion %}
-        <p class="pred-note">{{ exclusion_text(entry.exclusion.reason_code, entry.family, selection.sku_class) }}</p>
+        <p class="pred-note">{{ family_task_reasons.get(entry.family) or exclusion_text(entry.exclusion.reason_code, entry.family, selection.sku_class) }}</p>
         {% if entry.exclusion.detail %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">{{ entry.exclusion.detail }}</p></details>{% endif %}
         {% endif %}
 
