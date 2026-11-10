@@ -3,46 +3,98 @@
 {% from "components/buttons.html" import button %}
 {% from "components/terms.html" import when %}
 
-{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=2">{% endblock %}
 
-{# Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por fila, y el botón Lanzar. En una
+{# Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por sección, y el botón Lanzar. En una
    corrida lanzada (record), lo que se lanzó. #}
 {% block content %}
   {% if source == "fixture" %}
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
 
-  <section class="pred-panel" aria-labelledby="titulo-revisar">
-    <h2 id="titulo-revisar">{{ "Datos y ajustes lanzados" if record else "Compruebe antes de lanzar" }}</h2>
-    <dl class="pred-check">
-      {% if record %}
-      <div><dt>Datos</dt><dd>{{ facts.file_name or abbreviate_id(facts.ingest_id or "") }}{% if facts.n_skus is not none %}<span class="pred-subvalue">{{ format_count(facts.n_skus) }} productos</span>{% endif %}</dd></div>
-      {% else %}
-      <div><dt>Datos</dt><dd><span>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}{% if ingest and ingest.n_skus is not none %}<span class="pred-subvalue">{{ format_count(ingest.n_skus) }} productos</span>{% endif %}{% if form_errors.get("ingest_id") %}<span class="pred-subvalue pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}</span> <a href="/corridas/nueva/datos">Cambiar</a></dd></div>
+  {% macro icon(name) %}<svg aria-hidden="true"><use href="#{{ name }}"></use></svg>{% endmacro %}
+  {% macro change(step, anchor, what) %}{% if not record %}<a class="pred-review__change" href="/corridas/nueva/{{ step }}{{ anchor }}">{{ icon("i-pencil") }}Cambiar<span class="pred-sr-only"> {{ what }}</span></a>{% endif %}{% endmacro %}
+  <section class="pred-panel pred-review" aria-labelledby="titulo-revisar">
+    <div class="pred-review__head">
+      <h2 id="titulo-revisar">{{ "Datos y ajustes lanzados" if record else "Compruebe antes de lanzar" }}</h2>
+      {% if not record %}
+      {% set waits = worker in ("off", "stopped") %}
+      {% set tone = "err" if form_errors else "warn" if exclusion_warning or duplicate or control_reason or waits else "ok" %}
+      <p class="pred-review__state pred-review__state--{{ tone }}">{{ icon({"err": "i-x-circle", "warn": "i-warn", "ok": "i-check-circle"}[tone]) }}{{ "Todavía no se puede lanzar" if form_errors else "Esta corrida ya existe" if duplicate else "Lanzar no está disponible" if control_reason else "Puede lanzar, pero lea el aviso" if exclusion_warning else "Puede lanzar; la corrida esperará en cola" if waits else "Todo listo para lanzar" }}</p>
       {% endif %}
-      {% for label, value in review_rows if not form or label not in ('Mínimo de entrenamiento', 'Horizonte', 'Paso entre ventanas', 'Estacionalidad', 'Configuraciones por SKU y familia') %}
-      <div><dt>{{ label }}</dt><dd><span>{{ value }}</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>
-      {% if form and label == 'Métrica de selección' %}<div><dt>Ventana</dt><dd><span>Entrena con al menos {{ form.min_train }} días y pronostica {{ form.horizon }} días; una ventana cada {{ form.step }} días.</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>{% endif %}
-      {% endfor %}
-      {% if record %}
-      {% if not form %}<div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>{% endif %}
-      <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
-      {% endif %}
-    </dl>
-    {% if form %}
-    <details class="pred-details" id="detalle-ajustes-revisados">
-      <summary>Ajustes de búsqueda y reproducibilidad</summary>
-      <dl class="pred-check">{% for label, value in review_rows if label in ('Estacionalidad', 'Configuraciones por SKU y familia') %}<div><dt>{{ label }}</dt><dd><span>{{ value }}</span>{% if not record %} <a href="/corridas/nueva/ajustes">Cambiar</a>{% endif %}</dd></div>{% endfor %}</dl>
-    </details>
-    {% endif %}
+    </div>
     {% if record_error %}{{ alert(record_error, variant="error") }}{% endif %}
-    {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
+    {% if form_errors and not record %}{{ alert("Estos ajustes no se pueden lanzar: " ~ (form_errors.values() | join(" ")) ~ " Corríjalos en Ajustes.", variant="error") }}{% endif %}
     {% if duplicate %}
     {{ alert("Estos ajustes son los de la corrida #" ~ duplicate.id ~ ". Lanzar no crea una corrida nueva. Para una corrida nueva del grupo, cambie la semilla.", variant="warning") }}
     <p class="pred-actions">{{ button("Abrir la corrida existente", variant="secondary", href="/corridas/" ~ duplicate.id ~ "/ejecucion") }}</p>
     {% endif %}
+    {% if exclusion_warning %}{% include "partials/exclusion_warning.html" %}{% endif %}
+
+    <section class="pred-review__section" aria-labelledby="revisar-datos">
+      <div class="pred-review__bar"><h3 id="revisar-datos">Datos</h3>{{ change("datos", "", "los datos") }}</div>
+      <p class="pred-review__file"><span class="pred-review__icon">{{ icon("i-file") }}</span><span>
+        {% if record %}
+        <strong>{{ facts.file_name or abbreviate_id(facts.ingest_id or "") }}</strong>
+        {% if facts.n_skus is not none %}<span>{{ format_count(facts.n_skus) }} productos</span>{% endif %}
+        {% else %}
+        <strong>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}</strong>
+        {% if ingest %}<span>{% if ingest.n_skus is not none %}{{ format_count(ingest.n_skus) }} productos{% endif %}{% if ingest.rows is not none %} · {{ format_count(ingest.rows) }} filas{% endif %}{% if ingest.published_at %} · cargado el {{ when(ingest.published_at) }}{% endif %}</span>{% endif %}
+        {% if form_errors.get("ingest_id") %}<span class="pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}
+        {% endif %}
+      </span></p>
+    </section>
+
+    {% if form %}
+    {% set chosen = form.families | length %}
+    <section class="pred-review__section" aria-labelledby="revisar-familias">
+      <div class="pred-review__bar"><h3 id="revisar-familias">Familias de modelos <small>{{ "No compite ninguna" if chosen == 0 else "Compiten las " ~ chosen if chosen == FAMILY_ORDER | length else ("Compite " if chosen == 1 else "Compiten ") ~ chosen ~ " de " ~ FAMILY_ORDER | length }}</small></h3>{{ change("ajustes", "#matriz-familias", "las familias") }}</div>
+      <ul class="pred-family-cards">
+        {% for family in FAMILY_ORDER %}
+        {% set on = family in form.families %}
+        <li data-family="{{ family }}"{% if not on %} class="is-off"{% endif %}>
+          <span class="pred-family-card__icon">{{ icon("i-family-" ~ family) }}</span>
+          <strong class="pred-family-card__name">{{ family_label(family) }}</strong>
+          <span class="pred-family-card__hint">{{ family_term(family).hint }}</span>
+          <span class="pred-family-card__state">{{ icon("i-check-circle" if on else "i-minus-circle") }}{{ "Compite" if on else "No compite" }}</span>
+          {% if on and family == "foundation" and not record %}<span class="pred-family-card__note">Necesita Chronos-2 instalado en el equipo del motor. Si falta, la corrida se detiene al empezar.</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="pred-review__section" aria-labelledby="revisar-evaluacion">
+      <div class="pred-review__bar"><h3 id="revisar-evaluacion">Evaluación</h3>{{ change("ajustes", "#titulo-evaluacion", "la evaluación") }}</div>
+      <dl class="pred-review__eval">
+        <div><dt>{{ icon("i-target") }}Métrica de selección</dt><dd>{{ metric_label(form.metric) }}<small>{{ metric_term(form.metric).hint }}</small></dd></div>
+        <div><dt>{{ icon("i-window") }}Ventana</dt>
+          <dd class="pred-window" aria-hidden="true"><span class="pred-window__train"><b>{{ form.min_train }} días</b>como mínimo, para entrenar</span><span class="pred-window__test"><b>{{ form.horizon }} días</b>de pronóstico</span></dd>
+          <dd class="pred-window-text">Cada modelo entrena con al menos {{ form.min_train }} días y pronostica los {{ form.horizon }} días siguientes. La prueba se repite cada {{ form.step }} días.</dd>
+        </div>
+      </dl>
+      <dl class="pred-review__facts">
+        <div><dt>{{ icon("i-dice") }}Semilla</dt><dd><span class="mono">{{ form.seed }}</span><small>La misma semilla repite la corrida igual.</small></dd></div>
+        <div><dt>{{ icon("i-cpu") }}Procesos en paralelo</dt><dd><span class="mono">{{ form.workers }}</span><small>Tareas que el motor ejecuta a la vez.</small></dd></div>
+        <div><dt>{{ icon("i-calendar") }}Estacionalidad</dt><dd><span class="mono">{{ form.seasonality }}</span> días<small>El ciclo que se repite en la demanda.</small></dd></div>
+        <div><dt>{{ icon("i-sliders") }}Configuraciones por SKU y familia</dt>{% if form.trials %}<dd><span class="mono">{{ form.trials }}</span><small>Las que cada familia prueba en cada SKU.</small></dd>{% else %}<dd class="is-text">Las que cada familia prueba por defecto</dd>{% endif %}</div>
+        {% if record %}
+        <div><dt>{{ icon("i-clock") }}Iniciada</dt><dd class="is-text">{{ when(run.iniciada_en) }}</dd></div>
+        {% for label, value in review_rows if label == "Resumen de las ventanas" %}<div><dt>{{ icon("i-window") }}{{ label }}</dt><dd class="is-text">{{ value }}</dd></div>{% endfor %}
+        {% endif %}
+      </dl>
+    </section>
+    {% else %}
+    {# Una corrida lanzada cuyos ajustes no se pueden leer como formulario: las filas guardadas. #}
+    <section class="pred-review__section" aria-labelledby="revisar-ajustes">
+      <div class="pred-review__bar"><h3 id="revisar-ajustes">Ajustes</h3></div>
+      <dl class="pred-check">
+        {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}
+        <div><dt>Semilla</dt><dd class="mono">{{ run.seed }}</dd></div>
+        <div><dt>Iniciada</dt><dd>{{ when(run.iniciada_en) }}</dd></div>
+      </dl>
+    </section>
+    {% endif %}
     {% if record and source != 'fixture' %}<p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>{% endif %}
-    {% if form_errors and not record %}{{ alert("Estos ajustes no se pueden lanzar: " ~ (form_errors.values() | join(" ")) ~ " Corríjalos en Ajustes.", variant="error") }}{% endif %}
   </section>
 
   {% include "partials/earlier_durations.html" %}
@@ -51,7 +103,10 @@
   <section class="pred-panel pred-action-card" aria-labelledby="titulo-lanzar">
     <div>
       <h2 id="titulo-lanzar">Lanzar</h2>
+      <p class="pred-launch-sum">{{ "Una familia" if form.families | length == 1 else form.families | length ~ " familias" }}{% if ingest and ingest.n_skus is not none %} · {{ format_count(ingest.n_skus) }} productos{% endif %} · semilla {{ form.seed }}</p>
       <p class="pred-lead">Al lanzar, la corrida entra en cola y el procesador la empieza. Puede cerrar el navegador: la corrida sigue, y en Corridas la encontrará en este recorrido.</p>
+      {% set last = earlier_runs | last if earlier_runs else none %}
+      {% if last and last.stages | length == stage_choices | length %}<p class="pred-meta pred-launch-time">{{ icon("i-clock") }}La corrida #{{ last.run.id }} con estos datos tardó {{ format_duration(last.stages.values() | sum(attribute="seconds")) }}. Con otros ajustes puede tardar distinto.</p>{% endif %}
       {% if form_error %}{{ alert(form_error, variant="error") }}{% endif %}
       {% if exclusion_confirmation %}<p class="pred-meta">Lanzar así deja fuera de la comparación los SKU del aviso. Si cambia las familias en Ajustes, PRED vuelve a revisarlas.</p>{% endif %}
       {% if worker == "stopped" and control_reason is none %}<p class="pred-meta">El procesador de ejecuciones de esta instalación se detuvo: la corrida quedará en cola. El registro de la aplicación dice por qué.</p>{% elif worker == "off" and control_reason is none %}<p class="pred-meta">Esta instalación no procesa corridas por sí sola: la corrida quedará en cola hasta que se inicie el procesador de ejecuciones.</p><details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Comando: <span class="mono">make worker</span></p></details>{% endif %}

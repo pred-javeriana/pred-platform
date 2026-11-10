@@ -58,6 +58,21 @@
   --muted-text: #5d6168;
   --warn-text: #785415;
   --data-text: #176777;
+  /* Identidad de cada familia de modelos. --family-X es el color de los gráficos (charts.py);
+     -ink es el tono para texto e íconos (contraste >= 6:1 sobre -soft y sobre blanco);
+     -soft es el fondo de la tarjeta de familia. */
+  --family-classical: #008300;
+  --family-classical-ink: #0b5c0b;
+  --family-classical-soft: #e4f2e4;
+  --family-ml: #eda100;
+  --family-ml-ink: #7a5200;
+  --family-ml-soft: #fcf0d2;
+  --family-dl: #e87ba4;
+  --family-dl-ink: #99305c;
+  --family-dl-soft: #fce8f0;
+  --family-foundation: #6250d6;
+  --family-foundation-ink: #4636ae;
+  --family-foundation-soft: #ebe8fb;
 
   --font-body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;

@@ -1,6 +1,6 @@
 {% from "components/terms.html" import when %}
 <section class="pred-panel" aria-labelledby="titulo-duraciones">
-  <h2 id="titulo-duraciones">Qué va a pasar</h2>
+  <h2 id="titulo-duraciones">{{ "Cómo fueron las corridas anteriores" if record else "Qué va a pasar" }}</h2>
   <p class="pred-lead">El motor recorre cuatro etapas. PRED no estima cuánto falta; estas son las duraciones reales de las corridas anteriores con estos datos.</p>
   {% if earlier_runs %}
   <ul class="pred-duration-legend" aria-label="Corridas anteriores">

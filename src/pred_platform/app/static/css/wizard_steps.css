@@ -29,10 +29,10 @@
 .pred-family-matrix input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--primary); }
 .pred-family-key { color: var(--ink); font-weight: 650; }
 .pred-family-key::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 7px; background: var(--family-color); }
-.pred-family-key[data-family="classical"] { --family-color: #008300; }
-.pred-family-key[data-family="ml"] { --family-color: #eda100; }
-.pred-family-key[data-family="dl"] { --family-color: #e87ba4; }
-.pred-family-key[data-family="foundation"] { --family-color: #6250d6; }
+.pred-family-key[data-family="classical"] { --family-color: var(--family-classical); }
+.pred-family-key[data-family="ml"] { --family-color: var(--family-ml); }
+.pred-family-key[data-family="dl"] { --family-color: var(--family-dl); }
+.pred-family-key[data-family="foundation"] { --family-color: var(--family-foundation); }
 .pred-matrix-dot { display: inline-block; flex: none; width: 11px; height: 11px; border-radius: 50%; vertical-align: middle; }
 .pred-matrix-dot--on { background: var(--ink-soft); border: 1px solid var(--ink-soft); }
 .pred-matrix-dot--off { background: transparent; border: 1px solid var(--border-strong); }
@@ -86,12 +86,82 @@ label.pred-file-choice { display: grid; grid-template-columns: 22px minmax(0, 1f
 .pred-duration-bar { height: 10px; background: #f0f1ee; }
 .pred-duration-bar i { display: block; height: 100%; background: #a9ada7; }
 .pred-duration-bar--2 i { background: #d3d5d1; }
+/* Revisar y lanzar: el resumen de lo que se va a lanzar, por secciones. */
+.pred-review__head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin: 0 0 var(--space-3); }
+.pred-panel .pred-review__head h2 { margin: 0; }
+.pred-review__state { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; font-weight: 650; }
+.pred-review__state svg { flex: none; width: 20px; height: 20px; }
+.pred-review__state--ok { color: var(--ok); }
+.pred-review__state--warn { color: var(--warn-text); }
+.pred-review__state--err { color: var(--err); }
+.pred-review > .pred-alert { margin: 0 0 var(--space-3); }
+.pred-review > .pred-actions { margin: 0 0 var(--space-3); }
+
+.pred-review__section { padding: var(--space-4) 0; border-top: 1px solid var(--border); }
+.pred-review__section:last-child { padding-bottom: var(--space-2); }
+.pred-review__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; margin: 0 0 12px; }
+.pred-review__bar h3 { margin: 0; color: var(--muted-text); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.pred-review__bar h3 small { display: inline-block; margin-left: 10px; color: var(--ink-soft); font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.pred-review__change { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.pred-review__change svg { width: 15px; height: 15px; }
+
+.pred-panel .pred-review__file { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 14px; margin: 0; }
+.pred-review__icon { display: grid; place-items: center; width: 44px; height: 44px; background: var(--canvas); border-radius: var(--radius); color: var(--ink-soft); }
+.pred-review__icon svg { width: 22px; height: 22px; }
+.pred-review__file strong { display: block; color: var(--ink); font-size: 18px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.pred-review__file span { color: var(--muted-text); font-size: 14px; line-height: 1.45; }
+.pred-review__file .pred-cause { display: block; }
+
+ul.pred-family-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+ul.pred-family-cards > li { --fam: var(--border-strong); --fam-ink: var(--muted-text); --fam-soft: var(--surface); display: grid; grid-template-columns: 40px minmax(0, 1fr); align-content: start; gap: 2px 12px; margin: 0; padding: 14px 14px 12px; list-style: none; background: var(--fam-soft); border: 1px solid color-mix(in srgb, var(--fam-ink) 28%, var(--surface)); border-top: 4px solid var(--fam); border-radius: var(--radius); }
+ul.pred-family-cards > li[data-family="classical"] { --fam: var(--family-classical); --fam-ink: var(--family-classical-ink); --fam-soft: var(--family-classical-soft); }
+ul.pred-family-cards > li[data-family="ml"] { --fam: var(--family-ml); --fam-ink: var(--family-ml-ink); --fam-soft: var(--family-ml-soft); }
+ul.pred-family-cards > li[data-family="dl"] { --fam: var(--family-dl); --fam-ink: var(--family-dl-ink); --fam-soft: var(--family-dl-soft); }
+ul.pred-family-cards > li[data-family="foundation"] { --fam: var(--family-foundation); --fam-ink: var(--family-foundation-ink); --fam-soft: var(--family-foundation-soft); }
+/* Una familia que no compite: sin color, borde punteado. El texto «No compite» lo dice. */
+ul.pred-family-cards > li.is-off { --fam: var(--border-strong); --fam-ink: var(--muted-text); --fam-soft: var(--surface); border-style: dashed; border-top-style: solid; }
+.pred-family-card__icon { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 40px; background: var(--fam-ink); border-radius: var(--radius); color: #fff; }
+.is-off > .pred-family-card__icon { background: var(--canvas); color: var(--muted-text); }
+.pred-family-card__icon svg { width: 22px; height: 22px; }
+.pred-family-card__name { align-self: end; color: var(--fam-ink); font-size: 16px; font-weight: 700; line-height: 1.25; }
+.pred-family-card__hint { color: var(--ink-soft); font-size: 13px; line-height: 1.4; }
+.is-off > .pred-family-card__hint { color: var(--muted-text); }
+.pred-family-card__state { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--fam-ink) 22%, var(--surface)); color: var(--fam-ink); font-size: 13px; font-weight: 650; }
+.pred-family-card__state svg { flex: none; width: 15px; height: 15px; }
+.pred-family-card__note { grid-column: 1 / -1; margin-top: 4px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.4; }
+
+.pred-review__eval { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(0, 2.4fr); align-items: start; gap: 20px 40px; margin: 0; }
+dl.pred-review__eval > div, dl.pred-review__facts > div { min-width: 0; }
+.pred-review__eval dt, .pred-review__facts dt { display: flex; align-items: center; gap: 8px; color: var(--muted-text); font-size: 13px; font-weight: 600; }
+.pred-review__eval dt svg, .pred-review__facts dt svg { flex: none; width: 16px; height: 16px; }
+.pred-review__eval dd, .pred-review__facts dd { margin: 4px 0 0; color: var(--ink); font-size: 22px; font-weight: 750; line-height: 1.25; }
+.pred-review__eval dd small, .pred-review__facts dd small { display: block; margin-top: 3px; color: var(--muted-text); font-size: 13px; font-weight: 400; line-height: 1.45; }
+.pred-review__facts dd.is-text { font-size: 16px; font-weight: 650; }
+
+.pred-review__eval dd.pred-window { display: flex; gap: 3px; margin: 6px 0 0; font-size: 13px; font-weight: 600; line-height: 1.25; }
+.pred-window > span { display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 52px; padding: 6px 12px; border-radius: var(--radius); }
+.pred-window b { font-family: var(--font-mono); font-size: 18px; font-weight: 700; line-height: 1.2; }
+.pred-window__train { flex: 1 1 0; min-width: 9rem; background: var(--canvas); border: 1px solid var(--border-strong); color: var(--ink-soft); }
+.pred-window__test { flex: 0 1 auto; min-width: 8.5rem; background: var(--data-text); color: #fff; }
+.pred-review__eval dd.pred-window-text { margin-top: 8px; color: var(--ink-soft); font-size: 14px; font-weight: 400; line-height: 1.5; }
+
+dl.pred-review__facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px 0; margin: var(--space-4) 0 0; padding: 20px 0 0; border-top: 1px solid var(--border); }
+dl.pred-review__facts > div { padding: 0 20px; border-left: 1px solid var(--border); }
+dl.pred-review__facts > div:nth-child(4n + 1) { padding-left: 0; border-left: 0; }
+
+.pred-launch-sum { margin: 0 0 6px; color: var(--ink); font-size: 16px; font-weight: 600; }
+.pred-action-card .pred-meta.pred-launch-time { display: flex; align-items: center; gap: 6px; }
+.pred-launch-time svg { flex: none; width: 15px; height: 15px; }
 @media (max-width: 1100px) {
   .pred-data-split { grid-template-columns: minmax(0, 1fr); }
   .pred-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  ul.pred-family-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  dl.pred-review__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  dl.pred-review__facts > div:nth-child(odd) { padding-left: 0; border-left: 0; }
 }
 @media (max-width: 900px) {
   .pred-copy-card { grid-template-columns: minmax(0, 1fr); }
+  .pred-review__eval { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .pred-copy-import[open] form { grid-template-columns: minmax(0, 1fr); }
@@ -105,4 +175,13 @@ label.pred-file-choice { display: grid; grid-template-columns: 22px minmax(0, 1f
   .pred-types-table .pred-subvalue { font-size: 11px; }
   .pred-earlier-stages > li { grid-template-columns: 30px minmax(0, 1fr); }
   .pred-duration-bars, .pred-earlier-stages__durations { grid-column: 2; text-align: left; }
+  ul.pred-family-cards { grid-template-columns: minmax(0, 1fr); }
+  .pred-review__section { padding: 20px 0; }
+  .pred-window { flex-direction: column; }
+  .pred-window__train, .pred-window__test { flex: none; min-width: 0; min-height: 44px; }
+  dl.pred-review__facts { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 4px; }
+  dl.pred-review__facts > div { padding: 14px 0; border-left: 0; border-bottom: 1px solid var(--border); }
+  dl.pred-review__facts > div:last-child { padding-bottom: 0; border-bottom: 0; }
+  .pred-review__bar h3 small { display: block; margin: 2px 0 0; }
+  .pred-review__eval dd, .pred-review__facts dd { font-size: 20px; }
 }

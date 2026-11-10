@@ -555,8 +555,12 @@ def _duplicate(request: Request, ingest_id: str, form: FormResult) -> lectura.Ru
     return lectura.get_run_for_identity(settings.db_path, run_id_for(ingest_id, form.settings))
 
 
-def _duration_context(request: Request, ingest_id: str) -> dict[str, Any]:
-    history = earlier_runs(_stored_runs(request), ingest_id, request.app.state.settings.data_root)
+def _duration_context(
+    request: Request, ingest_id: str, exclude: str | None = None
+) -> dict[str, Any]:
+    history = earlier_runs(
+        _stored_runs(request), ingest_id, request.app.state.settings.data_root, exclude
+    )
     maximum = max((d.seconds for r in history for d in r.stages.values()), default=1) or 1
     return {"earlier_runs": history, "duration_max": maximum, "stage_choices": STAGES}
 
@@ -570,7 +574,7 @@ def _render_revisar(
     form_error: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
-    """Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por fila, y el botón Lanzar.
+    """Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por sección, y el botón Lanzar.
 
     El aviso de los SKU que quedarían sin campeón se muestra aquí; lanzar desde esta página lo
     confirma (la misma clave que pide ``POST /ejecucion/lanzar``).
@@ -639,7 +643,7 @@ def _render_record(
         "metric_choices": METRIC_CHOICES,
         "families_hint": families_hint(),
         "class_counts": by_class,
-        **_duration_context(request, facts.ingest_id or ""),
+        **_duration_context(request, facts.ingest_id or "", facts.id),
         "reserve": status.reserve,
     }
     template = "pages/paso_ajustes.html" if step == "ajustes" else "pages/paso_revisar.html"

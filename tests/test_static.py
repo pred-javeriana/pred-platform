@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from pred_platform.app.charts import FAMILY_COLORS
 from pred_platform.app.main import create_app
 
 _APP_DIR = Path(__file__).parent.parent / "src" / "pred_platform" / "app"
@@ -101,3 +102,11 @@ def test_static_code_has_no_external_references(path: str) -> None:
 def test_templates_have_no_external_references(template: str) -> None:
     text = (_APP_DIR / "templates" / template).read_text(encoding="utf-8")
     assert not _EXTERNAL_URL.search(text), f"{template} references an external resource"
+
+
+@pytest.mark.parametrize("family", ["classical", "ml", "dl", "foundation"])
+def test_family_color_tokens_match_the_chart_colors(family: str) -> None:
+    css = (_STATIC_DIR / "css" / "pred.css").read_text(encoding="utf-8")
+    token = re.search(rf"--family-{family}:\s*(#[0-9a-fA-F]{{6}});", css)
+    assert token is not None
+    assert token.group(1).lower() == FAMILY_COLORS[family].lower()

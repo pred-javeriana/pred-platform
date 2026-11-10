@@ -47,7 +47,7 @@ y Siguiente.
 | `/` | Corridas: el inicio |
 | `/corridas/nueva/datos` | Paso 1 de una corrida nueva. `POST` elige el archivo y lleva a Ajustes |
 | `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; con `destino` guarda lo escrito sin validar y va a ese paso. `?ingest_id=` llega con el archivo ya elegido y `?copiar_de=` copia los ajustes de una corrida |
-| `/corridas/nueva/revisar` | Paso 3: lista con «Cambiar» por fila, duraciones publicadas de corridas anteriores y Lanzar (`POST /ejecucion/lanzar`). Un duplicado deshabilita Lanzar y enlaza a la corrida existente. Sin archivo elegido está bloqueado |
+| `/corridas/nueva/revisar` | Paso 3: resumen por secciones (Datos, Familias de modelos, Evaluación) con «Cambiar» por sección, duraciones publicadas de corridas anteriores y Lanzar (`POST /ejecucion/lanzar`). Un duplicado deshabilita Lanzar y enlaza a la corrida existente. Sin archivo elegido está bloqueado |
 | `POST /corridas/nueva/copiar` | Copia todos los ajustes de una corrida al borrador, sin lanzarla |
 | `POST /corridas/nueva/ajustes/comprobar` | Actualiza la matriz y sus avisos al cambiar un campo; no guarda ni lanza |
 | `/corridas/nueva/ejecucion`, `/corridas/nueva/resultados` | Bloqueados hasta lanzar: dicen qué falta y llevan al primer paso por hacer |
