@@ -1,10 +1,46 @@
-.PHONY: run test integration motor-local lint format typecheck lock check sync-contract migrate import worker launch
+.PHONY: setup datos-demo up down status run test integration motor-local lint format typecheck lock check sync-contract migrate import worker launch
 
 # Load .env (KEY=VALUE, no quotes) when present so `make run` honours it.
 ifneq (,$(wildcard .env))
 include .env
 export
 endif
+
+# One-command install and lifecycle (README, «Instalar y arrancar con make»):
+#   make setup    check prerequisites, install both checkouts, create .env, migrate, load the sample
+#   make up       start PRED in the background and wait until it answers (PORT=8000)
+#   make status   whether PRED runs, the database version and the runs
+#   make down     stop PRED
+# pred-engine sits next to this checkout (MOTOR=path to override); its own `make setup` installs it,
+# and `make setup FUNDACIONAL=no` passes through to skip Chronos-2.
+MOTOR ?= ../pred-engine
+PORT ?= 8000
+ENTORNO = uv run python scripts/entorno.py
+
+setup:
+	@command -v uv >/dev/null 2>&1 || { echo "Falta uv: instálelo (https://docs.astral.sh/uv/) y repita make setup."; exit 1; }
+	uv sync --extra dev --locked
+	@$(ENTORNO) revisar --motor $(MOTOR)
+	$(MAKE) -C $(MOTOR) setup
+	@$(ENTORNO) env --motor $(MOTOR)
+	@$(MAKE) --no-print-directory migrate
+	@$(MAKE) --no-print-directory datos-demo
+	@echo "Instalación lista. Siga con: make up"
+
+# Ingest ejemplos/panel_demo.csv as a browser upload would, so Datos already lists it.
+datos-demo:
+	@$(ENTORNO) cargar-demo
+
+up:
+	@$(ENTORNO) up --port $(PORT)
+
+down:
+	@$(ENTORNO) down
+
+status:
+	@$(ENTORNO) status
+	@$(MAKE) -s --no-print-directory migrate ARGS=--status
+	@$(MAKE) -s --no-print-directory worker ARGS=--status
 
 run:
 	uv run uvicorn pred_platform.app.main:app --reload
@@ -20,7 +56,6 @@ integration:
 # Local engine check before asking for review: runs the case above with ../pred-engine (override
 # with MOTOR=path) and writes the receipt that CI reads; see docs/features/motor-local/README.md.
 # Example: make motor-local ARGS=--publicar
-MOTOR ?= ../pred-engine
 motor-local:
 	uv run --project $(MOTOR) python $(MOTOR)/.github/scripts/motor_local.py --plataforma . $(ARGS)
 
