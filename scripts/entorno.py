@@ -187,6 +187,10 @@ def _healthy(port: int) -> bool:
 
 def _port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        # Bind as uvicorn does: a port left in TIME_WAIT by a stopped server is still usable.
+        # On Windows the same option would let the probe share a port another server holds.
+        if sys.platform != "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((HOST, port))
         except OSError:

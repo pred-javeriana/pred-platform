@@ -139,6 +139,24 @@ def test_up_status_and_down_manage_one_background_server(workdir: Path) -> None:
     assert "no está corriendo" in _run(workdir, "down", **env).stdout
 
 
+def test_up_right_after_down_reuses_the_same_port(workdir: Path) -> None:
+    # Requests to the stopped server leave its port in TIME_WAIT for a while; uvicorn can still
+    # bind it, so `make up` must not report it as taken.
+    port = str(_free_port())
+    env = {"PRED_DATA_ROOT": str(workdir / "data"), "PRED_DATA_SOURCE": "fixture"}
+    try:
+        assert _run(workdir, "up", "--port", port, **env).returncode == 0
+        for _ in range(3):
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5).close()
+        assert _run(workdir, "down", **env).returncode == 0
+
+        again = _run(workdir, "up", "--port", port, **env)
+
+        assert again.returncode == 0, again.stderr
+    finally:
+        _run(workdir, "down", **env)
+
+
 def test_up_refuses_a_port_in_use_and_names_another(workdir: Path) -> None:
     with socket.socket() as busy:
         busy.bind(("127.0.0.1", 0))
