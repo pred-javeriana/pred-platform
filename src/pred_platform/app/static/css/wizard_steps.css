@@ -108,7 +108,7 @@ label.pred-file-choice { display: grid; grid-template-columns: 22px minmax(0, 1f
 .pred-review__change svg { width: 15px; height: 15px; }
 
 .pred-panel .pred-review__file { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 14px; margin: 0; }
-.pred-review__icon { display: grid; place-items: center; width: 44px; height: 44px; background: var(--canvas); border-radius: var(--radius); color: var(--ink-soft); }
+.pred-review__icon { display: grid; place-items: center; width: 44px; height: 44px; background: var(--surface-sunken); border-radius: var(--radius); color: var(--ink-soft); }
 .pred-review__icon svg { width: 22px; height: 22px; }
 .pred-review__file strong { display: block; color: var(--ink); font-size: 18px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
 .pred-review__file span { color: var(--muted-text); font-size: 14px; line-height: 1.45; }
@@ -123,7 +123,7 @@ ul.pred-family-cards > li[data-family="foundation"] { --fam: var(--family-founda
 /* Una familia que no compite: sin color, borde punteado. El texto «No compite» lo dice. */
 ul.pred-family-cards > li.is-off { --fam: var(--border-strong); --fam-ink: var(--muted-text); --fam-soft: var(--surface); border-style: dashed; border-top-style: solid; }
 .pred-family-card__icon { grid-row: span 2; display: grid; place-items: center; width: 40px; height: 40px; background: var(--fam-ink); border-radius: var(--radius); color: #fff; }
-.is-off > .pred-family-card__icon { background: var(--canvas); color: var(--muted-text); }
+.is-off > .pred-family-card__icon { background: var(--surface-sunken); color: var(--muted-text); }
 .pred-family-card__icon svg { width: 22px; height: 22px; }
 .pred-family-card__name { align-self: end; color: var(--fam-ink); font-size: 16px; font-weight: 700; line-height: 1.25; }
 .pred-family-card__hint { color: var(--ink-soft); font-size: 13px; line-height: 1.4; }
@@ -143,7 +143,7 @@ dl.pred-review__eval > div, dl.pred-review__facts > div { min-width: 0; }
 .pred-review__eval dd.pred-window { display: flex; gap: 3px; margin: 6px 0 0; font-size: 13px; font-weight: 600; line-height: 1.25; }
 .pred-window > span { display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 52px; padding: 6px 12px; border-radius: var(--radius); }
 .pred-window b { font-family: var(--font-mono); font-size: 18px; font-weight: 700; line-height: 1.2; }
-.pred-window__train { flex: 1 1 0; min-width: 9rem; background: var(--canvas); border: 1px solid var(--border-strong); color: var(--ink-soft); }
+.pred-window__train { flex: 1 1 0; min-width: 9rem; background: var(--surface-sunken); border: 1px solid var(--border-strong); color: var(--ink-soft); }
 .pred-window__test { flex: 0 1 auto; min-width: 8.5rem; background: var(--data-text); color: #fff; }
 .pred-review__eval dd.pred-window-text { margin-top: 8px; color: var(--ink-soft); font-size: 14px; font-weight: 400; line-height: 1.5; }
 
