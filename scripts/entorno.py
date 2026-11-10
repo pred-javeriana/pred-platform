@@ -129,18 +129,27 @@ def env(motor: Path) -> int:
 
 
 def cargar_demo(settings: Settings) -> int:
-    """Ingest the sample file with the engine, as the Datos upload does, and import its report."""
-    try:
-        sha256 = submit_csv(settings, DEMO_CSV.name, DEMO_CSV.read_bytes())
-    except (ValueError, IngestLaunchError) as exc:
-        print(f"error: no se pudo cargar {DEMO_CSV.name}: {exc}", file=sys.stderr)
-        return 1
-    report = settings.data_root / "ingestas" / f"{sha256}.json"
-    status = json.loads(report.read_text(encoding="utf-8")).get("status")
+    """Ingest the sample file with the engine, as the Datos upload does, and import its report.
+
+    A different file already loaded under the same name (an older sample) is kept next to this
+    one, as the Datos page does when the operator confirms the upload.
+    """
+    content = DEMO_CSV.read_bytes()
+    status = None
+    for confirm in (False, True):
+        try:
+            sha256 = submit_csv(settings, DEMO_CSV.name, content, confirm_overwrite=confirm)
+        except (ValueError, IngestLaunchError) as exc:
+            print(f"error: no se pudo cargar {DEMO_CSV.name}: {exc}", file=sys.stderr)
+            return 1
+        report = settings.data_root / "ingestas" / f"{sha256}.json"
+        status = json.loads(report.read_text(encoding="utf-8")).get("status")
+        if status != "needs_confirmation":
+            break
     if status != "accepted":
         print(f"error: el motor dejó {DEMO_CSV.name} en estado {status!r}", file=sys.stderr)
         return 1
-    print(f"Archivo de ejemplo listo en Datos: {DEMO_CSV.name} (6 productos, 180 días)")
+    print(f"Archivo de ejemplo listo en Datos: {DEMO_CSV.name}")
     return 0
 
 

@@ -35,8 +35,9 @@ make down     # detiene PRED (la corrida en curso queda para reanudarse al volve
 - **`make down`** envía SIGTERM a ese PID y espera hasta 60 s a que la app detenga el motor.
 - `MOTOR=ruta` usa una copia de pred-engine en otro lugar.
 
-El archivo de ejemplo tiene 6 productos sintéticos y 180 días. Con las familias Clásica y
-Aprendizaje automático y `horizon` 2, la corrida termina en pocos minutos.
+El archivo de ejemplo tiene 6 productos sintéticos y 400 días: alcanza para que la evaluación
+final tenga las 30 ventanas de prueba que exige por producto. Con los ajustes por defecto (las
+cuatro familias) su corrida tardó menos de dos minutos con 2 procesos.
 
 ## Quick start
 
