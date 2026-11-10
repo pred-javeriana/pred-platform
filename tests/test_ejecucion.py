@@ -2158,13 +2158,10 @@ def test_avisos_de_ejecucion_sin_textos_tecnicos(env: Env) -> None:
     }
     _set_run(env, "detenida", incompat_error)
     html = client.get("/ejecucion?ejecucion=1").text
-    callout_html = re.search(
-        r'<div class="pred-callout[^"]*" id="error-ejecucion">(.*?)</div>', html, re.S
-    )
-    assert callout_html is not None
-    details_part = re.search(r"<details[^>]*>(.*?)</details>", callout_html.group(1), re.S)
+    callout = _element_by_id(html, "error-ejecucion")
+    details_part = re.search(r"<details[^>]*>(.*?)</details>", callout, re.S)
     assert details_part is not None and "run_id incompatible" in details_part.group(1)
-    outside_details = re.sub(r"<details[^>]*>.*?</details>", "", callout_html.group(1), flags=re.S)
+    outside_details = re.sub(r"<details[^>]*>.*?</details>", "", callout, flags=re.S)
     assert "run_id incompatible" not in outside_details
     assert "La configuración no coincide con la ejecución guardada." in outside_details
 
@@ -2246,3 +2243,15 @@ def test_the_search_budget_field_says_it_applies_to_each_sku(env: Env) -> None:
     assert "Vacío: las que cada familia prueba por defecto en cada SKU." in page
     refused = _text(_launch(client, env, trials="0").text)
     assert "Configuraciones por SKU y familia: debe ser mayor que cero." in refused
+
+
+def _element_by_id(html: str, element_id: str) -> str:
+    """The inner HTML of the element with ``element_id``, nested elements of its tag included."""
+    start = re.search(rf'<(\w+)[^>]*\bid="{element_id}"[^>]*>', html)
+    assert start is not None, element_id
+    tag, depth, position = start.group(1), 1, start.end()
+    for match in re.finditer(rf"<(/?){tag}\b[^>]*>", html[position:]):
+        depth += -1 if match.group(1) else 1
+        if depth == 0:
+            return html[position : position + match.start()]
+    raise AssertionError(f"{element_id} is not closed")

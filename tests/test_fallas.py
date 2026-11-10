@@ -134,9 +134,10 @@ def test_cada_codigo_se_muestra_en_espanol_sin_texto_tecnico(codigo: str) -> Non
     assert falla.titulo != TITULO_DESCONOCIDO
     assert falla.titulo.endswith(".") and falla.accion
     assert not _TECNICO.search(_visible(falla)), _visible(falla)
-    # El detalle del motor queda entero, y copiable, para soporte.
+    # El detalle del motor queda entero, y copiable, para soporte; uno que repite el título no
+    # dice nada nuevo y se omite.
     assert f"Código: {codigo}" in falla.soporte
-    assert detalle in falla.soporte
+    assert (detalle in falla.soporte) != (detalle == falla.titulo)
 
 
 def _causas(falla) -> list[tuple[int, str, str | None]]:

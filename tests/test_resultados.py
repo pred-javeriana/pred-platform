@@ -775,7 +775,8 @@ def test_the_table_shows_the_champion_and_the_five_verdict_labels_m3_published(
     assert "FIL-0001 Suave Clásica · SARIMA Validado" in text
     assert "FIL-0002 Intermitente Clásica · SARIMA Exploratorio" in text
     assert f"Excluido antes de evaluar: {LATE_LAUNCH}" in text
-    assert f'title="Causa publicada: {LATE}"' in html
+    # The engine's cause is support detail: never a tooltip of the list.
+    assert "Causa publicada" not in html and LATE not in text
     assert "Origen de los datos Reales (declarado)" in text
     body = _text(_body(html))
     assert "se sostiene" not in body and "Sin veredicto" not in body
@@ -822,7 +823,7 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     late = _text(client.get("/resultados/sku/FIL-0003").text)
     assert "Excluido antes de evaluar" in late and LATE_LAUNCH in late
     assert "Fecha de corte: 13 mar 2026" in late
-    assert LATE in late  # the engine's cause, under «Detalle técnico»
+    assert LATE in late  # the engine's cause, under «Detalle para soporte»
 
 
 @pytest.mark.parametrize(
@@ -871,13 +872,13 @@ def test_a_product_m2_excluded_from_the_competition_shows_its_published_cause(
     html = client.get("/resultados?vista=sku&lista=familias").text
     text = _text(html)
     assert f"FIL-0003 Grumosa Excluido antes de evaluar: {TWO_FAMILIES_REASON}" in text
-    assert f'title="Causa publicada: {ONE_ROUTED_CAUSE}"' in html
+    assert ONE_ROUTED_CAUSE not in html
     assert f"Excluido antes de evaluar: {LATE_LAUNCH}" in text
     assert "Sin veredicto" not in text
 
     detail = _text(client.get("/resultados/sku/FIL-0003").text)
     assert "Excluido antes de evaluar" in detail and TWO_FAMILIES_REASON in detail
-    assert ONE_ROUTED_CAUSE in detail  # the engine's cause, under «Detalle técnico»
+    assert ONE_ROUTED_CAUSE in detail  # the engine's cause, under «Detalle para soporte»
     assert "No es un veredicto ni un error técnico." in detail
     # The cut t* explains a late launch, not an exclusion decided in M2.
     assert "Fecha de corte" not in detail
@@ -2208,13 +2209,13 @@ def test_unpublished_m3_does_not_claim_no_verdicts_when_run_has_published(
     assert "Todavía no hay veredictos publicados." not in page
 
 
-def test_unavailable_state_shows_detalle_tecnico_and_codigo(env: Env) -> None:
+def test_unavailable_state_shows_the_support_detail_and_codigo(env: Env) -> None:
     from tests.test_worker import SMALL, enqueue_run
 
     enqueue_run(env.settings, env.ingest_id, SMALL)
     client = _dal_client(env)
     page = client.get("/resultados?ejecucion=1").text
-    assert "Detalle técnico" in page
+    assert "Detalle para soporte" in page
     assert "Código" in page
     assert "prerequisite_missing" in page
     assert "Disponibilidad y dependencias" not in page
