@@ -5,7 +5,7 @@
 {% from "partials/results_macros.html" import claim %}
 
 {% set step_actions %}{{ button("Grupo de semillas", variant="subtle", href="/resultados/grupo") }}{% include "partials/results_action.html" %}{% endset %}
-{% block head %}<link rel="stylesheet" href="{{ static_url('css/results.css') }}?v=1">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/results.css') }}?v=2">{% endblock %}
 {% block content %}
 <div class="pred-results">
   {% if source == "fixture" %}<p class="pred-meta">Datos de prueba</p>{% endif %}

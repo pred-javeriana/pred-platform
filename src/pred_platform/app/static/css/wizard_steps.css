@@ -1,7 +1,7 @@
 /* Datos, Ajustes y Revisar: una decisión por tarjeta, sin cambiar el ancho del recorrido. */
 .pred-settings-form { margin: 0; }
 .pred-settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 24px; align-items: start; }
-.pred-conflict { display: flex; align-items: center; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap; margin: 0 0 var(--space-5); padding: var(--space-3) var(--space-5); background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--ink); border-radius: var(--radius); }
+.pred-conflict { display: flex; align-items: center; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap; margin: 0 0 var(--card-gap); padding: var(--space-3) var(--card-pad-x); background: var(--surface); border: 1px solid var(--card-border); border-left: 3px solid var(--ink); border-radius: var(--radius); }
 .pred-conflict[hidden] { display: none; }
 .pred-conflict .pred-alert, .pred-conflict .pred-actions { margin: 0; }
 .pred-copy-card { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); border-left: 1px solid var(--border); }
@@ -57,9 +57,11 @@ label.pred-file-choice { display: grid; grid-template-columns: 22px minmax(0, 1f
 .pred-scatter-point { fill: var(--primary); opacity: .45; }
 .pred-scatter-point.is-active { opacity: 1; stroke: var(--ink); stroke-width: 2; r: 5px; }
 .pred-scatter-class { font-size: 13px; font-weight: 650; fill: var(--ink-soft); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
-.pred-scatter-readout { min-height: 2.8em; margin: 6px 0 0; padding: 8px 10px; background: var(--canvas); color: var(--ink-soft); font-size: 12px; }
+.pred-scatter-readout { min-height: 2.8em; margin: 6px 0 0; padding: 8px 10px; background: var(--surface-sunken); color: var(--ink-soft); font-size: 12px; }
 .pred-data-details > .pred-details { border-bottom: 1px solid var(--border); padding: 14px 0; }
-.pred-data-details > .pred-details > .pred-evidence-panel { box-shadow: none; border: 0; padding: 16px 0 0; }
+/* Abierta, la tarjeta ya separa la sección; la última no repite la línea del pie del paso. */
+.pred-data-details > .pred-details:is([open], :last-child) { border-bottom: 0; }
+.pred-data-details > .pred-details > .pred-evidence-panel { margin: var(--space-2) 0 0; }
 .pred-data-split .pred-types-table { width: 100%; margin: 0; table-layout: fixed; }
 .pred-types-table :is(th, td) { padding: 10px; background: transparent; white-space: normal; overflow-wrap: anywhere; }
 .pred-types-table th { width: auto; }
