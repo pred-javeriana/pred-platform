@@ -105,6 +105,11 @@ def run_stopped_error() -> dict[str, Any]:
     )
 
 
+def result_import_error(detail: str) -> dict[str, Any]:
+    """What a run records when the worker could not import the engine's final files."""
+    return platform_error("platform.result_import_failed", detail, retryable=True)
+
+
 def platform_error(code: str, detail: str, *, retryable: bool = False) -> dict[str, Any]:
     """An error of the platform itself (the engine could not be launched, the app closed...)."""
     return {
