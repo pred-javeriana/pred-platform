@@ -243,7 +243,9 @@ class DalRepository(M3DalSource):
         if detail.estado is None:
             raise ArtifactMissing(
                 f"La ingesta {ingest_id[:12]}… se cargó antes de que la plataforma guardara su "
-                "informe; vuelva a ingerir el archivo con el motor"
+                "informe; vuelva a ingerir el archivo con el motor",
+                notice="Este archivo se cargó antes de que la plataforma guardara su diagnóstico. "
+                "Vuelva a cargarlo para verlo.",
             )
         header = json.loads(detail.diagnostico_json) if detail.diagnostico_json else None
         error = json.loads(detail.error_json) if detail.error_json else None
@@ -310,13 +312,20 @@ class DalRepository(M3DalSource):
             raise EngineUnavailable(
                 "Cargar archivos necesita el motor, que no está conectado a la plataforma",
                 blocked_by=(),
+                notice="Cargar archivos necesita el motor, que no está conectado a esta "
+                "instalación.",
             )
         try:
             sha256 = self._submit(file_name, content, confirm_overwrite)
         except ValueError as exc:
             raise InvalidQuery(str(exc)) from exc
         except IngestLaunchError as exc:
-            raise EngineUnavailable(str(exc), blocked_by=()) from exc
+            raise EngineUnavailable(
+                str(exc),
+                blocked_by=(),
+                notice="No se pudo ejecutar el motor para leer el archivo. Verifique que esté "
+                "instalado y vuelva a cargarlo.",
+            ) from exc
         return self.get_ingest_report(sha256)
 
     # --------------------------------------------------------------------- topology
@@ -697,7 +706,8 @@ class DalRepository(M3DalSource):
             )
         detail = lectura.get_ingesta(self.db_path, ingest_id)
         if detail is None:
-            raise ArtifactMissing(f"No existe la ingesta {ingest_id[:12]}…")
+            message = f"No existe la ingesta {ingest_id[:12]}…"
+            raise ArtifactMissing(message, notice=message)
         return detail
 
     def _display_path(self, relative: str | None) -> str | None:

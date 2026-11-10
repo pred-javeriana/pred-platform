@@ -1,4 +1,5 @@
 {% from "components/buttons.html" import button %}
+{% from "components/falla.html" import soporte %}
 
 {% macro empty_state(title, description, action_label=none, action_href=none) %}
 <div class="pred-state">
@@ -7,24 +8,22 @@
 </div>
 {% endmacro %}
 
-{% macro error_state(title, message, error_code=none, retry_label=none, retry_href=none) %}
+{# ``support`` es el texto técnico completo del error (``error_view``); sin él, el detalle para
+   soporte lleva solo el código. #}
+{% macro error_state(title, message, error_code=none, retry_label=none, retry_href=none, support=none) %}
 <section class="pred-state pred-state--error">
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-x-circle"></use></svg> {{ title }}</h2>
   <p>{{ message }}</p>
-  {% if error_code %}<details class="pred-details"><summary>Detalle técnico</summary><p class="mono">{{ error_code }}</p></details>{% endif %}
+  {% if support or error_code %}{{ soporte(support or texto_soporte(error_code)) }}{% endif %}
   {% if retry_label and retry_href %}{{ button(retry_label, variant="secondary", href=retry_href, icon="i-rotate") }}{% endif %}
 </section>
 {% endmacro %}
 
-{% macro unavailable_state(title, detail, reason_code, blocked_by) %}
+{% macro unavailable_state(title, detail, reason_code, blocked_by, support=none) %}
 <section class="pred-unavailable">
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ title }}</h2>
   <p>{{ detail }}</p>
-  {% if reason_code or blocked_by %}
-  <details class="pred-details"><summary>Detalle técnico</summary>
-    <p class="pred-unavailable__meta">{% if reason_code %}Código <span class="mono">{{ reason_code }}</span>{% endif %}{% if blocked_by %} · depende de <span class="mono">{{ blocked_by | join(", ") }}</span>{% endif %}</p>
-  </details>
-  {% endif %}
+  {% if support or reason_code or blocked_by %}{{ soporte(support or texto_soporte(reason_code or "", bloqueos=blocked_by or [])) }}{% endif %}
 </section>
 {% endmacro %}
 

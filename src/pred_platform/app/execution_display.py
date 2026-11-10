@@ -6,16 +6,17 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
-from pred_platform.app.ejecucion import FINISHED_STATES, STAGES, error_action
+from pred_platform.app.ejecucion import FINISHED_STATES, STAGES
 from pred_platform.app.presentation import (
     describe_status,
     family_label,
     format_duration,
     stage_term,
 )
-from pred_platform.app.seleccion import error_title, exclusion_text
+from pred_platform.app.seleccion import exclusion_text
 from pred_platform.contract.models import RunStatus
 from pred_platform.data.run_status import CauseSnapshot, DisplayRunStatus, StageReference
+from pred_platform.fallas import describir_falla
 
 
 def add_stage_references(context: dict[str, Any], references: list[StageReference]) -> None:
@@ -141,15 +142,14 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
 def add_cause_snapshot(context: dict[str, Any], snapshot: CauseSnapshot) -> None:
     groups: dict[str | None, dict[str, Any]] = {}
     for cause in snapshot.causes:
-        title = error_title(cause.code) if cause.code else "Sin causa informada"
-        if title == cause.code:
-            title = "La tarea no terminó; consulte el detalle técnico."
+        falla = describir_falla({"code": cause.code}) if cause.code else None
         group = groups.setdefault(
             cause.code,
             {
                 "code": cause.code,
-                "title": title,
-                "action": error_action(cause.code) if cause.code else None,
+                "title": falla.titulo if falla else "Sin causa informada",
+                "action": falla.accion if falla else None,
+                "support": falla.soporte if falla else None,
                 "families": set(),
                 "count": 0,
             },
@@ -204,21 +204,15 @@ def task_rows(status: RunStatus) -> list[dict[str, Any]]:
                 reason += (
                     (" Falló " if len(failed) == 1 else " Fallaron ") + ", ".join(failed) + "."
                 )
-        rows.append(
-            {
-                "task": task,
-                "status": shown_status,
-                "reason": reason,
-                "error": None
-                if error is None
-                else {
-                    "title": reason
-                    or error_title(error.code, error.stage, error.row_index, error.column),
-                    "detail": error.detail,
-                    "code": error.code,
-                    "stage": error.stage,
-                    "action": None if excluded else error_action(error.code),
-                },
-            }
-        )
+        falla = None
+        if error is not None:
+            falla = describir_falla(error)
+            # La razón propia de la fila (exclusión o regla de dos familias) manda sobre el
+            # título del catálogo; una familia excluida no tiene nada que corregir.
+            falla = replace(
+                falla,
+                titulo=reason or falla.titulo,
+                accion=None if excluded else falla.accion,
+            )
+        rows.append({"task": task, "status": shown_status, "reason": reason, "error": falla})
     return rows

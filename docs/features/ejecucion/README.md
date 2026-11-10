@@ -9,11 +9,17 @@ From the browser the operator can: launch a run on an accepted ingestion with ev
 engine (families, selection metric, minimum training, horizon, step, seasonality, trials per study,
 seed, processes; the defaults are the engine's), follow it live (state, global progress, count per
 task state, reserve cut t\* and settings, a filtered and paged task table), **stop** it and
-**resume** it, and jump to its results. Each failed or unrunnable task shows a readable title, the
-engine's detail and a next step (`pred_platform/mensajes.py`, the single catalogue of error codes in
-Spanish: title, action and whether it can be retried). The code comes from the engine (G6, G7); runs
-written by an older engine, which carry none, fall back to the class name or the cause text
-(`worker/errores.py`). A stopped run does not show
+**resume** it, and jump to its results. Each failed or unrunnable task shows a readable title and a
+next step (`pred_platform/mensajes.py`, the single catalogue of error codes in Spanish: title, action
+and whether it can be retried), then, folded, why it failed and a copyable "Detalle para soporte"
+with the code, stage and the engine's text (`pred_platform/fallas.py`, one presenter for every error
+on every page). "Why it failed" comes from the error's `facts` (contract 1.3.0, section 11.1): for a
+search without complete trials, how many trials failed or were pruned and each cause with its count
+and one example in words; for a fit, the model and the reason; for a short series, the observations
+it had and needed. Runs written before the engine reported facts are read from the engine's fixed
+message format (`pred_platform/hechos_legados.py`). The engine's text is never shown outside the
+support detail. The code comes from the engine (G6, G7); runs written by an older engine, which
+carry none, fall back to the class name or the cause text (`worker/errores.py`). A stopped run does not show
 its closed tasks as progress: its bar counts the successful ones.
 
 **Copy, export and import the configuration** (RF-CON-07, task A3 of section 4.5). Ajustes

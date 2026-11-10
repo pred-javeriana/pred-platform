@@ -37,6 +37,7 @@ class _EngineError(BaseModel):
     stage: str
     text: str
     code: str | None = None
+    facts: Any = None
 
 
 class _EngineFamily(BaseModel):
@@ -115,7 +116,8 @@ def _family_entry(raw: _EngineFamily) -> models.FamilyEntry:
         stage = raw.error.stage if raw.error else "L2"
         text = raw.error.text if raw.error else None
         code = raw.error.code if raw.error else None
-        error = models.ErrorInfo(**error_info(stage, text, code))  # type: ignore[arg-type]
+        facts = raw.error.facts if raw.error else None
+        error = models.ErrorInfo(**error_info(stage, text, code, facts))  # type: ignore[arg-type]
     return models.FamilyEntry.model_validate(
         {
             "family": raw.family,

@@ -1,3 +1,4 @@
+{% from "components/falla.html" import soporte %}
 {% macro claim(label, tone="neutral") -%}
 <span class="pred-result-claim pred-result-claim--{{ tone }}"><svg aria-hidden="true"><use href="#{{ 'i-check-circle' if tone == 'ok' else 'i-minus-circle' if tone == 'warn' else 'i-clock' }}"></use></svg>{{ label }}</span>
 {%- endmacro %}
@@ -19,10 +20,10 @@
 </ul>
 {%- endmacro %}
 {% macro problem(found) -%}
-{% if found.problem %}<section class="pred-unavailable"><h2>{{ found.problem.title }}</h2><p>{{ found.problem.detail }}</p></section>{% endif %}
+{% if found.problem %}<section class="pred-unavailable"><h2>{{ found.problem.title }}</h2><p>{{ found.problem.detail }}</p>{% if found.problem.support %}{{ soporte(found.problem.support) }}{% endif %}</section>{% endif %}
 {%- endmacro %}
 {% macro unread_note(found) -%}
-{% if found.confirmation is none and found.confirmation_problem %}<p class="pred-note">{{ found.confirmation_problem.title }} {{ found.confirmation_problem.detail }}</p>{% endif %}
+{% if found.confirmation is none and found.confirmation_problem %}<p class="pred-note">{{ found.confirmation_problem.title }} {{ found.confirmation_problem.detail }}</p>{% if found.confirmation_problem.support %}{{ soporte(found.confirmation_problem.support) }}{% endif %}{% endif %}
 {%- endmacro %}
 {% macro missing_confirmation_note(found) -%}
 {% if found.confirmation is none and not found.confirmation_problem and found.run %}<p class="pred-note">Esta evaluación se publicó sin la confirmación por clase. Las pruebas por producto salen de los veredictos publicados; los conteos BY y el nivel FCR no se publicaron.</p>{% endif %}

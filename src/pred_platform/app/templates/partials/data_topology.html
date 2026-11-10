@@ -15,14 +15,15 @@
       topology_error.title,
       topology_error.detail or "El archivo está cargado, pero su clasificación de demanda todavía no está guardada.",
       topology_error.code,
-      topology_error.blocked_by
+      topology_error.blocked_by,
+      support=topology_error.support
     ) }}
   {% elif topology %}
     {% set summary = topology.summary %}
     <p class="pred-meta">Los {{ format_count(summary.n_skus) }} SKU del archivo según cada cuánto venden ({{ gloss("ADI") }}) y cuánto varían sus cantidades ({{ gloss("CV²") }}). Cada clase admite familias de modelos distintas.</p>
     <div class="pred-data-split">
     {% if summary_chart_svg %}<div class="pred-chart" data-demand-map tabindex="0" role="region" aria-label="Gráfico desplazable de clases de demanda"><p class="pred-meta" aria-label="Qué es cada marca">Cada punto es un producto. Las líneas punteadas marcan los umbrales de ADI y CV². CV² cero aparece en el borde inferior.</p>{{ summary_chart_svg | safe }}<p class="pred-scatter-readout" role="status" aria-live="polite" data-demand-readout>Pase el puntero por un producto, o use las flechas con el mapa enfocado.</p></div>{% endif %}
-    {% if overview_error %}<div>{{ unavailable_state(overview_error.title, overview_error.detail, overview_error.code, overview_error.blocked_by) }}</div>{% endif %}
+    {% if overview_error %}<div>{{ unavailable_state(overview_error.title, overview_error.detail, overview_error.code, overview_error.blocked_by, support=overview_error.support) }}</div>{% endif %}
     <table class="pred-class-mix pred-types-table">
       <caption class="pred-sr-only">SKU por clase de demanda</caption>
       <thead><tr><th scope="col">Tipo de demanda</th><th scope="col">Familias que lo admiten</th><th scope="col" class="num">Productos</th></tr></thead>

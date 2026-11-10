@@ -61,6 +61,8 @@ CODIGOS_DEL_CONTRATO = {
     "eligibility.non_finite_demand",
     "eligibility.insufficient_history",
     "eligibility.fewer_than_two_families",
+    "eligibility.no_configured_family",
+    "provenance.origin_conflict",
 }
 EJEMPLOS = Path(models.__file__).parent / "examples" / "v1"
 

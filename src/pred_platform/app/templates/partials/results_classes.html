@@ -1,3 +1,4 @@
+{% from "components/falla.html" import soporte %}
 {% from "components/tables.html" import table_start, table_end %}
 {% from "partials/results_macros.html" import answer, family, family_legend, key, problem %}
 {{ problem(m3_classes) }}
@@ -41,7 +42,7 @@
 <section class="pred-panel" id="confirmacion-del-campeon">
   <h2>Después se verificó: el bloque de prueba</h2>
   <p class="pred-results-lead">Con días que no se usaron para elegir la campeona, se compara la campeona congelada con la línea base y con cada familia. El punto es la mediana de la razón de error y la línea, su intervalo.</p>
-  {% if m3_classes.confirmation_problem %}<p class="pred-note">{{ m3_classes.confirmation_problem.title }} {{ m3_classes.confirmation_problem.detail }}</p>
+  {% if m3_classes.confirmation_problem %}<p class="pred-note">{{ m3_classes.confirmation_problem.title }} {{ m3_classes.confirmation_problem.detail }}</p>{% if m3_classes.confirmation_problem.support %}{{ soporte(m3_classes.confirmation_problem.support) }}{% endif %}
   {% elif not m3_classes.confirmation %}<p class="pred-note">La evaluación final no publicó la confirmación del campeón para esta ejecución. Las evaluaciones anteriores a los bloques de selección y de prueba no la tienen.</p>
   {% else %}
     <details class="pred-details pred-details--inline" id="metodo-confirmacion"><summary>Cómo se decide la confirmación</summary>

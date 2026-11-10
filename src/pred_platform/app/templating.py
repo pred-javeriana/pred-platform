@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
-from pred_platform import mensajes
+from pred_platform import fallas, mensajes
 from pred_platform.app import presentation, resultados_m3, seleccion
 from pred_platform.data.deps import get_repository
 
@@ -110,7 +110,8 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         templates.env.globals[name] = getattr(resultados_m3, name)
     templates.env.globals["CONFIRMATION_STATES"] = resultados_m3.CONFIRMATION_STATES
     templates.env.globals["error_action"] = mensajes.accion
-    templates.env.globals["describir_error"] = mensajes.describir
+    templates.env.globals["describir_falla"] = fallas.describir_falla
+    templates.env.globals["texto_soporte"] = fallas.texto_soporte
     templates.env.globals["CATALOGO_ERRORES"] = mensajes.CATALOGO
     templates.env.globals["fila_en_archivo"] = mensajes.fila_en_archivo
     return templates

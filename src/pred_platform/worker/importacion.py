@@ -166,7 +166,9 @@ def finalize(
             completed=completed,
             seconds=unit.get("seconds"),
             finished_at=str(unit.get("finished_at") or ""),
-            error=None if completed else error_info(stage, unit.get("error"), unit.get("code")),
+            error=None
+            if completed
+            else error_info(stage, unit.get("error"), unit.get("code"), unit.get("facts")),
         )
         if stage == "L3" and completed:
             m2_completas.append((sku, modelo, str(unit.get("finished_at") or "")))
@@ -195,7 +197,9 @@ def finalize(
             sku=str(exclusion["sku_id"]),
             corte=corte,
             families=families,
-            error=exclusion_info(str(exclusion.get("cause", "")), exclusion.get("code")),
+            error=exclusion_info(
+                str(exclusion.get("cause", "")), exclusion.get("code"), exclusion.get("facts")
+            ),
         )
 
     dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)

@@ -4,6 +4,7 @@
 {% from "components/status.html" import status_indicator, verdict_status %}
 {% from "components/terms.html" import day, gloss, when %}
 {% from "components/tables.html" import table_start, table_end %}
+{% from "components/falla.html" import falla_bloque, soporte %}
 
 {% macro r_interval(row, exact=false) -%}
 {% set d = gap_digits(row.superior, row.inferior_cola) if (row.inferior_cola is not none and row.superior is not none) else 3 -%}
@@ -37,7 +38,8 @@
       "No encontramos la selección de este SKU." if not_found else detail_error.title,
       detail_error.detail or "No fue posible leer la selección.",
       detail_error.code,
-      detail_error.blocked_by
+      detail_error.blocked_by,
+      support=detail_error.support
     ) }}
   {% elif selection or verdict %}
     {% if verdict %}
@@ -131,7 +133,7 @@
     <section class="wz-panel pred-decision" id="campeon" aria-labelledby="titulo-decision">
       <h2 id="titulo-decision">Excluido antes de evaluar</h2>
       <p class="pred-note">{{ exclusion.reason }}{% if m3.t_star and sku_id in m3.late_launched %} Fecha de corte: {{ day(m3.t_star) }}.{% endif %} No es un veredicto ni un error técnico.</p>
-      <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">{{ exclusion.detail }}</p></details>
+      {{ soporte(exclusion.support) }}
     </section>
     {% else %}
     <section class="wz-panel pred-decision" id="campeon" aria-labelledby="titulo-decision">
@@ -144,6 +146,7 @@
       <p title="Perfil de demanda: {{ profile_label(selection.profile) }}">Clase de demanda: {{ sku_class_label(selection.sku_class) }}. {{ sku_class_term(selection.sku_class).hint }}</p>
       {% endif %}
       <p class="pred-note pred-note--muted">{% if m3 and m3.problem %}<strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}{% else %}La evaluación final no publicó un veredicto para este producto.{% endif %} Abajo está la evidencia de cada familia.</p>
+      {% if m3 and m3.problem and m3.problem.support %}{{ soporte(m3.problem.support) }}{% endif %}
     </section>
     {% endif %}
 
@@ -306,17 +309,11 @@
 
         {% if entry.exclusion %}
         <p class="pred-note">{{ family_task_reasons.get(entry.family) or exclusion_text(entry.exclusion.reason_code, entry.family, selection.sku_class) }}</p>
-        {% if entry.exclusion.detail %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">{{ entry.exclusion.detail }}</p></details>{% endif %}
+        {% if entry.exclusion.detail %}{{ soporte(texto_soporte(entry.exclusion.reason_code, detalle=entry.exclusion.detail)) }}{% endif %}
         {% endif %}
 
         {% if entry.error %}
-        <p class="pred-note"><strong>{{ error_title(entry.error.code, entry.error.stage, entry.error.row_index, entry.error.column) }}</strong>
-          {% if error_action(entry.error.code) %}<br><span class="pred-meta">{{ error_action(entry.error.code) }}</span>{% endif %}
-        </p>
-        <details class="pred-details" id="error-{{ entry.family }}"><summary>Detalle técnico del fallo</summary>
-          {% if entry.error.detail %}<p>{{ entry.error.detail }}</p>{% endif %}
-          <p class="pred-meta">Etapa: {{ stage_label(entry.error.stage) if entry.error.stage else "no informada" }} · código <span class="mono">{{ entry.error.code }}</span></p>
-        </details>
+        <div class="pred-note" id="error-{{ entry.family }}">{{ falla_bloque(describir_falla(entry.error), abierto=true) }}</div>
         {% endif %}
 
         {% set items = evidence_items(entry) %}

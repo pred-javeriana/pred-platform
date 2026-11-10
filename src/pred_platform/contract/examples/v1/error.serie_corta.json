@@ -1,0 +1,12 @@
+{
+  "code": "model.series_too_short",
+  "stage": "L3",
+  "detail": "se requieren 60 observaciones y hay 45",
+  "source_exception": "VentanaInsuficienteError",
+  "facts": {
+    "history": {
+      "required": 60,
+      "available": 45
+    }
+  }
+}

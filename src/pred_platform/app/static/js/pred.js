@@ -156,6 +156,31 @@
     });
   });
 
+  // «Copiar detalle» del detalle para soporte de un error. Sin portapapeles (página servida por
+  // HTTP fuera de localhost) selecciona el texto para copiarlo a mano.
+  document.addEventListener("click", function (evento) {
+    const boton = evento.target.closest && evento.target.closest("[data-copiar-soporte]");
+    if (!boton) return;
+    const texto = boton.closest(".pred-soporte").querySelector(".pred-soporte__texto");
+    const avisar = function (mensaje) {
+      boton.textContent = mensaje;
+      window.setTimeout(function () { boton.textContent = "Copiar detalle"; }, 2000);
+    };
+    const seleccionar = function () {
+      const rango = document.createRange();
+      rango.selectNodeContents(texto);
+      const seleccion = window.getSelection();
+      seleccion.removeAllRanges();
+      seleccion.addRange(rango);
+      avisar("Texto seleccionado: cópielo");
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(texto.textContent).then(function () { avisar("Copiado"); }, seleccionar);
+    } else {
+      seleccionar();
+    }
+  });
+
   document.addEventListener("DOMContentLoaded", function () {
     prepararEvidencia(document);
     pintarBarras(document);

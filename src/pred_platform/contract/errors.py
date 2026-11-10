@@ -15,12 +15,16 @@ class DataLayerError(Exception):
     """A failure of the data layer, identified by a stable ``code``.
 
     The platform translates ``code`` into a Spanish message and a suggested action; ``detail`` is
-    the technical text and is not shown to users as is. ``blocked_by`` names the open gaps
+    the technical text and is not shown to users as is (only in the copyable support detail).
+    ``notice`` is the sentence a view shows instead of the catalog's generic action, for a raise
+    site that knows what happened in the user's words. ``blocked_by`` names the open gaps
     (``G1`` to ``G8``) behind a missing document, so a view can say why something is unavailable.
     """
 
     code: ClassVar[str]
     retryable: ClassVar[bool] = False
+    # Whether ``detail`` is itself written for the user (a missing run or SKU, named in Spanish).
+    detail_is_notice: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -28,10 +32,12 @@ class DataLayerError(Exception):
         *,
         field: str | None = None,
         blocked_by: Sequence[str] = (),
+        notice: str | None = None,
     ) -> None:
         self.detail = detail
         self.field = field
         self.blocked_by = tuple(blocked_by)
+        self.notice = notice or (detail if self.detail_is_notice else None)
         super().__init__(f"{self.code}: {self._full_detail()}")
 
     def _full_detail(self) -> str:
@@ -73,6 +79,7 @@ class NotFound(ArtifactMissing):
     """The requested document does not exist, or depends on an open gap."""
 
     code = "platform.not_found"
+    detail_is_notice = True
 
 
 class EngineUnavailable(DataLayerError):

@@ -123,7 +123,9 @@ class ProgressFollower:
                 sku=str(event["sku_id"]),
                 corte=corte,
                 families=self.families,
-                error=exclusion_info(str(event.get("cause", "")), event.get("code")),
+                error=exclusion_info(
+                    str(event.get("cause", "")), event.get("code"), event.get("facts")
+                ),
             )
         elif kind == "unit_started":
             dal.task_started(
@@ -151,7 +153,7 @@ class ProgressFollower:
                 finished_at=str(event.get("finished_at") or event.get("t")),
                 error=None
                 if completed
-                else error_info(stage, event.get("error"), event.get("code")),
+                else error_info(stage, event.get("error"), event.get("code"), event.get("facts")),
             )
         elif kind == "stage_finished" and event.get("state") == "failed":
             self.failed_stages.append(str(event.get("stage")))
