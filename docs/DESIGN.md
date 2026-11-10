@@ -99,6 +99,12 @@ message, never color alone), disabled. Controls share the 0–2px radius.
 Four alert levels (info, success, warning, error), each icon + message, color as reinforcement, not
 the only channel. A message states the fact and, where possible, the next action.
 
+**Failures.** Every engine or platform error renders through `fallas.describir_falla` and the
+`components/falla.html` macros, in three layers: a one-line cause and what to do; «Por qué
+falló», a disclosure with the trial counts and one example per discard cause in words; and
+«Detalle para soporte», a collapsed, copyable block with the code, stage, exception and engine
+text. The engine text, Python literals and internal paths never appear outside that block.
+
 **Execution progress.** The run ring draws only the published percentage: `--info` while the run
 is open and `--ok` at 100 %. The linear bar interpolates blue (running) to green (complete) on a
 cubic curve so the transition to "complete" is visually obvious. Percentage, counts and label
