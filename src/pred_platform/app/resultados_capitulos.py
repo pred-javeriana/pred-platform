@@ -221,6 +221,15 @@ class SeedEvidence:
     evidence: M3Classes | None = None
 
     @property
+    def published(self) -> bool:
+        return bool(
+            self.evidence
+            and self.evidence.run
+            and self.evidence.run.estado == "PUBLICADA"
+            and not self.evidence.problem
+        )
+
+    @property
     def unread(self) -> M3Problem | None:
         """Por qué no se pudo leer su confirmación guardada, si la evaluación sí se leyó."""
         return _unread(self.evidence) if self.evidence else None
@@ -321,7 +330,7 @@ def stability_rows(seeds: tuple[SeedEvidence, ...]) -> list[StabilityRow]:
             and cell.confirmation.estado == "confirmado"
             and cell.confirmation.familia_campeona == cell.category.familia_campeona
         )
-        published = sum(1 for cell in cells if cell.category is not None)
+        published = sum(1 for cell in cells if cell.seed.published)
         unread = sum(1 for cell in cells if cell.category is not None and cell.seed.unread)
         result.append(
             StabilityRow(
