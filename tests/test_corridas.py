@@ -343,10 +343,18 @@ def test_review_change_links_belong_to_their_descriptions(env: Env) -> None:
     html = client.get("/corridas/nueva/revisar").text
     page = Markup(html)
     assert page.definition_list_misuse() == []
+    # Each section names what its «Cambiar» link changes: the heading beside it and the link text.
     changes = re.findall(
-        r'<dd[^>]*>.*?<a href="/corridas/nueva/(?:datos|ajustes)">Cambiar</a></dd>', html
+        r'<div class="pred-review__bar"><h3 id="revisar-(\w+)">[^<]+(?:<small>[^<]*</small>)?</h3>'
+        r'<a class="pred-review__change" href="/corridas/nueva/(datos|ajustes)[^"]*">.*?'
+        r'Cambiar<span class="pred-sr-only"> ([^<]+)</span></a></div>',
+        html,
     )
-    assert len(changes) >= 4
+    assert changes == [
+        ("datos", "datos", "los datos"),
+        ("familias", "ajustes", "las familias"),
+        ("evaluacion", "ajustes", "la evaluación"),
+    ]
 
 
 def test_back_and_next_follow_the_steps_of_a_launched_run() -> None:
@@ -442,8 +450,8 @@ def test_choosing_settings_and_launching_walks_the_draft_through_the_steps(env: 
     revisar = client.get("/corridas/nueva/revisar").text
     text = _main(revisar)
     assert "Compruebe antes de lanzar" in text
-    assert revisar.count('<a href="/corridas/nueva/ajustes">Cambiar</a>') >= 3
-    assert '<a href="/corridas/nueva/datos">Cambiar</a>' in revisar
+    assert revisar.count('class="pred-review__change" href="/corridas/nueva/ajustes#') == 2
+    assert 'class="pred-review__change" href="/corridas/nueva/datos"' in revisar
     assert '<input type="hidden" name="seed" value="17">' in revisar
     assert [state for state, _ in _rail(revisar)] == ["done", "done", "todo", "locked", "locked"]
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]

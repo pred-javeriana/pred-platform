@@ -229,7 +229,7 @@ def test_records_include_trials_workers_and_seed_without_edit_or_launch_controls
             if step == "ajustes":
                 assert re.search(rf'name="{name}"[^>]*value="{value}"[^>]* disabled', html)
             else:
-                assert re.search(rf"<dt>{label}</dt><dd[^>]*><span>{value}</span></dd>", html), (
+                assert re.search(rf'{label}</dt><dd><span class="mono">{value}</span>', html), (
                     step,
                     label,
                 )
@@ -295,6 +295,49 @@ def test_review_shows_recorded_stage_durations_and_local_dates_not_an_estimate(e
     assert "2 nov 2026, 9:00 p. m." in text
     assert "2026-11-03 02:00:00 UTC" in html
     assert 'href="/corridas/1/ejecucion"' in html
+
+
+def test_review_of_a_launched_run_does_not_list_the_run_as_an_earlier_run(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, seed="0")
+    _finish_with_progress(
+        env,
+        _event("stage_started", "L2", "2026-11-02T23:00:00Z")
+        + _event("stage_finished", "L2", "2026-11-03T01:30:00Z"),
+    )
+    text = _text(client.get("/corridas/1/revisar").text)
+    assert "Datos y ajustes lanzados" in text
+    assert "Cómo fueron las corridas anteriores" in text
+    assert "Qué va a pasar" not in text
+    assert "Todavía no hay corridas terminadas con estos datos" in text
+    assert "2 h 30 min" not in text
+    # The draft still shows it: from a new draft, run #1 is an earlier run.
+    assert "2 h 30 min" in _text(_review(client, env, seed="2"))
+
+
+def test_review_shows_how_long_the_last_run_on_these_data_took_only_when_all_stages_are(
+    env: Env,
+) -> None:
+    client = _dal_client(env)
+    _launch(client, env, seed="0")
+    _finish_with_progress(
+        env,
+        "".join(
+            _event(kind, stage, f"2026-11-02T23:00:{i * 2 + n:02d}Z")
+            for i, stage in enumerate(("L1", "L2", "L3", "L4"))
+            for n, kind in enumerate(("stage_started", "stage_finished"))
+        ),
+    )
+    text = _text(_review(client, env, seed="2"))
+    assert (
+        "La corrida #1 con estos datos tardó 4 s. Con otros ajustes puede tardar distinto." in text
+    )
+    (env.settings.data_root / "runs/earlier/progreso.jsonl").write_text(
+        _event("stage_started", "L2", "2026-11-02T23:00:00Z")
+        + _event("stage_finished", "L2", "2026-11-02T23:00:05Z"),
+        encoding="utf-8",
+    )
+    assert "con estos datos tardó" not in _text(client.get("/corridas/nueva/revisar").text)
 
 
 def test_review_does_not_invent_durations_for_missing_or_reset_traces(env: Env) -> None:

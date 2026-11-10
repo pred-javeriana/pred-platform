@@ -43,6 +43,10 @@ for exactly one primary action per view — don't spend it on borders, backgroun
 --info: #2E6E9E;
 --info-soft: #E4EEF4;
 --data: #1B7A8C;          /* numeric/metric values */
+--family-classical: #008300;  --family-classical-ink: #0B5C0B;  --family-classical-soft: #E4F2E4;
+--family-ml: #EDA100;         --family-ml-ink: #7A5200;         --family-ml-soft: #FCF0D2;
+--family-dl: #E87BA4;         --family-dl-ink: #99305C;         --family-dl-soft: #FCE8F0;
+--family-foundation: #6250D6; --family-foundation-ink: #4636AE; --family-foundation-soft: #EBE8FB;
 ```
 
 Numeric values (metrics, scores) are colored `--data` directly rather than left in body ink. A
@@ -183,3 +187,23 @@ Las secciones secundarias relacionadas se presentan como pestañas horizontales 
 El componente evidence.html genera enlaces y secciones funcionales sin JavaScript. pred.js mejora ese marcado con tablist/tab/tabpanel horizontal, selección y controles ARIA, un único tab stop en las pestañas, flechas izquierda y derecha, Home/End y Enter/Espacio. Una sola sección está visible con JS. El hash permite volver directamente a ella; filtros/paginación activan el panel correspondiente. El panel elegido sobrevive a los swaps HTMX sin alterar el bloqueo de actualizaciones durante foco o selección.
 
 La tipografía secundaria diferencia título del panel (20px), título de sección y de pestaña (18px), subsección (16px) y texto/etiquetas (14px). Publicación y parámetros se leen en pares etiqueta/valor; umbrales y fecha se agrupan como hechos, con fechas y cifras sin cortes internos. Las tablas desplazan localmente cuando hace falta. Los detalles técnicos anidados siguen siendo opcionales. Un único bloque de trazabilidad se muestra directamente, sin un acordeón o una pestaña redundantes.
+
+## Identidad de las familias
+
+Cada familia de modelos tiene un color, un ícono y un tono para el texto. Son los mismos en Ajustes,
+en Revisar y lanzar y en los gráficos de Resultados.
+
+| Familia (código) | Ícono | Gráficos y regla superior `--family-X` | Texto e ícono `--family-X-ink` | Fondo `--family-X-soft` |
+| --- | --- | --- | --- | --- |
+| Clásica (`classical`) | `i-family-classical`, onda estacional | `#008300` | `#0b5c0b` | `#e4f2e4` |
+| Aprendizaje automático (`ml`) | `i-family-ml`, árbol de decisión | `#eda100` | `#7a5200` | `#fcf0d2` |
+| Aprendizaje profundo (`dl`) | `i-family-dl`, capas apiladas | `#e87ba4` | `#99305c` | `#fce8f0` |
+| Fundacional (`foundation`) | `i-family-foundation`, chispa grande y chica | `#6250d6` | `#4636ae` | `#ebe8fb` |
+
+- El color del gráfico (`--family-X`) es solo para reglas y marcas. Dos de ellos fallan como texto sobre
+  blanco (Aprendizaje automático 2,17; Aprendizaje profundo 2,69), así que el texto y los íconos usan `-ink`
+  (contraste de 6:1 o más sobre `-soft`) y el fondo del bloque usa `-soft`.
+- `--family-X` y `charts.FAMILY_COLORS` tienen los mismos cuatro valores; una prueba lo comprueba.
+- El bloque de una familia en Revisar y lanzar es el único bloque con fondo de color permitido. No es una
+  tarjeta: sin sombra, sin anidar, radio de 2 px. Una familia que no compite va en blanco, con borde
+  punteado gris y el texto «No compite»: el color nunca es la única señal (RNF-USA-04).

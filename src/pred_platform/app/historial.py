@@ -80,12 +80,18 @@ def stage_durations(path: Path) -> dict[str, StageDuration]:
     return durations
 
 
-def earlier_runs(details: list[RunDetail], ingest_id: str, data_root: Path) -> list[EarlierRun]:
-    """Las dos últimas corridas terminadas sobre estos datos, con o sin traza de etapas."""
+def earlier_runs(
+    details: list[RunDetail], ingest_id: str, data_root: Path, exclude: str | None = None
+) -> list[EarlierRun]:
+    """Las dos últimas corridas terminadas sobre estos datos, con o sin traza de etapas.
+
+    `exclude` es el id de la corrida que se está mostrando: no es una corrida anterior de sí misma.
+    """
     matching = [
         run
         for run in details
         if run.ingest_sha256 == ingest_id
+        and str(run.id) != exclude
         and run.estado in ("completada", "completada_con_fallos")
         and run.finalizada_en is not None
     ][:2]
