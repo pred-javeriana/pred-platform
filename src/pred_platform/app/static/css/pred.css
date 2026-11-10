@@ -1087,16 +1087,6 @@ p.pred-runs__meta {
 }
 
 @media (max-width: 900px) {
-  .wz-kpis {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px 0;
-  }
-
-  .wz-kpis > div {
-    border-left: 0;
-    padding-left: 0;
-  }
-
   ul.pred-group {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1785,6 +1775,17 @@ abbr[title] {
   margin: var(--space-4) auto;
   padding: var(--space-4) 0;
   text-align: center;
+}
+
+/* Un estado que no está dentro de una tarjeta (una página o un capítulo sin contenido) se muestra
+   en su propia tarjeta, así no queda suelto sobre el lienzo. */
+:is(.pred-state, .pred-unavailable):not(:is(.pred-panel, .wz-panel, .pred-sheet, .pred-evidence-panel, .pred-run, .pred-locked, .pred-alert, .pred-table-wrap) *) {
+  max-width: none;
+  margin: 0 0 var(--card-gap);
+  padding: var(--space-5) var(--card-pad-x);
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
 }
 
 .pred-unavailable .pred-context__picker {
@@ -3735,6 +3736,21 @@ abbr[title] {
   font-weight: 400;
   letter-spacing: 0;
   margin-top: 2px;
+}
+
+/* Después de las reglas base, para ganarles: en pantallas angostas las cifras van en dos columnas
+   (una en un teléfono, ver «Ancho de pantalla») y sin la línea que las separa en fila. */
+@media (max-width: 900px) {
+  .wz-kpis {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px var(--space-4);
+  }
+
+  .wz-kpis > div {
+    border-left: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }
 
 .wz-check {
