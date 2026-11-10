@@ -9,6 +9,35 @@ single DAL over SQLite, and task-table run orchestration.
 - [uv](https://docs.astral.sh/uv/)
 - `make` (optional: every target below is a thin wrapper over a `uv run` command)
 
+## Instalar y arrancar con make
+
+Con `pred-engine` clonado al lado de esta copia (`../pred-engine`), cuatro comandos
+preparan y manejan una instalación local completa:
+
+```bash
+make setup    # revisa lo necesario, instala las dos copias, crea .env, migra y carga el ejemplo
+make up       # arranca PRED en segundo plano, espera a que responda e imprime la dirección
+make status   # dice si PRED corre, la versión de la base y las corridas
+make down     # detiene PRED (la corrida en curso queda para reanudarse al volver a arrancar)
+```
+
+- **`make setup`** se puede repetir. Instala esta copia (`uv sync --extra dev --locked`) y el
+  motor con su propio `make setup`, que incluye Chronos-2 y deja sus pesos en la caché
+  (`make setup FUNDACIONAL=no` lo omite). Si no existe `.env`, lo crea desde `.env.example` con
+  `PRED_DATA_SOURCE=dal` y `PRED_ENGINE_CMD=uv run --project ../pred-engine pred-engine`; un
+  `.env` que ya existe no se toca. Después corre `make migrate` y carga
+  `ejemplos/panel_demo.csv` con el mismo camino que la carga del navegador (`make datos-demo`), así
+  Datos ya lo muestra. Ninguna clave secreta hace falta: la plataforma solo usa archivos con las
+  cuatro columnas canónicas.
+- **`make up`** sirve en `http://127.0.0.1:8000` (`make up PORT=8001` para otro puerto), sin
+  recarga automática y con el worker dentro de la app. Guarda el PID en
+  `<PRED_DATA_ROOT>/servidor.json` y el registro en `<PRED_DATA_ROOT>/servidor.log`.
+- **`make down`** envía SIGTERM a ese PID y espera hasta 60 s a que la app detenga el motor.
+- `MOTOR=ruta` usa una copia de pred-engine en otro lugar.
+
+El archivo de ejemplo tiene 6 productos sintéticos y 180 días. Con las familias Clásica y
+Aprendizaje automático y `horizon` 2, la corrida termina en pocos minutos.
+
 ## Quick start
 
 ```bash
