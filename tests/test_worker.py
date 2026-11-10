@@ -1953,9 +1953,9 @@ def test_a_locked_database_before_launch_stops_the_claimed_run_without_an_engine
         holder.execute("BEGIN IMMEDIATE")  # another writer holds the lock past the timeout
         return run
 
-    def stop_claimed(*args: Any, **kwargs: Any) -> None:
+    def stop_claimed(*args: Any, **kwargs: Any) -> bool:
         holder.rollback()  # the lock is released only once the worker records its diagnostic
-        real_stop(*args, **kwargs)
+        return real_stop(*args, **kwargs)
 
     monkeypatch.setattr(dal, "claim_pending", claim)
 

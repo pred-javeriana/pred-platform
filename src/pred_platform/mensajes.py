@@ -286,6 +286,11 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         "Espere un momento y reanude la ejecución.",
         reintentable=True,
     ),
+    "platform.result_import_failed": Mensaje(
+        "No se pudieron importar los resultados finales de la ejecución.",
+        "Reanude la ejecución; si vuelve a fallar, revise el registro del worker.",
+        reintentable=True,
+    ),
     "platform.run_stopped": Mensaje(
         "La ejecución se detuvo a petición del operador.",
         "Reanude la ejecución cuando quiera.",

@@ -58,8 +58,11 @@ Esta carrera también corresponde al diagnóstico de
   sin abandonar un reclamo `ejecutando`. El worker continúa con las demás corridas de la cola.
   Si el motor ya había terminado el intento (salió o emitió `run_finished` después de sus archivos
   finales), el worker importa esos archivos. Si el motor ya registró la corrida como `completada`
-  y la importación no se completa, la corrida conserva su PID: el siguiente arranque del worker la
-  vuelve a ejecutar con el mismo `run_id` y la importa.
+  y la importación no se completa (archivos que no se pueden leer o una base bloqueada), la corrida
+  queda `detenida` con `platform.result_import_failed`, nunca como terminada sin resultados, y
+  `--once` termina con código 1. Conserva su PID: el siguiente arranque del worker la vuelve a
+  ejecutar con el mismo `run_id` y los mismos archivos, y la importa. Mientras tanto, la página
+  ofrece Reanudar.
 - Conservar la base central, el Parquet y el directorio `runs/{run_id}`, incluidos `identidad.json`,
   `hpo/`, `checkpoints/` y los artefactos M3. Borrar esos archivos elimina evidencia necesaria.
 - Los checkpoints validan su integridad y su contexto. La CLI protege la identidad de entrada,

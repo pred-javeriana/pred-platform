@@ -79,6 +79,21 @@ _SELECT_RUN = (
 )
 
 
+def _unimported(table: str = "") -> str:
+    """SQL condition of a run the engine published whose final files are not imported yet.
+
+    The engine records ``completada`` or ``completada_con_fallos`` before the worker imports its
+    files, and a failed import is recorded as ``detenida`` with ``platform.result_import_failed``.
+    Both keep their recorded process as the mark that the next worker start runs them again.
+    """
+    t = f"{table}." if table else ""
+    return (
+        f"({t}pid IS NOT NULL AND ({t}estado IN ('completada', 'completada_con_fallos') OR "
+        f"({t}estado = 'detenida' AND "
+        f"json_extract({t}error_json, '$.code') = 'platform.result_import_failed')))"
+    )
+
+
 def _begin_immediate(conn: sqlite3.Connection) -> None:
     """Take the write lock now, so a read-then-write is atomic against another worker."""
     if not conn.in_transaction:
@@ -258,11 +273,9 @@ def claim_pending(conn: sqlite3.Connection) -> Ejecucion | None:
 
 
 def interrupted_runs(conn: sqlite3.Connection) -> list[Ejecucion]:
-    """Claims left unfinished, including M3 publication before the CLI was reaped."""
+    """Claims left unfinished, including published runs whose final files are not imported."""
     rows = conn.execute(
-        f"{_SELECT_RUN} WHERE e.estado = 'ejecutando' OR "
-        "(e.pid IS NOT NULL AND e.estado IN ('completada', 'completada_con_fallos')) "
-        "ORDER BY e.id"
+        f"{_SELECT_RUN} WHERE e.estado = 'ejecutando' OR {_unimported('e')} ORDER BY e.id"
     ).fetchall()
     return [_row_to_run(r) for r in rows]
 
@@ -274,8 +287,7 @@ def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
             conn.execute(
                 "UPDATE ejecuciones SET estado = 'pendiente', pid = NULL, "
                 "finalizada_en = NULL, error_json = NULL WHERE id = ? "
-                "AND (estado = 'ejecutando' OR "
-                "(pid IS NOT NULL AND estado IN ('completada', 'completada_con_fallos')))",
+                f"AND (estado = 'ejecutando' OR {_unimported()})",
                 (ejecucion_id,),
             ).rowcount
             == 1
@@ -290,35 +302,55 @@ def requeue(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
 
 
 def stop_claimed(
-    conn: sqlite3.Connection, ejecucion_id: int, *, intento: int, error: dict[str, Any]
-) -> None:
+    conn: sqlite3.Connection,
+    ejecucion_id: int,
+    *,
+    intento: int,
+    error: dict[str, Any],
+    unimported: dict[str, Any],
+) -> bool:
     """Stop the claim (``intento``) a worker could not settle and close its tasks, in one step.
 
     A claim still ``ejecutando`` becomes ``detenida`` with ``error``. One the operator stopped in
     the meantime keeps its own error and time; both release the recorded process, which the worker
     has already reaped. One the engine already published (``completada`` or
-    ``completada_con_fallos``) before the worker imported its final files is left as it is: its
-    recorded process marks it for ``interrupted_runs``, so the next worker start runs it again
-    and imports it. A later attempt or a fully settled run is left alone too.
+    ``completada_con_fallos``) before the worker imported its final files becomes ``detenida``
+    with ``unimported`` (a ``platform.result_import_failed`` error), so it never shows as
+    finished without its results. It keeps its recorded process: ``interrupted_runs`` finds it,
+    so the next worker start runs it again with the same files and imports them. A later attempt
+    or a fully settled run is left alone. Returns whether the run was a published one left
+    without its results.
     """
     with conn:
         _begin_immediate(conn)
         row = conn.execute(
-            "SELECT estado, error_json, intento FROM ejecuciones WHERE id = ?", (ejecucion_id,)
+            "SELECT estado, error_json, intento, pid FROM ejecuciones WHERE id = ?",
+            (ejecucion_id,),
         ).fetchone()
-        if row is None or row[2] != intento or row[0] not in ("ejecutando", "detenida"):
-            return
-        if row[0] == "ejecutando":
+        if row is None or row[2] != intento:
+            return False
+        published = row[0] in ("completada", "completada_con_fallos") and row[3] is not None
+        if published:
+            error = unimported
+            conn.execute(
+                "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, error_json = ? "
+                "WHERE id = ?",
+                (now_iso(), json.dumps(error, ensure_ascii=False), ejecucion_id),
+            )
+        elif row[0] == "ejecutando":
             conn.execute(
                 "UPDATE ejecuciones SET estado = 'detenida', finalizada_en = ?, pid = NULL, "
                 "error_json = ? WHERE id = ?",
                 (now_iso(), json.dumps(error, ensure_ascii=False), ejecucion_id),
             )
-        else:
+        elif row[0] == "detenida":
             conn.execute("UPDATE ejecuciones SET pid = NULL WHERE id = ?", (ejecucion_id,))
             if row[1]:
                 error = json.loads(row[1])
+        else:
+            return False
         _close_open_tasks(conn, ejecucion_id, interrupted=error, skipped=error)
+        return published
 
 
 def set_launch(conn: sqlite3.Connection, ejecucion_id: int, *, pid: int, ruta_corrida: str) -> None:

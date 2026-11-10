@@ -17,14 +17,17 @@ from pathlib import Path
 
 import psutil
 import pytest
+from fastapi.testclient import TestClient
 
+from pred_platform.app.main import create_app
 from pred_platform.worker import engine
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.service import enqueue_run
 from tests.fake_engine import RESERVE
-from tests.test_worker import SMALL, Env, _wait
+from tests.test_worker import SMALL, Env, _LockUntilGivenUp, _wait
 from tests.test_worker import env as env
+from tests.test_worker import lock as lock
 
 
 def _cli_env(env: Env, scenario: str, **extra: str) -> dict[str, str]:
@@ -139,9 +142,12 @@ def test_malformed_progress_stops_the_claim_and_the_loop_runs_the_next_run(
             "SELECT estado, pid, error_json FROM ejecuciones ORDER BY id LIMIT 1"
         )
         if scenario == "malformed_after_publication":
-            # The engine had published the run but left no final files: the run keeps its state
-            # and its process, so the next worker start runs it again and imports it.
-            assert (estado, pid, error) == ("completada", children[0].pid, None)
+            # The engine had published the run but left no final files: the run is stopped with
+            # the import diagnostic and keeps its process, so the next worker start imports it.
+            assert (estado, pid) == ("detenida", children[0].pid)
+            diagnostic = json.loads(error)
+            assert diagnostic["code"] == "platform.result_import_failed"
+            assert "sku_id" in diagnostic["detail"]
         else:
             assert estado == "detenida" and pid is None and "sku_id" in error
     finally:
@@ -306,6 +312,28 @@ def _assert_imported(env: Env, *, intento: int) -> None:
     ) == [(12,)]
 
 
+def _assert_import_failed(env: Env, *, intento: int) -> None:
+    ((state, attempt, pid, error, reserve),) = env.rows(
+        "SELECT estado, intento, pid, error_json, reserva_json FROM ejecuciones"
+    )
+    assert (state, attempt, reserve) == ("detenida", intento, None)
+    assert pid is not None and not engine.is_alive(pid)
+    diagnostic = json.loads(error)
+    assert diagnostic["code"] == "platform.result_import_failed"
+    assert diagnostic["retryable"] is True
+    assert "import" in diagnostic["detail"]
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+    with TestClient(create_app(env.settings)) as client:
+        response = client.get("/ejecucion/estado?ejecucion=1")
+        assert response.status_code == 286
+        assert 'data-pred-run-state="detenida"' in response.text
+        assert 'data-pred-poll="false"' in response.text
+        page = client.get("/corridas/1/ejecucion")
+        assert page.status_code == 200
+        assert "Reanudar" in page.text
+        assert "No se pudieron importar los resultados finales" in page.text
+
+
 @pytest.mark.parametrize("units", ["ok", "bad_line"])
 def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_recovery(
     env: Env, monkeypatch, units: str
@@ -328,12 +356,7 @@ def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_
     if units == "ok":
         _assert_imported(env, intento=1)
     else:
-        # Nothing was imported: the run keeps its process as the mark for the next recovery.
-        ((estado, pid, error, reserve),) = env.rows(
-            "SELECT estado, pid, error_json, reserva_json FROM ejecuciones"
-        )
-        assert (estado, error, reserve) == ("completada", None, None)
-        assert pid is not None and not engine.is_alive(pid)
+        _assert_import_failed(env, intento=1)
         assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(0,)]
         assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
 
@@ -359,32 +382,101 @@ def test_a_failed_final_import_exits_non_zero_and_a_restart_imports_the_files(
         check=False,
     )
     assert cli.returncode == 1, cli.stderr
-    ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
-    assert (estado, error) == ("completada", None)
-    assert pid is not None and not engine.is_alive(pid)
+    _assert_import_failed(env, intento=1)
     assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'exitosa'") == [(0,)]
+
+    tasks = env.rows("SELECT id FROM tareas ORDER BY id")
+    repeated = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "publishes_before_exit", FAKE_ENGINE_UNITS="bad_line"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert repeated.returncode == 1, repeated.stderr
+    _assert_import_failed(env, intento=2)
+    assert env.rows("SELECT id FROM tareas ORDER BY id") == tasks
 
     monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
     assert Worker(env.settings).drain()
-    _assert_imported(env, intento=2)
+    _assert_imported(env, intento=3)
 
 
-def test_settling_a_claim_keeps_a_run_the_engine_already_published(env: Env):
-    from pred_platform.dal import ejecuciones as dal
-    from pred_platform.worker.errores import run_stopped_error
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_a_running_worker_reports_failed_import_without_polling_forever(env: Env, state: str):
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    worker = subprocess.Popen(
+        [sys.executable, "-m", "pred_platform.worker"],
+        env=_cli_env(
+            env,
+            "publishes_before_exit",
+            FAKE_ENGINE_UNITS="bad_line",
+            FAKE_ENGINE_TERMINAL_STATE=state,
+        ),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait(
+            lambda: env.rows("SELECT estado FROM ejecuciones") == [("detenida",)],
+            timeout=8,
+            what="the import failure diagnostic",
+        )
+        assert worker.poll() is None
+        _assert_import_failed(env, intento=1)
+    finally:
+        worker.terminate()
+        worker.wait(timeout=15)
+
+
+def test_a_real_write_lock_after_publication_records_failure_then_recovers_unchanged_files(
+    env: Env, lock: _LockUntilGivenUp, monkeypatch: pytest.MonkeyPatch
+):
+    from pred_platform.worker import bucle
 
     enqueue_run(env.settings, env.ingest_id, SMALL)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "publishes_before_exit")
+    finalize = bucle.finalize
+
+    def locked_import(*args, **kwargs):
+        lock.take()
+        return finalize(*args, **kwargs)
+
+    monkeypatch.setattr(bucle, "finalize", locked_import)
+    assert not Worker(env.settings, poll_interval=0.01).drain()
+    _assert_import_failed(env, intento=1)
+    tasks = env.rows("SELECT id FROM tareas ORDER BY id")
+    folder = next((env.settings.data_root / "runs").iterdir())
+    artifacts = {name: (folder / name).read_bytes() for name in ("unidades.jsonl", "corrida.json")}
+
+    monkeypatch.setattr(bucle, "finalize", finalize)
+    assert Worker(env.settings).drain()
+    _assert_imported(env, intento=2)
+    assert env.rows("SELECT id FROM tareas ORDER BY id") == tasks
+    # The same valid unit identities and reserve were recovered without changing the producer.
+    assert artifacts["unidades.jsonl"]
+    assert json.loads(artifacts["corrida.json"])["summary"]["reserve"] == RESERVE
+
+
+def test_settling_a_claim_the_engine_already_published_records_it_without_results(env: Env):
+    from pred_platform.dal import ejecuciones as dal
+    from pred_platform.worker.errores import result_import_error, run_stopped_error
+
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    unimported = result_import_error("Los archivos finales no se importaron.")
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
         with conn:
             conn.execute("UPDATE ejecuciones SET estado='completada', pid=55555")
-        dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
+        assert dal.stop_claimed(
+            conn, run.id, intento=run.intento, error=run_stopped_error(), unimported=unimported
+        )
         # Its recorded process is the mark the next worker start recovers it by.
         assert [r.id for r in dal.interrupted_runs(conn)] == [run.id]
-    assert env.rows("SELECT estado, pid, error_json FROM ejecuciones") == [
-        ("completada", 55555, None)
-    ]
+    ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+    assert (estado, pid, json.loads(error)) == ("detenida", 55555, unimported)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")

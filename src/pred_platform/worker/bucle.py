@@ -7,6 +7,9 @@ the event in flight; on the next start, a run left ``ejecutando`` is queued agai
 ``run_id`` and the engine resumes.
 A run whose database failure could not even be recorded is stopped as soon as the database answers
 again, before the next claim, so a running worker never leaves an unowned run ``ejecutando``.
+A run whose final files could not be imported becomes ``detenida`` with
+``platform.result_import_failed`` (recorded the same way), never a finished run without results;
+the next worker start, or the operator's resume, runs it again with the same files.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker import engine
 from pred_platform.worker.candado import WorkerLock
-from pred_platform.worker.errores import platform_error, run_stopped_error
+from pred_platform.worker.errores import platform_error, result_import_error, run_stopped_error
 from pred_platform.worker.importacion import finalize, fresh_summary
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.solo_lectura import database_read_only
@@ -33,6 +36,20 @@ from pred_platform.worker.solo_lectura import database_read_only
 _logger = logging.getLogger("pred_platform.worker")
 
 Launcher = Callable[..., "subprocess.Popen[bytes]"]
+
+
+class _ResultImportFailed(Exception):
+    """The engine's final files could not be imported; the cause is ``__cause__``."""
+
+
+def _unimported(error: dict[str, Any]) -> dict[str, Any]:
+    """What a run the engine already published records when ``error`` stopped its import."""
+    if error["code"] == "platform.result_import_failed":
+        return error
+    return result_import_error(
+        f"El motor publicó la corrida, pero sus archivos finales no se importaron: "
+        f"{error['detail']}"
+    )
 
 
 class Worker:
@@ -53,7 +70,7 @@ class Worker:
         # The run this worker claimed but could not record as stopped, with the error to record.
         self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
         # The runs whose final result import failed after the engine had finished.
-        self._import_failed: list[str] = []
+        self._import_failed: set[str] = set()
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
@@ -198,6 +215,19 @@ class Worker:
                 return False
             try:
                 self._execute(conn, run, stop or threading.Event())
+            except _ResultImportFailed as failure:
+                cause = failure.__cause__
+                _logger.exception("Corrida %s: falló la importación de resultados", run.run_id)
+                conn.rollback()
+                self._import_failed.add(run.run_id)
+                self._unsettled = (
+                    run,
+                    result_import_error(
+                        "No se pudieron importar los archivos finales del motor: "
+                        f"{type(cause).__name__}: {cause}"
+                    ),
+                )
+                self._settle(conn)
             except sqlite3.Error as exc:  # the database failed before the run was settled
                 _logger.error("Corrida %s: falló la base de datos: %s", run.run_id, exc)
                 conn.rollback()
@@ -228,7 +258,10 @@ class Worker:
             return True
         run, error = self._unsettled
         try:
-            dal.stop_claimed(conn, run.id, intento=run.intento, error=error)
+            if dal.stop_claimed(
+                conn, run.id, intento=run.intento, error=error, unimported=_unimported(error)
+            ):
+                self._import_failed.add(run.run_id)
         except sqlite3.Error:
             # Still failing: keep the claim and try again on the next pass of the loop.
             _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)
@@ -349,7 +382,7 @@ class Worker:
             # An unexpected supervision error, such as a progress record without its keys. An
             # attempt the engine already finished (it exited, or sent run_finished after its
             # final files) is imported from those files. Any other attempt is settled by
-            # run_next; a run the engine already published keeps its process for recovery.
+            # run_next, which also records a published run whose files were not imported.
             finished = process.poll() is not None or follower.finished is not None
             engine.terminate(process.pid)
             process.wait()
@@ -370,7 +403,13 @@ class Worker:
             # `request_stop` already left the run `detenida` with its error; the engine is reaped,
             # so release its process and close the tasks it did not finish, if this attempt is
             # still the run's.
-            dal.stop_claimed(conn, run.id, intento=run.intento, error=stopped_by_user)
+            dal.stop_claimed(
+                conn,
+                run.id,
+                intento=run.intento,
+                error=stopped_by_user,
+                unimported=_unimported(stopped_by_user),
+            )
             _logger.info("Corrida %s detenida por el operador", run.run_id)
             return
 
@@ -378,7 +417,14 @@ class Worker:
             # El cierre de la aplicacion no es una orden del operador de cancelar.
             # El siguiente worker retoma la cola con la misma identidad y checkpoints.
             if not dal.requeue(conn, run.id):
-                dal.stop_claimed(conn, run.id, intento=run.intento, error=run_stopped_error())
+                stop_error = run_stopped_error()
+                dal.stop_claimed(
+                    conn,
+                    run.id,
+                    intento=run.intento,
+                    error=stop_error,
+                    unimported=_unimported(stop_error),
+                )
             return
 
         try:
@@ -392,7 +438,6 @@ class Worker:
                 log_path=log_path,
                 previous_summary=previous_summary,
             )
-        except Exception:
-            self._import_failed.append(run.run_id)
-            raise
+        except Exception as exc:
+            raise _ResultImportFailed from exc
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)
