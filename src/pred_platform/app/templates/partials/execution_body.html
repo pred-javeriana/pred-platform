@@ -103,7 +103,7 @@
   <p class="pred-note">En cola: esta instalación no procesa ejecuciones por sí sola. Para que empiece, quien administra PRED debe iniciar el procesador de ejecuciones.</p>
   <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Comando: <span class="mono">make worker</span></p></details>
   {% elif run.estado == "pendiente" and not control_reason %}
-  <p class="pred-note">En cola: empezará cuando termine la ejecución anterior.</p>
+  <p class="pred-note">En cola: empezará cuando el procesador de ejecuciones la tome.</p>
   {% endif %}
   {% if stopped_open %}<p class="pred-note">Las tareas abiertas se cerrarán cuando vuelva el procesador de ejecuciones.</p>{% endif %}
   {% if run.estado == "detenida" and not (progress and progress.tareas_total) and not actions.offers_resume %}

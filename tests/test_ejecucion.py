@@ -1594,7 +1594,7 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
         other.release()
 
     assert "make worker" not in run and "make worker" not in review
-    assert "En cola: empezará cuando termine la ejecución anterior." in run
+    assert "En cola: empezará cuando el procesador de ejecuciones la tome." in run
     assert hint in pages()[1]  # the lock is free again: nothing runs the queue
 
 
@@ -1618,19 +1618,26 @@ def test_with_the_launch_form_open_launching_is_the_one_primary_action(
     assert primary(_review(client, env, seed="18")) == ["Lanzar la corrida"]
 
 
-def test_a_second_run_waits_in_the_queue_and_the_screen_says_so(
+def test_the_first_queued_run_waits_for_the_worker_not_for_an_earlier_run(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    other = WorkerLock.for_database(env.db)  # busy with an earlier run: the app's worker waits
+    other = WorkerLock.for_database(env.db)  # the worker has not taken the run yet
     assert other.acquire()
     try:
         with _dal_client(env, worker="embedded") as client:
-            _launch(client, env)
+            launched = _launch(client, env)
+            assert launched.status_code == 303
+            path = launched.headers["location"].split("?", 1)[0]
+            assert path == "/corridas/1/ejecucion"
 
-            text = _text(client.get("/ejecucion").text)
+            text = _text(client.get(path).text)
     finally:
         other.release()
-    assert "En cola: empezará cuando termine la ejecución anterior." in text
+    # The database holds this one run, so there is no earlier run to wait for.
+    with closing(sqlite3.connect(env.db)) as conn:
+        assert conn.execute("SELECT id, estado FROM ejecuciones").fetchall() == [(1, "pendiente")]
+    assert "En cola: empezará cuando el procesador de ejecuciones la tome." in text
+    assert "ejecución anterior" not in text
     assert "make worker" not in text
 
 
