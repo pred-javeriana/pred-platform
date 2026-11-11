@@ -22,9 +22,10 @@ keeps the M2 reading. Productos has two readings: **Veredictos** and **Ver por f
 Both product readings show 25 rows per page unless `size` is explicit.
 A link with the M2 filters (`family`, `estado`) opens the family reading. `/resultados/sku/{sku_id}` is the detail, under a
 breadcrumb that goes back to Resultados and to the list the reader came from: per family its state, the evidence of the chosen configuration, the HPO trials
-(completed, **pruned** and **failed**, each with its reason), the Walk-Forward summary and, on
+(completed, **pruned** and **failed**, each with its reason as a sentence from `fallas.describir_motivo`, and the engine's text for every trial in one "Detalle para soporte" under the table), the Walk-Forward summary and, on
 request, every window with its metrics. Excluded families say why (policy matrix, configured subset,
-series too short) and failed ones show their error.
+series too short) and failed ones show their error the way Ejecución does: cause, next step, why it
+failed and a copyable support detail (`pred_platform/fallas.py`).
 
 The champion, the verdict and its evidence come from one exact M3 run of the M2 run shown (contract
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail

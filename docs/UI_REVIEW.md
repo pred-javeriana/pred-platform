@@ -82,8 +82,10 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
   claves contractuales, filtros, CSV, colores e iconos no cambian.
 - **Leyenda ADI–CV².** Dos columnas y dos filas, separadas del eje: las cajas de texto no se
   intersectan a 1280, 535 y 320 px.
-- **Poda.** El texto de un ensayo podado conserva la regla o motivo registrado. `podada` tiene
-  icono y representación propios, distintos de `fallida`.
+- **Poda.** El motivo de un ensayo podado o fallido se lee como una frase con su causa y su
+  porqué (`fallas.describir_motivo`); el texto que guardó el motor queda en el detalle para
+  soporte bajo la tabla de ensayos. `podada` tiene icono y representación propios, distintos de
+  `fallida`.
 - **Nueva corrida desde Resultados.** La acción secundaria «Nueva corrida con estos datos» abre
   Ajustes de una corrida nueva con la ingesta de la corrida mostrada y respeta las
   comprobaciones de capacidad.

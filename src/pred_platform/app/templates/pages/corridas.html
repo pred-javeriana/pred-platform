@@ -44,7 +44,7 @@
   <section class="pred-panel" aria-labelledby="titulo-corridas">
     <h2 id="titulo-corridas">Todas las corridas</h2>
     {% if home.error %}
-      {{ unavailable_state(home.error.title, home.error.detail or "No fue posible leer las corridas.", home.error.code, home.error.blocked_by) }}
+      {{ unavailable_state(home.error.title, home.error.detail or "No fue posible leer las corridas.", home.error.code, home.error.blocked_by, support=home.error.support) }}
     {% elif not home.rows %}
       {{ empty_state("Todavía no hay corridas.", "Empiece una nueva: elija los datos, los ajustes y lance la corrida." if new_run.enabled else "Todavía no se puede empezar una: vea por qué arriba.", "Nueva corrida" if new_run.enabled else none, "/corridas/nueva/datos") }}
     {% else %}

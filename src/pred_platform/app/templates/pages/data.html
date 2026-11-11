@@ -49,13 +49,14 @@
   {% if report_error and not report %}
   <section class="pred-section" id="diagnostico">
     {% if report_error.code not in ("platform.artifact_missing", "platform.engine_unavailable") %}
-    {{ error_state(report_error.title, report_error.detail or "Vuelva a intentar la operación.", report_error.code, "Reintentar", datos_path) }}
+    {{ error_state(report_error.title, report_error.detail or "Vuelva a intentar la operación.", report_error.code, "Reintentar", datos_path, support=report_error.support) }}
     {% else %}
     {{ unavailable_state(
       report_error.title,
       report_error.detail or "La integración con el motor todavía no está habilitada.",
       report_error.code,
-      report_error.blocked_by
+      report_error.blocked_by,
+      support=report_error.support
     ) }}
     {% if report_error.retryable %}
     <p class="pred-actions">{{ button("Reintentar", variant="secondary", href=datos_path, icon="i-rotate") }}</p>
@@ -121,7 +122,8 @@
         list_error.title,
         list_error.detail or "",
         list_error.code,
-        list_error.blocked_by
+        list_error.blocked_by,
+        support=list_error.support
       ) }}
     {% elif listing and (listing.items or listing.page.total) %}
       {% include "partials/data_history.html" %}

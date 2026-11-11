@@ -26,6 +26,7 @@ from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestReport, Page, TopologyReport
 from pred_platform.data.query import DEFAULT_SIZE, int_param
 from pred_platform.data.repository import DataRepository
+from pred_platform.fallas import texto_soporte
 from pred_platform.worker import ingesta
 from pred_platform.worker.solo_lectura import database_read_only
 
@@ -270,17 +271,32 @@ def recalled_report(request: Request, ingest_id: str) -> IngestReport | None:
 
 
 def error_view(exc: DataLayerError) -> dict[str, object]:
-    """Estado de interfaz a partir de un error normalizado. Nunca incluye traceback."""
+    """Estado de interfaz a partir de un error normalizado. Nunca incluye traceback.
+
+    ``detail`` es la frase visible: el aviso del error si lo trae (``notice``) o la acción del
+    catálogo. El texto técnico va completo en ``support``, el detalle plegado para soporte.
+    """
     info = exc.to_error_info()
+    action = mensajes.accion(info.code)
     return {
         "code": info.code,
-        "detail": info.detail,
+        "detail": exc.notice
+        or action
+        or "Vuelva a intentarlo; si persiste, copie el detalle para soporte.",
         "field": info.field,
         "column": info.column,
         "retryable": info.retryable,
         "blocked_by": list(exc.blocked_by),
         "title": _error_title(info.code),
-        "action": mensajes.accion(info.code),
+        "action": action,
+        "support": texto_soporte(
+            info.code,
+            etapa=info.stage,
+            excepcion=info.source_exception,
+            detalle=exc.detail,
+            campo=info.field,
+            bloqueos=list(exc.blocked_by),
+        ),
     }
 
 

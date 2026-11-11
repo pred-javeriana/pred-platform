@@ -44,6 +44,7 @@ from pred_platform.contract.models import (
 from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
 from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
 from pred_platform.data.repository import DataRepository
+from pred_platform.fallas import Falla, describir_falla
 from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS
 from pred_platform.worker.service import LaunchSettings
 
@@ -540,6 +541,8 @@ class RunError:
     retryable: bool
     stage: str | None = None
     cataloged: bool = False
+    # Lo que la página muestra: causa, qué hacer, desglose y detalle para soporte.
+    falla: Falla | None = None
 
 
 def run_error(info: ErrorInfo | None) -> RunError | None:
@@ -557,6 +560,7 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
         retryable=info.retryable,
         stage=info.stage,
         cataloged=is_cataloged,
+        falla=describir_falla(info),
     )
 
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pred-contrato/v1/run_status.schema.json",
-  "x-contract-version": "1.2.0",
+  "x-contract-version": "1.3.0",
   "$defs": {
     "Availability": {
       "additionalProperties": false,
@@ -58,6 +58,147 @@
         "status"
       ],
       "title": "Availability",
+      "type": "object"
+    },
+    "DiscardCause": {
+      "additionalProperties": false,
+      "description": "Cuantos ensayos se descartaron por una causa del motor y un ejemplo.\n\n`cause` es un identificador abierto del motor (`ajuste_fallido`, `escalon`,\n`poda_semantica`, `configuracion_invalida`, `ninguna_ventana_convergio`,\n`sin_motivo_registrado`).",
+      "properties": {
+        "cause": {
+          "minLength": 1,
+          "title": "Cause",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "example": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiscardExample"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "cause",
+        "count"
+      ],
+      "title": "DiscardCause",
+      "type": "object"
+    },
+    "DiscardExample": {
+      "additionalProperties": false,
+      "description": "Un ensayo de la busqueda descartado por una causa, como ejemplo de esa causa.\n\n`window` es la ventana de validacion (desde 1) en que se descarto. Una poda por escalon\nlleva `rung`, el error del ensayo en `value` y el umbral de los `keep` mejores en\n`threshold`; una poda semantica, la regla en `rule` y el error en `value`; una\nconfiguracion invalida, la restriccion que no cumplio en `constraint`; un ajuste\nfallido, `fit`.",
+      "properties": {
+        "window": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window"
+        },
+        "rung": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rung"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "keep": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Keep"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule"
+        },
+        "constraint": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Constraint"
+        },
+        "fit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FitFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "DiscardExample",
       "type": "object"
     },
     "Ejecucion": {
@@ -135,6 +276,47 @@
         "estado"
       ],
       "title": "Ejecucion",
+      "type": "object"
+    },
+    "ErrorFacts": {
+      "additionalProperties": false,
+      "description": "Datos estructurados de un error del motor (desde 1.3.0, seccion 11).\n\nRepiten en campos lo que `detail` cuenta en texto, para que la interfaz los muestre sin\nleer el mensaje. Cada grupo es opcional: el motor solo envia los que conoce.",
+      "properties": {
+        "search": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SearchFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FitFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "history": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoryFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ErrorFacts",
       "type": "object"
     },
     "ErrorInfo": {
@@ -246,6 +428,17 @@
           "default": false,
           "title": "Retryable",
           "type": "boolean"
+        },
+        "facts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -253,6 +446,81 @@
         "stage"
       ],
       "title": "ErrorInfo",
+      "type": "object"
+    },
+    "FitFacts": {
+      "additionalProperties": false,
+      "description": "Por que un modelo no se ajusto o no pronostico (desde 1.3.0, seccion 11).\n\n`reason` es un identificador abierto del motor (`raiz_en_borde`, `sin_convergencia`,\n`error_biblioteca`, `pronostico_fallido`, `forma_cuantiles`, `cuantil_ausente`). `value`\ny `limit` son el valor medido y el limite que no cumplio, cuando la causa es numerica.",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "FitFacts",
+      "type": "object"
+    },
+    "HistoryFacts": {
+      "additionalProperties": false,
+      "description": "Observaciones que exigia el modelo o la validacion y las que tenia la serie.",
+      "properties": {
+        "required": {
+          "minimum": 1,
+          "title": "Required",
+          "type": "integer"
+        },
+        "available": {
+          "minimum": 0,
+          "title": "Available",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "required",
+        "available"
+      ],
+      "title": "HistoryFacts",
       "type": "object"
     },
     "Page": {
@@ -536,6 +804,48 @@
         "trim"
       ],
       "title": "RunSettings",
+      "type": "object"
+    },
+    "SearchFacts": {
+      "additionalProperties": false,
+      "description": "Resumen de una busqueda de configuraciones que no dejo ningun ensayo completo.",
+      "properties": {
+        "failed": {
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "pruned": {
+          "minimum": 0,
+          "title": "Pruned",
+          "type": "integer"
+        },
+        "invalid_attempts": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invalid Attempts"
+        },
+        "causes": {
+          "items": {
+            "$ref": "#/$defs/DiscardCause"
+          },
+          "title": "Causes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "failed",
+        "pruned"
+      ],
+      "title": "SearchFacts",
       "type": "object"
     },
     "Tarea": {

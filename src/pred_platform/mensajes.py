@@ -191,6 +191,10 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
         "La historia es demasiado corta para entrenar y evaluar.",
         "Cargue más historia de este SKU o reduzca el mínimo de entrenamiento.",
     ),
+    "eligibility.no_configured_family": Mensaje(
+        "Ninguna familia de la ejecución atiende la clase de demanda de este SKU.",
+        "Lance la ejecución con una familia que la política asigne a esta clase.",
+    ),
     "eligibility.fewer_than_two_families": Mensaje(
         "El SKU quedó fuera de la comparación porque conservó menos de dos familias evaluables.",
         "Revise por qué fallaron sus otras familias o agregue otra familia a la ejecución.",
@@ -236,6 +240,10 @@ CATALOGO: Final[Mapping[str, Mensaje]] = {
     "pipeline.stage_unavailable": Mensaje(
         "Esta etapa aún no está disponible.",
         "Esta función llegará en una versión posterior.",
+    ),
+    "provenance.origin_conflict": Mensaje(
+        "La procedencia declarada no coincide con el origen ya registrado de la ingesta.",
+        "Cargue el archivo como datos del mismo origen o use otro archivo.",
     ),
     # --- L0: datos sintéticos
     "synthetic.worm_overwrite": Mensaje(

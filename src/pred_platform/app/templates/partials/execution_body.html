@@ -6,6 +6,7 @@
 {% from "components/forms.html" import field %}
 {% from "components/tables.html" import table_start, table_end, table_empty %}
 {% from "components/evidence.html" import evidence_nav, evidence_panel %}
+{% from "components/falla.html" import falla_bloque, falla_desglose, soporte %}
 
 {# El reloj y las transiciones no hacen lecturas: usan la respuesta del sondeo existente. #}
 {% macro run_pulse(run, progress, poll) %}
@@ -22,7 +23,7 @@
 {% if missing_run %}
   {{ missing_run_state(missing_run, "Puede abrir la ejecución más reciente o lanzar una nueva.", "Ver la ejecución más reciente", "/ejecucion") }}
 {% elif status_error %}
-  {{ unavailable_state(status_error.title, status_error.detail or "No fue posible leer la ejecución.", status_error.code, status_error.blocked_by) }}
+  {{ unavailable_state(status_error.title, status_error.detail or "No fue posible leer la ejecución.", status_error.code, status_error.blocked_by, support=status_error.support) }}
 {% elif not run %}
   {{ empty_state(
     "No existe una ejecución activa.",
@@ -86,14 +87,11 @@
   {% if run_error and run.estado not in ("pendiente", "ejecutando") %}
   {# El tono sigue a lo que se puede hacer: advertencia si Reanudar se ofrece, error si no (#126). #}
   <div class="pred-callout pred-callout--{{ 'warn' if actions.offers_resume else 'err' }}" id="error-ejecucion">
-    <p><strong>{{ run_error.title }}</strong>{% if run_error.detail and not run_error.cataloged %} {{ run_error.detail }}{% endif %}</p>
-    {% if run_error.action and not actions.nothing_to_compare %}<p>{{ run_error.action }}</p>{% endif %}
+    <p class="pred-falla__titulo">{{ run_error.falla.titulo }}</p>
+    {% if run_error.falla.accion and not actions.nothing_to_compare %}<p>{{ run_error.falla.accion }}</p>{% endif %}
     {% if not actions.offers_resume and run.estado == "detenida" and not actions.nothing_to_compare %}<p class="pred-meta">Reanudar no se ofrece: la ejecución fallaría igual. Corrija la causa y lance una ejecución nueva.</p>{% endif %}
-    <details class="pred-details pred-details--inline">
-      <summary>Detalle técnico</summary>
-      {% if run_error.detail and run_error.cataloged %}<p class="pred-meta">{{ run_error.detail }}</p>{% endif %}
-      <p class="pred-meta">Código <span class="mono">{{ run_error.code }}</span></p>
-    </details>
+    {{ falla_desglose(run_error.falla, abierto=true) }}
+    {{ soporte(run_error.falla.soporte) }}
   </div>
   {% endif %}
   {% if actions.nothing_to_compare %}
@@ -105,7 +103,7 @@
   <p class="pred-note">En cola: esta instalación no procesa ejecuciones por sí sola. Para que empiece, quien administra PRED debe iniciar el procesador de ejecuciones.</p>
   <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Comando: <span class="mono">make worker</span></p></details>
   {% elif run.estado == "pendiente" and not control_reason %}
-  <p class="pred-note">En cola: empezará cuando termine la ejecución anterior.</p>
+  <p class="pred-note">En cola: empezará cuando el procesador de ejecuciones la tome.</p>
   {% endif %}
   {% if stopped_open %}<p class="pred-note">Las tareas abiertas se cerrarán cuando vuelva el procesador de ejecuciones.</p>{% endif %}
   {% if run.estado == "detenida" and not (progress and progress.tareas_total) and not actions.offers_resume %}
@@ -152,7 +150,7 @@
   {% if cause_groups %}
   {{ table_start(["Causa", "Familias", "Tareas"], "Causas de las tareas sin pronóstico") }}
   {% for cause in cause_groups %}
-  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action and not actions.nothing_to_compare %}<span class="pred-subvalue pred-cause">{{ cause.action }}</span>{% endif %}{% if cause.code %}<details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><span class="mono">{{ cause.code }}</span></details>{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
+  <tr><th scope="row" class="wrap">{{ cause.title }}{% if cause.action and not actions.nothing_to_compare %}<span class="pred-subvalue pred-cause">{{ cause.action }}</span>{% endif %}{% if cause.support %}{{ soporte(cause.support) }}{% endif %}</th><td class="wrap">{{ cause.families }}</td><td class="num">{{ format_count(cause.count) }}</td></tr>
   {% endfor %}
   {{ table_end() }}
   {% elif progress and not progress.tareas_por_estado.get("fallida", 0) and not progress.tareas_por_estado.get("no_ejecutable", 0) %}
@@ -201,25 +199,19 @@
   {% elif status.page %}<p class="pred-query-count"><strong>{{ format_count(status.page.total) }}</strong> tareas coinciden con la consulta.</p>{% endif %}
 
   {% if rows or not focus %}
-  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"], "Tareas que conviene mirar" if focus else "Tareas de la ejecución filtrada") }}
+  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"], "Tareas que conviene mirar" if focus else "Tareas de la ejecución filtrada", "tareas") }}
   {% if rows %}
     {% for item in rows %}
     {% set task = item.task %}
     <tr>
       <th scope="row" class="pred-sku"><span class="mono">{{ task.sku or "—" }}</span></th>
-      <td class="pred-nowrap">{{ family_label(task.family) if task.family else "—" }}</td>
-      <td class="pred-nowrap" title="{{ model_term(task.modelo).hint }}">{{ model_label(task.modelo) }}</td>
-      <td>{{ status_indicator(item.status) }}</td>
-      <td class="num">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
-      <td class="wrap">
+      <td class="pred-nowrap" data-label="Familia">{{ family_label(task.family) if task.family else "—" }}</td>
+      <td class="pred-nowrap" data-label="Modelo" title="{{ model_term(task.modelo).hint }}">{{ model_label(task.modelo) }}</td>
+      <td data-label="Estado">{{ status_indicator(item.status) }}</td>
+      <td class="num" data-label="Tiempo (s)">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
+      <td class="wrap" data-label="Causa y qué hacer">
         {% if item.error %}
-        <strong>{{ item.error.title }}</strong>
-        {% if item.error.action and not actions.nothing_to_compare %}<span class="pred-subvalue pred-cause">{{ item.error.action }}</span>{% endif %}
-        <details class="pred-details pred-details--inline">
-          <summary>Detalle técnico</summary>
-          {% if item.error.detail %}<p>{{ item.error.detail }}</p>{% endif %}
-          <p class="pred-meta">Etapa: {{ stage_label(item.error.stage) if item.error.stage else "no informada" }} · código <span class="mono">{{ item.error.code }}</span></p>
-        </details>
+        {{ falla_bloque(item.error, accion=not actions.nothing_to_compare) }}
         {% elif item.reason %}{{ item.reason }}{% else %}—{% endif %}
       </td>
     </tr>

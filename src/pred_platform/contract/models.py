@@ -1,4 +1,4 @@
-"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.2.0).
+"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.3.0).
 
 Describen lo que leen las vistas de `pred-platform` desde su DAL (SQLite, SRS 3.6).
 Son la fuente de los esquemas de `../schemas/v1/` y de las reglas entre campos que
@@ -122,6 +122,82 @@ class Page(_Base):
     total: int = Field(ge=0)
 
 
+class FitFacts(_Base):
+    """Por que un modelo no se ajusto o no pronostico (desde 1.3.0, seccion 11).
+
+    `reason` es un identificador abierto del motor (`raiz_en_borde`, `sin_convergencia`,
+    `error_biblioteca`, `pronostico_fallido`, `forma_cuantiles`, `cuantil_ausente`). `value`
+    y `limit` son el valor medido y el limite que no cumplio, cuando la causa es numerica.
+    """
+
+    model: str | None = Field(default=None, min_length=1)
+    reason: str = Field(min_length=1)
+    value: float | None = None
+    limit: float | None = None
+
+
+class DiscardExample(_Base):
+    """Un ensayo de la busqueda descartado por una causa, como ejemplo de esa causa.
+
+    `window` es la ventana de validacion (desde 1) en que se descarto. Una poda por escalon
+    lleva `rung`, el error del ensayo en `value` y el umbral de los `keep` mejores en
+    `threshold`; una poda semantica, la regla en `rule` y el error en `value`; una
+    configuracion invalida, la restriccion que no cumplio en `constraint`; un ajuste
+    fallido, `fit`.
+    """
+
+    window: int | None = Field(default=None, ge=1)
+    rung: int | None = Field(default=None, ge=1)
+    value: float | None = None
+    threshold: float | None = None
+    keep: int | None = Field(default=None, ge=1)
+    rule: str | None = Field(default=None, min_length=1)
+    constraint: str | None = Field(default=None, min_length=1)
+    fit: FitFacts | None = None
+
+
+class DiscardCause(_Base):
+    """Cuantos ensayos se descartaron por una causa del motor y un ejemplo.
+
+    `cause` es un identificador abierto del motor (`ajuste_fallido`, `escalon`,
+    `poda_semantica`, `configuracion_invalida`, `ninguna_ventana_convergio`,
+    `sin_motivo_registrado`).
+    """
+
+    cause: str = Field(min_length=1)
+    count: int = Field(ge=1)
+    example: DiscardExample | None = None
+
+
+class SearchFacts(_Base):
+    """Resumen de una busqueda de configuraciones que no dejo ningun ensayo completo."""
+
+    failed: int = Field(ge=0)
+    pruned: int = Field(ge=0)
+    # Configuraciones seguidas que rechazo el espacio de busqueda (`hpo.study_failed`).
+    invalid_attempts: int | None = Field(default=None, ge=1)
+    causes: list[DiscardCause] = Field(default_factory=list)
+
+
+class HistoryFacts(_Base):
+    """Observaciones que exigia el modelo o la validacion y las que tenia la serie."""
+
+    required: int = Field(ge=1)
+    available: int = Field(ge=0)
+
+
+class ErrorFacts(_Base):
+    """Datos estructurados de un error del motor (desde 1.3.0, seccion 11).
+
+    Repiten en campos lo que `detail` cuenta en texto, para que la interfaz los muestre sin
+    leer el mensaje. Cada grupo es opcional: el motor solo envia los que conoce.
+    """
+
+    search: SearchFacts | None = None
+    fit: FitFacts | None = None
+    history: HistoryFacts | None = None
+
+
 class ErrorInfo(_Base):
     """Error normalizado. `code` es el que se persiste en `bitacora_calidad.codigo`."""
 
@@ -134,6 +210,8 @@ class ErrorInfo(_Base):
     column: str | None = None
     source_exception: str | None = None
     retryable: bool = False
+    # Desde 1.3.0: los hechos del error en campos (seccion 11).
+    facts: ErrorFacts | None = None
 
 
 class TopologyMetrics(_Base):

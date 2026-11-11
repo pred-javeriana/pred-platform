@@ -1,3 +1,4 @@
+{% from "components/falla.html" import soporte %}
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/status.html" import verdict_status %}
 {% from "partials/results_macros.html" import claim, family, fraction, inline_bar, outcome_legend, problem, unread_note %}
@@ -29,8 +30,8 @@
     {% endfor %}
   </tbody></table></div>
   {{ outcome_legend() }}
-  {% if m3_classes.problem %}<p class="pred-note">{{ m3_classes.problem.title }} {{ m3_classes.problem.detail }}</p>{% endif %}
-  {% if m3_summary.champions_problem %}<p class="pred-note">{{ m3_summary.champions_problem.title }} {{ m3_summary.champions_problem.detail }}</p>{% endif %}
+  {% if m3_classes.problem %}<p class="pred-note">{{ m3_classes.problem.title }} {{ m3_classes.problem.detail }}</p>{% if m3_classes.problem.support %}{{ soporte(m3_classes.problem.support) }}{% endif %}{% endif %}
+  {% if m3_summary.champions_problem %}<p class="pred-note">{{ m3_summary.champions_problem.title }} {{ m3_summary.champions_problem.detail }}</p>{% if m3_summary.champions_problem.support %}{{ soporte(m3_summary.champions_problem.support) }}{% endif %}{% endif %}
   {% if m3_summary.champions %}
   {% set champions = m3_summary.champions %}
   <details class="pred-details" id="campeones-por-familia"><summary>Campeona de cada producto, por familia</summary>

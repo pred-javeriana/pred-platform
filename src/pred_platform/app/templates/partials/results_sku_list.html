@@ -1,3 +1,4 @@
+{% from "components/falla.html" import soporte %}
 {% from "components/terms.html" import term, when %}
 {% from "components/forms.html" import field %}
 {% from "components/buttons.html" import button %}
@@ -16,7 +17,7 @@
   {% endif %}
 
   {% if list_error %}
-    {{ unavailable_state(list_error.title, list_error.detail or "No fue posible leer la selección.", list_error.code, list_error.blocked_by) }}
+    {{ unavailable_state(list_error.title, list_error.detail or "No fue posible leer la selección.", list_error.code, list_error.blocked_by, support=list_error.support) }}
   {% elif listing and listing.availability.status != "available" %}
     {{ unavailable_state(
       "Todavía no hay resultados por familia.",
@@ -47,7 +48,7 @@
       <p class="pred-query-count"><strong>{{ format_count(listing.page.total) }}</strong> SKU coinciden con la consulta.</p>
     </div>
     <p class="pred-meta">Cada columna de familia muestra cómo terminó esa familia en el ajuste de modelos y el error de su configuración elegida: es evidencia de la familia, no un veredicto del producto. El modelo campeón y el veredicto son los de la evaluación final{% if m3.run %}{% set shown_at = m3_published_at if m3.run.estado == "PUBLICADA" else m3.run.creado_en %}<span title="Evaluación {{ m3.run.run_id }}">{% if shown_at and m3.run.estado != "PUBLICADA" %} creada el {{ when(shown_at) }}{% elif shown_at %} publicada el {{ when(shown_at) }}{% else %} seleccionada{% endif %}{{ closing_period(format_when(shown_at)) if shown_at else '.' }}</span>{% else %}.{% endif %}{% if m3.run and not m3.problem %} <a href="/resultados?{{ query.query_string(vista='resumen', lista='', sku_class='', family='', estado='', q='', sort='', descending='', page='', size='') }}">Ver distribución de campeones</a>.{% endif %}</p>
-    {% if m3.problem %}<p class="pred-note"><strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}</p>{% endif %}
+    {% if m3.problem %}<p class="pred-note"><strong>{{ m3.problem.title }}</strong> {{ m3.problem.detail }}</p>{% if m3.problem.support %}{{ soporte(m3.problem.support) }}{% endif %}{% endif %}
     {% if m3.verdicts %}{{ verdict_legend() }}{% endif %}
     {{ table_start(["SKU", "Clase", "Campeón y veredicto"] + FAMILY_HEADERS, "Resultados por familia de cada SKU", "families") }}
     {% if rows %}
@@ -63,7 +64,7 @@
           <span class="pred-subvalue">{{ status_indicator(describe_status("verdict", verdict.veredicto)) }}</span>
           {% elif m3.excluded.get(item.row.sku_id) %}
           {% set exclusion = m3.excluded[item.row.sku_id] %}
-          <span class="pred-cell--none" title="Causa publicada: {{ exclusion.detail }}">Excluido antes de evaluar: {{ exclusion.reason }}</span>
+          <span class="pred-cell--none">Excluido antes de evaluar: {{ exclusion.reason }}</span>
           {% else %}<span class="pred-cell--none">Sin veredicto</span>{% endif %}
         </td>
         {% for family in FAMILY_ORDER %}

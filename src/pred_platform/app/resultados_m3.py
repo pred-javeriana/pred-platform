@@ -42,6 +42,7 @@ from pred_platform.data.m3_confirmation import (
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository, M3ReserveBlocks, StageTiming
+from pred_platform.fallas import describir_falla, texto_soporte
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,15 +52,22 @@ class M3Problem:
     title: str
     detail: str
     code: str
+    # El texto técnico de una lectura que falló, para el detalle plegado de soporte.
+    support: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class Exclusion:
     """Por qué un SKU quedó fuera antes de la evaluación: la frase de la plataforma y la causa que
-    publicó el motor, que se muestra como detalle."""
+    publicó el motor, que solo se ofrece en el detalle para soporte (``support``)."""
 
     reason: str
     detail: str
+    code: str | None = None
+
+    @property
+    def support(self) -> str:
+        return texto_soporte(self.code or "", detalle=self.detail)
 
 
 _LATE_LAUNCH = (
@@ -139,7 +147,12 @@ def _read_problem(exc: InvalidQuery | DataLayerError) -> M3Problem:
     """El problema visible de una lectura M3 que falló: consulta inválida o error de datos."""
     if isinstance(exc, InvalidQuery):
         return M3Problem("La consulta no es válida.", str(exc), "invalid")
-    return M3Problem("No fue posible leer la evaluación.", str(exc), exc.code)
+    return M3Problem(
+        "No fue posible leer la evaluación.",
+        exc.notice or mensajes.accion(exc.code) or "Vuelva a cargar la página.",
+        exc.code,
+        support=texto_soporte(exc.code, etapa="platform", detalle=exc.detail),
+    )
 
 
 def _resolve(
@@ -224,7 +237,9 @@ def decision(
     eligibility = evidence.eligibility_exclusions
     excluded = {row.sku: Exclusion(_LATE_LAUNCH, row.causa) for row in (late.items if late else [])}
     for item in eligibility.items if eligibility else []:
-        excluded[item.sku] = Exclusion(mensajes.titulo(item.codigo), item.causa)
+        excluded[item.sku] = Exclusion(
+            describir_falla({"code": item.codigo}).titulo, item.causa, item.codigo
+        )
     return M3Decision(
         run=resolved,
         blocks=blocks,
@@ -444,7 +459,7 @@ def eligibility_rows(
         return None
     counts = Counter(item.codigo for item in exclusions.items)
     return [
-        (code, mensajes.titulo(code), count)
+        (code, describir_falla({"code": code}).titulo, count)
         for code, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     ]
 

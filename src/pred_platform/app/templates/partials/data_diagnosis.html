@@ -5,6 +5,7 @@
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/evidence.html" import evidence_panel %}
 {% from "components/terms.html" import day %}
+{% from "components/falla.html" import falla_bloque %}
 
 {% set ingest_status = describe_status("ingest", report.status) %}
 {% if not diagnosis_details %}
@@ -42,21 +43,8 @@
   {% endif %}
 
   {% if report.error %}
-    {% set described = describir_error(report.error) %}
-    <div class="pred-callout pred-callout--{{ 'err' if report.status == 'failed' else 'warn' }}">
-      <p><strong>{{ described.titulo }}</strong></p>
-      {% if described.accion %}<p>{{ described.accion }}</p>{% endif %}
-      <details class="pred-details pred-details--inline" id="error-ingesta">
-        <summary>Detalle técnico del diagnóstico</summary>
-      {% if report.error.detail %}<p class="pred-meta">{{ report.error.detail }}</p>{% endif %}
-      {% if described.ubicacion or report.error.field %}
-      <p class="pred-meta">
-        {% if report.error.field %}Campo: {{ report.error.field }}{% endif %}
-        {% if described.ubicacion %}{{ " · " if report.error.field else "" }}{{ described.ubicacion|capitalize }}{% endif %}
-      </p>
-      {% endif %}
-      <p class="pred-meta">Código <span class="mono">{{ report.error.code }}</span></p>
-      </details>
+    <div class="pred-callout pred-callout--{{ 'err' if report.status == 'failed' else 'warn' }}" id="error-ingesta">
+      {{ falla_bloque(describir_falla(report.error), abierto=true) }}
     </div>
     {% if report.error.retryable %}
     <p class="pred-actions">{{ button("Reintentar", variant="secondary", href=datos_path, icon="i-rotate") }}</p>

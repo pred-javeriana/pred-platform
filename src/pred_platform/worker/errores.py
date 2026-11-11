@@ -4,14 +4,24 @@ The engine records a failure as ``NombreDeClase: mensaje`` next to its stable ``
 of the data contract, G6 and G7), and that code is stored as is. Runs written by an older engine
 carry no code: for those the code is deduced from the class name (or, for exclusions, from the
 cause text). ``stage`` is the engine stage where it happened (``L2`` or ``L3``).
+
+Since contract 1.3.0 the engine also reports the error's ``facts`` (section 11.1). They enter
+here: facts that do not satisfy the contract's ``ErrorFacts`` are dropped, never stored, so a
+newer engine field cannot make a stored task unreadable.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
+from pred_platform.contract import models
 from pred_platform.mensajes import reintentable
+
+_log = logging.getLogger(__name__)
 
 _CODE = re.compile(r"^[a-z_]+\.[a-z_]+$")
 
@@ -36,7 +46,21 @@ def engine_code(value: object) -> str | None:
     return value if isinstance(value, str) and _CODE.match(value) else None
 
 
-def error_info(stage: str, text: str | None, code: str | None = None) -> dict[str, Any]:
+def error_facts(value: object) -> dict[str, Any] | None:
+    """The engine's ``facts`` if they satisfy the contract's ``ErrorFacts``, else ``None``."""
+    if not value:
+        return None
+    try:
+        facts = models.ErrorFacts.model_validate(value)
+    except ValidationError as exc:
+        _log.warning("facts del motor descartados: no cumplen ErrorFacts (%s)", exc)
+        return None
+    return facts.model_dump(mode="json", exclude_none=True) or None
+
+
+def error_info(
+    stage: str, text: str | None, code: str | None = None, facts: object = None
+) -> dict[str, Any]:
     """The ``ErrorInfo`` of a unit that failed, from the engine's ``NombreDeClase: mensaje``."""
     raw = (text or "").strip()
     name, separator, message = raw.partition(": ")
@@ -49,7 +73,7 @@ def error_info(stage: str, text: str | None, code: str | None = None) -> dict[st
             code = "selection.no_viable_trial"
         if code is None:
             code = "evaluation.failed" if stage == "L3" else "pipeline.stage_failed"
-    return {
+    info: dict[str, Any] = {
         "code": code,
         "stage": stage,
         "severity": "error",
@@ -57,6 +81,10 @@ def error_info(stage: str, text: str | None, code: str | None = None) -> dict[st
         "source_exception": name or None,
         "retryable": reintentable(code),
     }
+    checked = error_facts(facts)
+    if checked is not None:
+        info["facts"] = checked
+    return info
 
 
 def _legacy_exclusion_code(cause: str) -> str:
@@ -68,20 +96,24 @@ def _legacy_exclusion_code(cause: str) -> str:
     return "pipeline.stage_failed"
 
 
-def exclusion_info(cause: str, code: str | None = None) -> dict[str, Any]:
+def exclusion_info(cause: str, code: str | None = None, facts: object = None) -> dict[str, Any]:
     """The ``ErrorInfo`` of a SKU the engine could not run.
 
     ``code`` is the engine's ``eligibility.*`` code; without it (an older run) it is deduced from
     the free-text cause.
     """
     code = engine_code(code) or _legacy_exclusion_code(cause)
-    return {
+    info: dict[str, Any] = {
         "code": code,
         "stage": "L2",
         "severity": "error",
         "detail": cause,
         "retryable": False,
     }
+    checked = error_facts(facts)
+    if checked is not None:
+        info["facts"] = checked
+    return info
 
 
 def exclusion_reason(cause: str, code: str | None = None) -> str:

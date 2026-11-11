@@ -363,12 +363,24 @@ def test_pruned_and_failed_trials_look_different_and_keep_their_reason() -> None
     )
     assert pruned is not None and "Podada" in pruned.group(0) and "#i-prune" in pruned.group(0)
     assert failed is not None and "Fallida" in failed.group(0) and "#i-x" in failed.group(0)
-    # Each reason reads as a short sentence; the engine's own text stays one hover away.
+    # Each reason reads as a sentence with its cause; the engine's own text is only in the
+    # support detail under the table, never in a cell or a tooltip.
     text = _text(html)
-    assert "Detenido: el pronóstico salió nulo" in text
-    assert "El modelo no pudo ajustarse (ventana 1)" in text
-    assert 'title="poda_semantica:prediccion_nula"' in html
-    assert 'title="ventana=1 ajuste_fallido: AjusteModeloError: no converge"' in html
+    assert (
+        "El pronóstico de prueba no era válido: el pronóstico fue cero en todo el horizonte "
+        "aunque la serie tenía demanda." in text
+    )
+    assert "El modelo no pudo ajustarse en la ventana 1." in text
+    assert 'title="poda_semantica' not in html and 'title="ventana=' not in html
+    [support] = [
+        texto
+        for texto in re.findall(r'<pre class="pred-soporte__texto">([^<]*)</pre>', html)
+        if "Ensayo t-1" in texto
+    ]
+    assert support.splitlines() == [
+        "Ensayo t-1: poda_semantica:prediccion_nula",
+        "Ensayo t-2: ventana=1 ajuste_fallido: AjusteModeloError: no converge",
+    ]
     assert "Un ensayo podado no es un fallo" in text
 
 
@@ -775,7 +787,8 @@ def test_the_table_shows_the_champion_and_the_five_verdict_labels_m3_published(
     assert "FIL-0001 Suave Clásica · SARIMA Validado" in text
     assert "FIL-0002 Intermitente Clásica · SARIMA Exploratorio" in text
     assert f"Excluido antes de evaluar: {LATE_LAUNCH}" in text
-    assert f'title="Causa publicada: {LATE}"' in html
+    # The engine's cause is support detail: never a tooltip of the list.
+    assert "Causa publicada" not in html and LATE not in text
     assert "Origen de los datos Reales (declarado)" in text
     body = _text(_body(html))
     assert "se sostiene" not in body and "Sin veredicto" not in body
@@ -822,7 +835,7 @@ def test_the_detail_shows_the_verdict_its_numbers_and_significance_apart(
     late = _text(client.get("/resultados/sku/FIL-0003").text)
     assert "Excluido antes de evaluar" in late and LATE_LAUNCH in late
     assert "Fecha de corte: 13 mar 2026" in late
-    assert LATE in late  # the engine's cause, under «Detalle técnico»
+    assert LATE in late  # the engine's cause, under «Detalle para soporte»
 
 
 @pytest.mark.parametrize(
@@ -871,13 +884,13 @@ def test_a_product_m2_excluded_from_the_competition_shows_its_published_cause(
     html = client.get("/resultados?vista=sku&lista=familias").text
     text = _text(html)
     assert f"FIL-0003 Grumosa Excluido antes de evaluar: {TWO_FAMILIES_REASON}" in text
-    assert f'title="Causa publicada: {ONE_ROUTED_CAUSE}"' in html
+    assert ONE_ROUTED_CAUSE not in html
     assert f"Excluido antes de evaluar: {LATE_LAUNCH}" in text
     assert "Sin veredicto" not in text
 
     detail = _text(client.get("/resultados/sku/FIL-0003").text)
     assert "Excluido antes de evaluar" in detail and TWO_FAMILIES_REASON in detail
-    assert ONE_ROUTED_CAUSE in detail  # the engine's cause, under «Detalle técnico»
+    assert ONE_ROUTED_CAUSE in detail  # the engine's cause, under «Detalle para soporte»
     assert "No es un veredicto ni un error técnico." in detail
     # The cut t* explains a late launch, not an exclusion decided in M2.
     assert "Fecha de corte" not in detail
@@ -1293,7 +1306,11 @@ def test_a_read_error_in_an_m3_tab_is_a_visible_problem_not_a_server_error(
 
     assert response.status_code == 200
     text = _text(response.text)
-    assert "No fue posible leer la evaluación." in text and "fila inválida" in text
+    assert "No fue posible leer la evaluación." in text
+    # The reader's own message is support detail, never the visible sentence.
+    soporte = r'<pre class="pred-soporte__texto">(.*?)</pre>'
+    assert "fila inválida" not in _text(re.sub(soporte, "", response.text, flags=re.S))
+    assert any("fila inválida" in s for s in re.findall(soporte, response.text, re.S))
 
 
 # ------------------------------------------------------------------- los perfiles de error
@@ -2208,13 +2225,13 @@ def test_unpublished_m3_does_not_claim_no_verdicts_when_run_has_published(
     assert "Todavía no hay veredictos publicados." not in page
 
 
-def test_unavailable_state_shows_detalle_tecnico_and_codigo(env: Env) -> None:
+def test_unavailable_state_shows_the_support_detail_and_codigo(env: Env) -> None:
     from tests.test_worker import SMALL, enqueue_run
 
     enqueue_run(env.settings, env.ingest_id, SMALL)
     client = _dal_client(env)
     page = client.get("/resultados?ejecucion=1").text
-    assert "Detalle técnico" in page
+    assert "Detalle para soporte" in page
     assert "Código" in page
     assert "prerequisite_missing" in page
     assert "Disponibilidad y dependencias" not in page

@@ -106,7 +106,10 @@ def test_the_family_and_model_cells_never_break_a_word() -> None:
     html = client.get("/ejecucion?tareas=todas").text
 
     # The model reads by its name; the engine id it came from is not shown as a code.
-    cells = r'<td class="pred-nowrap">Cl[^<]*</td>\s*<td class="pred-nowrap" title="[^"]+">'
+    cells = (
+        r'<td class="pred-nowrap" data-label="Familia">Cl[^<]*</td>\s*'
+        r'<td class="pred-nowrap" data-label="Modelo" title="[^"]+">'
+    )
     assert re.search(cells + r"SARIMA</td>", html)
     assert html.count('<td class="pred-nowrap"') >= 2 * 7
 
@@ -1591,7 +1594,7 @@ def test_with_the_worker_off_a_queued_run_waits_for_make_worker_unless_another_w
         other.release()
 
     assert "make worker" not in run and "make worker" not in review
-    assert "En cola: empezará cuando termine la ejecución anterior." in run
+    assert "En cola: empezará cuando el procesador de ejecuciones la tome." in run
     assert hint in pages()[1]  # the lock is free again: nothing runs the queue
 
 
@@ -1615,19 +1618,26 @@ def test_with_the_launch_form_open_launching_is_the_one_primary_action(
     assert primary(_review(client, env, seed="18")) == ["Lanzar la corrida"]
 
 
-def test_a_second_run_waits_in_the_queue_and_the_screen_says_so(
+def test_the_first_queued_run_waits_for_the_worker_not_for_an_earlier_run(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    other = WorkerLock.for_database(env.db)  # busy with an earlier run: the app's worker waits
+    other = WorkerLock.for_database(env.db)  # the worker has not taken the run yet
     assert other.acquire()
     try:
         with _dal_client(env, worker="embedded") as client:
-            _launch(client, env)
+            launched = _launch(client, env)
+            assert launched.status_code == 303
+            path = launched.headers["location"].split("?", 1)[0]
+            assert path == "/corridas/1/ejecucion"
 
-            text = _text(client.get("/ejecucion").text)
+            text = _text(client.get(path).text)
     finally:
         other.release()
-    assert "En cola: empezará cuando termine la ejecución anterior." in text
+    # The database holds this one run, so there is no earlier run to wait for.
+    with closing(sqlite3.connect(env.db)) as conn:
+        assert conn.execute("SELECT id, estado FROM ejecuciones").fetchall() == [(1, "pendiente")]
+    assert "En cola: empezará cuando el procesador de ejecuciones la tome." in text
+    assert "ejecución anterior" not in text
     assert "make worker" not in text
 
 
@@ -2158,13 +2168,10 @@ def test_avisos_de_ejecucion_sin_textos_tecnicos(env: Env) -> None:
     }
     _set_run(env, "detenida", incompat_error)
     html = client.get("/ejecucion?ejecucion=1").text
-    callout_html = re.search(
-        r'<div class="pred-callout[^"]*" id="error-ejecucion">(.*?)</div>', html, re.S
-    )
-    assert callout_html is not None
-    details_part = re.search(r"<details[^>]*>(.*?)</details>", callout_html.group(1), re.S)
+    callout = _element_by_id(html, "error-ejecucion")
+    details_part = re.search(r"<details[^>]*>(.*?)</details>", callout, re.S)
     assert details_part is not None and "run_id incompatible" in details_part.group(1)
-    outside_details = re.sub(r"<details[^>]*>.*?</details>", "", callout_html.group(1), flags=re.S)
+    outside_details = re.sub(r"<details[^>]*>.*?</details>", "", callout, flags=re.S)
     assert "run_id incompatible" not in outside_details
     assert "La configuración no coincide con la ejecución guardada." in outside_details
 
@@ -2246,3 +2253,15 @@ def test_the_search_budget_field_says_it_applies_to_each_sku(env: Env) -> None:
     assert "Vacío: las que cada familia prueba por defecto en cada SKU." in page
     refused = _text(_launch(client, env, trials="0").text)
     assert "Configuraciones por SKU y familia: debe ser mayor que cero." in refused
+
+
+def _element_by_id(html: str, element_id: str) -> str:
+    """The inner HTML of the element with ``element_id``, nested elements of its tag included."""
+    start = re.search(rf'<(\w+)[^>]*\bid="{element_id}"[^>]*>', html)
+    assert start is not None, element_id
+    tag, depth, position = start.group(1), 1, start.end()
+    for match in re.finditer(rf"<(/?){tag}\b[^>]*>", html[position:]):
+        depth += -1 if match.group(1) else 1
+        if depth == 0:
+            return html[position : position + match.start()]
+    raise AssertionError(f"{element_id} is not closed")

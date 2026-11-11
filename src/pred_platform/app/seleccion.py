@@ -253,41 +253,6 @@ def trial_counts(trials: list[TrialRow]) -> TrialCounts:
     )
 
 
-_TRIAL_REASONS: dict[str, str] = {
-    "ajuste_fallido": "El modelo no pudo ajustarse",
-    "configuracion_invalida": "Configuración no válida para esta serie",
-    "poda_semantica": "Detenido: el pronóstico no servía",
-    "escalon": "Detenido: no estaba entre los mejores",
-}
-_TRIAL_DETAILS: dict[str, str] = {
-    "prediccion_nula": "Detenido: el pronóstico salió nulo",
-}
-
-
-def trial_reason(motivo: str | None) -> str | None:
-    """El motivo de un ensayo en una frase corta; el texto del motor queda como detalle.
-
-    El motor escribe, por ejemplo, ``ventana=3 ajuste_fallido: AjusteModeloError: ...`` o
-    ``escalon=4 valor=4.9 umbral_top_4=4.2``. Un motivo de forma desconocida se muestra tal cual.
-    """
-    if not motivo:
-        return None
-    where = ""
-    for part in motivo.split():
-        name, _, value = part.partition("=")
-        if name == "ventana" and value:
-            where = f" (ventana {value})"
-        elif name == "escalon" and value:
-            where = f" (escalón {value})"
-    for part in motivo.replace(":", " ").split():
-        if part in _TRIAL_DETAILS:
-            return _TRIAL_DETAILS[part] + where
-    for part in motivo.replace(":", " ").replace("=", " ").split():
-        if part in _TRIAL_REASONS:
-            return _TRIAL_REASONS[part] + where
-    return motivo
-
-
 def window_metric_names(windows: list[WindowResult]) -> list[str]:
     """Las métricas que traen las ventanas, en el orden del contrato (sin inventar ninguna)."""
     present = {name for window in windows for name in window.metricas}

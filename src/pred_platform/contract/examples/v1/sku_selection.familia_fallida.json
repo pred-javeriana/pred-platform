@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "generated_at": "2026-10-02T06:30:00Z",
   "source": "fixture",
   "availability": {
@@ -19,8 +19,39 @@
       "error": {
         "code": "selection.no_viable_trial",
         "stage": "L2",
-        "detail": "ningun trial de HPO completo para sku_id='FIL-0001' (1 fallidos, 2 podados)",
-        "source_exception": "SelectionContractError"
+        "detail": "ningun trial de HPO completo para sku_id='FIL-0001' (1 fallidos, 2 podados; causas={'escalon': 2, 'ajuste_fallido': 1}; motivos={'escalon': 'escalon=4 valor=21.5723 umbral_top_1=18.8684', 'ajuste_fallido': 'ventana=4 ajuste_fallido: AjusteModeloError: SARIMA(1, 0, 0)x(2, 1, 1, 7) con una raiz AR/MA de modulo 1.0001 (< 1.01): ajuste en el borde de la region estacionaria o invertible'})",
+        "source_exception": "NingunTrialCompletoError",
+        "facts": {
+          "search": {
+            "failed": 1,
+            "pruned": 2,
+            "causes": [
+              {
+                "cause": "escalon",
+                "count": 2,
+                "example": {
+                  "rung": 4,
+                  "value": 21.5723,
+                  "threshold": 18.8684,
+                  "keep": 1
+                }
+              },
+              {
+                "cause": "ajuste_fallido",
+                "count": 1,
+                "example": {
+                  "window": 4,
+                  "fit": {
+                    "model": "SARIMA(1, 0, 0)x(2, 1, 1, 7)",
+                    "reason": "raiz_en_borde",
+                    "value": 1.0001,
+                    "limit": 1.01
+                  }
+                }
+              }
+            ]
+          }
+        }
       }
     },
     {

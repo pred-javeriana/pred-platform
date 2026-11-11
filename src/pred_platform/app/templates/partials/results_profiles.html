@@ -1,3 +1,4 @@
+{% from "components/falla.html" import soporte %}
 {% from "components/tables.html" import table_start, table_end %}
 {% from "components/terms.html" import term %}
 {% from "partials/results_macros.html" import family_legend, key %}
@@ -7,6 +8,7 @@
 <section class="pred-unavailable">
   <h2><svg class="pred-inline-icon" aria-hidden="true"><use href="#i-info"></use></svg> {{ m3_profiles.problem.title }}</h2>
   <p>{{ m3_profiles.problem.detail }}</p>
+  {% if m3_profiles.problem.support %}{{ soporte(m3_profiles.problem.support) }}{% endif %}
 </section>
 {% endif %}
 {% if m3_profiles.run %}

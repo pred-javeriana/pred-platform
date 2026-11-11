@@ -1,0 +1,44 @@
+{# Un error tal como lo ve la persona (``pred_platform.fallas.Falla``): la causa en español y qué
+   hacer, el desglose de por qué falló y, plegado, el detalle para soporte, que se puede copiar.
+   El texto técnico del motor solo aparece en ese detalle. #}
+
+{% macro falla_bloque(f, accion=true, titulo=true, abierto=false) %}
+<div class="pred-falla">
+  {% if titulo %}<p class="pred-falla__titulo">{{ f.titulo }}</p>{% endif %}
+  {% if accion and f.accion %}<p class="pred-falla__accion">{{ f.accion }}</p>{% endif %}
+  {% if f.ubicacion %}<p class="pred-falla__ubicacion">{{ f.ubicacion | capitalize }}</p>{% endif %}
+  {{ falla_desglose(f, abierto) }}
+  {{ soporte(f.soporte) }}
+</div>
+{% endmacro %}
+
+{% macro falla_desglose(f, abierto=false) %}
+{% if f.tiene_desglose %}
+<details class="pred-details pred-details--inline pred-falla__desglose"{% if abierto %} open{% endif %}>
+  <summary>Por qué falló</summary>
+  <div class="pred-falla__cuerpo">
+    {% if f.resumen %}<p class="pred-falla__resumen">{{ f.resumen }}</p>{% endif %}
+    {% if f.causas %}
+    <ul class="pred-falla__causas" aria-label="Ensayos descartados por causa">
+      {% for causa in f.causas %}
+      <li>
+        <span class="pred-falla__cuantos" aria-label="{{ format_count(causa.cantidad) }} {{ 'ensayo' if causa.cantidad == 1 else 'ensayos' }}">{{ format_count(causa.cantidad) }}</span>
+        <span class="pred-falla__causa">{{ causa.etiqueta }}{% if causa.ejemplo %}<span class="pred-falla__ejemplo">{{ causa.ejemplo }}</span>{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</details>
+{% endif %}
+{% endmacro %}
+
+{% macro soporte(texto) %}
+<details class="pred-details pred-details--inline pred-soporte">
+  <summary>Detalle para soporte</summary>
+  <div class="pred-soporte__cuerpo">
+    <pre class="pred-soporte__texto">{{ texto }}</pre>
+    <button type="button" class="pred-soporte__copiar" data-copiar-soporte>Copiar detalle</button>
+  </div>
+</details>
+{% endmacro %}

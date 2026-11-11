@@ -1869,6 +1869,130 @@ abbr[title] {
   margin: 0;
 }
 
+/* ------------------------------------------------------------------ Errores */
+/* Un error: la causa y qué hacer a la vista; el desglose y el detalle para soporte, plegados. */
+.pred-falla {
+  display: grid;
+  gap: 2px;
+  max-width: 72ch;
+  font-size: 0.875rem;
+}
+
+.pred-falla > p,
+.pred-callout > .pred-falla__titulo {
+  margin: 0;
+}
+
+.pred-falla__titulo {
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pred-falla__accion,
+.pred-falla__ubicacion {
+  color: var(--muted-text);
+  line-height: 1.5;
+}
+
+.pred-falla .pred-details,
+.pred-callout .pred-falla__desglose,
+.pred-callout .pred-soporte {
+  margin: var(--space-1) 0 0;
+}
+
+.pred-falla__cuerpo {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-1) var(--space-3);
+  border-left: 2px solid var(--border);
+}
+
+.pred-falla__resumen {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.pred-falla__causas {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pred-falla__causas li {
+  display: grid;
+  grid-template-columns: 3.5ch minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: 0;
+}
+
+.pred-falla__cuantos {
+  color: var(--err);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pred-falla__causa {
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.pred-falla__ejemplo {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.pred-soporte__cuerpo {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
+.pred-soporte__texto {
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 16rem;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pred-soporte__copiar {
+  width: auto;
+  margin: 0;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--primary-dark);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.pred-soporte__copiar:hover,
+.pred-soporte__copiar:focus-visible {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
 /* -------------------------------------------------------------- Pares y cifras */
 .pred-kv {
   display: grid;
@@ -4099,41 +4223,43 @@ abbr[title] {
   }
 }
 
+/* A phone reads these tables one row per card: the row header first, then each cell under
+   its column name (data-label). */
 @media (max-width: 600px) {
-  .pred-table--seed-group {
+  :is(.pred-table--seed-group, .pred-table--tareas) {
     width: 100%;
     min-width: 0;
   }
 
-  .pred-table--seed-group thead {
+  :is(.pred-table--seed-group, .pred-table--tareas) thead {
     display: none;
   }
 
-  .pred-table--seed-group :is(tbody, tr, th, td) {
+  :is(.pred-table--seed-group, .pred-table--tareas) :is(tbody, tr, th, td) {
     display: block;
     max-width: none;
   }
 
-  .pred-table--seed-group tr {
+  :is(.pred-table--seed-group, .pred-table--tareas) tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding-block: var(--space-2);
     border-bottom: 1px solid var(--border);
   }
 
-  .pred-table--seed-group tr > th,
-  .pred-table--seed-group tr > td:last-child:nth-child(even) {
+  :is(.pred-table--seed-group, .pred-table--tareas) tr > th,
+  :is(.pred-table--seed-group, .pred-table--tareas) tr > td:last-child:nth-child(even) {
     grid-column: 1 / -1;
   }
 
-  .pred-table--seed-group :is(th, td, .num) {
+  :is(.pred-table--seed-group, .pred-table--tareas) :is(th, td, .num) {
     border: 0;
     text-align: left;
     white-space: normal;
     overflow-wrap: anywhere;
   }
 
-  .pred-table--seed-group td::before {
+  :is(.pred-table--seed-group, .pred-table--tareas) td::before {
     display: block;
     content: attr(data-label);
     color: var(--muted-text);
