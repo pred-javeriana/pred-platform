@@ -70,7 +70,6 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "exclusion_text",
         "profile_label",
         "trial_counts",
-        "trial_reason",
         "window_metric_names",
     ):
         templates.env.globals[name] = getattr(seleccion, name)
@@ -112,6 +111,8 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
     templates.env.globals["error_action"] = mensajes.accion
     templates.env.globals["describir_falla"] = fallas.describir_falla
     templates.env.globals["texto_soporte"] = fallas.texto_soporte
+    templates.env.globals["describir_motivo"] = fallas.describir_motivo
+    templates.env.globals["soporte_ensayos"] = fallas.soporte_ensayos
     templates.env.globals["CATALOGO_ERRORES"] = mensajes.CATALOGO
     templates.env.globals["fila_en_archivo"] = mensajes.fila_en_archivo
     return templates

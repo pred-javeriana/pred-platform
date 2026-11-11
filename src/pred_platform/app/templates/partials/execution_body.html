@@ -199,17 +199,17 @@
   {% elif status.page %}<p class="pred-query-count"><strong>{{ format_count(status.page.total) }}</strong> tareas coinciden con la consulta.</p>{% endif %}
 
   {% if rows or not focus %}
-  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"], "Tareas que conviene mirar" if focus else "Tareas de la ejecución filtrada") }}
+  {{ table_start(["SKU", "Familia", "Modelo", "Estado", "Tiempo (s)", "Causa y qué hacer"], "Tareas que conviene mirar" if focus else "Tareas de la ejecución filtrada", "tareas") }}
   {% if rows %}
     {% for item in rows %}
     {% set task = item.task %}
     <tr>
       <th scope="row" class="pred-sku"><span class="mono">{{ task.sku or "—" }}</span></th>
-      <td class="pred-nowrap">{{ family_label(task.family) if task.family else "—" }}</td>
-      <td class="pred-nowrap" title="{{ model_term(task.modelo).hint }}">{{ model_label(task.modelo) }}</td>
-      <td>{{ status_indicator(item.status) }}</td>
-      <td class="num">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
-      <td class="wrap">
+      <td class="pred-nowrap" data-label="Familia">{{ family_label(task.family) if task.family else "—" }}</td>
+      <td class="pred-nowrap" data-label="Modelo" title="{{ model_term(task.modelo).hint }}">{{ model_label(task.modelo) }}</td>
+      <td data-label="Estado">{{ status_indicator(item.status) }}</td>
+      <td class="num" data-label="Tiempo (s)">{% if task.tiempo_pared_s is not none %}{{ format_decimal(task.tiempo_pared_s, 1) }}{% else %}—{% endif %}</td>
+      <td class="wrap" data-label="Causa y qué hacer">
         {% if item.error %}
         {{ falla_bloque(item.error, accion=not actions.nothing_to_compare) }}
         {% elif item.reason %}{{ item.reason }}{% else %}—{% endif %}

@@ -18,7 +18,8 @@ search without complete trials, how many trials failed or were pruned and each c
 and one example in words; for a fit, the model and the reason; for a short series, the observations
 it had and needed. Runs written before the engine reported facts are read from the engine's fixed
 message format (`pred_platform/hechos_legados.py`). The engine's text is never shown outside the
-support detail. The code comes from the engine (G6, G7); runs written by an older engine, which
+support detail. On a phone (600 px or less) each task reads as a card: the SKU, then each cell
+under its column name, and the cause across the full width. The code comes from the engine (G6, G7); runs written by an older engine, which
 carry none, fall back to the class name or the cause text (`worker/errores.py`). A stopped run does not show
 its closed tasks as progress: its bar counts the successful ones.
 

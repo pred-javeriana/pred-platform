@@ -106,7 +106,10 @@ def test_the_family_and_model_cells_never_break_a_word() -> None:
     html = client.get("/ejecucion?tareas=todas").text
 
     # The model reads by its name; the engine id it came from is not shown as a code.
-    cells = r'<td class="pred-nowrap">Cl[^<]*</td>\s*<td class="pred-nowrap" title="[^"]+">'
+    cells = (
+        r'<td class="pred-nowrap" data-label="Familia">Cl[^<]*</td>\s*'
+        r'<td class="pred-nowrap" data-label="Modelo" title="[^"]+">'
+    )
     assert re.search(cells + r"SARIMA</td>", html)
     assert html.count('<td class="pred-nowrap"') >= 2 * 7
 

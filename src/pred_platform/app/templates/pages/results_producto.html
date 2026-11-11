@@ -335,7 +335,7 @@
           <summary>Ensayos de la búsqueda · {{ family_label(entry.family) }} · {{ format_count(counts.total) }} ensayos</summary>
           {% if entry.trials %}
           <p class="pred-note">{{ format_count(counts.total) }} ensayos: {{ format_count(counts.completados) }} completados, {{ format_count(counts.podados) }} podados, {{ format_count(counts.fallidos) }} fallidos.
-            {% if counts.podados %}<span class="pred-note--muted">Un ensayo podado no es un fallo: la búsqueda lo detuvo según su regla de poda. La causa que registró el motor aparece al pasar el puntero sobre el motivo.</span>{% endif %}</p>
+            {% if counts.podados %}<span class="pred-note--muted">Un ensayo podado no es un fallo: la búsqueda lo detuvo según su regla de poda. El texto que guardó el motor para cada ensayo está en el detalle para soporte, bajo la tabla.</span>{% endif %}</p>
           <div class="pred-evidence-scroll">
           {{ table_start(["Ensayo", "Estado", "Valor", "Ventanas", "Configuración", "Motivo", "Cierre"], "Ensayos de " ~ family_label(entry.family)) }}
           {% for trial in entry.trials %}
@@ -345,12 +345,14 @@
             <td class="num">{% if trial.valor is not none %}{{ format_decimal(trial.valor, 3) }}{% else %}—{% endif %}</td>
             <td class="num">{{ format_count(trial.n_ventanas) }}</td>
             <td class="wrap mono">{{ compact_config(trial.configuracion) }}</td>
-            <td class="wrap"{% if trial.motivo %} title="{{ trial.motivo }}"{% endif %}>{{ trial_reason(trial.motivo) or "—" }}</td>
+            <td class="wrap">{{ describir_motivo(trial.motivo) or "—" }}</td>
             <td class="pred-nowrap">{{ when(trial.timestamp) }}</td>
           </tr>
           {% endfor %}
           {{ table_end() }}
           </div>
+          {% set motivos = soporte_ensayos(entry.trials) %}
+          {% if motivos %}{{ soporte(motivos) }}{% endif %}
           {% else %}
           <p class="pred-note pred-note--muted">El estudio no cerró ningún ensayo.</p>
           {% endif %}

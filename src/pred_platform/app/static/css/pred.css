@@ -4223,41 +4223,43 @@ abbr[title] {
   }
 }
 
+/* A phone reads these tables one row per card: the row header first, then each cell under
+   its column name (data-label). */
 @media (max-width: 600px) {
-  .pred-table--seed-group {
+  :is(.pred-table--seed-group, .pred-table--tareas) {
     width: 100%;
     min-width: 0;
   }
 
-  .pred-table--seed-group thead {
+  :is(.pred-table--seed-group, .pred-table--tareas) thead {
     display: none;
   }
 
-  .pred-table--seed-group :is(tbody, tr, th, td) {
+  :is(.pred-table--seed-group, .pred-table--tareas) :is(tbody, tr, th, td) {
     display: block;
     max-width: none;
   }
 
-  .pred-table--seed-group tr {
+  :is(.pred-table--seed-group, .pred-table--tareas) tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding-block: var(--space-2);
     border-bottom: 1px solid var(--border);
   }
 
-  .pred-table--seed-group tr > th,
-  .pred-table--seed-group tr > td:last-child:nth-child(even) {
+  :is(.pred-table--seed-group, .pred-table--tareas) tr > th,
+  :is(.pred-table--seed-group, .pred-table--tareas) tr > td:last-child:nth-child(even) {
     grid-column: 1 / -1;
   }
 
-  .pred-table--seed-group :is(th, td, .num) {
+  :is(.pred-table--seed-group, .pred-table--tareas) :is(th, td, .num) {
     border: 0;
     text-align: left;
     white-space: normal;
     overflow-wrap: anywhere;
   }
 
-  .pred-table--seed-group td::before {
+  :is(.pred-table--seed-group, .pred-table--tareas) td::before {
     display: block;
     content: attr(data-label);
     color: var(--muted-text);

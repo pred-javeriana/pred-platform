@@ -363,12 +363,24 @@ def test_pruned_and_failed_trials_look_different_and_keep_their_reason() -> None
     )
     assert pruned is not None and "Podada" in pruned.group(0) and "#i-prune" in pruned.group(0)
     assert failed is not None and "Fallida" in failed.group(0) and "#i-x" in failed.group(0)
-    # Each reason reads as a short sentence; the engine's own text stays one hover away.
+    # Each reason reads as a sentence with its cause; the engine's own text is only in the
+    # support detail under the table, never in a cell or a tooltip.
     text = _text(html)
-    assert "Detenido: el pronóstico salió nulo" in text
-    assert "El modelo no pudo ajustarse (ventana 1)" in text
-    assert 'title="poda_semantica:prediccion_nula"' in html
-    assert 'title="ventana=1 ajuste_fallido: AjusteModeloError: no converge"' in html
+    assert (
+        "El pronóstico de prueba no era válido: el pronóstico fue cero en todo el horizonte "
+        "aunque la serie tenía demanda." in text
+    )
+    assert "El modelo no pudo ajustarse en la ventana 1." in text
+    assert 'title="poda_semantica' not in html and 'title="ventana=' not in html
+    [support] = [
+        texto
+        for texto in re.findall(r'<pre class="pred-soporte__texto">([^<]*)</pre>', html)
+        if "Ensayo t-1" in texto
+    ]
+    assert support.splitlines() == [
+        "Ensayo t-1: poda_semantica:prediccion_nula",
+        "Ensayo t-2: ventana=1 ajuste_fallido: AjusteModeloError: no converge",
+    ]
     assert "Un ensayo podado no es un fallo" in text
 
 

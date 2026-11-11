@@ -37,6 +37,9 @@ _ESCALON: Final = re.compile(rf"^escalon=(\d+) valor={_NUMERO} umbral_top_(\d+)=
 _PODA_SEMANTICA: Final = re.compile(rf"^(?:ventana=(\d+) valor={_NUMERO} )?poda_semantica:(\w+)$")
 _ASHA: Final = re.compile(rf"^ventana=(\d+) valor={_NUMERO} asha$")
 _CONFIGURACION_INVALIDA: Final = re.compile(r"^configuracion_invalida:(.+)$")
+_CAUSA_EN_MOTIVO: Final = re.compile(
+    r"\b(configuracion_invalida|ajuste_fallido|poda_semantica|escalon)\b"
+)
 
 _MODELO_SARIMA: Final = r"(SARIMA\([\d, ]+\)x\([\d, ]+\))"
 _RAIZ: Final = re.compile(
@@ -133,13 +136,31 @@ def _motivos(texto: str) -> dict[str, str]:
 
 def _causa(nombre: str, cantidad: int, motivo: str | None) -> dict[str, Any]:
     causa: dict[str, Any] = {"cause": nombre, "count": cantidad}
-    ejemplo = _ejemplo(motivo) if motivo else None
+    ejemplo = ejemplo_del_motivo(motivo)
     if ejemplo:
         causa["example"] = ejemplo
     return causa
 
 
-def _ejemplo(motivo: str) -> dict[str, Any] | None:
+def causa_del_motivo(motivo: str | None) -> str:
+    """La causa de descarte de un ensayo a partir de su motivo.
+
+    Es la regla de ``causa_trial`` del motor, con la que el motor cuenta los descartes.
+    """
+    if not motivo:
+        return "sin_motivo_registrado"
+    encontrado = _CAUSA_EN_MOTIVO.search(motivo)
+    if encontrado is not None:
+        return encontrado.group(1)
+    if "asha" in motivo:
+        return "escalon"
+    return motivo.split(":", 1)[0]
+
+
+def ejemplo_del_motivo(motivo: str | None) -> dict[str, Any] | None:
+    """El motivo de un ensayo descartado en la forma ``DiscardExample``, o ``None``."""
+    if not motivo:
+        return None
     motivo = motivo.strip()
     if encontrado := _AJUSTE_FALLIDO.match(motivo):
         ejemplo: dict[str, Any] = {"window": int(encontrado.group(1))}

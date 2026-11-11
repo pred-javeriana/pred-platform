@@ -10,7 +10,7 @@ queda en ``soporte``, que la interfaz ofrece plegado y copiable.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -19,7 +19,11 @@ from pydantic import ValidationError
 from pred_platform import mensajes
 from pred_platform.app.presentation import format_count, stage_label
 from pred_platform.contract import models
-from pred_platform.hechos_legados import hechos_del_texto
+from pred_platform.hechos_legados import (
+    causa_del_motivo,
+    ejemplo_del_motivo,
+    hechos_del_texto,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -158,6 +162,39 @@ def texto_soporte(
     return "\n".join(lineas)
 
 
+def describir_motivo(motivo: str | None) -> str | None:
+    """El motivo de un ensayo de la búsqueda en una frase: la causa y, si se sabe, el porqué.
+
+    El motor escribe el motivo con un formato fijo (``ventana=4 ajuste_fallido: ...``,
+    ``escalon=4 valor=21.5 umbral_top_1=18.8``); el texto tal cual queda para soporte.
+    """
+    if not motivo:
+        return None
+    causa = causa_del_motivo(motivo)
+    etiqueta = _CAUSAS.get(causa, _CAUSA_DESCONOCIDA)
+    datos = ejemplo_del_motivo(motivo)
+    try:
+        ejemplo = None if datos is None else models.DiscardExample.model_validate(datos)
+    except ValidationError:
+        ejemplo = None
+    if (
+        ejemplo is not None
+        and causa == "ajuste_fallido"
+        and ejemplo.fit is None
+        and ejemplo.window is not None
+    ):
+        # Solo se sabe dónde falló: la ventana completa la causa.
+        return f"{etiqueta} en la ventana {format_count(ejemplo.window)}."
+    frase = _frase_ejemplo(causa, ejemplo)
+    return f"{etiqueta}: {frase}." if frase else f"{etiqueta}."
+
+
+def soporte_ensayos(ensayos: Iterable[models.TrialRow]) -> str | None:
+    """El motivo que guardó el motor para cada ensayo descartado, una línea por ensayo."""
+    lineas = [f"Ensayo {ensayo.id}: {ensayo.motivo}" for ensayo in ensayos if ensayo.motivo]
+    return "\n".join(lineas) or None
+
+
 # ------------------------------------------------------------------------------- desglose
 def _desglose(hechos: models.ErrorFacts | None) -> tuple[str | None, tuple[CausaFalla, ...]]:
     if hechos is None:
@@ -205,6 +242,12 @@ def _resumen_busqueda(busqueda: models.SearchFacts) -> str:
 
 
 def _ejemplo(causa: str, ejemplo: models.DiscardExample | None) -> str | None:
+    frase = _frase_ejemplo(causa, ejemplo)
+    return None if frase is None else f"Ejemplo: {frase}."
+
+
+def _frase_ejemplo(causa: str, ejemplo: models.DiscardExample | None) -> str | None:
+    """Un ensayo descartado en palabras: dónde y por qué, sin el punto final."""
     if ejemplo is None:
         return None
     frase: str | None = None
@@ -233,8 +276,7 @@ def _ejemplo(causa: str, ejemplo: models.DiscardExample | None) -> str | None:
         frase = _RESTRICCIONES.get(ejemplo.constraint, "no cumplía una regla de la búsqueda")
     if frase is None:
         return None
-    lugar = _lugar(ejemplo)
-    return f"Ejemplo: {lugar}{frase}."
+    return f"{_lugar(ejemplo)}{frase}"
 
 
 def _lugar(ejemplo: models.DiscardExample) -> str:

@@ -13,7 +13,12 @@ import re
 import pytest
 
 from pred_platform.contract import models
-from pred_platform.fallas import TITULO_DESCONOCIDO, describir_falla
+from pred_platform.fallas import (
+    TITULO_DESCONOCIDO,
+    describir_falla,
+    describir_motivo,
+    soporte_ensayos,
+)
 from pred_platform.hechos_legados import hechos_del_texto, nombre_restriccion
 
 # Las dos tareas de la captura del dueño (SKU 119187 y 1455482, Clásica / SARIMA), tal como
@@ -390,3 +395,62 @@ def test_el_nombre_de_una_restriccion_es_el_que_da_el_motor(
     etiqueta: str, nombre: str | None
 ) -> None:
     assert nombre_restriccion(etiqueta) == nombre
+
+
+@pytest.mark.parametrize(
+    ("motivo", "frase"),
+    [
+        (
+            "ventana=4 ajuste_fallido: AjusteModeloError: SARIMA(1, 0, 0)x(2, 1, 1, 7) con una "
+            "raiz AR/MA de modulo 1.0001 (< 1.01): ajuste en el borde de la region estacionaria o "
+            "invertible",
+            "El modelo no pudo ajustarse: en la ventana 4, SARIMA(1, 0, 0)x(2, 1, 1, 7) dejó una "
+            "raíz AR/MA con módulo 1,0001, por debajo del mínimo de 1,01 (ajuste al borde de la "
+            "región estable).",
+        ),
+        (
+            "ventana=2 ajuste_fallido: RuntimeError: no converge",
+            "El modelo no pudo ajustarse en la ventana 2.",
+        ),
+        (
+            "escalon=4 valor=21.5723 umbral_top_1=18.8684",
+            "Se descartó por rendir peor que las demás: tras 4 ventanas de validación, su error "
+            "(21,57) superó el umbral del mejor ensayo (18,87).",
+        ),
+        (
+            "ventana=3 valor=9.5 asha",
+            "Se descartó por rendir peor que las demás: en la ventana 3, su error (9,5) quedó "
+            "entre los peores.",
+        ),
+        (
+            "ventana=10 valor=101.017 poda_semantica:prediccion_nula",
+            "El pronóstico de prueba no era válido: en la ventana 10, el pronóstico fue cero en "
+            "todo el horizonte aunque la serie tenía demanda (error 101,02).",
+        ),
+        (
+            "configuracion_invalida:pred_engine.optimizacion.optimizadores.modelos_clasicos."
+            "classical_selection.construir_espacio.<locals>._orden_total_acotado",
+            "La configuración no cumplía una regla de la búsqueda: la suma de los órdenes AR y MA "
+            "superaba el máximo permitido.",
+        ),
+        (
+            "configuracion_invalida:lambda:24f248195e851562",
+            "La configuración no cumplía una regla de la búsqueda.",
+        ),
+        (
+            "ninguna_ventana_convergio",
+            "Ninguna ventana de validación dio un error medible.",
+        ),
+        ("otro motivo {'x': 1}", "Otra causa del motor."),
+    ],
+)
+def test_el_motivo_de_un_ensayo_se_lee_como_una_frase(motivo: str, frase: str) -> None:
+    assert describir_motivo(motivo) == frase
+    assert not _TECNICO.search(frase)
+
+
+def test_un_ensayo_sin_motivo_no_tiene_frase_ni_soporte() -> None:
+    ensayo = models.TrialRow(id="t-0", configuracion={}, estado="completado", n_ventanas=4)
+
+    assert describir_motivo(None) is None
+    assert soporte_ensayos([ensayo]) is None
