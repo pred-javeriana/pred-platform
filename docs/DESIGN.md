@@ -24,13 +24,14 @@ Cool neutral base; every color carries a semantic role, never decoration. `--pri
 for exactly one primary action per view — don't spend it on borders, backgrounds, or emphasis.
 
 ```css
---canvas: #EFEFEC;        /* page background */
+--canvas: #E8E9E5;        /* page background, dark enough that a white card reads as a card */
 --surface: #FFFFFF;       /* cards, panels, inputs */
 --ink: #14161A;           /* the one most prominent heading on a screen */
 --ink-soft: #2C2F34;      /* ordinary body/label/heading text */
 --muted: #6B6F76;         /* secondary/meta text */
 --border: #DBDCD7;
 --border-strong: #C7C9C5;
+--card-border: #CDCFCA;   /* the edge of every card against the canvas */
 --primary: #1F5C54;
 --primary-dark: #164740;
 --primary-soft: #E2EDEA;
@@ -69,6 +70,11 @@ codes — never used decoratively elsewhere.
 
 - No nested cards, no card-of-icon-plus-heading-plus-stat as the default container. Sections and
   rows are divided by 1px `--border` hairlines.
+- Every card (`.pred-panel`, `.wz-panel`, `.pred-sheet`, `.pred-evidence-panel`, `.pred-run`,
+  answer cards) takes the same contract from `pred.css`: `--surface` fill, a 1px `--card-border`
+  edge, `--card-pad-y`/`--card-pad-x` inner padding and `--card-gap` below it; the page keeps
+  `--page-gutter` at its sides. Narrow screens change only these tokens, never a card's own rule,
+  and no card drops its padding or border to sit flush with the canvas.
 - No `box-shadow` as default elevation. A real popover declares elevation once — border or shadow,
   never both.
 - Sharp corners: 0–2px radius on every control (buttons, inputs, containers). Not the rounded

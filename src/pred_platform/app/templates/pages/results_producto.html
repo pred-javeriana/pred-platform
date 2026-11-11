@@ -432,7 +432,7 @@
 
     <nav class="pred-footnav" aria-label="Navegación entre pasos">
       <div class="pred-footnav__side">
-        <a class="pred-btn pred-btn--subtle wz-btn-lg" href="{{ list_href }}">Atrás: Productos</a>
+        <a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ list_href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>Atrás: Productos</a>
       </div>
     </nav>
   {% else %}
@@ -442,8 +442,10 @@
     </section>
     <nav class="pred-footnav" aria-label="Navegación entre pasos">
       <div class="pred-footnav__side">
-        <a class="pred-btn pred-btn--subtle wz-btn-lg" href="{{ list_href }}">Atrás: Productos</a>
+        <a class="pred-btn pred-btn--subtle pred-btn--large" href="{{ list_href }}"><svg aria-hidden="true"><use href="#i-arrow-left"></use></svg>Atrás: Productos</a>
       </div>
     </nav>
   {% endif %}
 {% endblock %}
+{# El pie propio de la página (Atrás: Productos) reemplaza al pie del paso, como en los capítulos. #}
+{% block step_footer %}{% endblock %}

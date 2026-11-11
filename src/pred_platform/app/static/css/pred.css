@@ -34,7 +34,7 @@
 
 /* -------------------------------------------------------------------- Tokens */
 :root {
-  --canvas: #efefec;
+  --canvas: #e8e9e5;
   --surface: #ffffff;
   --ink: #14161a;
   --ink-soft: #2c2f34;
@@ -86,6 +86,18 @@
 
   /* Controles afilados: radio 0-2 px, sin elevación por defecto. */
   --radius: 2px;
+
+  /* Tarjetas: una sola regla para el aire interior, el borde que las separa del lienzo, el
+     espacio entre una y otra y el margen de la página. Los anchos angostos solo cambian estos
+     valores (ver «Ancho de pantalla»). */
+  --card-border: #cdcfca;
+  /* Fondo de una zona hundida dentro de una tarjeta (filtros, leyendas, fila señalada): más claro
+     que el lienzo, para que la tarjeta siga leyéndose como una sola superficie. */
+  --surface-sunken: #f3f4f1;
+  --card-pad-y: var(--space-4);
+  --card-pad-x: var(--space-5);
+  --card-gap: var(--space-4);
+  --page-gutter: var(--space-5);
 }
 
 /* ---------------------------------------------- Correspondencia con Pico */
@@ -122,6 +134,12 @@
 /* ---------------------------------------------------------------- Base */
 body {
   font-variant-numeric: tabular-nums;
+}
+
+/* Pico pinta cada celda con el fondo de la página; en una tarjeta blanca la tabla quedaba gris. */
+th,
+td {
+  background-color: transparent;
 }
 
 :focus-visible {
@@ -261,7 +279,7 @@ nav.pred-topbar__nav {
 }
 
 .pred-topbar__link:hover {
-  background: var(--canvas);
+  background: var(--surface-sunken);
 }
 
 .pred-topbar__link[aria-current="page"] {
@@ -695,10 +713,26 @@ nav.pred-footnav {
   font-size: 13px;
 }
 
+/* En un teléfono, Atrás y Siguiente ocupan el ancho y se apilan en su orden, alineados. */
+@media (max-width: 600px) {
+  .pred-footnav__side {
+    flex: 1 1 100%;
+  }
+
+  .pred-footnav__side--end {
+    align-items: stretch;
+    margin-left: 0;
+  }
+
+  .pred-footnav__side > .pred-btn,
+  .pred-footnav__form > .pred-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* Un paso al que todavía no se llega: qué falta y adónde ir. */
 .pred-locked {
-  padding: var(--space-5);
-  background: var(--surface);
   border: 1px dashed var(--border-strong);
 }
 
@@ -721,7 +755,7 @@ nav.pred-footnav {
 .pred-main {
   max-width: 1240px;
   margin: 0 auto;
-  padding: var(--space-5);
+  padding: var(--space-5) var(--page-gutter);
 }
 
 .pred-page-header {
@@ -817,26 +851,30 @@ nav.pred-breadcrumb li a {
   text-underline-offset: 0.2em;
 }
 
+/* Tarjeta: superficie blanca con aire interior y un borde que la separa del lienzo. Todas las
+   tarjetas comparten estos tokens; una variante solo cambia su borde izquierdo o su trazo. */
+.pred-sheet,
+.wz-panel,
+.pred-panel,
+.pred-run,
+.pred-locked,
+.wz-answer,
+.pred-evidence-panel {
+  min-width: 0;
+  margin: 0 0 var(--card-gap);
+  padding: var(--card-pad-y) var(--card-pad-x);
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+}
+
 /* Hoja blanca del contenido principal; bajo unas pestañas, las pestañas son su borde superior. */
 .pred-sheet {
-  min-width: 0;
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  padding-bottom: var(--space-5);
 }
 
 .pred-sheet--tabbed {
   border-top: 0;
-}
-
-.wz-panel,
-.pred-panel {
-  min-width: 0;
-  margin: 0 0 var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
 }
 
 .wz-panel > *,
@@ -1049,25 +1087,6 @@ p.pred-runs__meta {
 }
 
 @media (max-width: 900px) {
-  .wz-panel,
-  .pred-panel {
-    padding: var(--space-3);
-  }
-
-  .wz-kpis {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px 0;
-  }
-
-  .wz-kpis > div {
-    border-left: 0;
-    padding-left: 0;
-  }
-
-  .wz-answer {
-    padding: var(--space-3);
-  }
-
   ul.pred-group {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1219,7 +1238,7 @@ button.pred-btn--subtle {
 }
 
 .pred-btn--subtle:hover:not(:disabled):not([aria-disabled="true"]) {
-  background: var(--canvas);
+  background: var(--surface-sunken);
 }
 
 .pred-btn--danger {
@@ -1310,8 +1329,11 @@ button.pred-btn--large {
   outline-offset: 2px;
 }
 
+/* Un campo deshabilitado muestra un valor ya fijado: se lee entero, sin la transparencia que Pico
+   le da (su regla gana por especificidad, así que se anula su variable). */
 .pred-field__control:disabled {
-  background-color: var(--canvas);
+  --pico-form-element-disabled-opacity: 1;
+  background-color: var(--surface-sunken);
   color: var(--muted-text);
   cursor: not-allowed;
 }
@@ -1497,7 +1519,7 @@ button.pred-btn--large {
   gap: var(--space-3) 12px;
   margin: 0 0 var(--space-3);
   padding: 12px var(--space-3);
-  background: var(--canvas);
+  background: var(--surface-sunken);
   border: 1px solid var(--border);
 }
 
@@ -1668,7 +1690,7 @@ button.pred-btn--large {
   gap: var(--space-2) var(--space-4);
   margin: 0 0 var(--space-3);
   padding: 12px var(--space-3);
-  background: var(--canvas);
+  background: var(--surface-sunken);
   font-size: 0.875rem;
 }
 
@@ -1753,6 +1775,17 @@ abbr[title] {
   margin: var(--space-4) auto;
   padding: var(--space-4) 0;
   text-align: center;
+}
+
+/* Un estado que no está dentro de una tarjeta (una página o un capítulo sin contenido) se muestra
+   en su propia tarjeta, así no queda suelto sobre el lienzo. */
+:is(.pred-state, .pred-unavailable):not(:is(.pred-panel, .wz-panel, .pred-sheet, .pred-evidence-panel, .pred-run, .pred-locked, .pred-alert, .pred-table-wrap) *) {
+  max-width: none;
+  margin: 0 0 var(--card-gap);
+  padding: var(--space-5) var(--card-pad-x);
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
 }
 
 .pred-unavailable .pred-context__picker {
@@ -2068,6 +2101,16 @@ abbr[title] {
   overflow-x: auto;
 }
 
+/* Dentro de una tarjeta, una tabla más ancha que la pantalla muestra una sombra en el borde por
+   donde sigue: las capas blancas se desplazan con la tabla y tapan la sombra en cada extremo. */
+:is(.pred-panel, .wz-panel, .pred-sheet, .pred-evidence-panel, .pred-run) .pred-table-wrap {
+  background:
+    linear-gradient(to right, var(--surface) 40%, rgb(255 255 255 / 0%)) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 40%, rgb(255 255 255 / 0%)) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(20 22 26 / 16%), transparent) left / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(20 22 26 / 16%), transparent) right / 12px 100% no-repeat scroll;
+}
+
 /* Una tabla ocupa el ancho de su contenedor: una lista, el de la página; una tabla corta, el de
    su columna en una cuadrícula (.pred-section-grid). */
 .pred-table {
@@ -2124,7 +2167,7 @@ abbr[title] {
 }
 
 .pred-table tbody tr:hover :is(th, td) {
-  background: var(--canvas);
+  background: var(--surface-sunken);
 }
 
 /* Un estado en una celda se parte en líneas en vez de invadir la columna vecina; el ícono queda
@@ -2162,6 +2205,13 @@ abbr[title] {
 .pred-table .wrap {
   max-width: 30rem;
   white-space: normal;
+}
+
+/* Un detalle técnico sin espacios (una ruta de módulo, un diccionario) se parte donde haga falta,
+   así no ensancha la tabla más allá de su contenedor. */
+.pred-table .wrap,
+.pred-table .wrap p {
+  overflow-wrap: anywhere;
 }
 
 /* Un intervalo bajo la cifra de su celda no se corta; una causa es texto y se parte. */
@@ -2382,7 +2432,7 @@ abbr[title] {
 }
 
 .pred-segmented a:hover {
-  background: var(--canvas);
+  background: var(--surface-sunken);
 }
 
 .pred-segmented a:is([aria-current="page"], [aria-current="true"]) {
@@ -2535,11 +2585,7 @@ abbr[title] {
 }
 
 .pred-evidence-panel {
-  min-width: 0;
-  margin: 0 0 var(--space-4);
-  padding: var(--space-4) var(--space-5) var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  padding-bottom: var(--space-5);
   scroll-margin-top: var(--space-4);
 }
 
@@ -2810,13 +2856,7 @@ abbr[title] {
 }
 
 /* La ejecución mostrada: quién es, en qué estado está, qué se puede hacer y cuánto avanzó. */
-.pred-run {
-  min-width: 0;
-  padding: var(--space-4) var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
+
 
 .pred-run__head {
   display: flex;
@@ -3426,56 +3466,35 @@ abbr[title] {
   margin: var(--space-3) 0 var(--space-2);
 }
 
-/* Familias de un SKU: cada una se abre aparte y su resumen se lee cerrado. */
-.pred-family {
+/* Familias de un SKU: cada una se abre aparte, separada de la siguiente por una línea, y su
+   resumen se lee cerrado. */
+.pred-family-card {
   margin: 0;
-  padding: 0 0 var(--space-2);
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--border);
 }
 
-.pred-family[open] {
-  padding-bottom: var(--space-4);
+.pred-family-card:last-of-type {
+  border-bottom: 1px solid var(--border);
 }
 
-.pred-family h4 {
+.pred-family-card__title {
+  margin-right: var(--space-1);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.pred-family-card :is(.pred-family__model, .pred-family__value) {
+  margin-right: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.pred-family-card h4 {
   margin: var(--space-3) 0 var(--space-2);
   color: var(--ink-soft);
   font-size: 0.875rem;
   font-weight: 600;
-}
-
-.pred-family-explorer .pred-family__head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin: 0;
-  padding: 20px 0;
-}
-
-.pred-family-explorer .pred-family__head::after {
-  display: none;
-}
-
-.pred-family__head h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.pred-family-explorer .pred-family__head h3::before {
-  display: inline-block;
-  width: 1.5rem;
-  color: var(--primary-dark);
-  content: "+";
-  font-weight: 400;
-}
-
-.pred-family-explorer .pred-family[open] h3::before {
-  content: "−";
-}
-
-.pred-family__head .mono {
-  font-size: 0.8125rem;
 }
 
 /* ---------------------------------------------------------------- Gráficos */
@@ -3563,11 +3582,11 @@ abbr[title] {
 
 .wz-chapters {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 0;
   border-bottom: 1px solid var(--border-strong);
   margin: 0 0 var(--space-4);
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 
 .wz-chapters a {
@@ -3630,12 +3649,7 @@ abbr[title] {
 
 .wz-answer {
   display: block;
-  padding: var(--space-4) var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-left: 4px solid var(--primary);
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius);
 }
 
 .wz-answer__top {
@@ -3722,6 +3736,21 @@ abbr[title] {
   font-weight: 400;
   letter-spacing: 0;
   margin-top: 2px;
+}
+
+/* Después de las reglas base, para ganarles: en pantallas angostas las cifras van en dos columnas
+   (una en un teléfono, ver «Ancho de pantalla») y sin la línea que las separa en fila. */
+@media (max-width: 900px) {
+  .wz-kpis {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px var(--space-4);
+  }
+
+  .wz-kpis > div {
+    border-left: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }
 
 .wz-check {
@@ -3856,6 +3885,11 @@ abbr[title] {
   width: 46%;
 }
 
+/* En una pantalla angosta los nombres de los bloques se parten en vez de ensanchar la tabla. */
+.wz-blocks thead th {
+  white-space: normal;
+}
+
 .wz-legend {
   display: flex;
   flex-wrap: wrap;
@@ -3976,14 +4010,14 @@ abbr[title] {
 
 /* ------------------------------------------------------- Ancho de pantalla */
 @media (max-width: 48rem) {
-  .pred-main {
-    padding: var(--space-4) var(--space-3);
+  :root {
+    --card-pad-y: 20px;
+    --card-pad-x: 20px;
+    --page-gutter: var(--space-3);
   }
 
-  .pred-sheet,
-  .pred-run,
-  .pred-evidence-panel {
-    padding: var(--space-4) 20px;
+  .pred-main {
+    padding-block: var(--space-4);
   }
 
   .pred-run__progress {
@@ -4010,14 +4044,11 @@ abbr[title] {
 }
 
 @media (max-width: 600px) {
-  .pred-main {
-    padding-inline: var(--space-2);
-  }
-
-  .pred-sheet,
-  .pred-run,
-  .pred-evidence-panel {
-    padding: 20px var(--space-3);
+  :root {
+    --card-pad-y: 20px;
+    --card-pad-x: var(--space-3);
+    --card-gap: var(--space-3);
+    --page-gutter: 12px;
   }
 
   .pred-kv,
@@ -4052,10 +4083,6 @@ abbr[title] {
   .pred-filters > .pred-btn,
   .pred-filters > a {
     margin-top: 0;
-  }
-
-  .pred-family-explorer .pred-family__head {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .pred-kpis {
