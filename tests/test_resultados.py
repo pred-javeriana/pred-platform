@@ -1306,7 +1306,11 @@ def test_a_read_error_in_an_m3_tab_is_a_visible_problem_not_a_server_error(
 
     assert response.status_code == 200
     text = _text(response.text)
-    assert "No fue posible leer la evaluación." in text and "fila inválida" in text
+    assert "No fue posible leer la evaluación." in text
+    # The reader's own message is support detail, never the visible sentence.
+    soporte = r'<pre class="pred-soporte__texto">(.*?)</pre>'
+    assert "fila inválida" not in _text(re.sub(soporte, "", response.text, flags=re.S))
+    assert any("fila inválida" in s for s in re.findall(soporte, response.text, re.S))
 
 
 # ------------------------------------------------------------------- los perfiles de error

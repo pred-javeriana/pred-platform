@@ -119,6 +119,18 @@ def test_una_tarea_fallida_en_ejecucion_explica_la_busqueda_sin_texto_crudo() ->
     assert "Copiar detalle" in visible
 
 
+def test_las_causas_agrupadas_dan_el_titulo_y_el_codigo_para_soporte() -> None:
+    # Un grupo junta tareas de un mismo código: su soporte es el código; el texto del motor de
+    # cada tarea está en su fila.
+    html = _client("errores").get("/ejecucion?ejecucion=2").text
+
+    grupos = html.split('aria-label="Causas de las tareas sin pronóstico"', 1)[1]
+    grupos = grupos.split("</table>", 1)[0]
+    visible = _sin_texto_crudo(grupos)
+    assert "El modelo no pudo ajustarse." in visible
+    assert _soportes(grupos) == ["Código: model.fit_failed", "Código: model.series_too_short"]
+
+
 def test_el_error_de_la_ejecucion_explica_la_causa_sin_texto_crudo() -> None:
     error = {
         "code": "pipeline.stage_failed",
