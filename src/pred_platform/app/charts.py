@@ -15,6 +15,7 @@ from html import escape as attr_escape
 from xml.sax.saxutils import escape
 
 from pred_platform.app.presentation import (
+    count_noun,
     family_label,
     format_date,
     format_decimal,
@@ -1052,10 +1053,13 @@ def selection_svg(rows: Sequence[models_v2.M3Category]) -> str:
     y = 30
     for row in rows:
         label = sku_class_label(row.sku_class)
+        comparable = count_noun(
+            len(row.skus_comparables), "producto comparable", "productos comparables"
+        )
         body += _text(
             0,
             y + 17,
-            f"{label} · {len(row.skus_comparables):,} productos comparables".replace(",", "."),
+            f"{label} · {comparable}",
             "group",
         )
         y += 32
@@ -1073,7 +1077,7 @@ def selection_svg(rows: Sequence[models_v2.M3Category]) -> str:
                 26,
                 ratio_text(value),
                 f"{family_label(family)} · {label}",
-                f"{len(row.skus_comparables)} productos comparables. "
+                f"{comparable}. "
                 + ("Campeona de este tipo." if champion else "Bloque de selección."),
                 family=family,
             )

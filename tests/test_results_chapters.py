@@ -192,6 +192,24 @@ def test_the_product_detail_shares_the_chapter_links_and_keeps_the_chosen_evalua
 
 
 @pytest.mark.parametrize(
+    ("chapter", "singular", "plural"),
+    [
+        ("p1", "1 producto comparable", "1 productos comparables"),
+        ("p2", "0 de 1 producto ", "0 de 1 productos"),
+        ("estabilidad", "1 tipo con campeona confirmada", "1 tipos con campeona"),
+    ],
+)
+def test_a_count_of_one_reads_in_singular(
+    published: tuple[TestClient, str], chapter: str, singular: str, plural: str
+) -> None:
+    """Errática tiene un solo producto comparable y probado, y solo Suave se confirma (#310)."""
+    client, number = published
+    text = _text(client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0").text)
+    assert singular in text
+    assert plural not in text
+
+
+@pytest.mark.parametrize(
     ("vista", "chapter", "anchor"),
     [
         ("clase", "p1", ""),

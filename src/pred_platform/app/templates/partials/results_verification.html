@@ -7,7 +7,7 @@
 {% if m3_summary.problem != m3_classes.problem %}{{ problem(m3_summary) }}{% endif %}
 {% if m3_classes.run %}
 {% call answer('Pregunta 2 · ¿En qué tipos de demanda se verifica la mejora producto por producto?', answers.verification, 'Sin responder' if answers.unread else 'Respaldada para los productos con mejora verificada' if answers.better else 'No concluyente' if answers.tested else 'Sin responder', 'neutral' if answers.unread else 'ok' if answers.better else 'warn' if answers.tested else 'neutral') %}
-<dl class="pred-results-kpis">{% for row in product_tests %}<div><dt>{{ sku_class_label(row.sku_class) }}</dt><dd>{{ fraction(row.n_mejores, row.n_probados) }}<small>{{ format_count(row.n_mejores) }} de {{ format_count(row.n_probados) }} productos</small>{{ inline_bar(row.n_mejores, row.n_probados - row.n_mejores - row.n_peores, row.n_peores, row.n_probados) }}</dd></div>{% endfor %}</dl>
+<dl class="pred-results-kpis">{% for row in product_tests %}<div><dt>{{ sku_class_label(row.sku_class) }}</dt><dd>{{ fraction(row.n_mejores, row.n_probados) }}<small>{{ format_count(row.n_mejores) }} de {{ count_noun(row.n_probados, 'producto', 'productos') }}</small>{{ inline_bar(row.n_mejores, row.n_probados - row.n_mejores - row.n_peores, row.n_peores, row.n_probados) }}</dd></div>{% endfor %}</dl>
 {% endcall %}
 <section class="pred-panel" id="significancia-por-clase">
   <h2>Producto por producto, frente a la línea base</h2>
