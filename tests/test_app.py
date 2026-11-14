@@ -1,8 +1,11 @@
 """Tests for the FastAPI application factory."""
 
+import os
 import re
 import sqlite3
-from contextlib import closing
+import subprocess
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -169,8 +172,11 @@ def test_starting_twice_does_not_migrate_or_back_up_again(tmp_path: Path) -> Non
     assert list(tmp_path.glob("*.bak")) == []
 
 
-def _read_only_copy(tmp_path: Path, journal: str) -> Settings:
-    """A migrated database copied with ``.backup`` into a folder without write permission."""
+def _read_only_copy(tmp_path: Path, journal: str, *, wal_file: bool = False) -> Settings:
+    """A migrated database copied with ``.backup`` into a folder without write permission.
+
+    ``wal_file`` leaves an empty ``-wal`` file beside it, as a copy taken with ``cp`` would.
+    """
     settings = Settings(data_root=tmp_path / "data", db_path=tmp_path / "pred.db")
     with TestClient(create_app(settings)):
         pass
@@ -180,6 +186,8 @@ def _read_only_copy(tmp_path: Path, journal: str) -> Settings:
     with closing(sqlite3.connect(settings.db_path)) as source, closing(sqlite3.connect(copy)) as c:
         source.backup(c)
         c.execute(f"PRAGMA journal_mode={journal}")
+    if wal_file:
+        copy.with_name("pred.db-wal").touch()
     copy.chmod(0o444)
     folder.chmod(0o555)
     return Settings(data_root=tmp_path / "data", db_path=copy)
@@ -196,28 +204,79 @@ def test_a_database_path_that_names_a_folder_stops_startup_saying_so(tmp_path: P
     assert "journal_mode" not in str(raised.value)
 
 
-def test_a_wal_copy_in_a_read_only_folder_stops_startup_with_what_to_do(tmp_path: Path) -> None:
-    settings = _read_only_copy(tmp_path, "WAL")
+def test_a_wal_copy_with_its_wal_file_in_a_read_only_folder_stops_startup_with_what_to_do(
+    tmp_path: Path,
+) -> None:
+    settings = _read_only_copy(tmp_path, "WAL", wal_file=True)
+    with (
+        _locked_folder(settings.db_path.parent),
+        pytest.raises(DatabaseUnavailable, match="PRAGMA journal_mode=DELETE"),
+        TestClient(create_app(settings)),
+    ):
+        pass
+
+
+@contextmanager
+def _locked_folder(folder: Path) -> Iterator[None]:
+    """A folder nobody can write, not even root: ``chattr +i`` where ``chmod`` is not enough."""
+    folder.chmod(0o555)
+    locked = False
     try:
-        with (
-            pytest.raises(DatabaseUnavailable, match="PRAGMA journal_mode=DELETE"),
-            TestClient(create_app(settings)),
-        ):
-            pass
+        if os.access(folder, os.W_OK):  # root ignores the permission bits
+            locked = subprocess.run(["chattr", "+i", str(folder)], check=False).returncode == 0
+            if not locked or os.access(folder, os.W_OK):
+                pytest.skip("no se pudo quitar el permiso de escritura de la carpeta")
+        yield
     finally:
-        settings.db_path.parent.chmod(0o755)
+        if locked:
+            subprocess.run(["chattr", "-i", str(folder)], check=False)
+        folder.chmod(0o755)
+
+
+def test_a_consolidated_wal_copy_in_a_read_only_folder_serves_without_writing(
+    tmp_path: Path,
+) -> None:
+    settings = _read_only_copy(tmp_path, "WAL")
+    folder = settings.db_path.parent
+    before = settings.db_path.read_bytes()
+    with _locked_folder(folder):
+        with TestClient(create_app(settings)) as client:
+            home = client.get("/")
+            datos = client.get("/datos")
+            ejecucion = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
+        assert sorted(p.name for p in folder.iterdir()) == ["pred.db"]
+    assert settings.db_path.read_bytes() == before
+    assert home.status_code == 200
+    assert datos.status_code == 200 and "no cargar uno nuevo" in datos.text
+    assert ejecucion.status_code == 200 and "La base de datos es de solo lectura" in ejecucion.text
+
+
+def test_an_outdated_wal_copy_in_a_read_only_folder_says_it_cannot_be_migrated(
+    tmp_path: Path,
+) -> None:
+    settings = _read_only_copy(tmp_path, "WAL")
+    folder = settings.db_path.parent
+    folder.chmod(0o755)
+    settings.db_path.chmod(0o644)
+    with closing(sqlite3.connect(settings.db_path)) as conn:
+        conn.execute(f"PRAGMA user_version = {LATEST_SCHEMA - 1}")
+    settings.db_path.chmod(0o444)
+    assert sorted(p.name for p in folder.iterdir()) == ["pred.db"]
+    with (
+        _locked_folder(folder),
+        pytest.raises(DatabaseUnavailable, match="no se puede migrar"),
+        TestClient(create_app(settings)),
+    ):
+        pass
 
 
 def test_a_rollback_journal_copy_in_a_read_only_folder_serves_with_actions_off(
     tmp_path: Path,
 ) -> None:
     settings = _read_only_copy(tmp_path, "DELETE")
-    try:
-        with TestClient(create_app(settings)) as client:
-            ejecucion = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
-            datos = client.get("/datos")
-    finally:
-        settings.db_path.parent.chmod(0o755)
+    with _locked_folder(settings.db_path.parent), TestClient(create_app(settings)) as client:
+        ejecucion = client.post("/ejecucion/reanudar", data={"ejecucion": "1"})
+        datos = client.get("/datos")
 
     assert ejecucion.status_code == 200 and "La base de datos es de solo lectura" in ejecucion.text
     assert datos.status_code == 200 and "no cargar uno nuevo" in datos.text

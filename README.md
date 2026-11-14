@@ -176,10 +176,15 @@ chmod 0444 copia/pred.db
 PRED_DB_PATH=copia/pred.db PRED_WORKER=off make run
 ```
 
-Keep the copy in a folder the app can write: a database in WAL mode, as `.backup` leaves it,
-creates its `-wal` and `-shm` files there even to read. For a read-only folder or mount, switch
-the copy to a rollback journal first (`sqlite3 copia/pred.db "PRAGMA journal_mode=DELETE"`, before
-`chmod`). A WAL copy in a read-only folder stops the app at startup with that advice.
+A database in WAL mode, as `.backup` leaves it, creates its `-wal` and `-shm` files beside it
+even to read. A consolidated WAL copy (no `-wal` or `-shm` file beside it) in a read-only folder or
+mount is still served: the app opens it with SQLite's `immutable=1`, which reads that snapshot
+without creating them, and skips the migration and the import of ingest reports at startup. It must
+already be at the platform's schema version; an older copy stops the app at startup, because a
+read-only copy cannot be migrated. A WAL copy in a read-only folder that keeps a `-wal` file (for
+example, one taken with `cp`) stops the app at startup too: switch it to a rollback journal first
+(`sqlite3 copia/pred.db "PRAGMA journal_mode=DELETE"`, before `chmod`), which also works for any
+read-only folder.
 
 ### Adding a migration
 

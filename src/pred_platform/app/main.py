@@ -28,7 +28,8 @@ from pred_platform.app.routers import (
 from pred_platform.app.templating import build_templates
 from pred_platform.config import Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
-from pred_platform.dal.migrate import migrate
+from pred_platform.dal.lectura import immutable_wal_copy
+from pred_platform.dal.migrate import SchemaTooNew, migrate, status
 from pred_platform.data.factory import build_repository
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import build_run_control
@@ -64,7 +65,28 @@ class DatabaseUnavailable(RuntimeError):
     """The database file cannot be opened, so the application does not start."""
 
 
-def _migrate(settings: Settings) -> None:
+def _migrate(settings: Settings) -> bool:
+    """Bring the database to the latest schema; ``True`` for a read-only copy served as it is.
+
+    A consolidated WAL copy in a folder that cannot be written (no ``-wal`` or ``-shm`` beside
+    it) cannot be migrated, but SQLite reads it as ``immutable``: at the latest schema it is
+    served without any write at startup.
+    """
+    if immutable_wal_copy(settings.db_path):
+        report = status(settings.db_path)
+        if report.current > report.latest:
+            raise SchemaTooNew(report.current, report.latest)
+        if not report.up_to_date:
+            raise DatabaseUnavailable(
+                f"La copia de solo lectura {settings.db_path} está en la versión "
+                f"{report.current} del esquema y esta plataforma necesita la {report.latest}. "
+                "Una copia de solo lectura no se puede migrar: migre la base original y vuelva a "
+                "copiarla (README.md, «Serving a read-only copy»)."
+            )
+        _logger.info(
+            "Copia de solo lectura en WAL sin -wal ni -shm: se sirve sin migrar ni importar."
+        )
+        return True
     try:
         migrate(settings.db_path)
     except sqlite3.OperationalError as exc:
@@ -81,6 +103,7 @@ def _migrate(settings: Settings) -> None:
             "solo lectura, pásela antes a PRAGMA journal_mode=DELETE (README.md, «Serving a "
             "read-only copy»)."
         ) from None
+    return False
 
 
 def _import_engine_reports(settings: Settings) -> None:
@@ -106,8 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Solo el DAL real tiene esquema que mantener; los fixtures no tocan el disco.
-        if active.data_source == "dal":
-            _migrate(active)
+        if active.data_source == "dal" and not _migrate(active):
             _import_engine_reports(active)
         stop = threading.Event()
         thread: threading.Thread | None = None
