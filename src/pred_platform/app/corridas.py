@@ -122,14 +122,19 @@ def facts_from_status(
 
 
 def run_facts(
-    repository: DataRepository, corrida: str, published: frozenset[str] | None = None
+    repository: DataRepository,
+    corrida: str,
+    published: frozenset[str] | None = None,
+    status: RunStatus | None = None,
 ) -> RunFacts | None:
     """Una corrida lanzada por su número; ``None`` si no existe o no se pudo leer. ``published``
     son las corridas publicadas si quien llama ya las leyó; sin ellas, se pregunta por esta
-    corrida con ``published_evaluation``, la misma regla que usa el sondeo de Ejecución."""
+    corrida con ``published_evaluation``, la misma regla que usa el sondeo de Ejecución.
+    ``status`` es el estado de la corrida (``size=1``) si quien llama ya lo leyó."""
     if run_number(corrida) is None:
         return None
-    status = _status(repository, corrida)
+    if status is None or status.ejecucion is None or status.ejecucion.id != corrida:
+        status = _status(repository, corrida)
     if status is None or status.ejecucion is None:
         return None
     run_id = status.ejecucion.id

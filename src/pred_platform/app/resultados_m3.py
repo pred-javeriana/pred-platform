@@ -32,7 +32,7 @@ from pred_platform.app.presentation import (
 )
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import Ejecucion, EstadoTarea
+from pred_platform.contract.models import Ejecucion, EstadoTarea, RunStatus
 from pred_platform.data.m3_confirmation import (
     M3ClassConfirmation,
     M3ClassSignificance,
@@ -84,21 +84,25 @@ class OtherPublication:
 
 
 def other_publications(
-    repository: DataRepository, run: models_v2.M3Run
+    repository: DataRepository,
+    run: models_v2.M3Run,
+    known: Mapping[str, models_v2.M3Run] | None = None,
 ) -> tuple[OtherPublication, ...]:
     """Las otras evaluaciones PUBLICADA de la identidad de ``run`` (contrato v2, sección 2).
 
     Solo se leen cuando el contrato avisa que hay varias; una que ya no se puede leer queda sin
-    fecha.
+    fecha. ``known`` son las corridas M3 que la página ya leyó: no se leen otra vez.
     """
     found = []
     for run_id in run.publicadas_misma_identidad:
         if run_id == run.run_id:
             continue
-        try:
-            other = repository.get_m3_run(run_id)
-        except (InvalidQuery, DataLayerError):
-            other = None
+        other = (known or {}).get(run_id)
+        if other is None:
+            try:
+                other = repository.get_m3_run(run_id)
+            except (InvalidQuery, DataLayerError):
+                other = None
         found.append(OtherPublication(run_id, other.creado_en if other else None))
     return tuple(found)
 
@@ -415,16 +419,27 @@ def _champions(
     return champion_distribution(read.items, funnel.tras_exclusiones), None
 
 
-def summary(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Summary:
-    """Resuelve la corrida M3 de ``m2_run_id`` y lee el embudo que M3 publicó para toda ella."""
+def summary(
+    repository: DataRepository,
+    m2_run_id: str,
+    wanted: str | None = None,
+    *,
+    run: models_v2.M3Run | None = None,
+) -> M3Summary:
+    """Resuelve la corrida M3 de ``m2_run_id`` y lee el embudo que M3 publicó para toda ella.
+
+    ``run`` es la corrida M3 que la página ya resolvió para ``m2_run_id``: no se resuelve otra vez.
+    """
     try:
-        return _summary(repository, m2_run_id, wanted)
+        return _summary(repository, m2_run_id, wanted, run)
     except (InvalidQuery, DataLayerError) as exc:
         return M3Summary(problem=_read_problem(exc))
 
 
-def _summary(repository: DataRepository, m2_run_id: str, wanted: str | None) -> M3Summary:
-    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+def _summary(
+    repository: DataRepository, m2_run_id: str, wanted: str | None, run: models_v2.M3Run | None
+) -> M3Summary:
+    resolved = run or _resolve(repository, m2_run_id, (wanted or "").strip() or None)
     if isinstance(resolved, M3Problem):
         return M3Summary(problem=resolved)
     evidence = repository.get_m3_evidence(resolved.run_id, size=MAX_SIZE)
@@ -473,6 +488,8 @@ class ExecutionChoice:
     iniciada_en: datetime | None
     m3_run_id: str
     seed: int
+    # El estado (``size=1``) leído para elegirla: las páginas lo reutilizan sin leerlo de nuevo.
+    status: RunStatus | None = field(default=None, compare=False, repr=False)
 
 
 def champion_available(repository: DataRepository) -> bool:
@@ -508,7 +525,7 @@ def published_executions(
         if status.ejecucion is not None:
             run = status.ejecucion
             found[m2_run_id] = ExecutionChoice(
-                run.id, run.estado, run.iniciada_en, m3_run.run_id, run.seed
+                run.id, run.estado, run.iniciada_en, m3_run.run_id, run.seed, status
             )
     choices = sorted(
         {choice.ejecucion_id: choice for choice in found.values()}.values(),
@@ -740,14 +757,21 @@ def _family_position(row: M3Comparison) -> int:
     return CLASS_FAMILIES.index(family) if family in CLASS_FAMILIES else len(CLASS_FAMILIES)
 
 
-def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Classes:
+def classes(
+    repository: DataRepository,
+    m2_run_id: str,
+    wanted: str | None = None,
+    *,
+    run: models_v2.M3Run | None = None,
+) -> M3Classes:
     """Resuelve la corrida M3 de ``m2_run_id`` y lee el campeón publicado de cada clase.
 
     La confirmación del campeón se lee aparte: si falla, el campeón de cada clase se sigue
-    mostrando y la sección de la confirmación explica la causa.
+    mostrando y la sección de la confirmación explica la causa. ``run`` es la corrida M3 de
+    ``m2_run_id`` que quien llama ya leyó de su lista: no se resuelve otra vez.
     """
     try:
-        resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+        resolved = run or _resolve(repository, m2_run_id, (wanted or "").strip() or None)
         if isinstance(resolved, M3Problem):
             return M3Classes(problem=resolved)
         categories = repository.get_m3_categories(resolved.run_id, size=MAX_SIZE)

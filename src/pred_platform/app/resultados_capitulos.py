@@ -6,7 +6,7 @@ Solo resume filas para la lectura. No elige campeonas, ajusta p ni cambia veredi
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from pred_platform.app.corridas import THESIS_SEEDS, group_key
@@ -236,14 +236,18 @@ class SeedEvidence:
 
 
 def seed_evidence(
-    repository: DataRepository, current: RunStatus, found: M3Classes
+    repository: DataRepository,
+    current: RunStatus,
+    found: M3Classes,
+    statuses: Mapping[str, RunStatus] | None = None,
 ) -> tuple[SeedEvidence, ...]:
     """Las semillas 0, 1 y 2 con los mismos datos y ajustes que la corrida abierta.
 
     De una semilla repetida se muestra la corrida publicada más nueva que el grupo final acepta
     junto a la abierta (mismos datos, identidad, protocolo y productos). Una ejecución sin
     evaluación publicada no oculta la publicada de su semilla. La confirmación ausente no se
-    convierte en confirmación negativa.
+    convierte en confirmación negativa. ``statuses`` son los estados (``size=1``) que la página
+    ya leyó, por número de ejecución: no se leen otra vez.
     """
     key = group_key(current)
     if key is None or current.ejecucion is None:
@@ -261,27 +265,29 @@ def seed_evidence(
         return tuple(choices.get(seed, SeedEvidence(seed)) for seed in THESIS_SEEDS)
     # Every published evaluation of every other execution of the group is a candidate, newest
     # execution first and newest evaluation first, because one execution can publish several.
-    offered: list[tuple[int, str, str]] = []
+    offered: list[tuple[int, str, models_v2.M3Run]] = []
     for run in sorted(runs, key=lambda r: (len(r.id), r.id), reverse=True):
         if run.seed not in THESIS_SEEDS or run.seed == active.seed:
             continue
         try:
-            if group_key(repository.get_run_status(run.id, size=1)) != key:
+            status = (statuses or {}).get(run.id) or repository.get_run_status(run.id, size=1)
+            if group_key(status) != key:
                 continue
             published = repository.list_m3_runs(
                 run_id_m2=run.id, estado="PUBLICADA", size=MAX_SIZE
             ).items
         except (DataLayerError, InvalidQuery):
             continue
-        offered += [(run.seed, run.id, item.run_id) for item in published]
+        offered += [(run.seed, run.id, item) for item in published]
     try:
-        accepted = repository.comparable_m3_runs(reference, [m3 for _, _, m3 in offered])
+        accepted = repository.comparable_m3_runs(reference, [m3.run_id for _, _, m3 in offered])
     except EvidenceInvalid:
         accepted = frozenset()
     for seed, execution, m3_run in offered:
-        if seed in choices or m3_run not in accepted:
+        if seed in choices or m3_run.run_id not in accepted:
             continue
-        evidence = classes(repository, execution, m3_run)
+        # La corrida M3 sale de la lista ya leída de esa ejecución: no se resuelve otra vez.
+        evidence = classes(repository, execution, m3_run.run_id, run=m3_run)
         if evidence.run is not None and evidence.run.estado == "PUBLICADA" and not evidence.problem:
             choices[seed] = SeedEvidence(seed, execution, evidence)
     return tuple(choices.get(seed, SeedEvidence(seed)) for seed in THESIS_SEEDS)

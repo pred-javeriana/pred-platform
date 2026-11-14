@@ -19,7 +19,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.test_ejecucion import FORM, LONG_ENOUGH, _dal_client, _launch, _scenario
+from pred_platform.data.dal import DalRepository
+from tests.test_ejecucion import FORM, LONG_ENOUGH, _dal_client, _launch, _scenario, _text
 from tests.test_worker import Env
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -193,3 +194,36 @@ def test_the_settings_record_of_a_run_does_not_load_earlier_durations(
     for reads in (settings, review):
         assert reads.count("ORDER BY e.id DESC") == 1, reads
         assert reads.connections <= 14 and len(reads.statements) <= 33, reads
+
+
+# ------------------------------------------------------------------------- Resultados
+def test_the_summary_of_three_published_seeds_reads_each_run_and_evaluation_once(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_corridas import _dal_client as results_client
+    from tests.test_results_chapters import _three_seeds
+
+    client = results_client(env)
+    first, *_ = _three_seeds(env, client)
+    page = _text(client.get(f"/corridas/{first}/resultados/resumen").text)
+    assert "Semillas con resultados 3 de 3" in page
+    calls: list[str] = []
+    for name in ("get_run_status", "list_m3_runs", "get_m3_run"):
+        original = getattr(DalRepository, name)
+
+        def counted(self: DalRepository, *args: Any, _name=name, _fn=original, **kw: Any) -> Any:
+            calls.append(_name)
+            return _fn(self, *args, **kw)
+
+        monkeypatch.setattr(DalRepository, name, counted)
+
+    reads = _get(client, env, monkeypatch, f"/corridas/{first}/resultados/resumen")
+
+    # El estado de cada ejecución publicada se lee una vez, al elegir las publicadas, y lo reciben
+    # la barra de pasos, el encabezado y las semillas. La corrida M3 de cada semilla sale de la
+    # lista de esa ejecución y sirve a «otras publicaciones». Antes: 7, 7 y 6 lecturas, 239
+    # sentencias.
+    assert calls.count("get_run_status") == 3
+    assert calls.count("list_m3_runs") == 4  # las publicadas, la abierta y una por semilla
+    assert calls.count("get_m3_run") == 1  # la evaluación de la corrida abierta
+    assert len(reads.statements) <= 159, len(reads.statements)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import replace
 from typing import Any
@@ -229,7 +230,12 @@ def paso_resultados(
             draft_wizard("resultados", draft),
         )
     executions = published_executions(repository, limit=None)
-    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    # Los estados que leyó la lista de publicadas sirven a la barra de pasos, al encabezado y a
+    # las semillas: no se leen otra vez.
+    statuses = {e.ejecucion_id: e.status for e in executions if e.status is not None}
+    facts = run_facts(
+        repository, corrida, frozenset(e.ejecucion_id for e in executions), statuses.get(corrida)
+    )
     if facts is None:
         return render_missing_run(request, corrida)
     wizard = run_wizard("resultados", facts)
@@ -262,7 +268,14 @@ def paso_resultados(
     if capitulo is None:
         return _chapter_redirect(request, corrida, "resumen" if facts.published else "productos")
     return _resultados_page(
-        request, repository, facts.id, wizard, executions, capitulo, seed=facts.seed
+        request,
+        repository,
+        facts.id,
+        wizard,
+        executions,
+        capitulo,
+        seed=facts.seed,
+        statuses=statuses,
     )
 
 
@@ -285,9 +298,12 @@ def _resultados_page(
     chapter: str,
     *,
     seed: int | None = None,
+    statuses: Mapping[str, RunStatus] | None = None,
 ) -> HTMLResponse:
     """La página del paso para la corrida ``reference``; ``published`` son las corridas con
-    evidencia M3 publicada, de la más nueva a la más vieja."""
+    evidencia M3 publicada, de la más nueva a la más vieja, y ``statuses``, los estados
+    (``size=1``) ya leídos por número de ejecución."""
+    statuses = statuses or {}
     params = dict(request.query_params)
     probe = _base_context(repository, "")
     champion = probe["champion_capability"].available
@@ -308,7 +324,7 @@ def _resultados_page(
             SelectionQuery(ejecucion=reference, m3=wanted_m3, size=PRODUCT_PAGE_SIZE),
             str(exc),
         )
-    run = _run_header(repository, reference)
+    run = statuses.get(reference) or _run_header(repository, reference)
     context.update(
         query=query,
         query_error=query_error,
@@ -369,7 +385,7 @@ def _resultados_page(
     elif vista == "exportar":
         _fill_exportar(repository, run.ejecucion.id, query, context, seed=seed)
     elif champion:
-        _fill_m3_view(repository, run.ejecucion.id, vista, params, context)
+        _fill_m3_view(repository, run.ejecucion.id, vista, params, context, statuses)
     resolved = context["m3"].run
     _describe_run(repository, run, resolved, context)
     if resolved is not None:
@@ -439,8 +455,12 @@ def _fill_m3_view(
     vista: str,
     params: dict[str, str],
     context: dict[str, Any],
+    statuses: Mapping[str, RunStatus] | None = None,
 ) -> None:
-    """Resumen, Por clase y Perfiles de error: la misma corrida M3 resuelta para la ejecución."""
+    """Resumen, Por clase y Perfiles de error: la misma corrida M3 resuelta para la ejecución.
+
+    La corrida M3 se resuelve una vez y la reciben el resumen y las semillas; las corridas M3 que
+    leyeron las semillas sirven a la lista de otras publicaciones."""
     query: SelectionQuery = context["query"]
     base = {"vista": vista, "ejecucion": context["reference"]}
     resolved: models_v2.M3Run | None
@@ -449,7 +469,9 @@ def _fill_m3_view(
     context["answers"] = answers(found_classes)
     exact_m3 = resolved.run_id if resolved else query.m3
     if vista in ("resumen", "prueba"):
-        context["m3_summary"] = found_summary = summary(repository, ejecucion_id, exact_m3)
+        context["m3_summary"] = found_summary = summary(
+            repository, ejecucion_id, exact_m3, run=resolved
+        )
         context["answers"] = answers(found_classes, found_summary.verdicts)
         resolved = found_summary.run or resolved
     if vista == "clase":
@@ -469,7 +491,7 @@ def _fill_m3_view(
             for name in PROFILE_METRICS
         }
     if vista in ("resumen", "estabilidad"):
-        seeds = seed_evidence(repository, context["run"], found_classes)
+        seeds = seed_evidence(repository, context["run"], found_classes, statuses)
         context["seeds"] = seeds
         context["published_seed_count"] = sum(1 for seed in seeds if seed.published)
         context["stability_rows"] = stability_rows(seeds)
@@ -484,7 +506,12 @@ def _fill_m3_view(
     if resolved is not None:
         # El encabezado muestra la misma corrida M3 que la pestaña; la causa de un problema la
         # explica solo la pestaña.
-        others = other_publications(repository, resolved)
+        known = {
+            seed.evidence.run.run_id: seed.evidence.run
+            for seed in context["seeds"]
+            if seed.evidence is not None and seed.evidence.run is not None
+        }
+        others = other_publications(repository, resolved, known)
         context["m3"] = M3Decision(run=resolved, others=others)
         context["m3_hrefs"] = {
             other.run_id: "/resultados?" + urlencode({**base, "m3": other.run_id})
@@ -745,7 +772,12 @@ def _producto_detalle_page(
             draft_wizard("resultados", draft),
         )
     executions = published_executions(repository, limit=None)
-    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    # Los estados que leyó la lista de publicadas sirven a la barra de pasos, al encabezado y a
+    # las semillas: no se leen otra vez.
+    statuses = {e.ejecucion_id: e.status for e in executions if e.status is not None}
+    facts = run_facts(
+        repository, corrida, frozenset(e.ejecucion_id for e in executions), statuses.get(corrida)
+    )
     if facts is None:
         return render_missing_run(request, corrida)
     wizard = run_wizard("resultados", facts)
