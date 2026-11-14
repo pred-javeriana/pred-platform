@@ -35,7 +35,8 @@ created the shown M3 run, read by `get_stage_timings` from the run's `progreso.j
 the cached reader of Ejecución (`run_status.read_stage_attempts`, every attempt in log order, an
 end before its start is dropped and only a `completed` L4 publishes); without
 that log the bar says the time is unknown and never shows `m3_corridas.creado_en`, which is the
-start of L4. When several PUBLICADA runs share an identity the bar
+start of L4. The steps rail of Results dates «Publicados» with that same L4 end; Inicio and
+the other steps keep the run's latest publication. When several PUBLICADA runs share an identity the bar
 shows the contract's notice and links to the others. Each verdict is shown with its Spanish
 label and a one-line explanation, both owned by `app/presentation.py`; the published code stays
 in filters, CSV, `data-*` attributes and engine output, not in `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the

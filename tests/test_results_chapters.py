@@ -581,6 +581,34 @@ def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
     assert "28 oct 2026, 9:36 a. m." not in shown and "27 oct 2026, 6:00 a. m." not in shown
 
 
+@pytest.mark.parametrize("path", ["resumen", "p1", "productos", "exportar", "producto/FIL-0001"])
+def test_the_rail_dates_the_chosen_publication_like_the_context_bar(
+    published: tuple[TestClient, str],
+    env: Env,
+    path: str,
+) -> None:
+    client, number = published
+    # m3-ui-0 comes from the first L4; a later attempt finished another L4 the next day.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T09:59:58+00:00", ""),
+        ("stage_finished", "2026-10-27T14:36:00+00:00", "completed"),
+        ("stage_started", "2026-10-28T09:00:00+00:00", ""),
+        ("stage_finished", "2026-10-28T14:36:00+00:00", "completed"),
+    )
+    html = client.get(f"/corridas/{number}/resultados/{path}?m3=m3-ui-0").text
+    assert "Evaluación publicada 27 oct 2026, 9:36 a. m." in _text(html)
+    rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
+    assert rail is not None
+    assert "Publicados 27 oct 2026" in _text(rail.group())
+    assert "2026-10-28" not in rail.group()
+    # The other steps keep the date of the run's latest publication.
+    other = client.get(f"/corridas/{number}/ejecucion").text
+    other_rail = re.search(r'<nav class="pred-rail".*?</nav>', other, re.S)
+    assert other_rail is not None and "2026-10-28 14:36:00 UTC" in other_rail.group()
+
+
 def test_a_creation_in_the_same_second_as_a_microsecond_l4_start_keeps_its_date(
     published: tuple[TestClient, str],
     env: Env,

@@ -44,6 +44,7 @@ from pred_platform.app.ejecucion import run_resumable
 from pred_platform.app.execution_display import task_rows
 from pred_platform.app.pasos import (
     NEW,
+    RunFacts,
     Wizard,
     draft_resume,
     draft_wizard,
@@ -268,14 +269,7 @@ def paso_resultados(
     if capitulo is None:
         return _chapter_redirect(request, corrida, "resumen" if facts.published else "productos")
     return _resultados_page(
-        request,
-        repository,
-        facts.id,
-        wizard,
-        executions,
-        capitulo,
-        seed=facts.seed,
-        statuses=statuses,
+        request, repository, facts, wizard, executions, capitulo, statuses=statuses
     )
 
 
@@ -292,17 +286,17 @@ def _chapter_redirect(request: Request, corrida: str, chapter: str) -> RedirectR
 def _resultados_page(
     request: Request,
     repository: DataRepository,
-    reference: str,
+    facts: RunFacts,
     wizard: Wizard,
     published: list[ExecutionChoice],
     chapter: str,
     *,
-    seed: int | None = None,
     statuses: Mapping[str, RunStatus] | None = None,
 ) -> HTMLResponse:
-    """La página del paso para la corrida ``reference``; ``published`` son las corridas con
+    """La página del paso para la corrida ``facts``; ``published`` son las corridas con
     evidencia M3 publicada, de la más nueva a la más vieja, y ``statuses``, los estados
     (``size=1``) ya leídos por número de ejecución."""
+    reference, seed = facts.id, facts.seed
     statuses = statuses or {}
     params = dict(request.query_params)
     probe = _base_context(repository, "")
@@ -388,6 +382,7 @@ def _resultados_page(
         _fill_m3_view(repository, run.ejecucion.id, vista, params, context, statuses)
     resolved = context["m3"].run
     _describe_run(repository, run, resolved, context)
+    context["wizard"] = _results_wizard(facts, wizard, resolved, context)
     if resolved is not None:
         # Las pestañas conservan la corrida M3 resuelta, no «la más nueva».
         context["tab_query"] = urlencode(
@@ -443,6 +438,26 @@ def _describe_run(
     context["run_status"] = describe_run(
         run.ejecucion.estado, resumable=run_resumable(repository, run)
     )
+
+
+def _results_wizard(
+    facts: RunFacts,
+    wizard: Wizard,
+    resolved: models_v2.M3Run | None,
+    context: dict[str, Any],
+) -> Wizard:
+    """La barra de pasos de Resultados con la fecha de la evaluación mostrada.
+
+    Con una evaluación PUBLICADA resuelta, «Publicados» lleva la misma fecha que el contexto (el
+    fin del L4 que la creó), aunque un intento posterior haya terminado otro L4. Sin ella queda
+    la fecha de la última publicación, como en Inicio y en los demás pasos.
+    """
+    if resolved is None or resolved.estado != "PUBLICADA":
+        return wizard
+    shown = context.get("m3_published_at")
+    if shown == facts.publicada_en:
+        return wizard
+    return run_wizard("resultados", replace(facts, publicada_en=shown))
 
 
 def _render(request: Request, context: dict[str, Any]) -> HTMLResponse:
@@ -989,6 +1004,7 @@ def _producto_detalle_page(
     )
     if run is not None:
         _describe_run(repository, run, m3.run, context)
+        context["wizard"] = _results_wizard(facts, wizard, m3.run, context)
 
     return request.app.state.templates.TemplateResponse(
         request, "pages/results_producto.html", context, status_code=status
