@@ -8,7 +8,7 @@ resultados: una corrida tiene resultados cuando su evaluación final está publi
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -142,12 +142,21 @@ def run_facts(
 
 
 def draft_facts(
-    repository: DataRepository, draft: Draft, ingest_id: str | None = None
+    repository: DataRepository,
+    draft: Draft,
+    ingest_id: str | None = None,
+    ingests: Mapping[str, IngestSummary] | None = None,
 ) -> DraftFacts:
     """El borrador para la barra de pasos; ``ingest_id`` es el archivo que muestra la página si
-    no es el del borrador (por ejemplo, el que llega en ``?ingest_id=``)."""
+    no es el del borrador (por ejemplo, el que llega en ``?ingest_id=``). ``ingests`` son las
+    ingestas que la página ya leyó: si nombran el archivo elegido, no se lee la lista otra vez."""
     chosen = ingest_id or draft.ingest_id
-    ingest = ingests_by_id(repository).get(chosen or "") if chosen else None
+    if not chosen:
+        ingest = None
+    elif ingests is not None and chosen in ingests:
+        ingest = ingests[chosen]
+    else:
+        ingest = ingests_by_id(repository).get(chosen)
     return DraftFacts(
         file_name=ingest.name if ingest else None,
         n_skus=ingest.n_skus if ingest else None,

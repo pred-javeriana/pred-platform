@@ -21,6 +21,7 @@ from pred_platform.app.datos import (
     CSV_COLUMNS,
     CSV_HINT,
     PendingUpload,
+    TopologyQuery,
     discard_pending,
     error_view,
     page_meta,
@@ -94,6 +95,18 @@ def paso_datos(
         None if params.get("pendiente") else read_draft(request).ingest_id
     )
     return _render_page(request, repository, ingest_id=ingest_id)
+
+
+def _whole_map(query: TopologyQuery, page: TopologyReport) -> bool:
+    """Si la página de la tabla trae todos los SKU en el orden de la lectura completa del mapa."""
+    return (
+        not query.sku_class
+        and not query.q
+        and query.sort == "sku_id"
+        and not query.descending
+        and page.page.number == 1
+        and page.page.total <= page.page.size
+    )
 
 
 def _runnable(repository: DataRepository, ingest_id: str) -> bool:
@@ -298,7 +311,13 @@ def _render_page(
             if topology.availability.status == "available":
                 chart_svg = topology_scatter_svg(topology)
                 try:
-                    whole = repository.get_topology_report(report.ingest_id, size=MAX_SIZE)
+                    # La página pedida ya es el mapa completo cuando no filtra, está en el orden
+                    # de la lectura completa y cabe en una página: no se lee otra vez.
+                    whole = (
+                        topology
+                        if _whole_map(topology_query, topology)
+                        else repository.get_topology_report(report.ingest_id, size=MAX_SIZE)
+                    )
                     items = list(whole.items)
                     for page in range(2, (whole.page.total + MAX_SIZE - 1) // MAX_SIZE + 1):
                         items.extend(

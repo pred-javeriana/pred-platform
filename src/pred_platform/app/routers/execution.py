@@ -57,6 +57,7 @@ from pred_platform.app.ejecucion import (
     ExclusionWarning,
     ExecutionQuery,
     FormResult,
+    LaunchIngest,
     accepted_ingests,
     classes_without_family,
     draft_items,
@@ -444,14 +445,24 @@ def _class_skus(
 
 
 def _check_launch(
-    repository: DataRepository, ingest_id: str | None, form: FormResult
+    repository: DataRepository,
+    ingest_id: str | None,
+    form: FormResult,
+    *,
+    ingests: list[LaunchIngest] | None = None,
+    by_class: dict[SkuClass, int] | None = None,
 ) -> tuple[ExclusionWarning, str | None] | None:
     """La regla de lanzamiento sobre los datos y las familias: deja los errores en ``form`` y
     devuelve el aviso de los SKU que quedarían sin campeón si alguna clase queda con una sola
     familia, con la clave que confirma lanzar así (``None`` si un rechazo impide lanzar igual).
+
+    ``ingests`` y ``by_class`` son las ingestas aceptadas y los SKU por clase de ``ingest_id`` si
+    la página ya los leyó; sin ellos, se leen aquí.
     """
     form.values["ingest_id"] = ingest_id or ""
-    synthetic = {i.item.ingest_id for i in accepted_ingests(repository) if i.synthetic}
+    if ingests is None:
+        ingests = accepted_ingests(repository)
+    synthetic = {i.item.ingest_id for i in ingests if i.synthetic}
     if not ingest_id:
         form.errors["ingest_id"] = "Elija el archivo de datos que se va a ejecutar."
         return None
@@ -460,18 +471,20 @@ def _check_launch(
         return None
     if form.errors:
         return None
-    try:
-        by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
-    except DataLayerError:
-        by_class = {}  # sin topología publicada, decide el motor
-    except InvalidQuery:  # no es el SHA-256 de una ingesta
-        by_class = {}
-        form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
+    if by_class is None:
+        try:
+            by_class = repository.get_topology_report(ingest_id, size=1).summary.by_class
+        except DataLayerError:
+            by_class = {}  # sin topología publicada, decide el motor
+        except InvalidQuery:  # no es el SHA-256 de una ingesta
+            by_class = {}
+            form.errors["ingest_id"] = "Elija un archivo de datos aceptado en Datos."
     chosen = form.values["families"]
     needed = history_needed(form.settings) if form.settings is not None else 0
     history = _class_skus(repository, ingest_id, None) if by_class else []
     # Una lectura parcial no demuestra que todos los SKU sean demasiado cortos.
-    if history and len(history) >= sum(by_class.values()):
+    complete = bool(history) and len(history) >= sum(by_class.values())
+    if complete:
         longest = max(row.n_periods for row in history)
         if longest < needed:
             form.errors["min_train"] = (
@@ -481,8 +494,12 @@ def _check_launch(
             )
             return None
     single = single_family_classes(by_class, chosen)
+    # Con el mapa completo ya leído, los SKU de cada clase salen de él, en el mismo orden.
     skus: dict[SkuClass, list[TopologyMetrics]] = {
-        c: _class_skus(repository, ingest_id, c) for c in short_of_two(by_class, chosen)
+        c: [row for row in history if row.sku_class == c]
+        if complete
+        else _class_skus(repository, ingest_id, c)
+        for c in short_of_two(by_class, chosen)
     }
     refusal = classes_without_family(by_class, chosen, skus, needed)
     if refusal:
@@ -513,6 +530,8 @@ def _render_ajustes(
     save: Draft | None = None,
     autosave: bool = False,
     conflict: bool = False,
+    checked: bool = False,
+    ingests: list[LaunchIngest] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     """Ajustes de la corrida nueva: el formulario con los valores del borrador (o los enviados).
@@ -523,7 +542,9 @@ def _render_ajustes(
     cuenta. ``exclusion`` es el aviso de los SKU que quedarían sin campeón, junto al rechazo que
     impide continuar. ``save`` es el borrador que la página guarda y muestra en la barra de pasos;
     ``autosave``, que lo guarda el guardado automático. ``conflict`` avisa que lo enviado no se
-    guardó porque el borrador cambió después de abrir esa página.
+    guardó porque el borrador cambió después de abrir esa página. ``checked`` dice que quien
+    llama ya aplicó la regla de lanzamiento a ``form`` (``exclusion`` es su aviso, o ``None``), y
+    ``ingests``, las ingestas aceptadas si ya las leyó: la página no las lee otra vez.
     """
     if save is not None:
         save = next_revision(request, save)
@@ -531,7 +552,8 @@ def _render_ajustes(
     values = form.values if form is not None else dict(draft.values)
     if form is None:
         values["ingest_id"] = ingest_id or draft.ingest_id or ""
-    ingests = accepted_ingests(repository)
+    if ingests is None:
+        ingests = accepted_ingests(repository)
     # El archivo que eligió la persona (el borrador, un enlace o el formulario enviado). Sin
     # elegir, o con uno que la lista no tiene, la lista pide elegir uno: nunca elige por la
     # persona, porque Atrás o un paso de la barra lo guardarían en el borrador.
@@ -543,16 +565,17 @@ def _render_ajustes(
         form = _launch_form(
             values.get("families"), values.get("metric"), {k: values.get(k) for k in _LAUNCH_FIELDS}
         )
-    if selected and warning is None:
-        warning = _check_launch(repository, selected, form)
     by_class = {}
     if selected:
         with suppress(DataLayerError, InvalidQuery):
             by_class = repository.get_topology_report(selected, size=1).summary.by_class
+    if selected and not checked and warning is None:
+        warning = _check_launch(repository, selected, form, ingests=ingests, by_class=by_class)
     details = _stored_runs(request)
+    known = {i.item.ingest_id: i.item for i in ingests if i.item.ingest_id}
     context = {
         "wizard": draft_wizard(
-            "ajustes", draft_facts(repository, draft, chosen), can_continue=bool(ingests)
+            "ajustes", draft_facts(repository, draft, chosen, known), can_continue=bool(ingests)
         ),
         "source": repository.source,
         "record": False,
@@ -601,10 +624,18 @@ def _duplicate(request: Request, ingest_id: str, form: FormResult) -> lectura.Ru
 
 
 def _duration_context(
-    request: Request, ingest_id: str, exclude: str | None = None
+    request: Request,
+    ingest_id: str,
+    exclude: str | None = None,
+    stored: list[lectura.RunDetail] | None = None,
 ) -> dict[str, Any]:
+    """Las duraciones de las corridas anteriores con estos datos; ``stored`` son las corridas
+    guardadas si la página ya las leyó."""
     history = earlier_runs(
-        _stored_runs(request), ingest_id, request.app.state.settings.data_root, exclude
+        _stored_runs(request) if stored is None else stored,
+        ingest_id,
+        request.app.state.settings.data_root,
+        exclude,
     )
     maximum = max((d.seconds for r in history for d in r.stages.values()), default=1) or 1
     return {"earlier_runs": history, "duration_max": maximum, "stage_choices": STAGES}
@@ -617,25 +648,34 @@ def _render_revisar(
     ingest_id: str,
     values: dict[str, Any],
     form_error: str | None = None,
+    launched: tuple[FormResult, tuple[ExclusionWarning, str | None] | None] | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
     """Revisar y lanzar: lo que se va a lanzar, con «Cambiar» por sección, y el botón Lanzar.
 
     El aviso de los SKU que quedarían sin campeón se muestra aquí; lanzar desde esta página lo
-    confirma (la misma clave que pide ``POST /ejecucion/lanzar``).
+    confirma (la misma clave que pide ``POST /ejecucion/lanzar``). ``launched`` es el formulario
+    y el aviso que Lanzar ya comprobó, sin una corrida igual: no se comprueban otra vez.
     """
-    form = _launch_form(
-        values.get("families"), values.get("metric"), {k: values.get(k) for k in _LAUNCH_FIELDS}
-    )
-    warning = _check_launch(repository, ingest_id, form)
-    ingest = ingests_by_id(repository).get(ingest_id)
+    if launched is None:
+        form = _launch_form(
+            values.get("families"),
+            values.get("metric"),
+            {k: values.get(k) for k in _LAUNCH_FIELDS},
+        )
+        warning = _check_launch(repository, ingest_id, form)
+        duplicate = _duplicate(request, ingest_id, form)
+    else:
+        (form, warning), duplicate = launched, None
+    ingests = ingests_by_id(repository)
+    ingest = ingests.get(ingest_id)
     control = _control(request)
     draft = read_draft(request)
     context = {
-        "wizard": draft_wizard("revisar", draft_facts(repository, draft, ingest_id)),
+        "wizard": draft_wizard("revisar", draft_facts(repository, draft, ingest_id, ingests)),
         "source": repository.source,
         "record": False,
-        "duplicate": _duplicate(request, ingest_id, form),
+        "duplicate": duplicate,
         **_duration_context(request, ingest_id),
         "ingest": ingest,
         "ingest_id": ingest_id,
@@ -659,7 +699,8 @@ def _render_record(
         status = repository.get_run_status(facts.id, size=1)
     except (DataLayerError, InvalidQuery):
         return render_missing_run(request, facts.id)
-    detail = next((r for r in _stored_runs(request) if str(r.id) == facts.id), None)
+    stored = _stored_runs(request)
+    detail = next((r for r in stored if str(r.id) == facts.id), None)
     values = None
     record_error = None
     if detail is not None:
@@ -688,9 +729,10 @@ def _render_record(
         "metric_choices": METRIC_CHOICES,
         "families_hint": families_hint(),
         "class_counts": by_class,
-        **_duration_context(request, facts.ingest_id or "", facts.id),
         "reserve": status.reserve,
     }
+    if step == "revisar":  # Ajustes no muestra las duraciones anteriores
+        context.update(_duration_context(request, facts.ingest_id or "", facts.id, stored))
     template = "pages/paso_ajustes.html" if step == "ajustes" else "pages/paso_revisar.html"
     return _render(request, template, context)
 
@@ -706,14 +748,15 @@ def paso_ajustes(
         # si se puede ejecutar, el borrador lo guarda, para que Datos, la barra de pasos y Revisar
         # lean el mismo archivo que muestra la página.
         linked = request.query_params.get("ingest_id") or None
-        runnable = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
+        accepted = accepted_ingests(repository)
+        runnable = {i.item.ingest_id for i in accepted if not i.synthetic}
         save = read_draft(request).with_ingest(linked) if linked and linked in runnable else None
         # Un enlace con un archivo que no se puede ejecutar muestra el del borrador.
         shown = linked if save is not None else None
         copiar_de = (request.query_params.get("copiar_de") or "").strip().lstrip("#")
         if copiar_de:
             return _copy_settings(request, repository, copiar_de, ingest_id=shown, save=save)
-        return _render_ajustes(request, repository, ingest_id=shown, save=save)
+        return _render_ajustes(request, repository, ingest_id=shown, save=save, ingests=accepted)
     facts = run_facts(repository, corrida)
     if facts is None:
         return render_missing_run(request, corrida)
@@ -835,10 +878,8 @@ def guardar_ajustes(
         return response
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
-    if request.url.path.endswith("/comprobar"):
-        return _render_ajustes(request, repository, form=form, exclusion=warning)
-    if form.errors or ingest_id is None:
-        return _render_ajustes(request, repository, form=form, exclusion=warning)
+    if request.url.path.endswith("/comprobar") or form.errors or ingest_id is None:
+        return _render_ajustes(request, repository, form=form, exclusion=warning, checked=True)
     response = RedirectResponse(step_href(NEW, "revisar"), status_code=303)
     settled = read_draft(request).with_settings(ingest_id, form.values)
     save_draft(request, response, next_revision(request, settled))
@@ -902,19 +943,26 @@ def lanzar(
     form = _launch_form(families, metric, fields)
     warning = _check_launch(repository, ingest_id, form)
     if form.errors or form.settings is None or ingest_id is None:
-        return _render_ajustes(request, repository, form=form, exclusion=warning)
+        return _render_ajustes(request, repository, form=form, exclusion=warning, checked=True)
     duplicate = _duplicate(request, ingest_id, form)
     if duplicate is not None:
         return RedirectResponse(
             f"{step_href(str(duplicate.id), 'ejecucion')}?aviso=existente", status_code=303
         )
     if warning is not None and confirmar != warning[1]:
-        return _render_revisar(request, repository, ingest_id=ingest_id, values=form.values)
+        return _render_revisar(
+            request, repository, ingest_id=ingest_id, values=form.values, launched=(form, warning)
+        )
     try:
         result = _control(request).launch(ingest_id, form.settings)
     except (ControlUnavailable, RunRequestError) as exc:
         return _render_revisar(
-            request, repository, ingest_id=ingest_id, values=form.values, form_error=str(exc)
+            request,
+            repository,
+            ingest_id=ingest_id,
+            values=form.values,
+            form_error=str(exc),
+            launched=(form, warning),
         )
     aviso = "en_cola" if result.queued else "existente"
     response = RedirectResponse(

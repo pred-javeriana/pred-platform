@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.test_ejecucion import _dal_client, _launch, _scenario
+from tests.test_ejecucion import FORM, LONG_ENOUGH, _dal_client, _launch, _scenario
 from tests.test_worker import Env
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
@@ -109,3 +109,87 @@ def test_the_page_of_a_completed_run_reuses_its_status_for_the_steps_and_causes(
     assert reads.files.count("progreso.jsonl") <= 1
     again = _get(client, env, monkeypatch, "/corridas/1/ejecucion")
     assert again.count(_RUN_ROW) == 2 and again.connections <= 10, again
+
+
+# ---------------------------------------------------------------- Datos, Ajustes y Revisar
+_TOPOLOGY_PAGE = "SELECT sku, n_obs, n_positive, adi, cv2, clase FROM series"
+_INGEST_LIST = "FROM ingestas ORDER BY id DESC"
+
+
+def _post(
+    client: TestClient, env: Env, monkeypatch: pytest.MonkeyPatch, url: str, data: dict[str, Any]
+) -> Reads:
+    with _recording(monkeypatch, env.settings.data_root) as reads:
+        response = client.post(url, data=data, follow_redirects=False)
+    assert response.status_code == 200, (url, response.status_code)
+    return reads
+
+
+def test_settings_check_the_launch_rule_once_and_list_the_files_once(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+
+    opened = _get(client, env, monkeypatch, f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    # La lista de archivos, para el enlace, la regla y la barra de pasos; los SKU por clase, para
+    # la regla y la matriz; el mapa completo, para la historia. Antes: 14 conexiones.
+    assert opened.count(_INGEST_LIST) == 1
+    assert opened.count(_TOPOLOGY_PAGE) == 2  # la clase de cada SKU (size=1) y el mapa completo
+    assert opened.connections <= 8 and len(opened.statements) <= 19, opened
+
+    checked = _post(
+        client, env, monkeypatch, "/corridas/nueva/ajustes/comprobar",
+        {"ingest_id": env.ingest_id, **FORM},
+    )  # fmt: skip
+    # «Comprobar» aplica la regla una vez y la página no la vuelve a aplicar. Antes: 20.
+    assert checked.count(_TOPOLOGY_PAGE) == 3, checked
+    assert checked.connections <= 12 and len(checked.statements) <= 29, checked
+
+
+def test_a_launch_that_needs_confirmation_reuses_the_whole_map_and_its_check(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+
+    reads = _post(
+        client, env, monkeypatch, "/ejecucion/lanzar",
+        {"ingest_id": env.ingest_id, **FORM, **LONG_ENOUGH, "families": ["classical"]},
+    )  # fmt: skip
+
+    # Con una sola familia, las tres clases quedan sin dos que comparar: sus SKU salen del mapa
+    # completo ya leído y Revisar muestra el aviso sin comprobar otra vez. Antes: 39 conexiones.
+    assert reads.count(_TOPOLOGY_PAGE) == 2, reads
+    assert reads.connections <= 11 and len(reads.statements) <= 26, reads
+
+
+def test_the_data_step_reuses_a_table_page_that_already_holds_the_whole_map(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+
+    reads = _get(client, env, monkeypatch, f"/corridas/nueva/datos?ingest_id={env.ingest_id}")
+
+    assert reads.count(_TOPOLOGY_PAGE) == 1  # la tabla ya trae los tres SKU. Antes: 2
+    assert reads.connections <= 7 and len(reads.statements) <= 16, reads
+    filtered = _get(
+        client,
+        env,
+        monkeypatch,
+        f"/corridas/nueva/datos?ingest_id={env.ingest_id}&sku_class=smooth",
+    )
+    assert filtered.count(_TOPOLOGY_PAGE) == 2  # una tabla filtrada no es el mapa
+
+
+def test_the_settings_record_of_a_run_does_not_load_earlier_durations(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _completed(env, monkeypatch)
+
+    settings = _get(client, env, monkeypatch, "/corridas/1/ajustes")
+    review = _get(client, env, monkeypatch, "/corridas/1/revisar")
+
+    # Ajustes no muestra «Antes»: no lee los registros de las corridas anteriores. Las corridas
+    # guardadas se listan una vez por página. Antes: dos veces, 15 conexiones.
+    for reads in (settings, review):
+        assert reads.count("ORDER BY e.id DESC") == 1, reads
+        assert reads.connections <= 14 and len(reads.statements) <= 33, reads
