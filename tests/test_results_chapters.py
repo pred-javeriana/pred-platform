@@ -581,6 +581,27 @@ def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
     assert "28 oct 2026, 9:36 a. m." not in shown and "27 oct 2026, 6:00 a. m." not in shown
 
 
+def test_a_creation_in_the_same_second_as_a_microsecond_l4_start_keeps_its_date(
+    published: tuple[TestClient, str],
+    env: Env,
+) -> None:
+    client, number = published
+    # m3_corridas.creado_en is «2026-10-27 10:00:00»: SQLite keeps seconds, the log microseconds.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T08:00:00+00:00", ""),
+        ("stage_finished", "2026-10-27T09:00:00+00:00", "completed"),
+        ("stage_started", "2026-10-27T10:00:00.116421+00:00", ""),
+        ("stage_finished", "2026-10-27T10:00:02.810165+00:00", "completed"),
+    )
+    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
+    # The L4 that created it dates it, not the earlier completed attempt.
+    assert "Evaluación publicada 27 oct 2026, 5:00 a. m." in _text(html)
+    assert 'title="2026-10-27 10:00:02.810165 UTC' in html
+    assert "2026-10-27 09:00:00 UTC" not in html
+
+
 def test_stage_times_follow_the_execution_reader_rules_for_every_attempt(
     published: tuple[TestClient, str],
     env: Env,

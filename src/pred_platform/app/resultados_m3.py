@@ -1367,13 +1367,17 @@ def publication_time(
     que la creó (``creado_en`` cae en ese L4). Una publicación de otro intento no hereda esa fecha.
 
     Sin tiempos de etapa la fecha queda sin informar: ``creado_en`` es el inicio de L4, no su fin.
+    SQLite guarda ``creado_en`` al segundo y el registro guarda el inicio de L4 con microsegundos:
+    el extremo inicial incluye el segundo que contiene ese inicio.
     """
     for timing in reversed(timings):
         if timing.code != "L4" or timing.finish_state != "completed" or timing.finished_at is None:
             continue
         if (
             publication is not None
-            and not timing.started_at <= publication.creado_en <= timing.finished_at
+            and not timing.started_at.replace(microsecond=0)
+            <= publication.creado_en
+            <= timing.finished_at
         ):
             continue
         return timing.finished_at
