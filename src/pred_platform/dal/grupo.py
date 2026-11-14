@@ -47,7 +47,10 @@ def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) 
         raise EvidenceInvalid("Seleccione una corrida distinta por semilla.")
     db_path = db_path.resolve()
     with _cache_lock:
-        key = (db_path, tuple(run_ids), preview, _stamp(db_path), _stamp(Path(f"{db_path}-wal")))
+        wal = _stamp(Path(f"{db_path}-wal"))
+        # An empty WAL holds no pages: the main file's stamp already covers the committed
+        # state. SQLite creates and deletes empty WALs as connections open and close.
+        key = (db_path, tuple(run_ids), preview, _stamp(db_path), wal if wal and wal[1] else None)
         if key in _cache:
             _cache.move_to_end(key)
             return _cache[key]

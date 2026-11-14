@@ -540,3 +540,30 @@ def test_repeated_requests_share_work_but_database_writes_invalidate_it(
         updated = request(2)
         assert "Empeora de forma significativa en las tres semillas." in updated.text
         assert calls == list(CHOICES.values()) * 2
+
+
+def test_an_empty_wal_deleted_without_writes_keeps_the_saved_result(
+    lumpy_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+    original = grupo._run
+
+    def counted(conn, run_id):
+        calls.append(run_id)
+        return original(conn, run_id)
+
+    monkeypatch.setattr(grupo, "_run", counted)
+    wal = Path(f"{lumpy_db}-wal")
+    with client(lumpy_db) as browser:
+
+        def request():
+            return browser.get("/resultados/grupo", params={**CHOICES, "sku": "X"})
+
+        with closing(sqlite3.connect(lumpy_db)) as other:
+            other.execute("SELECT COUNT(*) FROM m3_corridas").fetchone()
+            assert wal.stat().st_size == 0
+            assert request().status_code == 200
+        # The last connection to close deletes the empty WAL; nothing was written.
+        assert not wal.exists()
+        assert request().status_code == 200
+        assert calls == list(CHOICES.values())
