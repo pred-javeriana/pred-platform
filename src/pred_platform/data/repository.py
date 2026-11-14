@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Protocol
 
 from pred_platform.config import DataSource
@@ -37,7 +36,7 @@ from pred_platform.contract.models import (
 from pred_platform.data.m3_confirmation import M3Confirmation
 from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.query import DEFAULT_SIZE
-from pred_platform.data.run_status import CauseSnapshot, StageReference
+from pred_platform.data.run_status import CauseSnapshot, StageReference, StageTiming
 from pred_platform.evidence.models import GroupEvidence, GroupRunOption
 
 
@@ -71,18 +70,6 @@ class M3DateRange:
     start: str | None
     end: str | None
     count: int
-
-
-@dataclass(frozen=True, slots=True)
-class StageTiming:
-    """El inicio y el fin de una etapa del motor (L1 a L4) en un intento de la corrida.
-
-    ``finished_at`` queda vacío si la etapa no terminó bien: una etapa fallida no publica.
-    """
-
-    code: str
-    started_at: datetime
-    finished_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)

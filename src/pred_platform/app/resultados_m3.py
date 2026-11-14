@@ -41,7 +41,8 @@ from pred_platform.data.m3_confirmation import (
 )
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import LATEST, MAX_SIZE
-from pred_platform.data.repository import DataRepository, M3ReserveBlocks, StageTiming
+from pred_platform.data.repository import DataRepository, M3ReserveBlocks
+from pred_platform.data.run_status import StageTiming
 from pred_platform.fallas import describir_falla, texto_soporte
 
 
@@ -1368,7 +1369,7 @@ def publication_time(
     Sin tiempos de etapa la fecha queda sin informar: ``creado_en`` es el inicio de L4, no su fin.
     """
     for timing in reversed(timings):
-        if timing.code != "L4" or timing.finished_at is None:
+        if timing.code != "L4" or timing.finish_state != "completed" or timing.finished_at is None:
             continue
         if (
             publication is not None

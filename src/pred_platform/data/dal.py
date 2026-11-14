@@ -21,7 +21,6 @@ import json
 import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Never, get_args
 
@@ -47,15 +46,17 @@ from pred_platform.data.query import (
     check_sort,
     paginate,
 )
-from pred_platform.data.repository import ArtifactDownload, StageTiming
+from pred_platform.data.repository import ArtifactDownload
 from pred_platform.data.run_history import read_stage_references
 from pred_platform.data.run_status import (
     CauseSnapshot,
     DisplayRunStatus,
     FamilyTaskState,
     StageReference,
+    StageTiming,
     TaskCause,
     read_run_progress,
+    read_stage_attempts,
 )
 from pred_platform.worker import engine
 from pred_platform.worker.candado import WorkerLock
@@ -69,51 +70,6 @@ _TASK_STATES = get_args(models.EstadoTarea)
 _FAMILY_STATES = get_args(models.EstadoFamilia)
 _TOPOLOGY_SORT = {"sku_id", "adi", "cv2", "n_positive"}
 _SELECTION_SORT = {"sku_id", "valor"}
-
-
-def _stage_timings(progreso: Path) -> tuple[StageTiming, ...]:
-    """Cada etapa que ``progreso.jsonl`` abrió, con su fin si terminó bien, en orden del registro.
-
-    El archivo de una corrida terminada no cambia; se lee de nuevo solo si cambia su tamaño o su
-    fecha de modificación.
-    """
-    try:
-        stat = progreso.stat()
-    except OSError:
-        return ()
-    return _stage_timings_of(str(progreso), stat.st_size, stat.st_mtime_ns)
-
-
-@lru_cache(maxsize=32)
-def _stage_timings_of(path: str, size: int, mtime_ns: int) -> tuple[StageTiming, ...]:
-    del size, mtime_ns  # parte de la clave de la caché
-    timings: list[StageTiming] = []
-    open_stage: dict[str, int] = {}
-    try:
-        with open(path, "rb") as handle:
-            for raw in handle:
-                if b'"stage_' not in raw:
-                    continue
-                try:
-                    event = json.loads(raw)
-                    moment = datetime.fromisoformat(event["t"])
-                except (ValueError, KeyError, TypeError):
-                    continue  # una línea rota por escrituras concurrentes no detiene la lectura
-                if not isinstance(event, dict) or moment.tzinfo is None:
-                    continue
-                stage, kind = event.get("stage"), event.get("event")
-                if not isinstance(stage, str):
-                    continue
-                if kind == "stage_started":
-                    open_stage[stage] = len(timings)
-                    timings.append(StageTiming(stage, moment, None))
-                elif kind == "stage_finished" and stage in open_stage:
-                    index = open_stage.pop(stage)
-                    if event.get("state") == "completed":
-                        timings[index] = StageTiming(stage, timings[index].started_at, moment)
-    except OSError:
-        return ()
-    return tuple(timings)
 
 
 def _now() -> datetime:
@@ -437,7 +393,7 @@ class DalRepository(M3DalSource):
         run = lectura.get_run(self.db_path, run_id)
         if run is None or not run.ruta_corrida or self.data_root is None:
             return ()
-        return _stage_timings(self.data_root / run.ruta_corrida / "progreso.jsonl")
+        return read_stage_attempts(self.data_root / run.ruta_corrida / "progreso.jsonl")
 
     def get_run_status(
         self,

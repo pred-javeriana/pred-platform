@@ -31,7 +31,9 @@ The champion, the verdict and its evidence come from one exact M3 run of the M2 
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail
 links, filters and pages keep that resolved run. A context bar above the tabs names the execution,
 its ingest, the M3 run and the data origin. The publication time is the end of the L4 stage that
-created the shown M3 run, read by `get_stage_timings` from the run's `progreso.jsonl`; without
+created the shown M3 run, read by `get_stage_timings` from the run's `progreso.jsonl`. It shares
+the cached reader of Ejecución (`run_status.read_stage_attempts`, every attempt in log order, an
+end before its start is dropped and only a `completed` L4 publishes); without
 that log the bar says the time is unknown and never shows `m3_corridas.creado_en`, which is the
 start of L4. When several PUBLICADA runs share an identity the bar
 shows the contract's notice and links to the others. Each verdict is shown with its Spanish

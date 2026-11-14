@@ -581,6 +581,29 @@ def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
     assert "28 oct 2026, 9:36 a. m." not in shown and "27 oct 2026, 6:00 a. m." not in shown
 
 
+def test_stage_times_follow_the_execution_reader_rules_for_every_attempt(
+    published: tuple[TestClient, str],
+    env: Env,
+) -> None:
+    client, number = published
+    # A clock that went back: this L4 «ended» before it started and dates nothing.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T09:59:58+00:00", ""),
+        ("stage_finished", "2026-10-27T09:00:00+00:00", "completed"),
+    )
+    repo = env.repo()
+    timings = repo.get_stage_timings(number)
+    current = repo.get_run_status(number, size=1).stage_timings  # type: ignore[attr-defined]
+    # Results reads every attempt, Ejecución the current one; the same L4 has the same end.
+    l4 = [t for t in timings if t.code == "L4"][-1]
+    assert l4 == next(t for t in current if t.code == "L4")
+    assert l4.finished_at is None and l4.finish_state == "completed"
+    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
+    assert "Evaluación publicada Fecha de publicación no informada" in _text(html)
+
+
 def test_without_a_progress_log_the_publication_time_is_unknown_not_the_creation(
     published: tuple[TestClient, str],
     env: Env,
