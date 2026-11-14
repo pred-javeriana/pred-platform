@@ -383,8 +383,9 @@ Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots t
 runtime dependencies only and requests `/health` and `/` (the Corridas home).
 
 The test suite also runs `pred.js` and HTMX in real headless Chromium through Node's built-in
-runner. Install Chromium and Node >= 22 to run `uv run pytest tests/test_browser.py` locally;
-`CHROME_BIN` selects the browser executable. Without either executable the browser test is
+runner. Install Chromium and Node >= 22 and run `uv run pytest` locally to include it; run alone,
+`tests/test_browser.py` covers far less than the 80% minimum, so that command fails even when
+the test passes. `CHROME_BIN` selects the browser executable. Without either executable the browser test is
 skipped locally. CI sets `PRED_BROWSER_REQUIRED=1`, so a missing executable fails the suite.
 The browser checks fixed demo pages, pause/resume, connection loss, request timeout and recovery.
 
