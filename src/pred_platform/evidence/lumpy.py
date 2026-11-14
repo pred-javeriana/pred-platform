@@ -110,13 +110,18 @@ def calculate_lumpy(
             if (run.run_id, comparison) in published
             for count, value in [published[run.run_id, comparison]]
         )
+        # ADR-03-012 calls a champion that wins and is confirmed in every seed stable.
+        reason = (
+            "La campeona de la demanda grumosa cambia entre evaluaciones: la clase no es estable."
+            if len(set(champions.values())) > 1
+            else "La campeona de la demanda grumosa no es Fundacional en ninguna evaluación."
+        )
         return LumpyEvidence(
             tuple(sorted(common)),
             effects,
             (),
             (),
-            "La campeona de la demanda grumosa cambia entre evaluaciones: la clase no es estable. "
-            "Se muestran las medianas publicadas de cada evaluación.",
+            f"{reason} Se muestran las medianas publicadas de cada evaluación.",
         )
     comparisons = ("seasonal_naive", "classical")
     products = tuple(

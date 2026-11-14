@@ -183,6 +183,22 @@ def test_changed_champion_retains_the_confirmation_a_real_engine_wrote(lumpy_db:
     assert result.ranges == () and result.products == ()
 
 
+def test_changed_champion_says_the_class_changes_only_when_champions_differ(
+    lumpy_db: Path,
+) -> None:
+    sql(lumpy_db, "UPDATE m3_confirmaciones SET familia_campeona='classical' WHERE run_id='seed-2'")
+    assert read_group(lumpy_db, RUNS).lumpy.cause == (
+        "La campeona de la demanda grumosa cambia entre evaluaciones: la clase no es estable. "
+        "Se muestran las medianas publicadas de cada evaluación."
+    )
+    # The same non-foundation champion in every seed is stable (ADR-03-012), not a change.
+    sql(lumpy_db, "UPDATE m3_confirmaciones SET familia_campeona='classical'")
+    assert read_group(lumpy_db, RUNS).lumpy.cause == (
+        "La campeona de la demanda grumosa no es Fundacional en ninguna evaluación. "
+        "Se muestran las medianas publicadas de cada evaluación."
+    )
+
+
 def test_two_seed_lumpy_preview_uses_only_those_two_populations(lumpy_db: Path) -> None:
     result = read_group(lumpy_db, RUNS[:2], preview=True)
     assert result.significance.complete is False
