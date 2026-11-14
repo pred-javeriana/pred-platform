@@ -97,7 +97,11 @@ from pred_platform.app.pasos import (
     step_href,
 )
 from pred_platform.app.presentation import describe_run
-from pred_platform.app.resultados_m3 import publication_time, run_outcome_details
+from pred_platform.app.resultados_m3 import (
+    publication_time,
+    published_evaluation,
+    run_outcome_details,
+)
 from pred_platform.app.routers.corridas import (
     Locked,
     redirect_with_query,
@@ -159,9 +163,11 @@ def _context(
     *,
     ejecucion: str | None = None,
     action_error: str | None = None,
+    published: bool | None = None,
 ) -> dict[str, Any]:
     """El cuerpo de Ejecución. ``ejecucion`` es la corrida del paso (la ruta manda sobre
-    ``?ejecucion=``); sin ella, la de la consulta o la más reciente (el sondeo)."""
+    ``?ejecucion=``); sin ella, la de la consulta o la más reciente (el sondeo). ``published``
+    es si la corrida publicó, cuando quien llama ya lo sabe (``published_evaluation``)."""
     params = dict(request.query_params)
     if ejecucion is not None:
         params["ejecucion"] = ejecucion
@@ -216,7 +222,17 @@ def _context(
         nothing_to_compare=run_compares_nothing(repository, run, status),
     )
     now = datetime.now(UTC)
-    outcome = run_outcome_details(repository, run, counts) if run is not None else None
+    # Si la corrida publicó lo decide una sola regla (``published_evaluation``), la misma de la
+    # página y del sondeo; el texto del resultado no la cambia.
+    m3_run_id = None
+    if run is not None and published is None:
+        m3_run_id = published_evaluation(repository, run.id)
+        published = m3_run_id is not None
+    outcome = (
+        run_outcome_details(repository, run, counts, m3_run_id, published=published)
+        if run is not None
+        else None
+    )
     return {
         **execution_display(status, now),
         "capabilities": capabilities,
@@ -253,7 +269,7 @@ def _context(
         "focus_estado": focus_estado,
         "focus_total": tasks.page.total if focus and tasks and tasks.page else 0,
         "outcome": outcome.text if outcome else None,
-        "published": outcome.published if outcome else False,
+        "published": bool(published),
         "run_ingest": ingest_name(repository, run.ingest_id) if run is not None else None,
         "run_error": error,
         "current_stage": dict(STAGES).get(progress.etapa_actual or "") if progress else None,
@@ -287,7 +303,13 @@ def _render_execution(
     facts = run_facts(repository, corrida)
     if facts is None:
         return render_missing_run(request, corrida)
-    context = _context(request, repository, ejecucion=facts.id, action_error=action_error)
+    context = _context(
+        request,
+        repository,
+        ejecucion=facts.id,
+        action_error=action_error,
+        published=facts.published,
+    )
     context["wizard"] = run_wizard("ejecucion", facts)
     try:
         references = repository.get_run_stage_history(facts.id)

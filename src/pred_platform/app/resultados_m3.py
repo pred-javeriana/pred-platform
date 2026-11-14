@@ -518,6 +518,23 @@ def published_executions(
     return choices[:limit]
 
 
+def published_evaluation(repository: DataRepository, run_id: str) -> str | None:
+    """La corrida M3 PUBLICADA más nueva de la ejecución ``run_id``; ``None`` si no publicó.
+
+    Es la única regla de «la corrida publicó» para una corrida: la usan la barra de pasos al
+    abrir la página, el sondeo de Ejecución y el pie, y ``published_executions`` la aplica a la
+    lista. No depende del estado de la ejecución (una detenida justo después de publicar
+    publicó) ni de que su evidencia se pueda leer ahora.
+    """
+    if not champion_available(repository):
+        return None
+    try:
+        runs = repository.list_m3_runs(run_id_m2=run_id, estado="PUBLICADA", size=1)
+    except (InvalidQuery, DataLayerError):
+        return None
+    return runs.selected_run_id
+
+
 def default_execution(repository: DataRepository) -> str:
     """La ejecución por defecto en Resultados: la más nueva con evidencia M3 publicada, o LATEST."""
     executions = published_executions(repository)
@@ -1038,8 +1055,12 @@ def run_outcome(
     task_counts: Mapping[EstadoTarea, int] | None,
     m3_run_id: str | None = None,
     funnel: models_v2.M3Funnel | None = None,
+    *,
+    published: bool | None = None,
 ) -> str | None:
-    return run_outcome_details(repository, run, task_counts, m3_run_id, funnel).text
+    return run_outcome_details(
+        repository, run, task_counts, m3_run_id, funnel, published=published
+    ).text
 
 
 def run_outcome_details(
@@ -1048,13 +1069,18 @@ def run_outcome_details(
     task_counts: Mapping[EstadoTarea, int] | None,
     m3_run_id: str | None = None,
     funnel: models_v2.M3Funnel | None = None,
+    *,
+    published: bool | None = None,
 ) -> RunOutcome:
     """Qué dejó una ejecución terminada, en palabras: cuántas tareas fallaron y cuántos productos
     tienen veredicto. ``None`` mientras no termina.
 
     Una ejecución «completada con fallos» terminó: algunas tareas de un modelo fallaron, y la
     evaluación final igual dio veredicto a los productos que pudo comparar. ``funnel`` es el
-    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada.
+    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada. ``published`` es
+    lo que la vista ya sabe de la publicación (``published_evaluation``): con ``False`` no se
+    busca el embudo y, con ``True``, una evidencia que no se puede leer no retira la
+    publicación; el texto dice que la evidencia no está disponible.
     """
     if run.estado not in ("completada", "completada_con_fallos"):
         return RunOutcome(None, False)
@@ -1073,9 +1099,15 @@ def run_outcome_details(
         )
     elif total:
         parts.append("Ninguna tarea falló.")
-    if funnel is None:
+    if funnel is None and published is not False:
         funnel = published_funnel(repository, run.id, m3_run_id)
     if funnel is None:
+        if published:
+            parts.append(
+                "La evaluación final está publicada, pero su evidencia no se pudo leer ahora; "
+                "recargue la página para intentarlo de nuevo."
+            )
+            return RunOutcome(" ".join(parts), True)
         parts.append("Todavía no hay veredictos publicados.")
         return RunOutcome(" ".join(parts), False)
     lead = "Aun así, " if failed else ""

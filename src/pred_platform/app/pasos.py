@@ -401,7 +401,8 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
             NavLink("Atrás: Revisar y lanzar", step_href(run.id, "revisar")),
             NavNext(
                 "Continuar a Resultados",
-                step_href(run.id, "resultados") if run.published else None,
+                # Como el paso 5 de la barra: bloqueado solo mientras la corrida no termina.
+                step_href(run.id, "resultados") if run.published or run.finished else None,
                 hint=""
                 if run.published
                 else (

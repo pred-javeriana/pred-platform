@@ -23,7 +23,12 @@ from pred_platform.app.presentation import (
     format_duration,
     stage_label,
 )
-from pred_platform.app.resultados_m3 import publication_time, published_executions, run_outcome
+from pred_platform.app.resultados_m3 import (
+    publication_time,
+    published_evaluation,
+    published_executions,
+    run_outcome,
+)
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestSummary, RunStatus
 from pred_platform.dal.lectura import run_number
@@ -46,7 +51,8 @@ def ingests_by_id(repository: DataRepository) -> dict[str, IngestSummary]:
 
 
 def published_runs(repository: DataRepository) -> frozenset[str]:
-    """Las corridas con su evaluación final publicada."""
+    """Las corridas con su evaluación final publicada (la regla de ``published_evaluation``,
+    aplicada a todas a la vez)."""
     return frozenset(c.ejecucion_id for c in published_executions(repository, limit=None))
 
 
@@ -68,7 +74,7 @@ def _facts(
     repository: DataRepository,
     status: RunStatus,
     ingests: dict[str, IngestSummary],
-    published: frozenset[str],
+    published: bool,
 ) -> RunFacts:
     run = status.ejecucion
     assert run is not None
@@ -77,12 +83,10 @@ def _facts(
         status,
         file_name=ingest.name if ingest else None,
         n_skus=ingest.n_skus if ingest else None,
-        published=run.id in published,
+        published=published,
         resumable=run_resumable(repository, status),
         # Solo una corrida publicada lee su registro de etapas: la portada no abre los demás.
-        publicada_en=publication_time(repository.get_stage_timings(run.id))
-        if run.id in published
-        else None,
+        publicada_en=publication_time(repository.get_stage_timings(run.id)) if published else None,
     )
 
 
@@ -121,15 +125,20 @@ def run_facts(
     repository: DataRepository, corrida: str, published: frozenset[str] | None = None
 ) -> RunFacts | None:
     """Una corrida lanzada por su número; ``None`` si no existe o no se pudo leer. ``published``
-    son las corridas publicadas si quien llama ya las leyó."""
+    son las corridas publicadas si quien llama ya las leyó; sin ellas, se pregunta por esta
+    corrida con ``published_evaluation``, la misma regla que usa el sondeo de Ejecución."""
     if run_number(corrida) is None:
         return None
     status = _status(repository, corrida)
-    if status is None:
+    if status is None or status.ejecucion is None:
         return None
-    if published is None:
-        published = published_runs(repository)
-    return _facts(repository, status, ingests_by_id(repository), published)
+    run_id = status.ejecucion.id
+    is_published = (
+        run_id in published
+        if published is not None
+        else published_evaluation(repository, run_id) is not None
+    )
+    return _facts(repository, status, ingests_by_id(repository), is_published)
 
 
 def draft_facts(
@@ -294,7 +303,9 @@ def _failure_outcome(repository: DataRepository, status: RunStatus, facts: RunFa
         return None
     run, progress = status.ejecucion, status.progress
     assert run is not None
-    return run_outcome(repository, run, progress.tareas_por_estado if progress else None)
+    return run_outcome(
+        repository, run, progress.tareas_por_estado if progress else None, published=True
+    )
 
 
 def home(repository: DataRepository, now: datetime | None = None) -> Home:
@@ -309,7 +320,7 @@ def home(repository: DataRepository, now: datetime | None = None) -> Home:
     ingests = ingests_by_id(repository)
     published = published_runs(repository)
     facts = {
-        status.ejecucion.id: _facts(repository, status, ingests, published)
+        status.ejecucion.id: _facts(repository, status, ingests, status.ejecucion.id in published)
         for status in statuses
         if status.ejecucion is not None
     }
