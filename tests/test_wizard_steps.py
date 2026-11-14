@@ -62,7 +62,17 @@ def test_records_keep_the_window_aggregation(env: Env, step: str, reported: bool
 
 def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env) -> None:
     client = _dal_client(env)
-    _launch(client, env, seasonality="14", trials="3", workers="7", seed="1")
+    # A step and a training length other than the defaults: the copy must read them (Refs #330).
+    _launch(
+        client,
+        env,
+        min_train="21",
+        step="14",
+        seasonality="14",
+        trials="3",
+        workers="7",
+        seed="1",
+    )
     before = env.rows("SELECT estado, finalizada_en FROM ejecuciones")
 
     copied = client.post("/corridas/nueva/copiar", data={"copiar": "1"})
@@ -74,9 +84,9 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
     # The copy survives navigation without pressing Continuar first.
     html = client.get("/corridas/nueva/ajustes").text
     for name, expected in {
-        "min_train": "40",
+        "min_train": "21",
         "horizon": "2",
-        "step": "7",
+        "step": "14",
         "seasonality": "14",
         "trials": "3",
         "seed": "1",
@@ -87,6 +97,8 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
     assert _launch_payload(review) == {
         "ingest_id": env.ingest_id,
         **FORM,
+        "min_train": "21",
+        "step": "14",
         "seasonality": "14",
         "trials": "3",
         "workers": "7",
