@@ -20,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from pred_platform.data.dal import DalRepository
+from tests.test_corridas import COOKIE, _draft_cookie
 from tests.test_ejecucion import FORM, LONG_ENOUGH, _dal_client, _launch, _scenario, _text
 from tests.test_worker import Env
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
@@ -130,6 +131,7 @@ def test_settings_check_the_launch_rule_once_and_list_the_files_once(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id))
 
     opened = _get(client, env, monkeypatch, f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
     # La lista de archivos, para el enlace, la regla y la barra de pasos; los SKU por clase, para

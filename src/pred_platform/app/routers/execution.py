@@ -690,13 +690,18 @@ def _render_revisar(
 
 
 def _render_record(
-    request: Request, repository: DataRepository, facts: RunFacts, step: StepKey
+    request: Request,
+    repository: DataRepository,
+    facts: RunFacts,
+    step: StepKey,
+    status: RunStatus | None = None,
 ) -> HTMLResponse:
     """Ajustes o Revisar de una corrida lanzada: lo que se eligió, sin poder cambiarlo."""
-    try:
-        status = repository.get_run_status(facts.id, size=1)
-    except (DataLayerError, InvalidQuery):
-        return render_missing_run(request, facts.id)
+    if status is None:
+        try:
+            status = repository.get_run_status(facts.id, size=1)
+        except (DataLayerError, InvalidQuery):
+            return render_missing_run(request, facts.id)
     stored = _stored_runs(request)
     detail = next((r for r in stored if str(r.id) == facts.id), None)
     values = None
@@ -765,10 +770,14 @@ def paso_ajustes(
             imported=_shown_notice(request),
             ingests=accepted,
         )
-    facts = run_facts(repository, corrida)
+    try:
+        status = repository.get_run_status(corrida, size=1)
+    except (DataLayerError, InvalidQuery):
+        return render_missing_run(request, corrida)
+    facts = run_facts(repository, corrida, status=status)
     if facts is None:
         return render_missing_run(request, corrida)
-    return _render_record(request, repository, facts, "ajustes")
+    return _render_record(request, repository, facts, "ajustes", status=status)
 
 
 def _saved_to_ajustes(request: Request, draft: Draft, **notice: str) -> RedirectResponse:
@@ -935,10 +944,14 @@ def paso_revisar(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
     if corrida != NEW:
-        facts = run_facts(repository, corrida)
+        try:
+            status = repository.get_run_status(corrida, size=1)
+        except (DataLayerError, InvalidQuery):
+            return render_missing_run(request, corrida)
+        facts = run_facts(repository, corrida, status=status)
         if facts is None:
             return render_missing_run(request, corrida)
-        return _render_record(request, repository, facts, "revisar")
+        return _render_record(request, repository, facts, "revisar", status=status)
     draft = read_draft(request)
     if draft.ingest_id is None:
         return render_locked(
