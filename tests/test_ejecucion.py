@@ -518,30 +518,28 @@ def test_engine_terminal_state_keeps_polling_until_worker_finishes(env: Env, sta
         owner.release()
 
 
-@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
-def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
-    env: Env, state: str
-) -> None:
-    client = _dal_client(env)
-    assert _launch(client, env).status_code == 303
+def _published_engine_whose_worker_is_killed(
+    env: Env, state: str, *, command: str, delay: str, **extra: str
+) -> int:
+    """A separate ``--once`` worker whose engine publishes ``state``; the worker is then killed.
+
+    Returns the pid recorded for the engine command.
+    """
     process = subprocess.Popen(
         [sys.executable, "-m", "pred_platform.worker", "--once"],
         env={
             **os.environ,
             "PRED_DATA_ROOT": str(env.settings.data_root),
             "PRED_DB_PATH": str(env.db),
-            "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+            "PRED_ENGINE_CMD": command,
             "FAKE_ENGINE_SCENARIO": "publishes_before_exit",
             "FAKE_ENGINE_TERMINAL_STATE": state,
-            "FAKE_ENGINE_PUBLISH_EXIT_DELAY": "5",
-            # El worker muerto deja al motor sin padre; este motor ignora la señal que el
-            # núcleo le envía entonces, para que el sondeo cubra el motor aún activo.
-            "FAKE_ENGINE_IGNORE_SIGTERM": "1",
+            "FAKE_ENGINE_PUBLISH_EXIT_DELAY": delay,
+            **extra,
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    pid = None
     try:
         _wait(
             lambda: bool(env.rows("SELECT pid FROM ejecuciones WHERE estado = ?", state)),
@@ -549,8 +547,58 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
         )
         [(pid,)] = env.rows("SELECT pid FROM ejecuciones")
         assert pid is not None and engine.engine_owner(pid, env.db) == "this"
+    finally:
         process.kill()
-        process.wait(timeout=10)
+        process.communicate(timeout=10)
+    return pid
+
+
+def _launcher_script(tmp_path: Path) -> str:
+    """A resource-slot style launcher: it runs the engine as its child, without ``exec``."""
+    script = tmp_path / "lanzador.sh"
+    script.write_text(
+        f'#!/bin/bash\n"{sys.executable}" "{_FAKE}" "$@"\nstatus=$?\nexit "$status"\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+@pytest.mark.parametrize(
+    "launcher",
+    [
+        "ignores_sigterm",
+        pytest.param(
+            "wrapper", marks=pytest.mark.skipif(sys.platform == "win32", reason="script bash")
+        ),
+    ],
+)
+def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
+    env: Env, state: str, launcher: str, tmp_path: Path
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    # El worker muerto deja al motor sin padre y, en Linux, el núcleo envía SIGTERM al comando
+    # lanzado. Para que el sondeo cubra un motor aún activo, ese motor ignora la señal, o el
+    # comando es un lanzador intermedio: la señal lo detiene a él y el motor hijo sigue en su
+    # grupo de procesos.
+    if launcher == "wrapper":
+        pid = _published_engine_whose_worker_is_killed(
+            env, state, command=_launcher_script(tmp_path), delay="5"
+        )
+    else:
+        pid = _published_engine_whose_worker_is_killed(
+            env,
+            state,
+            command=f"{sys.executable} {_FAKE}",
+            delay="5",
+            FAKE_ENGINE_IGNORE_SIGTERM="1",
+        )
+    try:
+        if launcher == "wrapper" and sys.platform == "linux":
+            # La señal del núcleo detuvo al lanzador; el sondeo sigue al motor de su grupo.
+            _wait(lambda: not engine.is_alive(pid), timeout=3, what="kernel signal to launcher")
         # Sin procesador, el motor todavía activo debe mantener el seguimiento.
         assert client.get("/ejecucion/estado?ejecucion=1").status_code == 200
         _wait(
@@ -583,10 +631,39 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
             conn.execute("UPDATE ejecuciones SET pid = ?", (os.getpid(),))
         assert_terminal_without_writes()
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.communicate(timeout=10)
-        if pid is not None and engine.engine_owner(pid, env.db) == "this":
+        if engine.engine_owner(pid, env.db) == "this":
+            engine.terminate(pid)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="señal del núcleo al morir el supervisor")
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_a_direct_engine_stops_with_its_killed_worker_and_the_next_worker_imports_it(
+    env: Env, state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    pid = _published_engine_whose_worker_is_killed(
+        env, state, command=f"{sys.executable} {_FAKE}", delay="5"
+    )
+    try:
+        # El núcleo detiene el motor lanzado directamente antes de que escriba sus archivos.
+        _wait(lambda: engine.engine_owner(pid, env.db) == "none", timeout=3, what="kernel signal")
+        fragment = client.get("/ejecucion/estado?ejecucion=1")
+        assert fragment.status_code == 286
+        assert f'data-pred-run-state="{state}"' in fragment.text
+        folder = next((env.settings.data_root / "runs").iterdir())
+        for name in ("corrida.json", "unidades.jsonl", "seleccion.jsonl"):
+            assert not (folder / name).exists(), name
+
+        # El siguiente worker recupera la corrida por su PID registrado, la vuelve a ejecutar
+        # con el mismo run_id y la importa.
+        monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+        assert Worker(env.settings).drain()
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+        assert {estado for (estado,) in env.rows("SELECT estado FROM tareas")} == {"exitosa"}
+        assert env.rows("SELECT COUNT(*) FROM selecciones") == [(3,)]
+    finally:
+        if engine.engine_owner(pid, env.db) == "this":
             engine.terminate(pid)
 
 

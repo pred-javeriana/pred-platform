@@ -17,6 +17,10 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     slow_m3       L2 and L3 complete, M3 stores the first SKU, then waits until it is killed
     m3_ok         like ok, but M3 is published (exit 0) without L4 events, as a resume reusing it
+    publishes_before_exit
+                  like ok, but records the run in the platform database as
+                  ``FAKE_ENGINE_TERMINAL_STATE`` (default ``completada``), as M3 does, then waits
+                  ``FAKE_ENGINE_PUBLISH_EXIT_DELAY`` seconds (default 0.7) before its final files
     m3_published_then_malformed
                   like m3_ok, but records the run as completada in the platform database before
                   its final files, as M3 does, and writes a progress record without keys after
@@ -34,6 +38,9 @@ upload launches: it leaves ``ingestas/<sha256>.json`` (copied from ``tests/fixtu
 by a marker in the file's content: ``BADHEADER`` (rejected), ``BADVALUE`` (failed), ``CONFLICT``
 (needs confirmation, exit 7, accepted keeping both files once confirmed), ``BOOM`` (dies without
 a report) and ``SLOW`` (hangs); anything else is accepted.
+
+``FAKE_ENGINE_IGNORE_SIGTERM=1`` ignores SIGTERM, like an engine that outlives the signal the
+kernel sends it on Linux when its worker dies; the platform then stops it with SIGKILL.
 
 ``FAKE_ENGINE_UNITS=bad_line`` ends ``unidades.jsonl`` with a unit without its keys, so the
 platform cannot import the final files.
