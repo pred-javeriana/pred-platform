@@ -806,6 +806,34 @@ def test_an_unsupported_progress_version_stops_the_run(
     estado, error_json = _run_state(env)
     assert estado == "detenida"
     assert json.loads(error_json or "{}")["code"] == "platform.schema_version_unsupported"
+    assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
+
+
+def test_an_unsupported_progress_version_does_not_overwrite_a_published_run(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The engine records the run as completada (M3), then its stream turns out unsupported: the
+    # platform still stops it without importing, but as a published run left without results.
+    _scenario(monkeypatch, "future_schema_after_publication")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+
+    assert not env.worker().drain()
+
+    ((estado, pid, error_json),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+    error = json.loads(error_json)
+    assert (estado, error["code"], error["retryable"]) == (
+        "detenida",
+        "platform.result_import_failed",
+        True,
+    )
+    assert "versión mayor 2 no soportada" in error["detail"]
+    assert pid is not None and not engine.is_alive(pid)
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+
+    # Its recorded process lets the next start run it again and import its results.
+    _scenario(monkeypatch, "ok")
+    assert env.worker().drain()
+    assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
 
 
 # ------------------------------------------------------------------ live and resume

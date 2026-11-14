@@ -31,6 +31,9 @@ real engine, its heavy dependencies or its running time. The scenario comes from
                   like ok, but after its final files writes a progress record without keys
                   instead of run_finished, then waits until it is killed
     future_schema writes a progress stream of an unsupported major version
+    future_schema_after_publication
+                  records the run as completada in the platform database, as M3 does, then
+                  writes a progress stream of an unsupported major version and waits
     incompatible  refuses the run_id (its stored identity differs) without writing anything
 
 ``classify --csv <file> --data-root <root> [--confirm-overwrite]`` plays the ingestion the browser
@@ -415,6 +418,15 @@ def main() -> int:
         print("error: run_id incompatible con la entrada o configuracion previa", file=sys.stderr)
         return 1
     stream = Stream(folder / "progreso.jsonl")
+    if scenario == "future_schema_after_publication":
+        # M3 records the run as published before the stream reveals its unsupported version.
+        with sqlite3.connect(os.environ["PRED_DB_PATH"]) as conn:
+            conn.execute(
+                "UPDATE ejecuciones SET estado='completada' WHERE run_id=?", (args.run_id,)
+            )
+        stream.emit("run_started", schema="pred-engine.progreso/2", run_id=args.run_id, attempt=1)
+        time.sleep(60)
+        return 0
     attempt = (
         1 + sum(1 for line in stream.path.read_text().splitlines() if '"run_started"' in line)
         if stream.path.exists()

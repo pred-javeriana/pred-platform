@@ -72,6 +72,11 @@ Esta carrera también corresponde al diagnóstico de
   `--once` termina con código 1. Conserva su PID: el siguiente arranque del worker la vuelve a
   ejecutar con el mismo `run_id` y los mismos archivos, y la importa. Mientras tanto, la página
   ofrece Reanudar.
+- Un flujo de progreso de una versión mayor no soportada (`platform.schema_version_unsupported`)
+  detiene el motor y no se importa nada, aunque existan archivos finales. Si el motor ya había
+  registrado la corrida como `completada`, no se sobrescribe como una detención corriente: queda
+  `detenida` con `platform.result_import_failed` (cuyo detalle nombra la versión), conserva su PID
+  y `--once` termina con código 1, como cualquier importación final fallida.
 - Conservar la base central, el Parquet y el directorio `runs/{run_id}`, incluidos `identidad.json`,
   `hpo/`, `checkpoints/` y los artefactos M3. Borrar esos archivos elimina evidencia necesaria.
 - Los checkpoints validan su integridad y su contexto. La CLI protege la identidad de entrada,

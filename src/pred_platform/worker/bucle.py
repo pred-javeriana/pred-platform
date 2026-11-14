@@ -387,20 +387,16 @@ class Worker:
             process.wait()
             follower.poll()
         except ValueError as exc:  # a progress stream this platform cannot read
+            # The platform stops on a version it does not support, without importing anything.
+            # A run the engine already recorded as published is not overwritten as an ordinary
+            # stop: it becomes a failed import that keeps its process for recovery.
             engine.terminate(process.pid)
             process.wait()
-            dal.close_open_tasks(
-                conn,
-                run.id,
-                interrupted=platform_error("platform.schema_version_unsupported", str(exc)),
-                skipped=platform_error("platform.schema_version_unsupported", str(exc)),
-            )
-            dal.finish_run(
-                conn,
-                run.id,
-                estado="detenida",
-                error=platform_error("platform.schema_version_unsupported", str(exc)),
-            )
+            error = platform_error("platform.schema_version_unsupported", str(exc))
+            if dal.stop_claimed(
+                conn, run.id, intento=run.intento, error=error, unimported=_unimported(error)
+            ):
+                self._failed.add(run.run_id)
             return
         except sqlite3.Error:  # the database failed with the engine already running
             engine.terminate(process.pid)
