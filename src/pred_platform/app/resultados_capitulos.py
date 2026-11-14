@@ -73,6 +73,9 @@ class Answers:
     effect_range: str
     # Por qué no se pudo leer la confirmación guardada; con ella no hay ausencia que afirmar.
     unread: M3Problem | None = None
+    # Por qué no se pudieron leer las pruebas por producto: la confirmación, o los veredictos de
+    # una evaluación sin ella. Sin pruebas legibles no se afirma que no hay pruebas ni se cuentan.
+    tests_unread: M3Problem | None = None
 
     @property
     def unchanged(self) -> int:
@@ -162,8 +165,16 @@ def _effect_range(effects: Sequence[float]) -> str:
     return f"r = {format_decimal(low, 3)} a {format_decimal(high, 3)}"
 
 
-def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> Answers:
-    """Una familia solo se nombra como ganadora de todos los tipos si las filas lo dicen."""
+def answers(
+    found: M3Classes,
+    verdicts: Sequence[models_v2.M3Verdict] = (),
+    verdicts_problem: M3Problem | None = None,
+) -> Answers:
+    """Una familia solo se nombra como ganadora de todos los tipos si las filas lo dicen.
+
+    ``verdicts_problem`` es por qué no se pudieron leer los veredictos publicados: una
+    evaluación sin confirmación por clase cuenta sus pruebas en ellos.
+    """
     families = {row.familia_campeona for row in found.rows}
     family = next(iter(families)) if len(families) == 1 else None
     confirmations = found.confirmations
@@ -184,7 +195,10 @@ def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> A
     # Filas guardadas que no se pudieron leer: las demás se cuentan, sin completar las que faltan.
     unread_tests = [sku_class_label(code) for code in found.rejected_significance]
     partial = bool(found.rejections)
-    if unread or (unread_tests and not tested):
+    tests_unread = unread or (
+        verdicts_problem if found.confirmation is None and found.run is not None else None
+    )
+    if tests_unread or (unread_tests and not tested):
         verification = "No se pudieron leer las pruebas por producto de esta evaluación."
     elif not tested:
         verification = "Esta evaluación no publicó pruebas por producto."
@@ -224,6 +238,7 @@ def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> A
         else "Sin responder",
         effect_range,
         unread,
+        tests_unread,
     )
 
 

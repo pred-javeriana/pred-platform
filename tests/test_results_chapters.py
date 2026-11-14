@@ -1136,3 +1136,38 @@ def test_an_invalid_significance_row_keeps_the_valid_confirmation_and_other_type
     assert "No se pudieron leer las pruebas de errática." in verification
     # The confirmation of Suave is still shown.
     assert "Suave · Confirmado" in classes
+
+
+def test_unreadable_product_tests_are_not_called_unpublished(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    # An older publication: no class confirmation, so its tests come from the verdicts.
+    _sql(
+        env,
+        "UPDATE m3_protocolos SET protocolo = json_remove(protocolo, '$.bloques') "
+        "WHERE run_id = 'm3-ui-0'",
+    )
+    # A tested product without its significance flag nor a cause: the contract rejects it.
+    _sql(
+        env,
+        "UPDATE m3_veredictos SET dm_significativa = NULL "
+        "WHERE run_id = 'm3-ui-0' AND sku = 'FIL-0001'",
+    )
+    html = client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text
+    text = _text(html)
+    assert "No se pudieron leer las pruebas por producto de esta evaluación." in text
+    assert "no publicó pruebas" not in text
+    assert "Abrir en Productos" not in text
+    assert "0 con mejora verificada" not in text and "0 peores" not in text
+    summary = _text(client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text)
+    assert "no publicó pruebas" not in summary
+    assert "Sin prueba publicada" not in summary
+    # The stored tests are not changed: once readable again, they are counted as before.
+    _sql(
+        env,
+        "UPDATE m3_veredictos SET dm_significativa = 1 "
+        "WHERE run_id = 'm3-ui-0' AND sku = 'FIL-0001'",
+    )
+    restored = _text(client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text)
+    assert "1 de 4 productos probados (25,0 %)" in restored

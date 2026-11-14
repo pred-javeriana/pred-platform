@@ -489,7 +489,7 @@ def _fill_m3_view(
         context["m3_summary"] = found_summary = summary(
             repository, ejecucion_id, exact_m3, run=resolved
         )
-        context["answers"] = answers(found_classes, found_summary.verdicts)
+        context["answers"] = answers(found_classes, found_summary.verdicts, found_summary.problem)
         resolved = found_summary.run or resolved
     if vista == "clase":
         context["m3_profiles"] = found_profiles = profiles(
