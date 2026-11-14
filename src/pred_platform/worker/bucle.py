@@ -9,7 +9,10 @@ A run whose database failure could not even be recorded is stopped as soon as th
 again, before the next claim, so a running worker never leaves an unowned run ``ejecutando``.
 A run whose final files could not be imported becomes ``detenida`` with
 ``platform.result_import_failed`` (recorded the same way), never a finished run without results;
-the next worker start, or the operator's resume, runs it again with the same files.
+the next worker start, or the operator's resume, runs it again with the same files. A final
+``corrida.json`` that the import rejects (``platform.contract_invalid``, or
+``platform.artifact_missing`` after the engine reported a published run) stops the run until the
+operator resumes it; both make ``drain`` (``--once``) report failure.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker import engine
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.errores import platform_error, result_import_error, run_stopped_error
-from pred_platform.worker.importacion import finalize, fresh_summary
+from pred_platform.worker.importacion import final_result_rejected, finalize, fresh_summary
 from pred_platform.worker.progreso import ProgressFollower
 from pred_platform.worker.solo_lectura import database_read_only
 
@@ -472,4 +475,15 @@ class Worker:
             )
         except Exception as exc:
             raise _ResultImportFailed from exc
+        if estado == "detenida":
+            _, error = dal.run_estado(conn, run.id)
+            if final_result_rejected(error, process.returncode):
+                # The run keeps its diagnostic and its explicit resume; the command still fails.
+                _logger.error(
+                    "Corrida %s: se rechazó el resultado final del motor: %s",
+                    run.run_id,
+                    (error or {}).get("detail"),
+                )
+                self._failed.add(run.run_id)
+                return
         _logger.info("Corrida %s terminó: %s", run.run_id, estado)

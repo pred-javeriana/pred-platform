@@ -861,3 +861,49 @@ def test_a_launcher_that_exits_before_its_engine_does_not_release_the_run_beside
     finally:
         if groups and _group_exists(groups[0]):
             os.killpg(groups[0], signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    ("summary", "code"),
+    [("truncated", "platform.contract_invalid"), ("missing", "platform.artifact_missing")],
+)
+def test_a_rejected_final_result_exits_non_zero_and_waits_for_an_explicit_resume(
+    env: Env, summary: str, code: str
+):
+    # The engine exits 0 as for a published run, but its corrida.json is cut off or absent.
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    cli = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "m3_ok", FAKE_ENGINE_SUMMARY=summary),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert cli.returncode == 1, cli.stderr
+    ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+    assert (estado, pid, json.loads(error)["code"]) == ("detenida", None, code)
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+
+    # Valid files do not resume it by themselves; the operator's resume does.
+    again = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "m3_ok"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert again.returncode == 0, again.stderr
+    assert env.rows("SELECT estado, intento FROM ejecuciones") == [("detenida", 1)]
+    resumed = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--resume", "1", "--once"],
+        env=_cli_env(env, "m3_ok"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert resumed.returncode == 0, resumed.stderr
+    assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(3,)]

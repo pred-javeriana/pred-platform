@@ -48,6 +48,9 @@ kernel sends it on Linux when its worker dies; the platform then stops it with S
 ``FAKE_ENGINE_UNITS=bad_line`` ends ``unidades.jsonl`` with a unit without its keys, so the
 platform cannot import the final files.
 
+``FAKE_ENGINE_SUMMARY=truncated`` writes only the first half of ``corrida.json``, and ``missing``
+writes none, while the engine still exits as if it had published the run.
+
 ``FAKE_ENGINE_SELECTION`` shapes ``seleccion.jsonl`` (contract section 20): ``ok`` (default),
 ``none`` (an engine that predates it), ``future`` (an unsupported major version) or ``bad_line``
 (one unreadable line and one with a family that contradicts its model, between valid ones).
@@ -633,7 +636,12 @@ def main() -> int:
     corrida = {"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}
     if "FAKE_ENGINE_EVALUATION" in os.environ:
         corrida["evaluation"] = json.loads(os.environ["FAKE_ENGINE_EVALUATION"])
-    (folder / "corrida.json").write_text(json.dumps(corrida), encoding="utf-8")
+    shape = os.environ.get("FAKE_ENGINE_SUMMARY", "ok")
+    if shape != "missing":
+        text = json.dumps(corrida)
+        (folder / "corrida.json").write_text(
+            text[: len(text) // 2] if shape == "truncated" else text, encoding="utf-8"
+        )
     if scenario == "malformed_before_run_finished":
         # Los archivos finales ya existen, pero el motor sigue vivo y aún no emite run_finished.
         stream.emit("unit_started", stage="L4")

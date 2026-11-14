@@ -138,9 +138,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         for sig in signals:
             signal.signal(sig, interrupt)
         if args.once:
-            imported = worker.drain()
+            settled = worker.drain()
             status = _status(settings.db_path)
-            return status if imported else 1
+            return status if settled else 1
         worker.run_forever(stop)
     except KeyboardInterrupt:
         stop.set()

@@ -77,6 +77,12 @@ Esta carrera también corresponde al diagnóstico de
   registrado la corrida como `completada`, no se sobrescribe como una detención corriente: queda
   `detenida` con `platform.result_import_failed` (cuyo detalle nombra la versión), conserva su PID
   y `--once` termina con código 1, como cualquier importación final fallida.
+- Un `corrida.json` final que la importación rechaza (`platform.contract_invalid`, por ejemplo un
+  JSON truncado) o que falta aunque el motor salió como si hubiera publicado la corrida (códigos
+  0, 7 u 8; `platform.artifact_missing`) deja la corrida `detenida` con ese diagnóstico, sin pid
+  ni selecciones, y `--once` termina con código 1. No se reanuda sola al aparecer archivos válidos:
+  el operador la reanuda. Un motor que se cae o muere sin publicar también queda `detenida` con
+  `platform.artifact_missing`, pero eso es un fallo del motor y `--once` termina con código 0.
 - Conservar la base central, el Parquet y el directorio `runs/{run_id}`, incluidos `identidad.json`,
   `hpo/`, `checkpoints/` y los artefactos M3. Borrar esos archivos elimina evidencia necesaria.
 - Los checkpoints validan su integridad y su contexto. La CLI protege la identidad de entrada,
