@@ -530,6 +530,47 @@ def _notice_hidden(browser: Browser, notice: str) -> None:
     """)
 
 
+@pytest.mark.parametrize("late", [False, True])
+def test_reloading_right_after_typing_shows_no_false_conflict(
+    browser: Browser, env: Env, late: bool
+):
+    """Refs #318: the page left sends its pending save before the reload asks for the new page.
+    If its answer still arrives after the new page loaded, the first save of the reloaded page
+    reloads it again instead of warning about another tab."""
+    _complete(browser, env)
+    _type(browser, "seed", "80")
+    browser.run("await page.wait(800);")
+    if late:
+        browser.hold = True
+    browser.run("""
+        await page.fill('#seed', '81');
+        await page.eval(() => location.reload());
+    """)
+    if late:
+        assert browser.waiting.wait(5), "El guardado pendiente no salió al recargar"
+        browser.run("await page.wait(500);")
+        browser.release.set()
+        browser.run("await page.wait(500);")
+    _until(browser, "await page.wait('#seed');")
+    seed = "82"
+    _type(browser, "seed", seed)
+    browser.run("await page.wait(1500);")
+    _until(browser, "await page.wait('#seed');")
+    _notice_hidden(browser, "conflicto-borrador")
+    if late:
+        # The reloaded page was drawn before the earlier save arrived: it reloads again and
+        # shows that save; the person types again from there.
+        browser.run("""
+            const seed = await page.eval(() => document.querySelector('#seed').value);
+            if (seed !== '81') throw new Error('No mostró el guardado anterior: ' + seed);
+        """)
+        seed = "83"
+        _type(browser, "seed", seed)
+        browser.run("await page.wait(800);")
+        _notice_hidden(browser, "conflicto-borrador")
+    _expect_draft(browser, seed, "2")
+
+
 @pytest.mark.parametrize("failure", ["network", "server"])
 def test_a_failed_autosave_says_so_and_the_next_save_clears_it(
     browser: Browser, env: Env, failure: str

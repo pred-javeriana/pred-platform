@@ -29,6 +29,9 @@
     let submitting = false;
     let conflict = false;
     let failed = false;
+    let sent = false;
+    const navigation = performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    const reloaded = Boolean(navigation && navigation.type === "reload");
     const revision = function (value) {
       document.querySelectorAll("input[name=draft_rev]").forEach(function (input) { input.value = value; });
     };
@@ -50,11 +53,17 @@
       clearTimeout(timer);
       if (!pending || inFlight || replacing || conflict) return;
       pending = false;
+      // La página recargada pide su dirección antes de que llegue la respuesta del guardado que
+      // envió la página anterior: puede dibujarse con la revisión de antes. Su primer guardado
+      // recibe entonces 409 sin que otra pestaña haya cambiado nada, y recargar muestra lo último.
+      const first = !sent;
+      sent = true;
       const data = new FormData(ajustes);
       data.set("destino", "ajustes");
       inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true" }, credentials: "same-origin", keepalive: true })
         .then(function (response) {
           if (response.status === 409) {
+            if (first && reloaded) { location.reload(); return null; }
             conflict = true;
             notice("guardado-fallido", false);
             notice("conflicto-borrador", true);
@@ -111,6 +120,9 @@
       const submitter = event.submitter;
       inFlight.then(function () { form.requestSubmit(submitter); });
     });
+    // «beforeunload» llega antes de que el navegador pida la página siguiente (al recargar, por
+    // ejemplo), así el guardado pendiente suele llegar antes; «pagehide» queda de respaldo.
+    window.addEventListener("beforeunload", save);
     window.addEventListener("pagehide", save);
   }
   document.querySelectorAll("[data-demand-map]").forEach(function (map) {

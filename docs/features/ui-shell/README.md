@@ -41,7 +41,12 @@ no administration screen. M0 is out of the flow.
   before stamps existed, only passes while the draft is still at revision 0): nothing is saved, the
   answer is 409
   (`X-Pred-Draft-Rev` names the current stamp) and the page shows `#conflicto-borrador` with a
-  reload link; the script does not retry. The autosave writes its own cookie per write
+  reload link; the script does not retry, and the guide shows the draft as it is. A save that
+  fails (network or server) says so beside the form (`#guardado-fallido`) and stays pending for
+  the next edit or the exit; a save that succeeds hides both notices. The pending save is sent on
+  `beforeunload`, before a reload asks for the next page, with `pagehide` as a fallback; if its
+  answer still arrives after the reloaded page was drawn, that page's first save is refused and
+  the script reloads it once more instead of warning about another tab. The autosave writes its own cookie per write
   (`pred_borrador_a<rev>_<mark>`) and never the main one: the current draft is the highest
   revision, and the main cookie wins a tie, so a response that arrives late from a page already
   left cannot replace a later copy, import or Continuar/Atrás. Two autosaves from the same
