@@ -110,6 +110,13 @@ afterEach(() => {
 
 test("La vista de prueba permanece fija y no inventa un fallo del servidor", { timeout: 15000 }, async () => {
   await open(process.env.PRED_FIXTURE_URL + "/ejecucion");
+  assert.equal(await evaluate("document.querySelector('#pulso-ejecucion').classList.contains('is-fija')"), true);
+  assert.equal(await evaluate("document.querySelector('#pulso-ejecucion').hasAttribute('data-pred-started')"), false);
+  // Un inicio reciente hace visible cualquier reloj en vivo que vuelva a la demo fija: con el
+  // inicio de días atrás de la demo, la precisión de días u horas lo ocultaría.
+  await evaluate(`document.querySelectorAll('[data-pred-started]').forEach(function (e) {
+    e.dataset.predStarted = new Date(Date.now() - 5000).toISOString();
+  }); true`);
   const before = await evaluate("document.querySelector('#pulso-transcurrido').textContent");
   await tick(15000);
   assert.equal(await evaluate("document.querySelector('#pulso-transcurrido').textContent"), before);
@@ -122,6 +129,10 @@ test("La vista de prueba permanece fija y no inventa un fallo del servidor", { t
 
 test("Pausar congela el tiempo y reanudar recupera el tiempo real", { timeout: 15000 }, async () => {
   await open(process.env.PRED_LIVE_URL + "/ejecucion");
+  // Una página con sondeo no es la demo fija: cuenta el tiempo y no dice que no se actualiza.
+  assert.equal(await evaluate("document.querySelector('#pulso-ejecucion').classList.contains('is-fija')"), false);
+  assert.equal(await evaluate("document.querySelector('#pulso-ejecucion').textContent.includes('no se actualiza sola')"), false);
+  assert.equal(await evaluate("Boolean(document.querySelector('#pulso-ejecucion').dataset.predStarted)"), true);
   await tick(2000);
   await evaluate("document.querySelector('#pausar-actualizacion').click()");
   const before = await evaluate("document.querySelector('#pulso-transcurrido').textContent");
