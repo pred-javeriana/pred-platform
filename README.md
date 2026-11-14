@@ -331,7 +331,8 @@ and tasks. Without `--once`, the command only queues the run for the worker.
   con fallos to queue it again with the same task rows. Successful tasks retain their state;
   historical progress is not replayed as live work. Graceful app shutdown
   queues interrupted work, and a crash is recovered on startup. Ctrl-C stops the worker's engine
-  and leaves the run `ejecutando`; SIGTERM and SIGHUP do the same. The next worker that takes
+  and leaves the run `ejecutando`; SIGTERM and SIGHUP do the same, unless SIGHUP is ignored
+  (as under `nohup`), which the worker keeps ignoring. The next worker that takes
   the database, `--once` included, queues it again. Stopping one worker does not stop the work
   while another waits on the same database: that worker resumes it immediately, outside any
   resource guard of the stopped worker. Run the app with `PRED_WORKER=off` while a guarded CLI

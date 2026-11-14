@@ -75,6 +75,37 @@ def test_cli_signals_stop_the_engine_and_allow_resume(env: Env, signum: int, onc
             engine.terminate(pid, grace=0.1)
 
 
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="SIGHUP es POSIX")
+def test_a_worker_started_under_nohup_keeps_supervising_after_sighup(env: Env):
+    # nohup leaves SIGHUP ignored: closing the terminal must not stop the worker or its engine.
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    worker = subprocess.Popen(
+        [sys.executable, "-m", "pred_platform.worker"],
+        env=_cli_env(env, "slow"),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),  # noqa: PLW1509
+    )
+    pid = None
+    try:
+        _wait(lambda: env.rows("SELECT COUNT(*) FROM tareas")[0][0] > 0)
+        pid = env.rows("SELECT pid FROM ejecuciones")[0][0]
+        worker.send_signal(signal.SIGHUP)
+        time.sleep(0.5)
+        assert worker.poll() is None
+        assert engine.is_alive(pid)
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("ejecutando", pid)]
+        worker.send_signal(signal.SIGTERM)  # the other stop signals still stop it
+        assert worker.wait(timeout=10) == 0
+        _wait(lambda: not engine.is_alive(pid), timeout=3, what="engine to stop after SIGTERM")
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait(timeout=10)
+        if pid is not None and engine.is_alive(pid):
+            engine.terminate(pid, grace=0.1)
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="muerte del supervisor en Linux")
 def test_kernel_stops_engine_when_supervisor_is_killed(env: Env):
     enqueue_run(env.settings, env.ingest_id, SMALL)

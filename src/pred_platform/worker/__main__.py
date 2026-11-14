@@ -122,7 +122,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     worker = Worker(settings)
     stop = threading.Event()
     signals = [signal.SIGINT, signal.SIGTERM]
-    if hasattr(signal, "SIGHUP"):
+    # Under nohup (or any launcher that ignores SIGHUP) the closing terminal must not stop the
+    # worker: an ignored SIGHUP stays ignored.
+    if hasattr(signal, "SIGHUP") and signal.getsignal(signal.SIGHUP) != signal.SIG_IGN:
         signals.append(signal.SIGHUP)
     previous = {sig: signal.getsignal(sig) for sig in signals}
 
