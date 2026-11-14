@@ -38,10 +38,14 @@ no administration screen. M0 is out of the flow.
   before stamps existed, only passes while the draft is still at revision 0): nothing is saved, the
   answer is 409
   (`X-Pred-Draft-Rev` names the current stamp) and the page shows `#conflicto-borrador` with a
-  reload link; the script does not retry. The autosave writes its own cookie per revision
-  (`pred_borrador_a<rev>`) and never the main one: the current draft is the highest revision, and
-  the main cookie wins a tie, so a response that arrives late from a page already left cannot
-  replace a later copy, import or edit. Ajustes is sent with `Cache-Control: no-store` so the
+  reload link; the script does not retry. The autosave writes its own cookie per write
+  (`pred_borrador_a<rev>_<mark>`) and never the main one: the current draft is the highest
+  revision, and the main cookie wins a tie, so a response that arrives late from a page already
+  left cannot replace a later copy, import or Continuar/Atrás. Two autosaves from the same
+  revision whose answers cross (two tabs, or the page left and the reloaded one) leave two cookies
+  of that revision: the draft then shows one of them without a mark, so neither page matches it
+  and each is told on its next save (409 and the notice) instead of one edit replacing the other
+  silently. Ajustes is sent with `Cache-Control: no-store` so the
   browser's Back button asks for the page again, with the current stamp.
 - `docs/UI_FLOW.md` maps the routes and lists their `DataRepository` operations and
   capabilities.

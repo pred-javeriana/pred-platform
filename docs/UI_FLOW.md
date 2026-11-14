@@ -38,9 +38,11 @@ página escribió después (una copia, una importación o una edición en otra p
 guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. Un envío sin esa
 marca (una página dibujada antes de que existiera) solo se acepta mientras el borrador sigue en la
 revisión 0. El guardado
-automático escribe una cookie propia por revisión (`pred_borrador_a<rev>`); gana la de mayor
-revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
-abandonada no reemplace lo elegido después. Una corrida lanzada vive en
+automático escribe una cookie propia por escritura (`pred_borrador_a<rev>_<marca>`); gana la de
+mayor revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
+abandonada no reemplace lo elegido después. Dos guardados automáticos de la misma revisión cuyas
+respuestas se cruzan no eligen uno en silencio: el borrador queda sin marca y cada página avisa en
+su siguiente guardado. Una corrida lanzada vive en
 `/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
 se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
 «Después» de cada paso, su estado (hecho, por hacer, en curso o bloqueado) y adónde llevan Atrás

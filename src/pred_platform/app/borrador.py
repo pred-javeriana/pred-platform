@@ -18,11 +18,17 @@ después como un borrador nuevo (no hay una elección más nueva que perder); Aj
 revisar.
 
 Una respuesta que llega tarde no puede borrar una cookie más nueva, porque el navegador aplica su
-``Set-Cookie`` cuando llega. Por eso el guardado automático escribe una cookie propia por revisión
-(``pred_borrador_a<rev>``) y el borrador vigente es la de mayor revisión; con la misma revisión
-gana la cookie principal, que solo escriben las acciones que cambian de página (Siguiente, Atrás,
-copiar, importar). Una respuesta tardía de una página ya abandonada deja, como mucho, una cookie con
-una revisión que ya no gana.
+``Set-Cookie`` cuando llega. Por eso el guardado automático escribe una cookie propia por escritura
+(``pred_borrador_a<rev>_<marca>``) y el borrador vigente es la de mayor revisión; con la misma
+revisión gana la cookie principal, que solo escriben las acciones que cambian de página
+(Siguiente, Atrás, copiar, importar). Una respuesta tardía de una página ya abandonada deja, como
+mucho, una cookie con una revisión que ya no gana.
+
+Dos guardados automáticos que parten de la misma revisión (dos pestañas, o la página que se fue y
+la recargada) escriben la misma revisión con marcas distintas, y ninguno sabe cuál llegó último.
+El borrador vigente no elige uno en silencio: muestra uno de los dos sin marca, así que ninguna de
+las dos páginas coincide con él, y la siguiente acción de cada una recibe 409 y el aviso de
+recargar. La página recargada lleva la marca vacía y sigue desde ahí.
 """
 
 from __future__ import annotations
@@ -135,17 +141,21 @@ def _autosave_cookies(request: Request) -> list[str]:
 
 
 def read_draft(request: Request) -> Draft:
-    """El borrador vigente: el de mayor revisión; con la misma, el de la cookie principal."""
-    best: tuple[int, int] | None = None
-    draft = Draft()
+    """El borrador vigente: el de mayor revisión; con la misma, el de la cookie principal.
+
+    Dos guardados automáticos de la misma revisión, sin la principal a esa altura, empatan: el
+    borrador queda sin marca para que ninguna de las dos páginas siga como si fuera la vigente.
+    """
+    found: list[tuple[bool, Draft]] = []
     for name in (COOKIE, *_autosave_cookies(request)):
-        found = _parse(request.cookies.get(name) or "")
-        if found is None:
-            continue
-        rank = (found.rev, int(name == COOKIE))
-        if best is None or rank > best:
-            best, draft = rank, found
-    return draft
+        parsed = _parse(request.cookies.get(name) or "")
+        if parsed is not None:
+            found.append((name == COOKIE, parsed))
+    if not found:
+        return Draft()
+    main, draft = max(found, key=lambda item: (item[1].rev, item[0], item[1].token))
+    tokens = {other.token for is_main, other in found if not is_main and other.rev == draft.rev}
+    return replace(draft, token="") if not main and len(tokens) > 1 else draft
 
 
 def next_revision(request: Request, draft: Draft) -> Draft:
@@ -205,7 +215,7 @@ def save_draft(
     value = _encode(draft)
     stale = _autosave_cookies(request)
     if autosave:
-        name = f"{_AUTOSAVE}{draft.rev}"
+        name = f"{_AUTOSAVE}{draft.rev}_{draft.token}"
         # Sin fecha de vencimiento: dura lo que la sesión del navegador.
         response.set_cookie(name, value, path=_PATH, httponly=True, samesite="lax")
         stale = [other for other in stale if other != name]

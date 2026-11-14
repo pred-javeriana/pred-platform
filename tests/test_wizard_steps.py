@@ -456,12 +456,48 @@ def test_autosave_writes_its_own_cookie_and_never_the_main_one(env: Env) -> None
     saved = _autosave(client, env, _stamp(client), seed="74")
 
     written = [value.split("=", 1)[0] for value in saved.headers.get_list("set-cookie")]
-    assert written == [f"{COOKIE}_a1"]
-    # The next save retires the earlier autosave cookie and keeps naming the revision.
+    first = saved.headers["X-Pred-Draft-Rev"].replace(".", "_")
+    assert written == [f"{COOKIE}_a{first}"]
+    # The next save retires the earlier autosave cookie; each name says its revision and mark.
     again = _autosave(client, env, saved.headers["X-Pred-Draft-Rev"], seed="75")
     changed = [value.split("=", 1)[0] for value in again.headers.get_list("set-cookie")]
-    assert changed == [f"{COOKIE}_a2", f"{COOKIE}_a1"]
+    second = again.headers["X-Pred-Draft-Rev"].replace(".", "_")
+    assert second.startswith("2_")
+    assert changed == [f"{COOKIE}_a{second}", f"{COOKIE}_a{first}"]
     assert _shown(client) == ("75", "2")
+
+
+def test_two_autosaves_of_the_same_revision_ask_both_pages_to_reload(env: Env) -> None:
+    """Refs #320: two pages save from revision 1 and their answers cross. The browser keeps both
+    cookies; neither page is the current draft any more, so both are told on their next save."""
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=1, token="a" * 12, seed="60"))
+    start = _stamp(client)
+    first = _autosave(client, env, start, seed="61")
+    tab_a = first.headers["X-Pred-Draft-Rev"]
+    # Tab B saved from the same revision: its cookie arrives too, with its own name.
+    tab_b = "2." + "f" * 12
+    client.cookies.set(
+        f"{COOKIE}_a2_{'f' * 12}", _draft_cookie(env.ingest_id, rev=2, token="f" * 12, seed="62")
+    )
+    assert len([name for name in client.cookies if name.startswith(f"{COOKIE}_a2_")]) == 2
+
+    current = _stamp(client)
+    assert current == "2."
+    for stamp, seed in ((tab_a, "63"), (tab_b, "64")):
+        refused = _autosave(client, env, stamp, seed=seed)
+        assert refused.status_code == 409 and "set-cookie" not in refused.headers
+        assert refused.headers["X-Pred-Draft-Rev"] == current
+    # Ajustes and Revisar agree on what is shown; the reloaded page goes on from there.
+    shown = _shown(client)
+    assert shown[0] in {"61", "62"} and _shown(client, "/corridas/nueva/revisar") == shown
+    saved = _autosave(client, env, current, seed="65")
+    assert saved.status_code == 200 and saved.headers["X-Pred-Draft-Rev"].startswith("3.")
+    assert _shown(client)[0] == "65"
+    expired = [c.split(";")[0] for c in saved.headers.get_list("set-cookie") if "Max-Age=0" in c]
+    assert sorted(expired) == sorted(
+        f'{COOKIE}_a{stamp.replace(".", "_")}=""' for stamp in (tab_a, tab_b)
+    )
 
 
 def test_the_current_draft_is_the_highest_revision_and_a_tie_goes_to_the_main_cookie(
