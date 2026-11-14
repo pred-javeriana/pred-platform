@@ -23,6 +23,9 @@
 .pred-result-claim--warn { color: var(--warn-text); }
 .pred-results-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 16px 0 0; margin: 24px 0; border-top: 1px solid var(--border); gap: 0; }
 .pred-results-kpis--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Una fila con un indicador por tipo publicado reparte el ancho entre los tipos presentes (--n, de 1
+   a 4) en vez de dejar vacías las columnas de los que faltan. */
+.pred-results-kpis--types { grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); }
 .pred-results-kpis > div { padding: 4px 24px; border-left: 1px solid var(--border); min-width: 0; }
 .pred-results-kpis > div:first-child { padding-left: 0; border-left: 0; }
 .pred-results-kpis dt { color: var(--muted-text); font-size: 13px; font-weight: 500; margin: 0 0 4px; }

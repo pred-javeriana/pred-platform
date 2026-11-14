@@ -212,6 +212,25 @@ def test_a_count_of_one_reads_in_singular(
     assert plural not in text
 
 
+@pytest.mark.parametrize("chapter", ["p1", "p2"])
+@pytest.mark.parametrize(("only_smooth", "types"), [(False, 3), (True, 1)])
+def test_the_indicator_row_shares_its_width_among_the_published_types(
+    env: Env, chapter: str, only_smooth: bool, types: int
+) -> None:
+    """Sin columnas vacías cuando la evaluación publica menos de cuatro tipos (#314)."""
+    client = _dal_client(env)
+    number = _publish(env, client, 0, only_smooth=only_smooth)
+    html = client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0").text
+    row = re.search(
+        r'<dl class="pred-results-kpis pred-results-kpis--types" style="--n: (\d)">'
+        r"(.*?)</dl>",
+        html,
+        re.S,
+    )
+    assert row is not None
+    assert int(row.group(1)) == types == len(re.findall(r"<dt>", row.group(2)))
+
+
 @pytest.mark.parametrize(
     ("vista", "chapter", "anchor"),
     [

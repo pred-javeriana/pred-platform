@@ -4,7 +4,7 @@
 {{ problem(m3_classes) }}
 {% if m3_classes.run %}
 {% call answer('Pregunta 1 · ¿Qué familia pronostica mejor cada tipo de demanda?', answers.selection, answers.label, answers.tone) %}
-<dl class="pred-results-kpis">
+<dl class="pred-results-kpis pred-results-kpis--types" style="--n: {{ [m3_classes.rows | length, 4] | min or 1 }}">
 {% for row in m3_classes.rows %}{% set confirmation = m3_classes.confirmations.get(row.sku_class) %}
 <div><dt>{{ family(row.familia_campeona, family_colors) }} · {{ sku_class_label(row.sku_class) }}</dt><dd>{% if confirmation and confirmation.efecto_mediana_r is not none %}{% set effect = effect_parts(confirmation.efecto_mediana_r) %}{{ effect[0] }}<small>{{ effect[1] }}</small>{% else %}<span class="pred-kpi-text">{{ 'No se pudo leer' if answers.unread else 'Sin efecto publicado' }}</span>{% endif %}<small>{{ CONFIRMATION_STATES[confirmation.estado] if confirmation else 'No se pudo leer la confirmación' if answers.unread else 'Sin confirmación publicada' }}</small></dd></div>
 {% endfor %}
