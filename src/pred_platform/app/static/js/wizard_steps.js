@@ -15,9 +15,11 @@
      el botón Atrás del navegador. «keepalive» deja terminar el envío aunque la página se vaya.
      El borrador vive en la cookie con una revisión que sube en cada escritura. Cada envío lleva la
      que esta página vio (draft_rev) y el servidor lo rechaza (409) si el borrador cambió después,
-     por ejemplo con una copia o una importación hechas en otra pestaña: la página avisa y no
-     reintenta por su cuenta. Un envío a la vez, para que cada uno traiga la revisión del
-     anterior, y Continuar, Atrás o un paso de la barra esperan al que esté en camino. */
+     por ejemplo con una copia o una importación hechas en otra pestaña: la página avisa, muestra
+     en la guía el borrador como quedó y no reintenta por su cuenta. Un envío a la vez, para que
+     cada uno traiga la revisión del anterior, y Continuar, Atrás o un paso de la barra esperan al
+     que esté en camino. Un envío que falla (la red o el servidor) lo dice junto al formulario y
+     queda pendiente para el próximo cambio o la salida; uno que se guarda retira los avisos. */
   const ajustes = document.querySelector("form[data-autosave]");
   if (ajustes) {
     let pending = false;
@@ -30,6 +32,20 @@
     const revision = function (value) {
       document.querySelectorAll("input[name=draft_rev]").forEach(function (input) { input.value = value; });
     };
+    const notice = function (id, shown) {
+      const element = document.getElementById(id);
+      if (!element) return;
+      element.hidden = !shown;
+      if (shown) element.scrollIntoView({ block: "nearest" });
+    };
+    const guide = function (html) {
+      const saved = new DOMParser().parseFromString(html, "text/html");
+      ["barra-pasos", "resumen-paso"].forEach(function (id) {
+        const current = document.getElementById(id);
+        const updated = saved.getElementById(id);
+        if (current && updated) current.replaceWith(updated);
+      });
+    };
     const save = function () {
       clearTimeout(timer);
       if (!pending || inFlight || replacing || conflict) return;
@@ -40,24 +56,27 @@
         .then(function (response) {
           if (response.status === 409) {
             conflict = true;
-            const notice = document.getElementById("conflicto-borrador");
-            if (notice) { notice.hidden = false; notice.scrollIntoView({ block: "nearest" }); }
-            return null;
+            notice("guardado-fallido", false);
+            notice("conflicto-borrador", true);
+            // La guía muestra el borrador como quedó, no lo que esta página no pudo guardar.
+            return response.text().then(function (html) { if (!replacing && !submitting) guide(html); return null; });
           }
+          if (!response.ok) throw new Error("HTTP " + response.status);
           const rev = response.headers.get("X-Pred-Draft-Rev");
-          if (response.ok && rev !== null) revision(rev);
-          return response.ok ? response.text() : null;
+          if (rev !== null) revision(rev);
+          notice("guardado-fallido", false);
+          const shown = document.getElementById("conflicto-borrador");
+          if (shown) shown.hidden = true;
+          return response.text();
         })
         .then(function (html) {
           if (!html || pending || replacing || submitting) return;
-          const saved = new DOMParser().parseFromString(html, "text/html");
-          ["barra-pasos", "resumen-paso"].forEach(function (id) {
-            const current = document.getElementById(id);
-            const updated = saved.getElementById(id);
-            if (current && updated) current.replaceWith(updated);
-          });
+          guide(html);
         })
-        .catch(function () { failed = true; })
+        .catch(function () {
+          failed = true;
+          if (!replacing && !submitting) notice("guardado-fallido", true);
+        })
         .finally(function () {
           inFlight = null;
           // Un envío que falló (la red, o la página que se va) no se repite solo: la repetición

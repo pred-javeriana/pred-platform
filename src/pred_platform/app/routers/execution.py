@@ -889,16 +889,17 @@ def guardar_ajustes(
     paso: salir de Ajustes nunca pierde un valor. Revisar valida igual que «Continuar».
 
     Si la página que envía vio una revisión del borrador más vieja que la vigente (otra pestaña
-    copió, importó o editó después), no se guarda nada: el guardado automático recibe 409 y los
-    demás envíos vuelven a Ajustes con el aviso de que el borrador cambió.
+    copió, importó o editó después), no se guarda nada: la respuesta es 409, Ajustes con el aviso
+    de que el borrador cambió y la marca vigente en ``X-Pred-Draft-Rev``; el guardado automático
+    toma de ella la guía.
     """
     autosave = request.headers.get("X-Pred-Autosave") == "true"
     if not request.url.path.endswith("/comprobar") and is_stale(request, draft_rev):
-        if autosave:
-            return Response(
-                status_code=409, headers={"X-Pred-Draft-Rev": read_draft(request).stamp}
-            )
-        return _render_ajustes(request, repository, conflict=True, status_code=409)
+        # La página que avisa del conflicto recibe también la guía del borrador como quedó: deja
+        # de mostrar Ajustes completo con lo que no se guardó.
+        refused = _render_ajustes(request, repository, conflict=True, status_code=409)
+        refused.headers["X-Pred-Draft-Rev"] = read_draft(request).stamp
+        return refused
     fields = {
         "min_train": min_train,
         "horizon": horizon,

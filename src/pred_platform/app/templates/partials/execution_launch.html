@@ -6,6 +6,9 @@
   {{ alert("El borrador cambió en otra página o pestaña después de abrir esta. No se guardó lo que escribió aquí; recargue para ver lo último.", variant="warning") }}
   <p class="pred-actions">{{ button("Recargar Ajustes", variant="secondary", href="/corridas/nueva/ajustes", icon="i-rotate") }}</p>
 </div>
+<div class="pred-conflict" id="guardado-fallido" hidden>
+  {{ alert("No se pudo guardar el cambio; se intentará de nuevo con el próximo cambio o al salir de esta página.", variant="warning") }}
+</div>
 <section class="pred-panel pred-action-card pred-copy-card" aria-labelledby="titulo-copiar">
   <div>
     <h2 id="titulo-copiar">Partir de una corrida anterior</h2>

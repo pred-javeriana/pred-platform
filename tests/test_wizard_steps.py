@@ -540,6 +540,9 @@ def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env)
     stale = _autosave(client, env, old, seed="99")
     assert stale.status_code == 409 and "set-cookie" not in stale.headers
     assert stale.headers["X-Pred-Draft-Rev"] == _stamp(client)
+    # The refused autosave gets the guide of the draft as it is (Refs #306).
+    assert re.search(r'id="conflicto-borrador"(?![^>]*hidden)', stale.text)
+    assert 'id="barra-pasos"' in stale.text and "semilla 61" in _text(stale.text)
 
     refused = [
         client.post("/corridas/nueva/copiar", data={"copiar": "1", "draft_rev": old}),
