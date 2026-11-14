@@ -619,9 +619,6 @@ _GROUP_LUMPY_CAUSES: dict[str, str] = {
     "Falta la confirmación publicada de lumpy.": (
         "Falta la confirmación publicada de la demanda grumosa."
     ),
-    "La campeona de lumpy no es Fundacional en todas las corridas.": (
-        "La campeona de la demanda grumosa no es Fundacional en todas las evaluaciones."
-    ),
 }
 
 

@@ -60,7 +60,9 @@ def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) 
             try:
                 lumpy = _lumpy(conn, runs)
             except (sqlite3.Error, KeyError, TypeError, ValueError, ArithmeticError) as exc:
-                lumpy = LumpyEvidence((), (), (), (), f"La evidencia lumpy no es válida: {exc}")
+                lumpy = LumpyEvidence(
+                    (), (), (), (), f"La evidencia de la demanda grumosa no es válida: {exc}"
+                )
         result = GroupEvidence(significance, lumpy)
         _cache[key] = result
         if len(_cache) > 4:
@@ -247,6 +249,8 @@ def _lumpy(conn: sqlite3.Connection, runs: Sequence[RunEvidence]) -> LumpyEviden
             date.fromisoformat(origin)
             value = row["valor"]
             if not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
-                raise EvidenceInvalid("Una ventana lumpy tiene RMSE no finito o negativo.")
+                raise EvidenceInvalid(
+                    "Una ventana de la demanda grumosa tiene RMSE no finito o negativo."
+                )
             windows.setdefault((run.run_id, row["sku"], row["candidato_id"]), {})[origin] = value
     return calculate_lumpy(runs, windows, published, champions)

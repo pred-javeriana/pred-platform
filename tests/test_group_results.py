@@ -402,7 +402,8 @@ def test_invalid_lumpy_evidence_preserves_significance(lumpy_db: Path, damage: s
         page = browser.get("/resultados/grupo", params=CHOICES)
         assert page.status_code == 200
         assert "Significancia del grupo por clase" in page.text
-        assert "La evidencia lumpy no es válida:" in page.text
+        assert "La evidencia de la demanda grumosa no es válida:" in page.text
+        assert "lumpy" not in page.text.split('id="lumpy-del-grupo"')[1].split("</section>")[0]
         response = browser.get("/resultados/grupo.json", params=CHOICES)
         assert response.status_code == 200
         assert response.json()["significance"]["complete"] is True
