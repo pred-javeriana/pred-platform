@@ -10,7 +10,9 @@ this document tracks that record and should be updated alongside it, not diverge
 
 The UI is built on a vendored Pico.css base plus a small hand-written brand layer on top —
 palette, typography, and the component patterns below. No CDN, no build toolchain: everything
-ships as local static assets. Keep the brand layer small; lean on Pico's own element defaults
+ships as local static assets. Templates reference them through `static_url`, which appends a
+hash of the file's bytes (`?v=…`), so an update never leaves a browser on a cached older sheet or
+script; never hand-write a `?v=` number. Keep the brand layer small; lean on Pico's own element defaults
 (forms, tables, buttons) wherever the brand layer doesn't need to override them.
 
 Polish is not spent evenly. Concentrate it on the three operational surfaces an evaluator

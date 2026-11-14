@@ -1,10 +1,12 @@
 """Fábrica FastAPI de la plataforma PRED."""
 
+import hashlib
 import logging
 import sqlite3
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -37,6 +39,25 @@ _logger = logging.getLogger("pred_platform.app")
 _APP_DIR = Path(__file__).parent
 _TEMPLATES_DIR = _APP_DIR / "templates"
 _STATIC_DIR = _APP_DIR / "static"
+
+
+def _static_version(path: str) -> str:
+    """La versión de un archivo estático: un resumen de su contenido.
+
+    Cambia con cada byte del archivo, así que una actualización nunca deja al navegador con
+    la hoja o el script de la versión anterior en caché, y nadie tiene que acordarse de subir
+    un número a mano. Se vuelve a calcular solo si cambia la fecha o el tamaño del archivo.
+    """
+    try:
+        stat = (_STATIC_DIR / path).stat()
+    except OSError:
+        return "0"
+    return _content_digest(path, stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=64)
+def _content_digest(path: str, mtime_ns: int, size: int) -> str:
+    return hashlib.sha256((_STATIC_DIR / path).read_bytes()).hexdigest()[:12]
 
 
 class DatabaseUnavailable(RuntimeError):
@@ -117,7 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     application.state.templates = build_templates(
         _TEMPLATES_DIR,
-        lambda path: application.url_path_for("static", path=path),
+        lambda path: f"{application.url_path_for('static', path=path)}?v={_static_version(path)}",
     )
 
     # HEAD también: las sondas de disponibilidad suelen preguntar sin cuerpo.

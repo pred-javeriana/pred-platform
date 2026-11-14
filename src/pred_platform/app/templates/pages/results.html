@@ -5,7 +5,7 @@
 {% from "partials/results_macros.html" import claim %}
 
 {% set step_actions %}{{ button("Grupo de semillas", variant="subtle", href="/resultados/grupo") }}{% include "partials/results_action.html" %}{% endset %}
-{% block head %}<link rel="stylesheet" href="{{ static_url('css/results.css') }}?v=2">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/results.css') }}">{% endblock %}
 {% block content %}
 <div class="pred-results">
   {% if source == "fixture" %}<p class="pred-meta">Datos de prueba</p>{% endif %}
@@ -57,4 +57,4 @@
 </div>
 {% endblock %}
 {% block step_footer %}{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/charts.js') }}?v=1" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/charts.js') }}" defer></script>{% endblock %}
