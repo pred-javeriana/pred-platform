@@ -7,7 +7,7 @@
 {% from "components/terms.html" import when %}
 {% from "components/status.html" import status_indicator %}
 
-{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}?v=3"><script src="{{ static_url('js/wizard_steps.js') }}?v=1" defer></script>{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ static_url('css/wizard_steps.css') }}"><script src="{{ static_url('js/wizard_steps.js') }}" defer></script>{% endblock %}
 
 {# La carga: el formulario y las columnas que espera el motor. upload_first la muestra como la
    acción principal de la página; si no, es una pestaña del detalle. Las columnas se ven abiertas

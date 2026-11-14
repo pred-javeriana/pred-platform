@@ -15,9 +15,11 @@
      el botón Atrás del navegador. «keepalive» deja terminar el envío aunque la página se vaya.
      El borrador vive en la cookie con una revisión que sube en cada escritura. Cada envío lleva la
      que esta página vio (draft_rev) y el servidor lo rechaza (409) si el borrador cambió después,
-     por ejemplo con una copia o una importación hechas en otra pestaña: la página avisa y no
-     reintenta por su cuenta. Un envío a la vez, para que cada uno traiga la revisión del
-     anterior, y Continuar, Atrás o un paso de la barra esperan al que esté en camino. */
+     por ejemplo con una copia o una importación hechas en otra pestaña: la página avisa, muestra
+     en la guía el borrador como quedó y no reintenta por su cuenta. Un envío a la vez, para que
+     cada uno traiga la revisión del anterior, y Continuar, Atrás o un paso de la barra esperan al
+     que esté en camino. Un envío que falla (la red o el servidor) lo dice junto al formulario y
+     queda pendiente para el próximo cambio o la salida; uno que se guarda retira los avisos. */
   const ajustes = document.querySelector("form[data-autosave]");
   if (ajustes) {
     let pending = false;
@@ -27,37 +29,63 @@
     let submitting = false;
     let conflict = false;
     let failed = false;
+    let sent = false;
+    const navigation = performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+    const reloaded = Boolean(navigation && navigation.type === "reload");
     const revision = function (value) {
       document.querySelectorAll("input[name=draft_rev]").forEach(function (input) { input.value = value; });
+    };
+    const notice = function (id, shown) {
+      const element = document.getElementById(id);
+      if (!element) return;
+      element.hidden = !shown;
+      if (shown) element.scrollIntoView({ block: "nearest" });
+    };
+    const guide = function (html) {
+      const saved = new DOMParser().parseFromString(html, "text/html");
+      ["barra-pasos", "resumen-paso"].forEach(function (id) {
+        const current = document.getElementById(id);
+        const updated = saved.getElementById(id);
+        if (current && updated) current.replaceWith(updated);
+      });
     };
     const save = function () {
       clearTimeout(timer);
       if (!pending || inFlight || replacing || conflict) return;
       pending = false;
+      // La página recargada pide su dirección antes de que llegue la respuesta del guardado que
+      // envió la página anterior: puede dibujarse con la revisión de antes. Su primer guardado
+      // recibe entonces 409 sin que otra pestaña haya cambiado nada, y recargar muestra lo último.
+      const first = !sent;
+      sent = true;
       const data = new FormData(ajustes);
       data.set("destino", "ajustes");
       inFlight = fetch(ajustes.action, { method: "POST", body: data, headers: { "X-Pred-Autosave": "true" }, credentials: "same-origin", keepalive: true })
         .then(function (response) {
           if (response.status === 409) {
+            if (first && reloaded) { location.reload(); return null; }
             conflict = true;
-            const notice = document.getElementById("conflicto-borrador");
-            if (notice) { notice.hidden = false; notice.scrollIntoView({ block: "nearest" }); }
-            return null;
+            notice("guardado-fallido", false);
+            notice("conflicto-borrador", true);
+            // La guía muestra el borrador como quedó, no lo que esta página no pudo guardar.
+            return response.text().then(function (html) { if (!replacing && !submitting) guide(html); return null; });
           }
+          if (!response.ok) throw new Error("HTTP " + response.status);
           const rev = response.headers.get("X-Pred-Draft-Rev");
-          if (response.ok && rev !== null) revision(rev);
-          return response.ok ? response.text() : null;
+          if (rev !== null) revision(rev);
+          notice("guardado-fallido", false);
+          const shown = document.getElementById("conflicto-borrador");
+          if (shown) shown.hidden = true;
+          return response.text();
         })
         .then(function (html) {
           if (!html || pending || replacing || submitting) return;
-          const saved = new DOMParser().parseFromString(html, "text/html");
-          ["barra-pasos", "resumen-paso"].forEach(function (id) {
-            const current = document.getElementById(id);
-            const updated = saved.getElementById(id);
-            if (current && updated) current.replaceWith(updated);
-          });
+          guide(html);
         })
-        .catch(function () { failed = true; })
+        .catch(function () {
+          failed = true;
+          if (!replacing && !submitting) notice("guardado-fallido", true);
+        })
         .finally(function () {
           inFlight = null;
           // Un envío que falló (la red, o la página que se va) no se repite solo: la repetición
@@ -92,6 +120,9 @@
       const submitter = event.submitter;
       inFlight.then(function () { form.requestSubmit(submitter); });
     });
+    // «beforeunload» llega antes de que el navegador pida la página siguiente (al recargar, por
+    // ejemplo), así el guardado pendiente suele llegar antes; «pagehide» queda de respaldo.
+    window.addEventListener("beforeunload", save);
     window.addEventListener("pagehide", save);
   }
   document.querySelectorAll("[data-demand-map]").forEach(function (map) {

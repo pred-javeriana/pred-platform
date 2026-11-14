@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.borrador import COOKIE, Draft, save_draft
 from pred_platform.app.configuracion import FORMAT, FORMAT_VERSION
+from pred_platform.app.ejecucion import draft_items
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
@@ -22,6 +23,7 @@ from pred_platform.dal.importacion import import_reports
 from pred_platform.data.fixtures import FixtureRepository
 from tests import formulario_html
 from tests.m3_publicada import publish
+from tests.test_ejecucion import _draft_rev
 from tests.test_ui_review import Markup
 from tests.test_worker import Env, _fixture_id
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
@@ -279,6 +281,27 @@ def test_the_home_groups_the_seeds_that_share_data_and_settings(env: Env) -> Non
     assert text.count("En cola") >= 3
 
 
+def test_the_home_does_not_call_the_span_of_a_resumed_run_its_duration(env: Env) -> None:
+    client = _dal_client(env)
+    launched = client.post(
+        "/ejecucion/lanzar", data={"ingest_id": env.ingest_id, **FORM}, follow_redirects=False
+    )
+    assert launched.status_code == 303
+    # Stopped and resumed: the span from the first start includes the time it stood still.
+    with sqlite3.connect(env.db) as conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'completada', intento = 2, "
+            "iniciada_en = '2026-11-01T12:00:00+00:00', "
+            "finalizada_en = '2026-11-01T15:00:00+00:00'"
+        )
+    text = _main(client.get("/").text)
+    assert "terminó 3 h 00 min después de iniciar" in text
+    assert "duró" not in text
+    execution = _text(client.get("/corridas/1/ejecucion").text)
+    assert "Terminó 3 h 00 min después del primer inicio." in execution
+    assert "Terminó en 3 h" not in execution
+
+
 # ---------------------------------------------------------------- una corrida lanzada
 def test_a_launched_run_keeps_datos_ajustes_and_revisar_as_a_record() -> None:
     client = _fixture_client()
@@ -441,7 +464,7 @@ def test_choosing_settings_and_launching_walks_the_draft_through_the_steps(env: 
 
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "17"},
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "17", "draft_rev": _draft_rev(client)},
         follow_redirects=False,
     )
     assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/revisar")
@@ -467,8 +490,9 @@ def test_choosing_settings_and_launching_walks_the_draft_through_the_steps(env: 
         303,
         "/corridas/1/ejecucion?aviso=en_cola",
     )
-    # Launching ends the draft: a new run starts again from Datos.
-    assert f'{COOKIE}=""' in launched.headers["set-cookie"]
+    # Launching ends the draft (an empty one that keeps counting revisions): a new run starts
+    # again from Datos.
+    assert f"{COOKIE}=" in launched.headers["set-cookie"]
     assert "Primero elija los datos" in client.get("/corridas/nueva/revisar").text
     page = client.get(launched.headers["location"]).text
     assert "<title>Ejecución · Corrida #1 · PRED</title>" in page
@@ -527,7 +551,13 @@ def test_leaving_ajustes_by_atras_keeps_what_was_typed(env: Env) -> None:
 
     left = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "149", "destino": "datos"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "seed": "149",
+            "destino": "datos",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
 
@@ -545,7 +575,13 @@ def test_a_value_left_unfinished_is_kept_but_revisar_still_checks_it(env: Env) -
     _choose(client, env.ingest_id)
     left = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "datos"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "horizon": "0",
+            "destino": "datos",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
     assert left.headers["location"] == "/corridas/nueva/datos"
@@ -558,7 +594,13 @@ def test_a_value_left_unfinished_is_kept_but_revisar_still_checks_it(env: Env) -
     # The rail's Revisar link checks like «Continuar»: an error stays in Ajustes, unsaved.
     to_revisar = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "revisar"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "horizon": "0",
+            "destino": "revisar",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
     assert to_revisar.status_code == 200 and "is-error" in to_revisar.text
@@ -661,9 +703,13 @@ def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
     client = _dal_client(env)
     client.cookies.set(COOKIE, _draft_cookie(SOME_INGEST))
 
-    ajustes = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    linked = client.get(
+        f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}", follow_redirects=False
+    )
 
-    assert COOKIE in ajustes.headers["set-cookie"]
+    assert (linked.status_code, linked.headers["location"]) == (303, "/corridas/nueva/ajustes")
+    assert COOKIE in linked.headers["set-cookie"]
+    ajustes = client.get(linked.headers["location"])
     assert formulario_html.submit(ajustes.text, _AJUSTES_FORM)["ingest_id"] == [env.ingest_id]
     # Datos, the rail and Revisar read the file the page shows, not the earlier draft.
     assert [state for state, _ in _rail(ajustes.text)][0] == "done"
@@ -693,7 +739,10 @@ def test_a_new_file_requires_reviewing_settings_again(env: Env) -> None:
     assert import_reports(env.db, root).ok
     client = _dal_client(env)
     _choose(client, env.ingest_id)
-    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM})
+    client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "draft_rev": _draft_rev(client)},
+    )
     assert _rail(client.get("/corridas/nueva/datos").text)[1][0] == "done"
     # The same file keeps completion; another accepted file requires a fresh review.
     same = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text
@@ -710,10 +759,19 @@ def test_a_new_file_requires_reviewing_settings_again(env: Env) -> None:
 def test_saving_each_edit_keeps_the_new_value_for_revisar_without_validating(env: Env) -> None:
     client = _dal_client(env)
     _choose(client, env.ingest_id)
-    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM, "seed": "64"})
+    client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "64", "draft_rev": _draft_rev(client)},
+    )
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "99", "destino": "ajustes"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "seed": "99",
+            "destino": "ajustes",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
     assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/ajustes")
@@ -723,7 +781,13 @@ def test_saving_each_edit_keeps_the_new_value_for_revisar_without_validating(env
     )
     client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "ajustes"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "horizon": "0",
+            "destino": "ajustes",
+            "draft_rev": _draft_rev(client),
+        },
     )
     assert "Estos ajustes no se pueden lanzar" in client.get("/corridas/nueva/revisar").text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
@@ -766,8 +830,14 @@ def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
     imported = client.post(
         "/ejecucion/configuracion",
         files={"archivo": ("c.json", json.dumps(document).encode(), "application/json")},
+        follow_redirects=False,
     )
-    assert imported.status_code == 200 and COOKIE in imported.headers["set-cookie"]
+    # Saved, then back to Ajustes with a 303: reloading that page does not import again.
+    assert (imported.status_code, imported.headers["location"]) == (
+        303,
+        "/corridas/nueva/ajustes?aviso=importado",
+    )
+    assert COOKIE in imported.headers["set-cookie"]
 
     # Leaving Ajustes and coming back keeps the import; Revisar lists it.
     client.get("/corridas/nueva/datos")
@@ -945,7 +1015,13 @@ def test_the_rail_says_what_the_saved_draft_holds(env: Env) -> None:
 
     client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "17", "families": ["classical", "ml"]},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "seed": "17",
+            "families": ["classical", "ml"],
+            "draft_rev": _draft_rev(client),
+        },
     )
 
     for path in ("/corridas/nueva/ajustes", "/corridas/nueva/revisar", "/corridas/nueva/datos"):
@@ -1052,3 +1128,23 @@ def test_the_scenario_errores_has_the_selections_of_its_current_run() -> None:
     assert "No hay selecciones para la ejecución" not in sku.text
     assert "FIL-0001" in sku.text
     assert client.get("/corridas/1/resultados?vista=sku").status_code == 200
+
+
+def test_review_says_one_day_in_singular(env: Env) -> None:
+    """Revisar y lanzar dice «1 día», no «1 días», para el horizonte y el paso (#328)."""
+    client = _dal_client(env)
+    values = {**FORM, "horizon": "1", "step": "1", "min_train": "40"}
+    saved = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **values},
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    text = _main(client.get("/corridas/nueva/revisar").text)
+    assert "1 días" not in text
+    assert "40 días como mínimo, para entrenar 1 día de pronóstico" in text
+    assert "al menos 40 días y pronostica el día siguiente. La prueba se repite cada día." in text
+    # The rows of a launched run, and of a draft, name the setting in days with its number.
+    rows = dict(draft_items(values))
+    assert (rows["Horizonte"], rows["Paso entre ventanas"]) == ("1 día", "1 día")
+    assert rows["Mínimo de entrenamiento"] == "40 días"

@@ -54,7 +54,7 @@
       <li>
         <div>
           <p class="pred-runs__name">#{{ run.id }} · semilla {{ run.seed }}</p>
-          <p class="pred-runs__meta">{% if run.file_name %}{{ run.file_name }} · {% endif %}{% if run.finished %}{{ when(run.iniciada_en) }}{% if run.duration %} · duró {{ run.duration }}{% endif %}{% elif run.iniciada_en %}lanzada {{ when(run.iniciada_en) }}{% else %}en cola, todavía sin empezar{% endif %}</p>
+          <p class="pred-runs__meta">{% if run.file_name %}{{ run.file_name }} · {% endif %}{% if run.finished %}{{ when(run.iniciada_en) }}{% if run.duration %} · terminó {{ run.duration }} después de iniciar{% endif %}{% elif run.iniciada_en %}lanzada {{ when(run.iniciada_en) }}{% else %}en cola, todavía sin empezar{% endif %}</p>
           <span class="pred-minirail" aria-hidden="true">{% for index in range(5) %}<i class="{{ 'is-done' if index < row.done else ('is-current' ~ (' is-live' if row.live else '') if index == row.current else '') }}"></i>{% endfor %}</span>
         </div>
         <div>

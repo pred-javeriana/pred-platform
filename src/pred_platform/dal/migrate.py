@@ -25,6 +25,8 @@ from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
+from pred_platform.dal.lectura import readonly_uri
+
 _NAME = re.compile(r"^(\d{4})_([a-z0-9_]+)\.sql$")
 _COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 # The runner owns the transaction, the version and the foreign key switch.
@@ -331,7 +333,7 @@ def status(db_path: str | Path, migrations: Sequence[Migration] | None = None) -
     path = Path(db_path)
     if not path.is_file():
         return SchemaStatus(False, 0, latest, tuple(m.version for m in available))
-    with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
+    with closing(sqlite3.connect(readonly_uri(path), uri=True)) as conn:
         current = _user_version(conn)
     return SchemaStatus(
         True, current, latest, tuple(m.version for m in available if m.version > current)

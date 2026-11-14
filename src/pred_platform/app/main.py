@@ -1,10 +1,12 @@
 """Fábrica FastAPI de la plataforma PRED."""
 
+import hashlib
 import logging
 import sqlite3
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -26,7 +28,8 @@ from pred_platform.app.routers import (
 from pred_platform.app.templating import build_templates
 from pred_platform.config import Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
-from pred_platform.dal.migrate import migrate
+from pred_platform.dal.lectura import immutable_wal_copy
+from pred_platform.dal.migrate import SchemaTooNew, migrate, status
 from pred_platform.data.factory import build_repository
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import build_run_control
@@ -39,11 +42,51 @@ _TEMPLATES_DIR = _APP_DIR / "templates"
 _STATIC_DIR = _APP_DIR / "static"
 
 
+def _static_version(path: str) -> str:
+    """La versión de un archivo estático: un resumen de su contenido.
+
+    Cambia con cada byte del archivo, así que una actualización nunca deja al navegador con
+    la hoja o el script de la versión anterior en caché, y nadie tiene que acordarse de subir
+    un número a mano. Se vuelve a calcular solo si cambia la fecha o el tamaño del archivo.
+    """
+    try:
+        stat = (_STATIC_DIR / path).stat()
+    except OSError:
+        return "0"
+    return _content_digest(path, stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=64)
+def _content_digest(path: str, mtime_ns: int, size: int) -> str:
+    return hashlib.sha256((_STATIC_DIR / path).read_bytes()).hexdigest()[:12]
+
+
 class DatabaseUnavailable(RuntimeError):
     """The database file cannot be opened, so the application does not start."""
 
 
-def _migrate(settings: Settings) -> None:
+def _migrate(settings: Settings) -> bool:
+    """Bring the database to the latest schema; ``True`` for a read-only copy served as it is.
+
+    A consolidated WAL copy in a folder that cannot be written (no ``-wal`` or ``-shm`` beside
+    it) cannot be migrated, but SQLite reads it as ``immutable``: at the latest schema it is
+    served without any write at startup.
+    """
+    if immutable_wal_copy(settings.db_path):
+        report = status(settings.db_path)
+        if report.current > report.latest:
+            raise SchemaTooNew(report.current, report.latest)
+        if not report.up_to_date:
+            raise DatabaseUnavailable(
+                f"La copia de solo lectura {settings.db_path} está en la versión "
+                f"{report.current} del esquema y esta plataforma necesita la {report.latest}. "
+                "Una copia de solo lectura no se puede migrar: migre la base original y vuelva a "
+                "copiarla (README.md, «Serving a read-only copy»)."
+            )
+        _logger.info(
+            "Copia de solo lectura en WAL sin -wal ni -shm: se sirve sin migrar ni importar."
+        )
+        return True
     try:
         migrate(settings.db_path)
     except sqlite3.OperationalError as exc:
@@ -60,6 +103,7 @@ def _migrate(settings: Settings) -> None:
             "solo lectura, pásela antes a PRAGMA journal_mode=DELETE (README.md, «Serving a "
             "read-only copy»)."
         ) from None
+    return False
 
 
 def _import_engine_reports(settings: Settings) -> None:
@@ -85,20 +129,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Solo el DAL real tiene esquema que mantener; los fixtures no tocan el disco.
-        if active.data_source == "dal":
-            _migrate(active)
+        if active.data_source == "dal" and not _migrate(active):
             _import_engine_reports(active)
         stop = threading.Event()
         thread: threading.Thread | None = None
+        worker: Worker | None = None
         if active.data_source == "dal" and active.worker == "embedded":
             # El worker corre como hilo de la app; el mismo código se puede correr aparte con
             # `python -m pred_platform.worker`.
+            worker = Worker(active)
             thread = threading.Thread(
-                target=Worker(active).run_forever, args=(stop,), name="pred-worker", daemon=True
+                target=worker.run_forever, args=(stop,), name="pred-worker", daemon=True
             )
             thread.start()
-        # The pages ask this thread whether the embedded worker still follows the queue.
+        # The pages ask this thread whether the embedded worker still follows the queue, and the
+        # worker whether it is held back by a lock it cannot open.
         app.state.worker_thread = thread
+        app.state.worker = worker
         try:
             yield
         finally:
@@ -117,7 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     application.state.templates = build_templates(
         _TEMPLATES_DIR,
-        lambda path: application.url_path_for("static", path=path),
+        lambda path: f"{application.url_path_for('static', path=path)}?v={_static_version(path)}",
     )
 
     # HEAD también: las sondas de disponibilidad suelen preguntar sin cuerpo.

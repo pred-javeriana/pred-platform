@@ -31,6 +31,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "abbreviate_id",
         "aggregation_label",
         "closing_period",
+        "count_noun",
         "describe_status",
         "evaluation_state_label",
         "exact_when",

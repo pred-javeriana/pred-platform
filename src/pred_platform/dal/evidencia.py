@@ -11,7 +11,9 @@ run-level rows carry ``sku: None``. ``data/dal_m3.py`` validates them as v2 docu
 order come from ``data/m3_query.M3Query`` and become SQL here, so lists are filtered, sorted and
 paged by SQLite.
 
-A missing database, or one that predates M3, reads as "no such run".
+A missing database, or one that predates M3, reads as "no such run". A run whose stored protocol
+or creation time cannot be read raises ``ContractInvalid``, like any other row that does not
+satisfy the contract, so a page handles it as a read problem instead of failing.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from pred_platform.contract.errors import ContractInvalid
 from pred_platform.dal.lectura import _open_readonly, run_number
 from pred_platform.data.m3_query import M3Query
 
@@ -240,17 +243,49 @@ def _run_select(conn: sqlite3.Connection) -> str:
     )
 
 
-def _policy(protocolo: str | None) -> dict[str, Any] | None:
-    """The frozen selection policy of the run's protocol (``protocolo.politica``)."""
+def _protocol(run_id: str, protocolo: str | None) -> dict[str, Any] | None:
+    """The run's stored protocol as a JSON object; ``None`` when the run has none."""
     if protocolo is None:
         return None
-    politica = json.loads(protocolo).get("politica")
+    try:
+        value = json.loads(protocolo)
+    except (TypeError, ValueError) as exc:
+        raise ContractInvalid(
+            f"M3Run: el protocolo guardado de {run_id} no es JSON válido: {exc}",
+            field="protocolo",
+        ) from exc
+    if not isinstance(value, dict):
+        raise ContractInvalid(
+            f"M3Run: el protocolo guardado de {run_id} no es un objeto JSON.", field="protocolo"
+        )
+    return value
+
+
+def _created(run_id: str, creado_en: str | None) -> datetime | None:
+    """``m3_corridas.creado_en`` as a UTC time; a stored value that is not one is unreadable."""
+    try:
+        return _utc(creado_en)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ContractInvalid(
+            f"M3Run: la fecha de creación guardada de {run_id} no es una fecha: {creado_en!r}",
+            field="creado_en",
+        ) from exc
+
+
+def _policy(run_id: str, protocolo: str | None) -> dict[str, Any] | None:
+    """The frozen selection policy of the run's protocol (``protocolo.politica``)."""
+    protocol = _protocol(run_id, protocolo)
+    if protocol is None:
+        return None
+    politica = protocol.get("politica")
     if not isinstance(politica, dict):
         return None
     return {key: politica.get(key) for key in _POLICY_KEYS}
 
 
-def _publishes_test_block(conn: sqlite3.Connection, protocolo: str | None, table: str) -> bool:
+def _publishes_test_block(
+    conn: sqlite3.Connection, run_id: str, protocolo: str | None, table: str
+) -> bool:
     """Whether M3 published the run's migration-0011 rows of ``table``.
 
     The engine fixes them with the protocol that carries the reserve blocks (``bloques``, engine
@@ -259,7 +294,7 @@ def _publishes_test_block(conn: sqlite3.Connection, protocolo: str | None, table
     """
     if protocolo is None or not _has(conn, table):
         return False
-    return "bloques" in json.loads(protocolo)
+    return "bloques" in (_protocol(run_id, protocolo) or {})
 
 
 def _run(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
@@ -282,8 +317,8 @@ def _run(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         "origen_declarado": bool(row["origen_declarado"]),
         "estado": row["estado"],
         "causa_rechazo": row["causa_rechazo"],
-        "creado_en": _utc(row["creado_en"]),
-        "policy": _policy(row["protocolo"]),
+        "creado_en": _created(row["run_id"], row["creado_en"]),
+        "policy": _policy(row["run_id"], row["protocolo"]),
         "publicadas_misma_identidad": published,
         "aviso": "varias_publicadas_misma_identidad" if len(published) > 1 else None,
     }
@@ -358,7 +393,7 @@ def reserve_blocks(db_path: Path, run_id: str) -> dict[str, Any] | None:
         ).fetchone()
     if row is None or row["protocolo"] is None:
         return None
-    bloques = json.loads(row["protocolo"]).get("bloques")
+    bloques = (_protocol(run_id, row["protocolo"]) or {}).get("bloques")
     return bloques if isinstance(bloques, dict) else None
 
 
@@ -376,7 +411,7 @@ def confirmation(db_path: Path, run_id: str) -> dict[str, Any] | None:
         if (
             row is None
             or row["estado"] != "PUBLICADA"
-            or not _publishes_test_block(conn, row["protocolo"], "m3_confirmaciones")
+            or not _publishes_test_block(conn, run_id, row["protocolo"], "m3_confirmaciones")
         ):
             return None
 
@@ -484,7 +519,7 @@ def read_published(db_path: Path, run_id: str, kind: Kind, query: M3Query) -> Pu
                             (run_id,),
                         )
                     ]
-                    if _publishes_test_block(conn, row["protocolo"], "m3_exclusiones"):
+                    if _publishes_test_block(conn, run_id, row["protocolo"], "m3_exclusiones"):
                         eligibility = [
                             dict(item)
                             for item in conn.execute(

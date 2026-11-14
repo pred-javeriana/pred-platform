@@ -8,7 +8,7 @@ resultados: una corrida tiene resultados cuando su evaluación final está publi
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -23,7 +23,12 @@ from pred_platform.app.presentation import (
     format_duration,
     stage_label,
 )
-from pred_platform.app.resultados_m3 import publication_time, published_executions, run_outcome
+from pred_platform.app.resultados_m3 import (
+    publication_time,
+    published_evaluation,
+    published_executions,
+    run_outcome,
+)
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
 from pred_platform.contract.models import IngestSummary, RunStatus
 from pred_platform.dal.lectura import run_number
@@ -46,7 +51,8 @@ def ingests_by_id(repository: DataRepository) -> dict[str, IngestSummary]:
 
 
 def published_runs(repository: DataRepository) -> frozenset[str]:
-    """Las corridas con su evaluación final publicada."""
+    """Las corridas con su evaluación final publicada (la regla de ``published_evaluation``,
+    aplicada a todas a la vez)."""
     return frozenset(c.ejecucion_id for c in published_executions(repository, limit=None))
 
 
@@ -68,7 +74,7 @@ def _facts(
     repository: DataRepository,
     status: RunStatus,
     ingests: dict[str, IngestSummary],
-    published: frozenset[str],
+    published: bool,
 ) -> RunFacts:
     run = status.ejecucion
     assert run is not None
@@ -77,12 +83,10 @@ def _facts(
         status,
         file_name=ingest.name if ingest else None,
         n_skus=ingest.n_skus if ingest else None,
-        published=run.id in published,
+        published=published,
         resumable=run_resumable(repository, status),
         # Solo una corrida publicada lee su registro de etapas: la portada no abre los demás.
-        publicada_en=publication_time(repository.get_stage_timings(run.id))
-        if run.id in published
-        else None,
+        publicada_en=publication_time(repository.get_stage_timings(run.id)) if published else None,
     )
 
 
@@ -118,27 +122,46 @@ def facts_from_status(
 
 
 def run_facts(
-    repository: DataRepository, corrida: str, published: frozenset[str] | None = None
+    repository: DataRepository,
+    corrida: str,
+    published: frozenset[str] | None = None,
+    status: RunStatus | None = None,
 ) -> RunFacts | None:
     """Una corrida lanzada por su número; ``None`` si no existe o no se pudo leer. ``published``
-    son las corridas publicadas si quien llama ya las leyó."""
+    son las corridas publicadas si quien llama ya las leyó; sin ellas, se pregunta por esta
+    corrida con ``published_evaluation``, la misma regla que usa el sondeo de Ejecución.
+    ``status`` es el estado de la corrida (``size=1``) si quien llama ya lo leyó."""
     if run_number(corrida) is None:
         return None
-    status = _status(repository, corrida)
-    if status is None:
+    if status is None or status.ejecucion is None or status.ejecucion.id != corrida:
+        status = _status(repository, corrida)
+    if status is None or status.ejecucion is None:
         return None
-    if published is None:
-        published = published_runs(repository)
-    return _facts(repository, status, ingests_by_id(repository), published)
+    run_id = status.ejecucion.id
+    is_published = (
+        run_id in published
+        if published is not None
+        else published_evaluation(repository, run_id) is not None
+    )
+    return _facts(repository, status, ingests_by_id(repository), is_published)
 
 
 def draft_facts(
-    repository: DataRepository, draft: Draft, ingest_id: str | None = None
+    repository: DataRepository,
+    draft: Draft,
+    ingest_id: str | None = None,
+    ingests: Mapping[str, IngestSummary] | None = None,
 ) -> DraftFacts:
     """El borrador para la barra de pasos; ``ingest_id`` es el archivo que muestra la página si
-    no es el del borrador (por ejemplo, el que llega en ``?ingest_id=``)."""
+    no es el del borrador (por ejemplo, el que llega en ``?ingest_id=``). ``ingests`` son las
+    ingestas que la página ya leyó: si nombran el archivo elegido, no se lee la lista otra vez."""
     chosen = ingest_id or draft.ingest_id
-    ingest = ingests_by_id(repository).get(chosen or "") if chosen else None
+    if not chosen:
+        ingest = None
+    elif ingests is not None and chosen in ingests:
+        ingest = ingests[chosen]
+    else:
+        ingest = ingests_by_id(repository).get(chosen)
     return DraftFacts(
         file_name=ingest.name if ingest else None,
         n_skus=ingest.n_skus if ingest else None,
@@ -294,7 +317,9 @@ def _failure_outcome(repository: DataRepository, status: RunStatus, facts: RunFa
         return None
     run, progress = status.ejecucion, status.progress
     assert run is not None
-    return run_outcome(repository, run, progress.tareas_por_estado if progress else None)
+    return run_outcome(
+        repository, run, progress.tareas_por_estado if progress else None, published=True
+    )
 
 
 def home(repository: DataRepository, now: datetime | None = None) -> Home:
@@ -309,7 +334,7 @@ def home(repository: DataRepository, now: datetime | None = None) -> Home:
     ingests = ingests_by_id(repository)
     published = published_runs(repository)
     facts = {
-        status.ejecucion.id: _facts(repository, status, ingests, published)
+        status.ejecucion.id: _facts(repository, status, ingests, status.ejecucion.id in published)
         for status in statuses
         if status.ejecucion is not None
     }

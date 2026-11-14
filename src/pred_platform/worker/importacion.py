@@ -30,6 +30,24 @@ _ENGINE_STAGES = tuple(
 )
 
 
+# The exit codes with which the engine reports a published run (``_exit_code`` in its cli.py):
+# 0 complete, 7 blocked before L4, 8 with failures.
+PUBLISHED_EXIT_CODES = (0, 7, 8)
+
+
+def final_result_rejected(error: dict[str, Any] | None, returncode: int | None) -> bool:
+    """Whether ``finalize`` stopped the run, with ``error``, by rejecting its final result.
+
+    A ``corrida.json`` that breaks the contract is always a rejected result. A missing one is
+    only when the engine exited reporting a published run: an engine that crashed or was killed
+    without publishing is an engine failure, recorded as such.
+    """
+    code = (error or {}).get("code")
+    return code == "platform.contract_invalid" or (
+        code == "platform.artifact_missing" and returncode in PUBLISHED_EXIT_CODES
+    )
+
+
 def _read_units(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []

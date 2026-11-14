@@ -17,13 +17,23 @@ real engine, its heavy dependencies or its running time. The scenario comes from
     slow_ok       like ok but each unit takes ~0.3 s, so a poller can see it in flight
     slow_m3       L2 and L3 complete, M3 stores the first SKU, then waits until it is killed
     m3_ok         like ok, but M3 is published (exit 0) without L4 events, as a resume reusing it
+    publishes_before_exit
+                  like ok, but records the run in the platform database as
+                  ``FAKE_ENGINE_TERMINAL_STATE`` (default ``completada``), as M3 does, then waits
+                  ``FAKE_ENGINE_PUBLISH_EXIT_DELAY`` seconds (default 0.7) before its final files
     m3_published_then_malformed
                   like m3_ok, but records the run as completada in the platform database before
                   its final files, as M3 does, and writes a progress record without keys after
                   run_finished
     malformed_progress / malformed_after_publication
                   writes a progress record without keys, before or after publishing its state
+    malformed_before_run_finished
+                  like ok, but after its final files writes a progress record without keys
+                  instead of run_finished, then waits until it is killed
     future_schema writes a progress stream of an unsupported major version
+    future_schema_after_publication
+                  records the run as completada in the platform database, as M3 does, then
+                  writes a progress stream of an unsupported major version and waits
     incompatible  refuses the run_id (its stored identity differs) without writing anything
 
 ``classify --csv <file> --data-root <root> [--confirm-overwrite]`` plays the ingestion the browser
@@ -32,8 +42,14 @@ by a marker in the file's content: ``BADHEADER`` (rejected), ``BADVALUE`` (faile
 (needs confirmation, exit 7, accepted keeping both files once confirmed), ``BOOM`` (dies without
 a report) and ``SLOW`` (hangs); anything else is accepted.
 
+``FAKE_ENGINE_IGNORE_SIGTERM=1`` ignores SIGTERM, like an engine that outlives the signal the
+kernel sends it on Linux when its worker dies; the platform then stops it with SIGKILL.
+
 ``FAKE_ENGINE_UNITS=bad_line`` ends ``unidades.jsonl`` with a unit without its keys, so the
 platform cannot import the final files.
+
+``FAKE_ENGINE_SUMMARY=truncated`` writes only the first half of ``corrida.json``, and ``missing``
+writes none, while the engine still exits as if it had published the run.
 
 ``FAKE_ENGINE_SELECTION`` shapes ``seleccion.jsonl`` (contract section 20): ``ok`` (default),
 ``none`` (an engine that predates it), ``future`` (an unsupported major version) or ``bad_line``
@@ -405,6 +421,15 @@ def main() -> int:
         print("error: run_id incompatible con la entrada o configuracion previa", file=sys.stderr)
         return 1
     stream = Stream(folder / "progreso.jsonl")
+    if scenario == "future_schema_after_publication":
+        # M3 records the run as published before the stream reveals its unsupported version.
+        with sqlite3.connect(os.environ["PRED_DB_PATH"]) as conn:
+            conn.execute(
+                "UPDATE ejecuciones SET estado='completada' WHERE run_id=?", (args.run_id,)
+            )
+        stream.emit("run_started", schema="pred-engine.progreso/2", run_id=args.run_id, attempt=1)
+        time.sleep(60)
+        return 0
     attempt = (
         1 + sum(1 for line in stream.path.read_text().splitlines() if '"run_started"' in line)
         if stream.path.exists()
@@ -611,7 +636,17 @@ def main() -> int:
     corrida = {"schema": "pred-engine.corrida/1", "run_id": args.run_id, "summary": summary}
     if "FAKE_ENGINE_EVALUATION" in os.environ:
         corrida["evaluation"] = json.loads(os.environ["FAKE_ENGINE_EVALUATION"])
-    (folder / "corrida.json").write_text(json.dumps(corrida), encoding="utf-8")
+    shape = os.environ.get("FAKE_ENGINE_SUMMARY", "ok")
+    if shape != "missing":
+        text = json.dumps(corrida)
+        (folder / "corrida.json").write_text(
+            text[: len(text) // 2] if shape == "truncated" else text, encoding="utf-8"
+        )
+    if scenario == "malformed_before_run_finished":
+        # Los archivos finales ya existen, pero el motor sigue vivo y aún no emite run_finished.
+        stream.emit("unit_started", stage="L4")
+        time.sleep(60)
+        return 0
     failed = scenario in ("stage_fails", "l4_fails")
     failed_stage = "L3" if scenario == "stage_fails" else "L4" if scenario == "l4_fails" else None
     stream.emit(

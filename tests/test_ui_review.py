@@ -505,3 +505,16 @@ def test_result_navigation_remains_links_and_preserves_run() -> None:
     hrefs = [unescape(a.get("href") or "") for a in Markup(html).select("a")]
     for chapter in ("resumen", "p1", "p2", "estabilidad", "productos"):
         assert any(h.startswith(f"/corridas/1/resultados/{chapter}") for h in hrefs)
+
+
+def test_issue_327_seed_selectors_grow_until_the_date_fits() -> None:
+    template = (TEMPLATES / "partials/results_group.html").read_text(encoding="utf-8")
+    assert template.count("pred-filters--seeds") == 1
+    css = (TEMPLATES.parent / "static/css/pred.css").read_text(encoding="utf-8")
+    field = css.split(".pred-filters--seeds .pred-field {", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 15rem" in field and "max-width: none" in field
+    button = css.split(".pred-filters--seeds > .pred-btn {", 1)[1].split("}", 1)[0]
+    assert "flex: 0 0 auto" in button
+    # In a chapter the bar is not the four equal columns of the other filter bars.
+    results = (TEMPLATES.parent / "static/css/results.css").read_text(encoding="utf-8")
+    assert ".pred-results .pred-filters--seeds { display: flex; flex-wrap: wrap; }" in results

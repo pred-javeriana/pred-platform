@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import replace
 from typing import Any
@@ -136,6 +137,10 @@ class SeriesRepository(FixtureRepository):
         raise AssertionError("El gráfico no necesita métricas ni clasificaciones")
 
 
+# Las marcas de las series, sin la capa de lectura con puntero.
+_SERIES = "svg:g[@class!='pred-forecast__reading']"
+
+
 def _series(repo: SeriesRepository):
     return champion_forecast(repo, decision(repo, "m2-ejemplo", [SKU], RUN), SKU)
 
@@ -190,8 +195,8 @@ def test_ceros_en_ambas_series_y_un_solo_punto_siguen_disponibles() -> None:
     series = _series(repo)
     assert series.problem is None
     root = ET.fromstring(champion_forecast_svg(series))
-    assert len(root.findall(".//svg:circle", NS)) == 1
-    assert len(root.findall(".//svg:g/svg:rect", NS)) == 1
+    assert len(root.findall(f"{_SERIES}/svg:circle", NS)) == 1
+    assert len(root.findall(f"{_SERIES}/svg:rect", NS)) == 1
 
 
 @pytest.mark.parametrize("family", ["classical", "ml", "dl", "foundation", "seasonal_naive"])
@@ -222,8 +227,8 @@ def test_los_nulos_cortan_ambas_lineas_y_el_cero_conserva_su_marca() -> None:
         path = group.find("svg:path", NS)
         assert path is not None and path.attrib["d"].count("M") == 2
         assert path.attrib["d"].count("L") == 1
-    observed = root.findall(".//svg:circle", NS)
-    forecast = root.findall(".//svg:g[@class='pred-forecast__forecast']/svg:rect", NS)
+    observed = root.findall("svg:g[@class='pred-forecast__observed']/svg:circle", NS)
+    forecast = root.findall("svg:g[@class='pred-forecast__forecast']/svg:rect", NS)
     assert len(observed) == len(forecast) == 3
     zero = next(
         p for p in observed if p.findtext("svg:title", namespaces=NS) == "3 jul 2026: 0,000"
@@ -377,8 +382,11 @@ def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:
         "Prueba final",
     ):
         assert text in desc
-    assert "<script>" not in svg and "tabindex" not in svg
-    assert root.findall(".//svg:circle", NS) and root.findall(".//svg:g/svg:rect", NS)
+    assert "<script>" not in svg
+    # Solo la capa de lectura recibe el foco: las marcas de las series no son paradas de Tab.
+    focusable = [e for e in root.iter() if "tabindex" in e.attrib]
+    assert [e.attrib["class"] for e in focusable] == ["pred-forecast__reader"]
+    assert root.findall(f"{_SERIES}/svg:circle", NS) and root.findall(f"{_SERIES}/svg:rect", NS)
     client, _ = _client(repo=SeriesRepository())
     page = client.get(f"/resultados/sku/{SKU}").text
     assert "Del 1 jul 2026 al 4 jul 2026" in _text(page)
@@ -441,3 +449,29 @@ def test_bandas_svg_conservan_fechas_objetivo_ante_cambios_metodologicos() -> No
         svg = champion_forecast_svg(champion_forecast(repo, changed, SKU))
         assert bands(svg) == expected
         assert 'class="pred-forecast__embargo"' not in svg
+
+
+def test_el_pronostico_se_lee_con_puntero_y_flechas() -> None:
+    """El SVG emite el contrato data-pointer-points de charts.js y la página lo carga (#300)."""
+    root = ET.fromstring(champion_forecast_svg(_series(SeriesRepository())))
+    reader = root.find(".//svg:rect[@class='pred-forecast__reader']", NS)
+    assert reader is not None and reader.attrib["tabindex"] == "0"
+    assert "flechas" in reader.attrib["aria-label"]
+    points = json.loads(reader.attrib["data-pointer-points"])
+    # Una lectura por fecha, en orden, con el texto ya escrito y sin inventar el valor ausente.
+    assert [p["tip"] for p in points] == ["1 jul 2026", "2 jul 2026", "3 jul 2026", "4 jul 2026"]
+    assert [p["x"] for p in points] == sorted(p["x"] for p in points)
+    observed = root.findall("svg:g[@class='pred-forecast__observed']/svg:circle", NS)
+    assert [p["y"] for p in points if p["y"] is not None] == [
+        float(c.attrib["cy"]) for c in observed
+    ]
+    missing = [p for p in points if p["y"] is None]
+    assert missing and all("Observada: sin valor" in p["label"] for p in missing)
+    assert all(
+        p["label"].startswith("Observada: ") and "Pronóstico: " in p["label"] for p in points
+    )
+    marks = {m.attrib["data-pointer-mark"] for m in root.iter() if "data-pointer-mark" in m.attrib}
+    assert marks == {"line", "observed", "forecast"}
+    client, _ = _client(repo=SeriesRepository())
+    page = client.get(f"/resultados/sku/{SKU}").text
+    assert re.search(r'<script src="/static/js/charts\.js\?v=\w+" defer></script>', page)

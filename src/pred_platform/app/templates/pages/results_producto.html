@@ -24,14 +24,7 @@
 
   {% include "partials/results_context.html" %}
 
-  <nav class="wz-chapters" aria-label="Capítulos de resultados">
-    <a href="/corridas/{{ reference }}/resultados?vista=resumen">Resumen</a>
-    <a href="/corridas/{{ reference }}/resultados?vista=clase"><span class="wz-ch-n">1</span>¿Qué familia gana?</a>
-    <a href="/corridas/{{ reference }}/resultados?vista=errores"><span class="wz-ch-n">2</span>¿Se verifica producto a producto?</a>
-    <a href="/corridas/{{ reference }}/resultados?vista=estabilidad"><span class="wz-ch-n">3</span>¿Se sostiene con otra semilla?</a>
-    <a href="{{ list_href }}" aria-current="page">Productos</a>
-    <a href="/corridas/{{ reference }}/resultados?vista=exportar">Exportar y reproducir</a>
-  </nav>
+  {% include "partials/results_chapters.html" %}
 
   {% if detail_error %}
     {{ unavailable_state(
@@ -448,3 +441,4 @@
 {% endblock %}
 {# El pie propio de la página (Atrás: Productos) reemplaza al pie del paso, como en los capítulos. #}
 {% block step_footer %}{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/charts.js') }}" defer></script>{% endblock %}

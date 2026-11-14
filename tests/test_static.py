@@ -110,3 +110,26 @@ def test_family_color_tokens_match_the_chart_colors(family: str) -> None:
     token = re.search(rf"--family-{family}:\s*(#[0-9a-fA-F]{{6}});", css)
     assert token is not None
     assert token.group(1).lower() == FAMILY_COLORS[family].lower()
+
+
+def test_each_asset_address_carries_a_version_of_its_bytes(client: TestClient) -> None:
+    """Una actualización cambia la dirección de cada hoja y script que cambió de bytes, así el
+    navegador no reutiliza la copia anterior en caché (#329)."""
+    page = client.get("/datos").text
+    for path in ("css/pico.min.css", "css/pred.css", "js/htmx.min.js", "js/pred.js"):
+        digest = hashlib.sha256((_STATIC_DIR / path).read_bytes()).hexdigest()[:12]
+        assert f'"/static/{path}?v={digest}"' in page, path
+
+
+def test_the_version_follows_the_file_when_it_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pred_platform.app import main
+
+    asset = tmp_path / "css" / "x.css"
+    asset.parent.mkdir()
+    asset.write_text("a {}", encoding="utf-8")
+    monkeypatch.setattr(main, "_STATIC_DIR", tmp_path)
+    before = main._static_version("css/x.css")
+    asset.write_text("a { color: red; }", encoding="utf-8")
+    assert main._static_version("css/x.css") != before

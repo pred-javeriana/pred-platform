@@ -159,6 +159,19 @@ def test_malformed_unselected_protocol_does_not_hide_valid_choices(
         assert browser.get("/resultados/grupo.json", params=CHOICES).status_code == 400
 
 
+def test_malformed_unselected_creation_time_does_not_hide_valid_choices(lumpy_db: Path) -> None:
+    sql(lumpy_db, "UPDATE m3_corridas SET creado_en='no-es-fecha' WHERE run_id='seed-2'")
+    with client(lumpy_db) as browser:
+        response = browser.get("/resultados/grupo")
+        assert response.status_code == 200
+        assert 'role="alert"' not in response.text
+        assert 'value="seed-0"' in response.text and 'value="seed-1"' in response.text
+        assert 'value="seed-2"' not in response.text
+        selected = browser.get("/resultados/grupo", params=CHOICES)
+        assert "Elija una publicación de la semilla 2." in selected.text
+        assert browser.get("/resultados/grupo.json", params=CHOICES).status_code == 400
+
+
 def test_publications_are_not_silently_declared_to_be_the_final_group(lumpy_db: Path) -> None:
     with client(lumpy_db) as browser:
         assert "Significancia del grupo por clase" not in browser.get("/resultados/grupo").text
@@ -402,7 +415,11 @@ def test_invalid_lumpy_evidence_preserves_significance(lumpy_db: Path, damage: s
         page = browser.get("/resultados/grupo", params=CHOICES)
         assert page.status_code == 200
         assert "Significancia del grupo por clase" in page.text
-        assert "La evidencia lumpy no es válida:" in page.text
+        assert "La evidencia de la demanda grumosa no es válida:" in page.text
+        section = page.text.split('id="lumpy-del-grupo"')[1].split("</section>")[0]
+        # Neither internal family codes nor run IDs reach the visible cause.
+        for code in ("lumpy", "classical", "seasonal_naive", "seed-2"):
+            assert code not in section
         response = browser.get("/resultados/grupo.json", params=CHOICES)
         assert response.status_code == 200
         assert response.json()["significance"]["complete"] is True
@@ -540,3 +557,30 @@ def test_repeated_requests_share_work_but_database_writes_invalidate_it(
         updated = request(2)
         assert "Empeora de forma significativa en las tres semillas." in updated.text
         assert calls == list(CHOICES.values()) * 2
+
+
+def test_an_empty_wal_deleted_without_writes_keeps_the_saved_result(
+    lumpy_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+    original = grupo._run
+
+    def counted(conn, run_id):
+        calls.append(run_id)
+        return original(conn, run_id)
+
+    monkeypatch.setattr(grupo, "_run", counted)
+    wal = Path(f"{lumpy_db}-wal")
+    with client(lumpy_db) as browser:
+
+        def request():
+            return browser.get("/resultados/grupo", params={**CHOICES, "sku": "X"})
+
+        with closing(sqlite3.connect(lumpy_db)) as other:
+            other.execute("SELECT COUNT(*) FROM m3_corridas").fetchone()
+            assert wal.stat().st_size == 0
+            assert request().status_code == 200
+        # The last connection to close deletes the empty WAL; nothing was written.
+        assert not wal.exists()
+        assert request().status_code == 200
+        assert calls == list(CHOICES.values())

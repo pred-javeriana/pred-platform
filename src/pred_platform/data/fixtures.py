@@ -40,8 +40,8 @@ from pred_platform.data.query import (
     paginate,
     sort_items,
 )
-from pred_platform.data.repository import ArtifactDownload, StageTiming
-from pred_platform.data.run_status import CauseSnapshot, StageReference, TaskCause
+from pred_platform.data.repository import ArtifactDownload
+from pred_platform.data.run_status import CauseSnapshot, StageReference, StageTiming, TaskCause
 from pred_platform.data.scenarios import DEFAULT_SCENARIO, Scenario, get_scenario
 
 _SKU_CLASSES = get_args(models.SkuClass)

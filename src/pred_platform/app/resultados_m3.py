@@ -32,7 +32,7 @@ from pred_platform.app.presentation import (
 )
 from pred_platform.contract import models_v2
 from pred_platform.contract.errors import DataLayerError, InvalidQuery
-from pred_platform.contract.models import Ejecucion, EstadoTarea
+from pred_platform.contract.models import Ejecucion, EstadoTarea, RunStatus
 from pred_platform.data.m3_confirmation import (
     M3ClassConfirmation,
     M3ClassSignificance,
@@ -41,7 +41,8 @@ from pred_platform.data.m3_confirmation import (
 )
 from pred_platform.data.m3_query import AGGREGATED_WINDOW, GROUPS
 from pred_platform.data.query import LATEST, MAX_SIZE
-from pred_platform.data.repository import DataRepository, M3ReserveBlocks, StageTiming
+from pred_platform.data.repository import DataRepository, M3ReserveBlocks
+from pred_platform.data.run_status import StageTiming
 from pred_platform.fallas import describir_falla, texto_soporte
 
 
@@ -84,21 +85,25 @@ class OtherPublication:
 
 
 def other_publications(
-    repository: DataRepository, run: models_v2.M3Run
+    repository: DataRepository,
+    run: models_v2.M3Run,
+    known: Mapping[str, models_v2.M3Run] | None = None,
 ) -> tuple[OtherPublication, ...]:
     """Las otras evaluaciones PUBLICADA de la identidad de ``run`` (contrato v2, sección 2).
 
     Solo se leen cuando el contrato avisa que hay varias; una que ya no se puede leer queda sin
-    fecha.
+    fecha. ``known`` son las corridas M3 que la página ya leyó: no se leen otra vez.
     """
     found = []
     for run_id in run.publicadas_misma_identidad:
         if run_id == run.run_id:
             continue
-        try:
-            other = repository.get_m3_run(run_id)
-        except (InvalidQuery, DataLayerError):
-            other = None
+        other = (known or {}).get(run_id)
+        if other is None:
+            try:
+                other = repository.get_m3_run(run_id)
+            except (InvalidQuery, DataLayerError):
+                other = None
         found.append(OtherPublication(run_id, other.creado_en if other else None))
     return tuple(found)
 
@@ -153,6 +158,20 @@ def _read_problem(exc: InvalidQuery | DataLayerError) -> M3Problem:
         exc.code,
         support=texto_soporte(exc.code, etapa="platform", detalle=exc.detail),
     )
+
+
+def reserve_blocks(
+    repository: DataRepository, run_id: str
+) -> tuple[M3ReserveBlocks | None, M3Problem | None]:
+    """Los bloques de la reserva de la corrida, o por qué no se pudieron leer.
+
+    ``(None, None)`` es una evaluación que no publicó bloques; un protocolo con bloques
+    malformados no se oculta: queda su causa, y no se inventa ningún límite.
+    """
+    try:
+        return repository.get_m3_reserve_blocks(run_id), None
+    except (InvalidQuery, DataLayerError) as exc:
+        return None, _read_problem(exc)
 
 
 def _resolve(
@@ -415,16 +434,27 @@ def _champions(
     return champion_distribution(read.items, funnel.tras_exclusiones), None
 
 
-def summary(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Summary:
-    """Resuelve la corrida M3 de ``m2_run_id`` y lee el embudo que M3 publicó para toda ella."""
+def summary(
+    repository: DataRepository,
+    m2_run_id: str,
+    wanted: str | None = None,
+    *,
+    run: models_v2.M3Run | None = None,
+) -> M3Summary:
+    """Resuelve la corrida M3 de ``m2_run_id`` y lee el embudo que M3 publicó para toda ella.
+
+    ``run`` es la corrida M3 que la página ya resolvió para ``m2_run_id``: no se resuelve otra vez.
+    """
     try:
-        return _summary(repository, m2_run_id, wanted)
+        return _summary(repository, m2_run_id, wanted, run)
     except (InvalidQuery, DataLayerError) as exc:
         return M3Summary(problem=_read_problem(exc))
 
 
-def _summary(repository: DataRepository, m2_run_id: str, wanted: str | None) -> M3Summary:
-    resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+def _summary(
+    repository: DataRepository, m2_run_id: str, wanted: str | None, run: models_v2.M3Run | None
+) -> M3Summary:
+    resolved = run or _resolve(repository, m2_run_id, (wanted or "").strip() or None)
     if isinstance(resolved, M3Problem):
         return M3Summary(problem=resolved)
     evidence = repository.get_m3_evidence(resolved.run_id, size=MAX_SIZE)
@@ -473,6 +503,8 @@ class ExecutionChoice:
     iniciada_en: datetime | None
     m3_run_id: str
     seed: int
+    # El estado (``size=1``) leído para elegirla: las páginas lo reutilizan sin leerlo de nuevo.
+    status: RunStatus | None = field(default=None, compare=False, repr=False)
 
 
 def champion_available(repository: DataRepository) -> bool:
@@ -508,7 +540,7 @@ def published_executions(
         if status.ejecucion is not None:
             run = status.ejecucion
             found[m2_run_id] = ExecutionChoice(
-                run.id, run.estado, run.iniciada_en, m3_run.run_id, run.seed
+                run.id, run.estado, run.iniciada_en, m3_run.run_id, run.seed, status
             )
     choices = sorted(
         {choice.ejecucion_id: choice for choice in found.values()}.values(),
@@ -516,6 +548,23 @@ def published_executions(
         reverse=True,
     )
     return choices[:limit]
+
+
+def published_evaluation(repository: DataRepository, run_id: str) -> str | None:
+    """La corrida M3 PUBLICADA más nueva de la ejecución ``run_id``; ``None`` si no publicó.
+
+    Es la única regla de «la corrida publicó» para una corrida: la usan la barra de pasos al
+    abrir la página, el sondeo de Ejecución y el pie, y ``published_executions`` la aplica a la
+    lista. No depende del estado de la ejecución (una detenida justo después de publicar
+    publicó) ni de que su evidencia se pueda leer ahora.
+    """
+    if not champion_available(repository):
+        return None
+    try:
+        runs = repository.list_m3_runs(run_id_m2=run_id, estado="PUBLICADA", size=1)
+    except (InvalidQuery, DataLayerError):
+        return None
+    return runs.selected_run_id
 
 
 def default_execution(repository: DataRepository) -> str:
@@ -706,6 +755,36 @@ class M3Classes:
             key=lambda row: SKU_CLASS_ORDER.index(row.sku_class),
         )
 
+    @property
+    def rejected_confirmations(self) -> dict[str, str]:
+        """Clase -> por qué no se pudo leer su fila de confirmación guardada."""
+        return self._rejected("clases")
+
+    @property
+    def rejected_significance(self) -> dict[str, str]:
+        """Clase -> por qué no se pudo leer su fila de significancia guardada."""
+        return self._rejected("significancia")
+
+    @property
+    def rejections(self) -> list[tuple[str, str, str]]:
+        """(sección, clase, causa) de cada fila guardada que no se pudo leer, para el aviso."""
+        if self.confirmation is None:
+            return []
+        labels = {"clases": "Confirmación", "significancia": "Pruebas por producto"}
+        return [
+            (labels[row.seccion], row.sku_class or "", row.detalle)
+            for row in self.confirmation.rechazos
+        ]
+
+    def _rejected(self, section: str) -> dict[str, str]:
+        if self.confirmation is None:
+            return {}
+        return {
+            row.sku_class or "": row.detalle
+            for row in self.confirmation.rechazos
+            if row.seccion == section
+        }
+
 
 # Las familias que compiten por clase, en el orden de la tabla. La línea base no lleva columna:
 # M3 no publica su mediana de r, que por definición vale 1.
@@ -723,14 +802,21 @@ def _family_position(row: M3Comparison) -> int:
     return CLASS_FAMILIES.index(family) if family in CLASS_FAMILIES else len(CLASS_FAMILIES)
 
 
-def classes(repository: DataRepository, m2_run_id: str, wanted: str | None = None) -> M3Classes:
+def classes(
+    repository: DataRepository,
+    m2_run_id: str,
+    wanted: str | None = None,
+    *,
+    run: models_v2.M3Run | None = None,
+) -> M3Classes:
     """Resuelve la corrida M3 de ``m2_run_id`` y lee el campeón publicado de cada clase.
 
     La confirmación del campeón se lee aparte: si falla, el campeón de cada clase se sigue
-    mostrando y la sección de la confirmación explica la causa.
+    mostrando y la sección de la confirmación explica la causa. ``run`` es la corrida M3 de
+    ``m2_run_id`` que quien llama ya leyó de su lista: no se resuelve otra vez.
     """
     try:
-        resolved = _resolve(repository, m2_run_id, (wanted or "").strip() or None)
+        resolved = run or _resolve(repository, m2_run_id, (wanted or "").strip() or None)
         if isinstance(resolved, M3Problem):
             return M3Classes(problem=resolved)
         categories = repository.get_m3_categories(resolved.run_id, size=MAX_SIZE)
@@ -1018,12 +1104,22 @@ def published_funnel(
     try:
         if m3_run_id is None:
             m3_run_id = repository.list_m3_runs(run_id_m2=m2_run_id).selected_run_id
-        if m3_run_id is None:
-            return None
-        evidence = repository.get_m3_evidence(m3_run_id, size=1)
     except (InvalidQuery, DataLayerError):
         return None
-    return evidence.funnel if evidence.availability.status == "available" else None
+    return None if m3_run_id is None else _published_evidence(repository, m3_run_id)[0]
+
+
+def _published_evidence(
+    repository: DataRepository, m3_run_id: str
+) -> tuple[models_v2.M3Funnel | None, M3Problem | None]:
+    """El embudo de una evaluación publicada, o por qué no se pudo leer su evidencia."""
+    try:
+        evidence = repository.get_m3_evidence(m3_run_id, size=1)
+    except (InvalidQuery, DataLayerError) as exc:
+        return None, _read_problem(exc)
+    if evidence.availability.status != "available":
+        return None, _unavailable_evidence(evidence.availability)
+    return evidence.funnel, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1038,8 +1134,12 @@ def run_outcome(
     task_counts: Mapping[EstadoTarea, int] | None,
     m3_run_id: str | None = None,
     funnel: models_v2.M3Funnel | None = None,
+    *,
+    published: bool | None = None,
 ) -> str | None:
-    return run_outcome_details(repository, run, task_counts, m3_run_id, funnel).text
+    return run_outcome_details(
+        repository, run, task_counts, m3_run_id, funnel, published=published
+    ).text
 
 
 def run_outcome_details(
@@ -1048,13 +1148,19 @@ def run_outcome_details(
     task_counts: Mapping[EstadoTarea, int] | None,
     m3_run_id: str | None = None,
     funnel: models_v2.M3Funnel | None = None,
+    *,
+    published: bool | None = None,
 ) -> RunOutcome:
     """Qué dejó una ejecución terminada, en palabras: cuántas tareas fallaron y cuántos productos
     tienen veredicto. ``None`` mientras no termina.
 
     Una ejecución «completada con fallos» terminó: algunas tareas de un modelo fallaron, y la
     evaluación final igual dio veredicto a los productos que pudo comparar. ``funnel`` es el
-    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada.
+    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada (``m3_run_id``, la
+    que la vista ya resolvió, o la más nueva). ``published`` es lo que la vista ya sabe de la
+    publicación (``published_evaluation``): con ``False`` no se busca el embudo. Una evaluación
+    publicada cuya evidencia no se puede leer conserva la publicación y no se presenta como si no
+    hubiera veredictos publicados: el texto dice por qué no se pudo leer.
     """
     if run.estado not in ("completada", "completada_con_fallos"):
         return RunOutcome(None, False)
@@ -1073,8 +1179,18 @@ def run_outcome_details(
         )
     elif total:
         parts.append("Ninguna tarea falló.")
-    if funnel is None:
-        funnel = published_funnel(repository, run.id, m3_run_id)
+    problem = None
+    if funnel is None and published is not False:
+        if m3_run_id is not None:
+            funnel, problem = _published_evidence(repository, m3_run_id)
+        else:
+            funnel = published_funnel(repository, run.id)
+    if funnel is None and (published or problem is not None):
+        parts.append("La evaluación final está publicada, pero sus veredictos no se pudieron leer.")
+        parts.append(
+            problem.title if problem is not None else "Recargue la página para intentarlo de nuevo."
+        )
+        return RunOutcome(" ".join(parts), True)
     if funnel is None:
         parts.append("Todavía no hay veredictos publicados.")
         return RunOutcome(" ".join(parts), False)
@@ -1310,13 +1426,17 @@ def publication_time(
     que la creó (``creado_en`` cae en ese L4). Una publicación de otro intento no hereda esa fecha.
 
     Sin tiempos de etapa la fecha queda sin informar: ``creado_en`` es el inicio de L4, no su fin.
+    SQLite guarda ``creado_en`` al segundo y el registro guarda el inicio de L4 con microsegundos:
+    el extremo inicial incluye el segundo que contiene ese inicio.
     """
     for timing in reversed(timings):
-        if timing.code != "L4" or timing.finished_at is None:
+        if timing.code != "L4" or timing.finish_state != "completed" or timing.finished_at is None:
             continue
         if (
             publication is not None
-            and not timing.started_at <= publication.creado_en <= timing.finished_at
+            and not timing.started_at.replace(microsecond=0)
+            <= publication.creado_en
+            <= timing.finished_at
         ):
             continue
         return timing.finished_at

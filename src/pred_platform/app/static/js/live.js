@@ -268,7 +268,6 @@
   window.addEventListener("hashchange", abrirDestino);
 
   let ultimaVista = null;
-  let salida = null;
 
   function instantanea() {
     const nodo = document.querySelector("[data-pred-live]");
@@ -286,23 +285,52 @@
     catch (_) { /* El avance funciona aunque el navegador no permita guardar la visita. */ }
   }
 
+  function esConteo(valor) { return Number.isSafeInteger(valor) && valor >= 0; }
+
+  function esObjeto(valor) {
+    return typeof valor === "object" && valor !== null && !Array.isArray(valor);
+  }
+
+  // Una visita guardada solo se compara si tiene la forma que escribe guardarVisita: etapas con
+  // código y estado de texto, conteos enteros y la etapa y los productos de su tipo. Otra cosa
+  // (datos viejos o alterados) no se compara: la página sigue sin aviso.
+  function visitaValida(antes) {
+    if (!esObjeto(antes) || typeof antes.state !== "string" ||
+        !(antes.stage === null || typeof antes.stage === "string") ||
+        !(antes.skus === null || esConteo(antes.skus)) ||
+        !Array.isArray(antes.stages) || !esObjeto(antes.counts)) return false;
+    const etapas = antes.stages.every(function (etapa) {
+      return esObjeto(etapa) && typeof etapa.code === "string" && typeof etapa.state === "string";
+    });
+    return etapas && Object.values(antes.counts).every(esConteo);
+  }
+
   function leerVisita(vista) {
     try {
       const antes = JSON.parse(localStorage.getItem(clave(vista)));
-      if (!antes || antes.version !== 1 || antes.id !== vista.id ||
+      if (!visitaValida(antes) || antes.version !== 1 || antes.id !== vista.id ||
           antes.identity !== vista.identity || antes.started !== vista.started ||
-          !Number.isFinite(antes.seenAt) || antes.seenAt <= 0 || antes.seenAt > Date.now() ||
-          !Array.isArray(antes.stages) || !antes.counts) return null;
+          !Number.isFinite(antes.seenAt) || antes.seenAt <= 0 || antes.seenAt > Date.now()) return null;
       return antes;
     } catch (_) { return null; }
   }
 
+  // El aviso describe solo la vuelta actual: se borra antes de cada comparación, y una vuelta
+  // corta o sin cambios lo deja vacío en lugar de mostrar la anterior.
+  function borrarAviso() {
+    const panel = document.getElementById("desde-ultima-visita");
+    if (!panel) return;
+    panel.hidden = true;
+    panel.replaceChildren();
+  }
+
   function desdeLaVisita(antes, ahora) {
+    borrarAviso();
     const panel = document.getElementById("desde-ultima-visita");
     if (!panel || !antes || !ahora || Date.now() - antes.seenAt < 60000) return;
     const cambios = [];
     ahora.stages.forEach(function (etapa) {
-      const previa = antes.stages.find(function (s) { return s && s.code === etapa.code; });
+      const previa = antes.stages.find(function (s) { return s.code === etapa.code; });
       if (etapa.state === "hecha" && (!previa || previa.state !== "hecha")) {
         cambios.push("Terminó " + etapa.label + (etapa.duration ? " (" + etapa.duration + ")" : "") + ".");
       }
@@ -315,7 +343,7 @@
     }
     const fallidas = ahora.counts.fallida || 0;
     const previas = antes.counts.fallida || 0;
-    if (Number.isSafeInteger(previas) && previas >= 0 && fallidas > previas) {
+    if (fallidas > previas) {
       cambios.push("Fallaron " + escribirCifra(fallidas - previas, 0) + " tareas más.");
     }
     if (antes.stage === ahora.stage && Number.isSafeInteger(antes.skus) &&
@@ -323,7 +351,6 @@
       cambios.push("Terminaron " + escribirCifra(ahora.skus - antes.skus, 0) + " productos más en esta etapa.");
     }
     if (!cambios.length) return;
-    panel.replaceChildren();
     const titulo = document.createElement("p");
     const fuerte = document.createElement("strong");
     fuerte.textContent = "Desde su última visita, hace " + duracionViva((Date.now() - antes.seenAt) / 1000) + ":";
@@ -339,14 +366,35 @@
     panel.hidden = false;
   }
 
+  // Al volver a la pestaña, lo que muestra la página puede ser de antes de salir (el sondeo
+  // estaba pausado o el navegador lo suspendió). La visita de la salida se conserva hasta el
+  // primer reemplazo fresco del sondeo, que ya viene en camino, y se compara una sola vez, sin
+  // otra solicitud. Sin sondeo activo no llega otro reemplazo: se compara con lo que hay.
+  let salida = null;
+
+  function sondeoActivo() {
+    const estado = cuerpo() && cuerpo().querySelector("[data-pred-poll]");
+    return Boolean(estado && estado.dataset.predPoll === "true");
+  }
+
+  function compararVuelta() {
+    const antes = salida;
+    salida = null;
+    const actual = instantanea();
+    desdeLaVisita(antes, actual);
+    guardarVisita(actual);
+  }
+
   document.addEventListener("visibilitychange", function () {
-    if (document.hidden) salida = ultimaVista;
-    else {
-      const actual = instantanea();
-      desdeLaVisita(salida, actual);
-      salida = null;
-      guardarVisita(actual);
+    if (document.hidden) {
+      // Una salida que todavía no se comparó sigue siendo la referencia.
+      if (salida === null) salida = ultimaVista;
+      return;
     }
+    // Ya comparada (un sondeo llegó antes que este aviso): no hay nada más que hacer.
+    if (salida === null) return;
+    borrarAviso();
+    if (!sondeoActivo()) compararVuelta();
   });
   window.addEventListener("pagehide", function () { guardarVisita(instantanea()); });
 
@@ -373,7 +421,8 @@
       });
       ultimaLectura = Date.now();
       pintarEtapas();
-      guardarVisita(instantanea());
+      if (salida !== null && !document.hidden) compararVuelta();
+      else guardarVisita(instantanea());
       if (!movimientoReducido.matches) {
         animarAnillo(evento.target);
         animarCifras(evento.target);

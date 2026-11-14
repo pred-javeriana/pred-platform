@@ -4,12 +4,15 @@ These functions never create or modify the database: the file is opened with ``m
 when a query runs, so building the application does not need the database to exist. A missing
 file, or a database that has not been initialised yet, reads as "no data" instead of failing.
 A database still at schema version 1 (before the ingest report columns) reads those columns as
-NULL, so a read never fails just because migrations have not run.
+NULL, so a read never fails just because migrations have not run. A published WAL copy in a folder
+that cannot be written, without its ``-wal`` and ``-shm`` files, is opened ``immutable``: SQLite
+cannot create those files even to read, and the copy is never written.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -85,13 +88,51 @@ class SeriesRow:
     clase: str | None
 
 
+# Byte 18 of the SQLite header, the file format write version: 1 rollback journal, 2 WAL.
+_HEADER_FORMAT_BYTE = 18
+_WAL = 2
+
+
+def is_wal(db_path: Path) -> bool:
+    """Whether the database file's header says it is in WAL mode."""
+    try:
+        with db_path.open("rb") as file:
+            header = file.read(_HEADER_FORMAT_BYTE + 1)
+    except OSError:
+        return False
+    return len(header) > _HEADER_FORMAT_BYTE and header[_HEADER_FORMAT_BYTE] == _WAL
+
+
+def immutable_wal_copy(db_path: Path) -> bool:
+    """Whether ``db_path`` is a consolidated WAL copy SQLite can only read as ``immutable``.
+
+    SQLite reads a WAL database through its ``-shm`` file and creates it, and ``-wal``, beside the
+    database even with ``mode=ro``. Without them, in a folder it cannot write, ``mode=ro`` fails
+    with "unable to open database file". With no ``-wal`` file every write is already in the
+    database, so ``immutable=1`` reads that snapshot without creating anything.
+    """
+    # The header is read last: closing any descriptor of the file releases the POSIX locks this
+    # process holds on it, so a database the platform can write is never opened here.
+    if not db_path.is_file() or os.access(db_path.parent, os.W_OK):
+        return False
+    if any(db_path.with_name(db_path.name + suffix).exists() for suffix in ("-wal", "-shm")):
+        return False
+    return is_wal(db_path)
+
+
+def readonly_uri(db_path: Path) -> str:
+    """The URI that opens ``db_path`` read-only, ``immutable`` for a consolidated WAL copy."""
+    flags = "mode=ro&immutable=1" if immutable_wal_copy(db_path) else "mode=ro"
+    return f"{db_path.resolve().as_uri()}?{flags}"
+
+
 @contextmanager
 def _open_readonly(db_path: Path) -> Iterator[sqlite3.Connection | None]:
     """A read-only connection, or ``None`` when the file does not exist."""
     if not db_path.is_file():
         yield None
         return
-    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    conn = sqlite3.connect(readonly_uri(db_path), uri=True)
     try:
         yield conn
     finally:

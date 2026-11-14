@@ -174,6 +174,10 @@ dl.pred-review__facts > div:nth-child(4n + 1) { padding-left: 0; border-left: 0;
   label.pred-file-choice { grid-template-columns: 22px minmax(0, 1fr); padding: 12px; }
   .pred-file-choice > .pred-status { grid-column: 2; justify-self: start; }
   .pred-types-table :is(th, td) { padding: 7px 4px; }
+  /* Un conteo muy grande no cabe en el 20 % fijo: la columna de productos toma el ancho de su
+     cifra y las otras dos se reparten el resto, partiendo su texto. */
+  .pred-data-split .pred-types-table { table-layout: auto; }
+  .pred-types-table thead th:nth-child(3) { width: 1%; }
   .pred-types-table .pred-subvalue { font-size: 11px; }
   .pred-earlier-stages > li { grid-template-columns: 30px minmax(0, 1fr); }
   .pred-duration-bars, .pred-earlier-stages__durations { grid-column: 2; text-align: left; }

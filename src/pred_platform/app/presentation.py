@@ -452,6 +452,15 @@ def format_count(value: int) -> str:
     return f"{value:,}".replace(",", ".")
 
 
+def count_noun(value: int | str, singular: str, plural: str) -> str:
+    """Un conteo con su sustantivo en número: «1 producto», «12 productos», «1.234 días».
+
+    Acepta también el texto de un campo del formulario («1», «7»), que se muestra tal cual.
+    """
+    number = format_count(value) if isinstance(value, int) else str(value)
+    return f"{number} {singular if str(value).strip() == '1' else plural}"
+
+
 def format_decimal(value: float, digits: int = 2) -> str:
     """Decimal con coma, para umbrales y métricas ADI/CV²."""
     return f"{value:.{digits}f}".replace(".", ",")
@@ -618,9 +627,6 @@ _GROUP_LUMPY_CAUSES: dict[str, str] = {
     "No hay productos lumpy en el grupo.": "No hay productos de demanda grumosa en el grupo.",
     "Falta la confirmación publicada de lumpy.": (
         "Falta la confirmación publicada de la demanda grumosa."
-    ),
-    "La campeona de lumpy no es Fundacional en todas las corridas.": (
-        "La campeona de la demanda grumosa no es Fundacional en todas las evaluaciones."
     ),
 }
 

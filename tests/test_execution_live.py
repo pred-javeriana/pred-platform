@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal import lectura
 from pred_platform.data import run_history
@@ -47,10 +48,37 @@ def _running(env: Env):
     return client, run
 
 
-def _navigation(body: str, element_id: str) -> str:
+def _navigation_html(body: str, element_id: str) -> str:
     found = re.search(rf'<nav\b[^>]*\bid="{element_id}".*?</nav>', body, re.S)
     assert found is not None
-    return _text(found[0])
+    return found[0]
+
+
+def _navigation(body: str, element_id: str) -> str:
+    return _text(_navigation_html(body, element_id))
+
+
+_RESULTS_LINK = (
+    '<a class="pred-btn pred-btn--primary pred-btn--large" href="/corridas/1/resultados">'
+)
+
+
+def _publish(monkeypatch: pytest.MonkeyPatch, *, evidence: bool = True) -> None:
+    """Publica la evaluación final de la corrida 1 con los documentos de prueba, como cuando el
+    motor real confirma su evidencia; sin ``evidence``, su lectura falla."""
+    publication = FixtureRepository()
+    runs = publication.list_m3_runs()
+    runs = runs.model_copy(
+        update={"items": [item.model_copy(update={"run_id_m2": "1"}) for item in runs.items]}
+    )
+    monkeypatch.setattr(DalRepository, "list_m3_runs", lambda self, **kwargs: runs)
+
+    def read_evidence(self, *args, **kwargs):
+        if not evidence:
+            raise ArtifactMissing("La evidencia no se pudo leer")
+        return publication.get_m3_evidence(*args, **kwargs)
+
+    monkeypatch.setattr(DalRepository, "get_m3_evidence", read_evidence)
 
 
 def test_polled_navigation_moves_from_queue_to_published_without_reloading(
@@ -76,27 +104,55 @@ def test_polled_navigation_moves_from_queue_to_published_without_reloading(
     assert re.search(r'id="paso-revisar"(?! hx-preserve)', unpublished.text)
     assert re.search(r'id="paso-datos" hx-preserve="true"', unpublished.text)
     assert "Parciales" not in _navigation(unpublished.text, "navegacion-pasos")
+    # Finished without a publication, the footer follows the rail: Resultados opens on M2.
+    assert _RESULTS_LINK in _navigation_html(unpublished.text, "navegacion-pasos")
+    page = client.get("/corridas/1/ejecucion").text
+    assert _RESULTS_LINK in _navigation_html(page, "navegacion-pasos")
+    assert "disabled" not in _navigation_html(page, "navegacion-pasos")
     # The engine double announces publication but does not write M3 rows. Supply the
     # published repository documents separately, as when the real engine commits its evidence.
-    publication = FixtureRepository()
-    runs = publication.list_m3_runs()
-    runs = runs.model_copy(
-        update={"items": [item.model_copy(update={"run_id_m2": "1"}) for item in runs.items]}
-    )
-    monkeypatch.setattr(DalRepository, "list_m3_runs", lambda self, **kwargs: runs)
-    monkeypatch.setattr(
-        DalRepository,
-        "get_m3_evidence",
-        lambda self, *a, **kw: publication.get_m3_evidence(*a, **kw),
-    )
+    _publish(monkeypatch)
     final = client.get("/ejecucion/estado?ejecucion=1")
     assert final.status_code == 286
-    assert "Terminó en" in _navigation(final.text, "barra-pasos")
-    assert "Terminó en" in _navigation(final.text, "resumen-paso")
+    assert "después de iniciar" in _navigation(final.text, "barra-pasos")
+    assert "después de iniciar" in _navigation(final.text, "resumen-paso")
     assert "Publicados" in _navigation(final.text, "barra-pasos")
     assert "Parciales" not in _navigation(final.text, "navegacion-pasos")
     assert 'id="paso-despues"' in final.text and "Ya están publicados." in final.text
+    assert _RESULTS_LINK in _navigation_html(final.text, "navegacion-pasos")
     assert "pred-topbar" not in final.text
+
+
+@pytest.mark.parametrize("state", ["detenida", "ejecutando"])
+def test_the_page_and_the_poll_agree_that_a_run_published_whatever_its_state(
+    env: Env, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    _publish(monkeypatch)
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ejecuciones SET estado = ?", (state,))
+    page = client.get("/corridas/1/ejecucion").text
+    polled = client.get("/ejecucion/estado?ejecucion=1").text
+    for body in (page, polled):
+        assert "Publicados" in _navigation(body, "barra-pasos")
+        assert "Se abre cuando la evaluación final publique" not in _navigation(body, "barra-pasos")
+    assert _RESULTS_LINK in _navigation_html(page, "navegacion-pasos")
+
+
+def test_a_published_run_stays_published_when_its_evidence_cannot_be_read(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+    assert env.worker().run_next()
+    _publish(monkeypatch, evidence=False)
+    for route in ("/corridas/1/ejecucion", "/ejecucion/estado?ejecucion=1"):
+        body = client.get(route).text
+        assert "Publicados" in _navigation(body, "barra-pasos")
+        assert "pero sus veredictos no se pudieron leer" in _text(body)
+        assert "Todavía no hay veredictos publicados." not in _text(body)
 
 
 def test_polled_navigation_tracks_each_stage_without_reading_navigation_again(

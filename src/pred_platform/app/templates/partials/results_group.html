@@ -9,7 +9,7 @@
 <section class="{{ group_sheet_class | default('pred-sheet') }}">
   <h2>Evaluaciones del grupo</h2>
   <p class="pred-meta">Elija una publicación por semilla. El grupo exige los mismos datos, productos, código, bloques y política. Si hay varias publicaciones de una semilla, debe elegir una.</p>
-  <form method="get" action="{{ group_action | default('/resultados/grupo') }}" class="pred-filters pred-filters--bar">
+  <form method="get" action="{{ group_action | default('/resultados/grupo') }}" class="pred-filters pred-filters--bar pred-filters--seeds">
     {% if group_m3 | default(none) %}<input type="hidden" name="m3" value="{{ group_m3 }}">{% endif %}
     {% for seed in range(3) %}
     <div class="pred-field">

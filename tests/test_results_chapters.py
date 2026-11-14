@@ -172,6 +172,65 @@ def test_each_chapter_is_server_rendered_and_preserves_the_exact_evaluation(
     assert re.search(r'pred-context__compact-fact">\d+ productos<', html)
 
 
+def test_the_product_detail_shares_the_chapter_links_and_keeps_the_chosen_evaluation(
+    published: tuple[TestClient, str],
+) -> None:
+    """El capítulo 2 del detalle abre la verificación producto a producto (#299)."""
+    client, number = published
+    html = client.get(f"/corridas/{number}/resultados/producto/FIL-0001?m3=m3-ui-0").text
+    nav = re.search(r'<nav class="pred-chapters".*?</nav>', html, re.S)
+    assert nav is not None
+    chapter_two = re.search(
+        r'<a href="([^"]+)"[^>]*><span class="pred-chapters__number">2<', nav.group()
+    )
+    assert chapter_two is not None
+    assert chapter_two.group(1) == f"/corridas/{number}/resultados/p2?m3=m3-ui-0"
+    assert "vista=errores" not in nav.group()
+    for target in ("resumen", "p1", "estabilidad", "exportar"):
+        assert f'/resultados/{target}?m3=m3-ui-0"' in nav.group()
+    assert '/resultados/productos?m3=m3-ui-0" aria-current="page"' in nav.group()
+
+
+@pytest.mark.parametrize(
+    ("chapter", "singular", "plural"),
+    [
+        ("p1", "1 producto comparable", "1 productos comparables"),
+        ("p2", "0 de 1 producto ", "0 de 1 productos"),
+        ("estabilidad", "1 tipo con campeona confirmada", "1 tipos con campeona"),
+        ("resumen", "0 de 1 producto ", "0 de 1 productos"),
+        ("resumen", "Respaldada para 1 producto ", "Respaldada para 1 productos"),
+    ],
+)
+def test_a_count_of_one_reads_in_singular(
+    published: tuple[TestClient, str], chapter: str, singular: str, plural: str
+) -> None:
+    """Errática tiene un solo producto comparable y probado, solo Suave se confirma y un solo
+    producto tiene mejora verificada (#310, #328)."""
+    client, number = published
+    text = _text(client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0").text)
+    assert singular in text
+    assert plural not in text
+
+
+@pytest.mark.parametrize("chapter", ["p1", "p2"])
+@pytest.mark.parametrize(("only_smooth", "types"), [(False, 3), (True, 1)])
+def test_the_indicator_row_shares_its_width_among_the_published_types(
+    env: Env, chapter: str, only_smooth: bool, types: int
+) -> None:
+    """Sin columnas vacías cuando la evaluación publica menos de cuatro tipos (#314)."""
+    client = _dal_client(env)
+    number = _publish(env, client, 0, only_smooth=only_smooth)
+    html = client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0").text
+    row = re.search(
+        r'<dl class="pred-results-kpis pred-results-kpis--types" style="--n: (\d)">'
+        r"(.*?)</dl>",
+        html,
+        re.S,
+    )
+    assert row is not None
+    assert int(row.group(1)) == types == len(re.findall(r"<dt>", row.group(2)))
+
+
 @pytest.mark.parametrize(
     ("vista", "chapter", "anchor"),
     [
@@ -522,6 +581,78 @@ def test_an_older_publication_does_not_inherit_a_later_attempts_l4_end(
     assert "28 oct 2026, 9:36 a. m." not in shown and "27 oct 2026, 6:00 a. m." not in shown
 
 
+@pytest.mark.parametrize("path", ["resumen", "p1", "productos", "exportar", "producto/FIL-0001"])
+def test_the_rail_dates_the_chosen_publication_like_the_context_bar(
+    published: tuple[TestClient, str],
+    env: Env,
+    path: str,
+) -> None:
+    client, number = published
+    # m3-ui-0 comes from the first L4; a later attempt finished another L4 the next day.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T09:59:58+00:00", ""),
+        ("stage_finished", "2026-10-27T14:36:00+00:00", "completed"),
+        ("stage_started", "2026-10-28T09:00:00+00:00", ""),
+        ("stage_finished", "2026-10-28T14:36:00+00:00", "completed"),
+    )
+    html = client.get(f"/corridas/{number}/resultados/{path}?m3=m3-ui-0").text
+    assert "Evaluación publicada 27 oct 2026, 9:36 a. m." in _text(html)
+    rail = re.search(r'<nav class="pred-rail".*?</nav>', html, re.S)
+    assert rail is not None
+    assert "Publicados 27 oct 2026" in _text(rail.group())
+    assert "2026-10-28" not in rail.group()
+    # The other steps keep the date of the run's latest publication.
+    other = client.get(f"/corridas/{number}/ejecucion").text
+    other_rail = re.search(r'<nav class="pred-rail".*?</nav>', other, re.S)
+    assert other_rail is not None and "2026-10-28 14:36:00 UTC" in other_rail.group()
+
+
+def test_a_creation_in_the_same_second_as_a_microsecond_l4_start_keeps_its_date(
+    published: tuple[TestClient, str],
+    env: Env,
+) -> None:
+    client, number = published
+    # m3_corridas.creado_en is «2026-10-27 10:00:00»: SQLite keeps seconds, the log microseconds.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T08:00:00+00:00", ""),
+        ("stage_finished", "2026-10-27T09:00:00+00:00", "completed"),
+        ("stage_started", "2026-10-27T10:00:00.116421+00:00", ""),
+        ("stage_finished", "2026-10-27T10:00:02.810165+00:00", "completed"),
+    )
+    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
+    # The L4 that created it dates it, not the earlier completed attempt.
+    assert "Evaluación publicada 27 oct 2026, 5:00 a. m." in _text(html)
+    assert 'title="2026-10-27 10:00:02.810165 UTC' in html
+    assert "2026-10-27 09:00:00 UTC" not in html
+
+
+def test_stage_times_follow_the_execution_reader_rules_for_every_attempt(
+    published: tuple[TestClient, str],
+    env: Env,
+) -> None:
+    client, number = published
+    # A clock that went back: this L4 «ended» before it started and dates nothing.
+    _log_l4(
+        env,
+        number,
+        ("stage_started", "2026-10-27T09:59:58+00:00", ""),
+        ("stage_finished", "2026-10-27T09:00:00+00:00", "completed"),
+    )
+    repo = env.repo()
+    timings = repo.get_stage_timings(number)
+    current = repo.get_run_status(number, size=1).stage_timings  # type: ignore[attr-defined]
+    # Results reads every attempt, Ejecución the current one; the same L4 has the same end.
+    l4 = [t for t in timings if t.code == "L4"][-1]
+    assert l4 == next(t for t in current if t.code == "L4")
+    assert l4.finished_at is None and l4.finish_state == "completed"
+    html = client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text
+    assert "Evaluación publicada Fecha de publicación no informada" in _text(html)
+
+
 def test_without_a_progress_log_the_publication_time_is_unknown_not_the_creation(
     published: tuple[TestClient, str],
     env: Env,
@@ -645,7 +776,7 @@ def test_a_confirmation_that_cannot_be_read_is_not_reported_as_absent(env: Env) 
     for chapter in ("resumen", "p2", "estabilidad"):
         html = client.get(f"/corridas/{first}/resultados/{chapter}").text
         text = _text(html)
-        assert "no es válida" in text, chapter
+        assert "Suave: p_holm" in text, chapter
         for absence in (
             "no publicó pruebas",
             "Sin confirmación publicada",
@@ -658,7 +789,8 @@ def test_a_confirmation_that_cannot_be_read_is_not_reported_as_absent(env: Env) 
     assert "No se pudo leer" in summary
     assert "Con veredicto" in summary and "Evaluados" in summary  # the readable evidence stays
     verification = _text(client.get(f"/corridas/{first}/resultados/p2").text)
-    assert "No se pudieron leer las pruebas por producto" in verification
+    # Only the confirmation row is unreadable: the product tests of its type are still read.
+    assert "La mejora se verifica en 1 de 3 productos probados" in verification
     assert "Validado no es lo mismo que significativo" in verification
     stability = _text(client.get(f"/corridas/{first}/resultados/estabilidad").text)
     assert "No se pudo leer la confirmación" in stability
@@ -884,3 +1016,158 @@ def test_published_seed_without_a_class_champion_is_not_pending(env: Env) -> Non
     assert "Faltan corridas" not in row
     assert "No confirmada en las tres" in _text(row)
     assert "No concluyente" in text
+
+
+@pytest.mark.parametrize(
+    "column,stored",
+    [
+        ("p.protocolo", "{roto"),
+        ("p.protocolo", "[]"),
+        ("c.creado_en", "ayer"),
+        ("c.creado_en", b"\x00"),
+    ],
+)
+def test_a_malformed_stored_publication_does_not_break_the_home(
+    published: tuple[TestClient, str], env: Env, column: str, stored: object
+) -> None:
+    client, number = published
+    [(engine_run,)] = env.rows("SELECT run_id FROM ejecuciones WHERE id = ?", number)
+    _publish_evaluation(env, engine_run, "m3-ui-old", 0, creado_en="2026-10-26 10:00:00")
+    table, name = (
+        ("m3_protocolos", "protocolo") if column.startswith("p.") else ("m3_corridas", "creado_en")
+    )
+    [(original,)] = env.rows(f"SELECT {name} FROM {table} WHERE run_id = 'm3-ui-old'")
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(f"UPDATE {table} SET {name} = ? WHERE run_id = 'm3-ui-old'", (stored,))
+    # An unreadable publication that is not the one shown is a read problem, not an HTTP 500.
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Ver la corrida" in _text(response.text)
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(f"UPDATE {table} SET {name} = ? WHERE run_id = 'm3-ui-old'", (original,))
+    restored = _text(client.get("/").text)
+    assert "resultados listos" in restored and "Ver resultados" in restored
+
+
+@pytest.mark.parametrize(
+    "broken,cause",
+    [
+        (
+            "DELETE FROM m3_cortes WHERE run_id = 'm3-ui-0'",
+            "no trae la lista de productos excluidos",
+        ),
+        (
+            "UPDATE m3_veredictos SET n_ventanas = -1 WHERE run_id = 'm3-ui-0'",
+            "No fue posible leer la evaluación.",
+        ),
+    ],
+)
+def test_a_publication_with_unreadable_evidence_is_not_called_unpublished(
+    published: tuple[TestClient, str], env: Env, broken: str, cause: str
+) -> None:
+    client, number = published
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(broken)
+    for chapter in ("resumen", "p1", "productos"):
+        response = client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0")
+        assert response.status_code == 200
+        outcome = re.search(r'id="resultado-ejecucion">(.*?)</p>', response.text, re.S)
+        assert outcome is not None, chapter
+        text = _text(unescape(outcome.group(1)))
+        assert "Todavía no hay veredictos publicados" not in text
+        assert (
+            "La evaluación final está publicada, pero sus veredictos no se pudieron leer." in text
+        )
+        assert cause in text
+
+
+def test_malformed_reserve_blocks_say_why_the_block_figure_is_missing(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    _sql(
+        env,
+        "UPDATE m3_protocolos SET protocolo = json_set(protocolo, '$.bloques.fechas_prueba.n', -1) "
+        "WHERE run_id = 'm3-ui-0'",
+    )
+    html = client.get(f"/corridas/{number}/resultados/p1?m3=m3-ui-0").text
+    text = _text(html)
+    assert "Ver las cifras de los bloques" not in html
+    note = text.split("No se pudieron leer los bloques de la reserva de esta evaluación", 1)
+    assert len(note) == 2 and "la figura y las cifras de los bloques no se muestran" in note[1]
+    assert "platform.contract_invalid" in html  # the support detail names the cause
+    # The rest of the chapter keeps what it can read.
+    assert "Razón de error mediana por familia" in text
+
+
+def test_an_invalid_confirmation_row_keeps_the_valid_product_tests(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    _sql(env, "UPDATE m3_confirmaciones SET p_holm = 1.5 WHERE run_id = 'm3-ui-0'")
+    summary = _text(client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text)
+    verification = _text(client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text)
+    classes = _text(client.get(f"/corridas/{number}/resultados/p1?m3=m3-ui-0").text)
+    for text in (summary, verification, classes):
+        assert "No se pudieron leer algunas filas guardadas de la confirmación por tipo" in text
+        assert "Confirmación · Suave: p_holm" in text
+    # The significance rows of every type are still read and counted.
+    assert "Suave 3 1 1 1 0" in verification
+    assert "1 de 4 productos probados (25,0 %)" in verification
+    assert "No se pudo leer la confirmación" in summary
+    assert "No concluyente" not in summary.split("¿En qué tipos")[0]
+
+
+def test_an_invalid_significance_row_keeps_the_valid_confirmation_and_other_types(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    _sql(
+        env,
+        "UPDATE m3_significancia SET n_mejores_by = 5 WHERE run_id = 'm3-ui-0' "
+        "AND sku_class = 'erratic'",
+    )
+    verification = _text(client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text)
+    classes = _text(client.get(f"/corridas/{number}/resultados/p1?m3=m3-ui-0").text)
+    assert "Pruebas por producto · Errática" in verification
+    assert "los significativos por BY superan los SKU probados" in verification
+    assert "Errática No se pudo leer" in verification
+    assert "Suave 3 1 1 1 0" in verification
+    assert "No se pudieron leer las pruebas de errática." in verification
+    # The confirmation of Suave is still shown.
+    assert "Suave · Confirmado" in classes
+
+
+def test_unreadable_product_tests_are_not_called_unpublished(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    # An older publication: no class confirmation, so its tests come from the verdicts.
+    _sql(
+        env,
+        "UPDATE m3_protocolos SET protocolo = json_remove(protocolo, '$.bloques') "
+        "WHERE run_id = 'm3-ui-0'",
+    )
+    # A tested product without its significance flag nor a cause: the contract rejects it.
+    _sql(
+        env,
+        "UPDATE m3_veredictos SET dm_significativa = NULL "
+        "WHERE run_id = 'm3-ui-0' AND sku = 'FIL-0001'",
+    )
+    html = client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text
+    text = _text(html)
+    assert "No se pudieron leer las pruebas por producto de esta evaluación." in text
+    assert "no publicó pruebas" not in text
+    assert "Abrir en Productos" not in text
+    assert "0 con mejora verificada" not in text and "0 peores" not in text
+    summary = _text(client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text)
+    assert "no publicó pruebas" not in summary
+    assert "Sin prueba publicada" not in summary
+    # The stored tests are not changed: once readable again, they are counted as before.
+    _sql(
+        env,
+        "UPDATE m3_veredictos SET dm_significativa = 1 "
+        "WHERE run_id = 'm3-ui-0' AND sku = 'FIL-0001'",
+    )
+    restored = _text(client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text)
+    assert "1 de 4 productos probados (25,0 %)" in restored

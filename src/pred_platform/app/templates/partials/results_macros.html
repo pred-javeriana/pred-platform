@@ -24,6 +24,10 @@
 {%- endmacro %}
 {% macro unread_note(found) -%}
 {% if found.confirmation is none and found.confirmation_problem %}<p class="pred-note">{{ found.confirmation_problem.title }} {{ found.confirmation_problem.detail }}</p>{% if found.confirmation_problem.support %}{{ soporte(found.confirmation_problem.support) }}{% endif %}{% endif %}
+{{ rejected_note(found) }}
+{%- endmacro %}
+{% macro rejected_note(found) -%}
+{% if found.rejections %}<div class="pred-note" id="filas-ilegibles"><p>No se pudieron leer algunas filas guardadas de la confirmación por tipo; se muestran las demás, sin completar las que faltan.</p><ul>{% for section, code, detail in found.rejections %}<li>{{ section }} · {{ sku_class_label(code) if code else 'tipo ilegible' }}: <span class="mono">{{ detail }}</span></li>{% endfor %}</ul></div>{% endif %}
 {%- endmacro %}
 {% macro missing_confirmation_note(found) -%}
 {% if found.confirmation is none and not found.confirmation_problem and found.run %}<p class="pred-note">Esta evaluación se publicó sin la confirmación por clase. Las pruebas por producto salen de los veredictos publicados; los conteos BY y el nivel FCR no se publicaron.</p>{% endif %}

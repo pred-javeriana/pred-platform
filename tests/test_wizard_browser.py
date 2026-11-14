@@ -278,6 +278,24 @@ def test_demand_descriptions_fit_their_cells(browser: Browser, env: Env, width: 
         browser.command("screenshot", str(Path(evidence) / f"demand-{width}.png"), "--full-page")
 
 
+@pytest.mark.parametrize("width", [1280, 390, 360])
+def test_a_very_large_product_count_fits_its_cell(browser: Browser, env: Env, width: int):
+    """Un conteo de ocho cifras cabe en la columna de productos también en un teléfono (#301)."""
+    browser.open(f"/corridas/nueva/datos?ingest_id={env.ingest_id}")
+    browser.command("resize", str(width), "1000")
+    browser.run("""
+        const overflow = await page.eval(() => {
+            const table = document.querySelector('.pred-types-table');
+            table.querySelector('tbody td.num').firstChild.textContent = '12.345.678';
+            table.querySelector('tfoot td.num').textContent = '12.345.681';
+            return [...table.querySelectorAll('td.num')]
+                .filter(cell => cell.scrollWidth > cell.clientWidth)
+                .map(cell => cell.textContent);
+        });
+        if (overflow.length) throw new Error(JSON.stringify(overflow));
+    """)
+
+
 def _type(browser: Browser, field: str, value: str) -> None:
     browser.run(f"""
         await page.fill('#{field}', '{value}');
@@ -490,3 +508,186 @@ def test_a_draft_cookie_from_before_the_revision_still_loads(browser: Browser, e
     _type(browser, "horizon", "3")
     browser.run("await page.wait(800);")
     _expect_draft(browser, "73", "3")
+
+
+def _until(browser: Browser, check: str, seconds: float = 10) -> None:
+    """Repeats ``check`` while the page navigates (a script loses its context meanwhile)."""
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            browser.run(check)
+            return
+        except AssertionError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.2)
+
+
+def _notice_hidden(browser: Browser, notice: str) -> None:
+    browser.run(f"""
+        const hidden = await page.eval(() => document.getElementById('{notice}').hidden);
+        if (!hidden) throw new Error('Se ve el aviso {notice}');
+    """)
+
+
+@pytest.mark.parametrize("late", [False, True])
+def test_reloading_right_after_typing_shows_no_false_conflict(
+    browser: Browser, env: Env, late: bool
+):
+    """Refs #318: the page left sends its pending save before the reload asks for the new page.
+    If its answer still arrives after the new page loaded, the first save of the reloaded page
+    reloads it again instead of warning about another tab."""
+    _complete(browser, env)
+    _type(browser, "seed", "80")
+    browser.run("await page.wait(800);")
+    if late:
+        browser.hold = True
+    browser.run("""
+        await page.fill('#seed', '81');
+        await page.eval(() => location.reload());
+    """)
+    if late:
+        assert browser.waiting.wait(5), "El guardado pendiente no salió al recargar"
+        browser.run("await page.wait(500);")
+        browser.release.set()
+        browser.run("await page.wait(500);")
+    _until(browser, "await page.wait('#seed');")
+    seed = "82"
+    _type(browser, "seed", seed)
+    browser.run("await page.wait(1500);")
+    _until(browser, "await page.wait('#seed');")
+    _notice_hidden(browser, "conflicto-borrador")
+    if late:
+        # The reloaded page was drawn before the earlier save arrived: it reloads again and
+        # shows that save; the person types again from there.
+        browser.run("""
+            const seed = await page.eval(() => document.querySelector('#seed').value);
+            if (seed !== '81') throw new Error('No mostró el guardado anterior: ' + seed);
+        """)
+        seed = "83"
+        _type(browser, "seed", seed)
+        browser.run("await page.wait(800);")
+        _notice_hidden(browser, "conflicto-borrador")
+    _expect_draft(browser, seed, "2")
+
+
+@pytest.mark.parametrize("failure", ["network", "server"])
+def test_a_failed_autosave_says_so_and_the_next_save_clears_it(
+    browser: Browser, env: Env, failure: str
+):
+    """Refs #322."""
+    _complete(browser, env)
+    broken = (
+        "() => Promise.reject(new TypeError('Failed to fetch'))"
+        if failure == "network"
+        else "() => Promise.resolve(new Response('', {status: 500}))"
+    )
+    browser.run(f"""
+        await page.eval(() => {{ window.realFetch = window.fetch; window.fetch = {broken}; }});
+    """)
+    _type(browser, "seed", "12")
+    browser.run("""
+        await page.wait(500);
+        const shown = await page.eval(() => !document.getElementById('guardado-fallido').hidden);
+        if (!shown) throw new Error('El fallo del guardado no se ve');
+        await page.eval(() => { window.fetch = window.realFetch; });
+    """)
+    _type(browser, "seed", "13")
+    browser.run("await page.wait(800);")
+    _notice_hidden(browser, "guardado-fallido")
+    _expect_draft(browser, "13", "2")
+
+
+def test_a_save_that_succeeds_removes_the_conflict_notice(browser: Browser, env: Env):
+    """Refs #322: the server drew the notice (a refused Continuar); the next edit is saved and
+    the notice goes away."""
+    _launch(_dal_client(env), env, seed="61")
+    _complete(browser, env)
+    older, newer = _open_newer_tab(browser)
+    _choose_settings(browser, "copy")
+    browser.command("selectpage", older)
+    browser.run("""
+        await page.click('button[form=formulario-ajustes]:not([name])');
+        await page.wait('#conflicto-borrador');
+    """)
+    _type(browser, "seed", "64")
+    browser.run("await page.wait(800);")
+    _notice_hidden(browser, "conflicto-borrador")
+    _expect_draft(browser, "64", "2")
+    browser.command("selectpage", newer)
+
+
+def test_an_open_settings_tab_keeps_its_edit_after_another_tab_launches(browser: Browser, env: Env):
+    """Refs #306: launching in another tab discards the draft; the open Ajustes tab saves its
+    next edit as a new draft, without a warning, and the guide asks to review Ajustes again."""
+    _complete(browser, env)
+    _type(browser, "seed", "75")
+    browser.run("await page.wait(800);")
+    older = _selected_tab(browser)
+    browser.command("newpage", browser.url + "/corridas/nueva/revisar")
+    newer = _selected_tab(browser)
+    browser.run("await page.click('form[action=\"/ejecucion/lanzar\"] button[type=submit]');")
+    _until(
+        browser,
+        """
+        const path = await page.eval(() => location.pathname);
+        if (!path.endsWith('/ejecucion')) throw new Error('No lanzó: ' + path);
+    """,
+    )
+    browser.command("selectpage", older)
+    _type(browser, "seed", "99")
+    browser.run("""
+        await page.wait(1000);
+        const state = await page.eval(() => ({
+            conflict: !document.getElementById('conflicto-borrador').hidden,
+            done: document.querySelector('#paso-ajustes').classList.contains('is-done')
+        }));
+        if (state.conflict || state.done) throw new Error(JSON.stringify(state));
+    """)
+    browser.open("/corridas/nueva/ajustes")
+    browser.run(f"""
+        const shown = await page.eval(() => ({{
+            seed: document.querySelector('#seed').value,
+            ingest: document.querySelector('#ingest_id').value
+        }}));
+        if (shown.seed !== '99' || shown.ingest !== '{env.ingest_id}')
+            throw new Error('Se perdió la edición: ' + JSON.stringify(shown));
+    """)
+    browser.command("selectpage", newer)
+
+
+@pytest.mark.parametrize("leave", ["reload", "back"])
+def test_a_copy_link_is_not_repeated_by_reload_or_back(browser: Browser, env: Env, leave: str):
+    """Refs #319."""
+    _launch(_dal_client(env), env, seed="61")
+    browser.open("/corridas/nueva/ajustes?copiar_de=1")
+    browser.run("""
+        const path = await page.eval(() => location.pathname + location.search);
+        if (path !== '/corridas/nueva/ajustes?aviso=copiado&corrida=1') throw new Error(path);
+    """)
+    _type(browser, "seed", "91")
+    browser.run("await page.wait(800);")
+    if leave == "reload":
+        browser.run("await page.eval(() => location.reload());")
+    else:
+        browser.run("await page.click('#navegacion-pasos button[value=datos]');")
+        _until(
+            browser,
+            """
+            const path = await page.eval(() => location.pathname);
+            if (path !== '/corridas/nueva/datos') throw new Error(path);
+        """,
+        )
+        browser.run("await page.eval(() => history.back());")
+    _until(
+        browser,
+        """
+        const shown = await page.eval(() => ({
+            path: location.pathname, seed: document.querySelector('#seed')?.value
+        }));
+        if (shown.path !== '/corridas/nueva/ajustes' || shown.seed !== '91')
+            throw new Error(JSON.stringify(shown));
+    """,
+    )
+    _notice_hidden(browser, "conflicto-borrador")
+    _expect_draft(browser, "91", "2")

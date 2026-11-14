@@ -332,13 +332,18 @@ def test_a_run_evaluated_before_the_blocks_has_no_champion_confirmation(root: Pa
     assert _repo(root).get_m3_confirmation(RUN) is None
 
 
-def test_a_confirmation_that_breaks_its_rules_is_a_contract_error(root: Path) -> None:
+def test_a_confirmation_row_that_breaks_its_rules_is_rejected_with_its_cause(root: Path) -> None:
     _publish(root)
     publish_confirmation(_db(root), **_CONFIRMED)
     _sql(root, "UPDATE m3_comparaciones SET p_wilcoxon = 1.5")  # the schema does not bound p
 
-    with pytest.raises(ContractInvalid, match=r"clases\.0\.comparaciones\.0\.p_wilcoxon"):
-        _repo(root).get_m3_confirmation(RUN)
+    confirmation = _repo(root).get_m3_confirmation(RUN)
+    assert confirmation is not None and confirmation.clases == []
+    [rejected] = confirmation.rechazos
+    assert (rejected.seccion, rejected.sku_class) == ("clases", "smooth")
+    assert rejected.detalle.startswith("comparaciones.0.p_wilcoxon")
+    # The significance of the same run is still read.
+    assert [row.nivel_fcr for row in confirmation.significancia] == [0.983]
 
 
 def test_a_run_published_before_m3_listed_m2_exclusions_does_not_report_them_as_zero(

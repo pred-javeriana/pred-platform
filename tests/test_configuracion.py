@@ -159,7 +159,8 @@ def test_the_page_offers_the_export_for_the_shown_run(env: Env) -> None:
 # ----------------------------------------------------------------- la ida y vuelta
 def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
     client = _dal_client(env)
-    _launch(client, env)
+    # A step other than the default (7): the round trip must carry it (Refs #330).
+    _launch(client, env, step="14", min_train="21")
     document = _exported(client)
     before = (
         env.rows("SELECT COUNT(*) FROM ejecuciones")[0]
@@ -172,7 +173,13 @@ def test_exporting_and_importing_gives_back_the_same_run(env: Env) -> None:
     text = _text(page.text)
     assert "Configuración importada" in text and "Revise los valores y continúe" in text
     # El formulario trae exactamente los ajustes de la corrida exportada.
-    for field, value in (("horizon", "2"), ("step", "7"), ("trials", "1"), ("seed", "17")):
+    for field, value in (
+        ("horizon", "2"),
+        ("step", "14"),
+        ("min_train", "21"),
+        ("trials", "1"),
+        ("seed", "17"),
+    ):
         assert re.search(rf'name="{field}"[^>]*value="{value}"', page.text), field
     assert 'value="mae" selected' in page.text
     assert re.search(r'value="classical"[^>]*checked', page.text)

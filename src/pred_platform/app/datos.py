@@ -307,6 +307,7 @@ class IngestName:
     ingest_id: str
     file_name: str | None
     published_at: datetime | None
+    n_skus: int | None = None
 
 
 def ingest_name(repository: DataRepository, ingest_id: str | None) -> IngestName | None:
@@ -322,7 +323,7 @@ def ingest_name(repository: DataRepository, ingest_id: str | None) -> IngestName
         found = None
     if found is None:
         return IngestName(ingest_id, None, None)
-    return IngestName(ingest_id, found.name, found.published_at)
+    return IngestName(ingest_id, found.name, found.published_at, found.n_skus)
 
 
 def topology_ready(report: TopologyReport | None) -> bool:

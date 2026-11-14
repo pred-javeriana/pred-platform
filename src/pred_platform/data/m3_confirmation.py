@@ -12,6 +12,10 @@ the engine's meaning of the columns:
   Holm p, only ``confirmado`` has no cause, and a ``confirmado`` Holm p is never above ``alfa``.
   The platform checks these relations; it never recomputes a statistic.
 - One run uses one ``alfa`` for every class.
+
+Each row is validated on its own: a row that breaks a rule is left out with its cause in
+``rechazos`` (the section, the class and the reason), and the valid rows of both sections are
+kept. A confirmation row carries its comparisons, so an invalid comparison rejects its class.
 """
 
 from __future__ import annotations
@@ -144,15 +148,30 @@ class M3ClassSignificance(_Row):
         return self
 
 
+Section = Literal["clases", "significancia"]
+
+
+class M3Rejection(_Row):
+    """A stored row of ``clases`` or ``significancia`` that does not satisfy its rules."""
+
+    seccion: Section
+    # The class the stored row names; ``None`` if even that is not readable.
+    sku_class: str | None
+    detalle: Text
+
+
 class M3Confirmation(_Row):
     """What M3 published on the test block of one PUBLICADA run, in class order.
 
     A class of ``m3_categorias`` may have no row here; the reader shows that class without one.
+    A class in ``rechazos`` has a stored row that could not be read: the reader says so instead
+    of calling it unpublished.
     """
 
     run_id: Text
     clases: list[M3ClassConfirmation]
     significancia: list[M3ClassSignificance]
+    rechazos: list[M3Rejection] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _rules(self) -> Self:

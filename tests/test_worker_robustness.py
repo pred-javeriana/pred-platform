@@ -13,6 +13,7 @@ import threading
 import time
 from contextlib import closing
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 import psutil
@@ -67,6 +68,37 @@ def test_cli_signals_stop_the_engine_and_allow_resume(env: Env, signum: int, onc
         assert env.rows("SELECT estado FROM ejecuciones") == [("ejecutando",)]
         Worker(env.settings).drain()
         assert env.rows("SELECT estado, pid FROM ejecuciones") == [("completada", None)]
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait(timeout=10)
+        if pid is not None and engine.is_alive(pid):
+            engine.terminate(pid, grace=0.1)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="SIGHUP es POSIX")
+def test_a_worker_started_under_nohup_keeps_supervising_after_sighup(env: Env):
+    # nohup leaves SIGHUP ignored: closing the terminal must not stop the worker or its engine.
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    worker = subprocess.Popen(
+        [sys.executable, "-m", "pred_platform.worker"],
+        env=_cli_env(env, "slow"),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN),  # noqa: PLW1509
+    )
+    pid = None
+    try:
+        _wait(lambda: env.rows("SELECT COUNT(*) FROM tareas")[0][0] > 0)
+        pid = env.rows("SELECT pid FROM ejecuciones")[0][0]
+        worker.send_signal(signal.SIGHUP)
+        time.sleep(0.5)
+        assert worker.poll() is None
+        assert engine.is_alive(pid)
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("ejecutando", pid)]
+        worker.send_signal(signal.SIGTERM)  # the other stop signals still stop it
+        assert worker.wait(timeout=10) == 0
+        _wait(lambda: not engine.is_alive(pid), timeout=3, what="engine to stop after SIGTERM")
     finally:
         if worker.poll() is None:
             worker.kill()
@@ -367,6 +399,46 @@ def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_
     _assert_imported(env, intento=1 if units == "ok" else 2)
 
 
+def test_a_supervision_error_before_run_finished_stops_the_run_until_the_operator_resumes(
+    env: Env, monkeypatch
+):
+    # The engine leaves valid final files, then a progress record without keys breaks the
+    # supervision while it is still alive and before run_finished. The worker cannot tell the
+    # attempt finished, so it stops the run; only the operator's resume runs it again.
+    from pred_platform.dal import ejecuciones as dal
+
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "malformed_before_run_finished")
+    assert Worker(env.settings, poll_interval=0.01).drain()
+    folder = next((env.settings.data_root / "runs").iterdir())
+    for name in ("corrida.json", "unidades.jsonl", "seleccion.jsonl"):
+        assert (folder / name).is_file(), name
+    ((estado, attempt, pid, error),) = env.rows(
+        "SELECT estado, intento, pid, error_json FROM ejecuciones"
+    )
+    assert (estado, attempt, pid) == ("detenida", 1, None)
+    diagnostic = json.loads(error)
+    assert diagnostic["code"] == "pipeline.stage_failed"
+    assert "KeyError" in diagnostic["detail"]
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+    with TestClient(create_app(env.settings)) as client:
+        page = client.get("/corridas/1/ejecucion")
+        assert page.status_code == 200
+        assert "Reanudar" in page.text
+    tasks = env.rows("SELECT id FROM tareas ORDER BY id")
+
+    # A restart of the worker leaves it stopped: it has no process left to recover.
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+    assert Worker(env.settings).drain()
+    assert env.rows("SELECT estado, intento FROM ejecuciones") == [("detenida", 1)]
+
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, 1)
+    assert Worker(env.settings).drain()
+    _assert_imported(env, intento=2)
+    assert env.rows("SELECT id FROM tareas ORDER BY id") == tasks
+
+
 def test_a_failed_final_import_exits_non_zero_and_a_restart_imports_the_files(
     env: Env, monkeypatch
 ):
@@ -575,3 +647,279 @@ def _group_exists(pid: int) -> bool:
     except ProcessLookupError:
         return False
     return True
+
+
+def _mixed_group(
+    tmp_path: Path, *, leader_db: Path, member_db: Path
+) -> tuple[subprocess.Popen[bytes], int]:
+    """A process group whose leader and member name different databases in ``PRED_DB_PATH``."""
+    marker = tmp_path / "member.pid"
+    member = (
+        "import os, sys, time; from pathlib import Path; "
+        "Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(300)"
+    )
+    leader_code = (
+        "import os, subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {member!r}, sys.argv[1]], "
+        "env={**os.environ, 'PRED_DB_PATH': sys.argv[2]}); time.sleep(300)"
+    )
+    leader = subprocess.Popen(
+        [sys.executable, "-c", leader_code, str(marker), str(member_db)],
+        env={**os.environ, "PRED_DB_PATH": str(leader_db)},
+        start_new_session=True,
+    )
+    _wait(lambda: marker.exists() and marker.read_text() != "", timeout=10)
+    return leader, int(marker.read_text())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+@pytest.mark.parametrize("leader_is_this", [False, True])
+def test_recovery_leaves_alone_a_group_whose_processes_name_different_databases(
+    env: Env, tmp_path: Path, leader_is_this: bool
+):
+    from pred_platform.dal import ejecuciones as dal
+
+    other = tmp_path / "otra.db"
+    leader_db, member_db = (env.db, other) if leader_is_this else (other, env.db)
+    process, member = _mixed_group(tmp_path, leader_db=leader_db, member_db=member_db)
+    leader = process.pid
+    try:
+        # A live leader of another database is authoritative; a leader of this database whose
+        # member names another one is a contradiction. Neither is stopped.
+        expected = "conflict" if leader_is_this else "other"
+        assert engine.engine_owner(leader, env.db) == expected
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        with closing(dal.connect(env.db)) as conn:
+            run = dal.claim_pending(conn)
+            assert run is not None
+            dal.set_launch(conn, run.id, pid=leader, ruta_corrida=f"runs/{run.run_id}")
+
+        Worker(env.settings).recover()
+
+        assert engine.is_alive(leader) and engine.is_alive(member)
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("ejecutando", leader)]
+    finally:
+        os.killpg(leader, signal.SIGKILL)
+        process.wait(timeout=10)
+        _wait(lambda: not engine.is_alive(member), timeout=5, what="member to be killed")
+
+
+def _unkillable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SIGKILL never reaches the group, as for a process stuck in uninterruptible I/O."""
+    killpg = os.killpg
+
+    def without_sigkill(group: int, signum: int) -> None:
+        if signum != signal.SIGKILL:
+            killpg(group, signum)
+
+    monkeypatch.setattr(os, "killpg", without_sigkill)
+
+
+def _stubborn_engine(db: Path) -> subprocess.Popen[bytes]:
+    """A group leader for ``db`` that ignores SIGTERM, returned once it does."""
+    ready = db.with_name(f"{db.name}.ready")
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import signal, sys, time; from pathlib import Path; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); Path(sys.argv[1]).touch(); "
+            "time.sleep(300)",
+            str(ready),
+        ],
+        env={**os.environ, "PRED_DB_PATH": str(db)},
+        start_new_session=True,
+    )
+    _wait(ready.exists, timeout=10, what="the engine to ignore SIGTERM")
+    return process
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+def test_termination_reports_a_group_that_outlives_sigkill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    process = _stubborn_engine(tmp_path / "pred.db")
+    try:
+        assert engine.engine_owner(process.pid, tmp_path / "pred.db") == "this"
+        with monkeypatch.context() as patch:
+            _unkillable(patch)
+            with pytest.raises(engine.EngineStillRunning):
+                engine.terminate(process.pid, grace=0.2, kill_wait=0.3)
+        assert process.poll() is None
+        engine.terminate(process.pid, grace=0.2)  # SIGKILL now reaches it, and it is confirmed
+        assert not _group_exists(process.pid) or not engine.is_alive(process.pid)
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+def test_recovery_keeps_the_run_of_an_engine_that_outlives_its_stop(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+):
+    from pred_platform.dal import ejecuciones as dal
+
+    process = _stubborn_engine(env.db)
+    try:
+        assert engine.engine_owner(process.pid, env.db) == "this"
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        with closing(dal.connect(env.db)) as conn:
+            run = dal.claim_pending(conn)
+            assert run is not None
+            dal.set_launch(conn, run.id, pid=process.pid, ruta_corrida=f"runs/{run.run_id}")
+        launched: list[list[str]] = []
+
+        def launcher(command, **kwargs):
+            launched.append(command)
+            return engine.launch(command, **kwargs)
+
+        with monkeypatch.context() as patch:
+            _unkillable(patch)
+            patch.setattr(engine, "KILL_WAIT", 0.3)
+            patch.setattr(engine, "terminate", partial(engine.terminate, grace=0.2))
+            # No second engine starts beside the first: the run keeps it, and --once fails.
+            assert not Worker(env.settings, launcher=launcher).drain()
+        assert launched == []
+        assert process.poll() is None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [
+            ("ejecutando", 1, process.pid)
+        ]
+
+        # Once the old engine is gone, the next start queues the run again and finishes it.
+        assert Worker(env.settings).drain()
+        assert process.wait(timeout=10) is not None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=10)
+
+
+def _live_group(group: int) -> list[int]:
+    """The live (not zombie) processes of the process group ``group``."""
+    members = (p.pid for p in psutil.process_iter() if _pgid(p.pid) == group)
+    return [pid for pid in members if engine.is_alive(pid)]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+@pytest.mark.parametrize("cleanup", ["ok", "fails"])
+def test_a_launcher_that_exits_before_its_engine_does_not_release_the_run_beside_it(
+    env: Env, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cleanup: str
+):
+    from pred_platform.worker import bucle
+
+    # The launcher starts the engine as its child and exits at once, leaving it in its group.
+    wrapper = tmp_path / "engine-launcher.sh"
+    wrapper.write_text(
+        f'#!/bin/sh\n{" ".join(env.settings.engine_command)} "$@" &\nexit 0\n', encoding="utf-8"
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "slow")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    groups: list[int] = []
+    alive_at_import: list[list[int]] = []
+
+    def launcher(command, **kwargs):
+        child = engine.launch(command, **kwargs)
+        groups.append(child.pid)
+        return child
+
+    finalize = bucle.finalize
+
+    def recording_finalize(*args, **kwargs):
+        alive_at_import.append(_live_group(groups[0]))
+        return finalize(*args, **kwargs)
+
+    monkeypatch.setattr(bucle, "finalize", recording_finalize)
+    launched = replace(env.settings, engine_command=(str(wrapper),))
+    try:
+        with monkeypatch.context() as patch:
+            if cleanup == "fails":
+                patch.setattr(os, "killpg", lambda group, signum: None)
+                patch.setattr(engine, "KILL_WAIT", 0.3)
+                patch.setattr(engine, "terminate", partial(engine.terminate, grace=0.2))
+            drained = Worker(launched, launcher=launcher).drain()
+        if cleanup == "ok":
+            # The engine left behind is stopped before the import releases the run.
+            assert alive_at_import == [[]]
+            assert _live_group(groups[0]) == []
+            ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+            assert (estado, pid) == ("detenida", None)
+            assert json.loads(error)["code"] == "platform.artifact_missing"
+            return
+        # The engine outlived the stop: the run keeps its process and nothing is imported.
+        assert not drained
+        assert alive_at_import == []
+        assert _live_group(groups[0])
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("ejecutando", groups[0])]
+        # The next start stops the engine it finds in that group, then runs the run again.
+        monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "ok")
+        assert Worker(env.settings).drain()
+        assert _live_group(groups[0]) == []
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if groups and _group_exists(groups[0]):
+            os.killpg(groups[0], signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    ("summary", "code"),
+    [("truncated", "platform.contract_invalid"), ("missing", "platform.artifact_missing")],
+)
+def test_a_rejected_final_result_exits_non_zero_and_waits_for_an_explicit_resume(
+    env: Env, summary: str, code: str
+):
+    # The engine exits 0 as for a published run, but its corrida.json is cut off or absent.
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    cli = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "m3_ok", FAKE_ENGINE_SUMMARY=summary),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert cli.returncode == 1, cli.stderr
+    ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+    assert (estado, pid, json.loads(error)["code"]) == ("detenida", None, code)
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+
+    # Valid files do not resume it by themselves; the operator's resume does.
+    again = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--once"],
+        env=_cli_env(env, "m3_ok"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert again.returncode == 0, again.stderr
+    assert env.rows("SELECT estado, intento FROM ejecuciones") == [("detenida", 1)]
+    resumed = subprocess.run(
+        [sys.executable, "-m", "pred_platform.worker", "--resume", "1", "--once"],
+        env=_cli_env(env, "m3_ok"),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert resumed.returncode == 0, resumed.stderr
+    assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(3,)]
+
+
+def test_a_second_drain_of_the_same_worker_reports_its_own_recovered_import(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+):
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "publishes_before_exit")
+    monkeypatch.setenv("FAKE_ENGINE_UNITS", "bad_line")
+    worker = Worker(env.settings)
+    assert not worker.drain()
+    _assert_import_failed(env, intento=1)
+
+    # The producer is repaired; the same worker recovers and imports the run.
+    monkeypatch.setenv("FAKE_ENGINE_UNITS", "ok")
+    assert worker.drain()
+    _assert_imported(env, intento=2)

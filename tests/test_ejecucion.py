@@ -194,7 +194,7 @@ def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
     # Ajustes still saves the draft (nothing is written); Lanzar, in Revisar, stays off.
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": ingest_id, **default_form_values()},
+        data={"ingest_id": ingest_id, **default_form_values(), "draft_rev": _draft_rev(client)},
         follow_redirects=False,
     )
     assert saved.headers["location"] == "/corridas/nueva/revisar"
@@ -396,11 +396,20 @@ def _launch(client: TestClient, env: Env, **overrides: Any):
     )
 
 
+def _draft_rev(client: TestClient) -> str:
+    """The draft stamp an Ajustes page carries and sends back with each form, as a browser does."""
+    found = re.search(
+        r'name="draft_rev" value="([^"]*)"', client.get("/corridas/nueva/ajustes").text
+    )
+    assert found is not None
+    return found.group(1)
+
+
 def _review(client: TestClient, env: Env, **overrides: Any) -> str:
     """Saves the settings of a new run as a person does (Ajustes, Continuar) and opens Revisar."""
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, **overrides},
+        data={"ingest_id": env.ingest_id, **FORM, **overrides, "draft_rev": _draft_rev(client)},
         follow_redirects=False,
     )
     assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/revisar")
@@ -518,30 +527,28 @@ def test_engine_terminal_state_keeps_polling_until_worker_finishes(env: Env, sta
         owner.release()
 
 
-@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
-def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
-    env: Env, state: str
-) -> None:
-    client = _dal_client(env)
-    assert _launch(client, env).status_code == 303
+def _published_engine_whose_worker_is_killed(
+    env: Env, state: str, *, command: str, delay: str, **extra: str
+) -> int:
+    """A separate ``--once`` worker whose engine publishes ``state``; the worker is then killed.
+
+    Returns the pid recorded for the engine command.
+    """
     process = subprocess.Popen(
         [sys.executable, "-m", "pred_platform.worker", "--once"],
         env={
             **os.environ,
             "PRED_DATA_ROOT": str(env.settings.data_root),
             "PRED_DB_PATH": str(env.db),
-            "PRED_ENGINE_CMD": f"{sys.executable} {_FAKE}",
+            "PRED_ENGINE_CMD": command,
             "FAKE_ENGINE_SCENARIO": "publishes_before_exit",
             "FAKE_ENGINE_TERMINAL_STATE": state,
-            "FAKE_ENGINE_PUBLISH_EXIT_DELAY": "5",
-            # El worker muerto deja al motor sin padre; este motor ignora la señal que el
-            # núcleo le envía entonces, para que el sondeo cubra el motor aún activo.
-            "FAKE_ENGINE_IGNORE_SIGTERM": "1",
+            "FAKE_ENGINE_PUBLISH_EXIT_DELAY": delay,
+            **extra,
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    pid = None
     try:
         _wait(
             lambda: bool(env.rows("SELECT pid FROM ejecuciones WHERE estado = ?", state)),
@@ -549,8 +556,58 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
         )
         [(pid,)] = env.rows("SELECT pid FROM ejecuciones")
         assert pid is not None and engine.engine_owner(pid, env.db) == "this"
+    finally:
         process.kill()
-        process.wait(timeout=10)
+        process.communicate(timeout=10)
+    return pid
+
+
+def _launcher_script(tmp_path: Path) -> str:
+    """A resource-slot style launcher: it runs the engine as its child, without ``exec``."""
+    script = tmp_path / "lanzador.sh"
+    script.write_text(
+        f'#!/bin/bash\n"{sys.executable}" "{_FAKE}" "$@"\nstatus=$?\nexit "$status"\n',
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+@pytest.mark.parametrize(
+    "launcher",
+    [
+        "ignores_sigterm",
+        pytest.param(
+            "wrapper", marks=pytest.mark.skipif(sys.platform == "win32", reason="script bash")
+        ),
+    ],
+)
+def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
+    env: Env, state: str, launcher: str, tmp_path: Path
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    # El worker muerto deja al motor sin padre y, en Linux, el núcleo envía SIGTERM al comando
+    # lanzado. Para que el sondeo cubra un motor aún activo, ese motor ignora la señal, o el
+    # comando es un lanzador intermedio: la señal lo detiene a él y el motor hijo sigue en su
+    # grupo de procesos.
+    if launcher == "wrapper":
+        pid = _published_engine_whose_worker_is_killed(
+            env, state, command=_launcher_script(tmp_path), delay="5"
+        )
+    else:
+        pid = _published_engine_whose_worker_is_killed(
+            env,
+            state,
+            command=f"{sys.executable} {_FAKE}",
+            delay="5",
+            FAKE_ENGINE_IGNORE_SIGTERM="1",
+        )
+    try:
+        if launcher == "wrapper" and sys.platform == "linux":
+            # La señal del núcleo detuvo al lanzador; el sondeo sigue al motor de su grupo.
+            _wait(lambda: not engine.is_alive(pid), timeout=3, what="kernel signal to launcher")
         # Sin procesador, el motor todavía activo debe mantener el seguimiento.
         assert client.get("/ejecucion/estado?ejecucion=1").status_code == 200
         _wait(
@@ -583,10 +640,39 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
             conn.execute("UPDATE ejecuciones SET pid = ?", (os.getpid(),))
         assert_terminal_without_writes()
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.communicate(timeout=10)
-        if pid is not None and engine.engine_owner(pid, env.db) == "this":
+        if engine.engine_owner(pid, env.db) == "this":
+            engine.terminate(pid)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="señal del núcleo al morir el supervisor")
+@pytest.mark.parametrize("state", ["completada", "completada_con_fallos"])
+def test_a_direct_engine_stops_with_its_killed_worker_and_the_next_worker_imports_it(
+    env: Env, state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    pid = _published_engine_whose_worker_is_killed(
+        env, state, command=f"{sys.executable} {_FAKE}", delay="5"
+    )
+    try:
+        # El núcleo detiene el motor lanzado directamente antes de que escriba sus archivos.
+        _wait(lambda: engine.engine_owner(pid, env.db) == "none", timeout=3, what="kernel signal")
+        fragment = client.get("/ejecucion/estado?ejecucion=1")
+        assert fragment.status_code == 286
+        assert f'data-pred-run-state="{state}"' in fragment.text
+        folder = next((env.settings.data_root / "runs").iterdir())
+        for name in ("corrida.json", "unidades.jsonl", "seleccion.jsonl"):
+            assert not (folder / name).exists(), name
+
+        # El siguiente worker recupera la corrida por su PID registrado, la vuelve a ejecutar
+        # con el mismo run_id y la importa.
+        monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+        assert Worker(env.settings).drain()
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+        assert {estado for (estado,) in env.rows("SELECT estado FROM tareas")} == {"exitosa"}
+        assert env.rows("SELECT COUNT(*) FROM selecciones") == [(3,)]
+    finally:
+        if engine.engine_owner(pid, env.db) == "this":
             engine.terminate(pid)
 
 
@@ -598,6 +684,41 @@ def test_unknown_filter_keeps_the_run_and_all_tasks(parameter: str) -> None:
     assert "Ejecución #1" in _text(response.text)
     assert "7 tareas coinciden con la consulta." in _text(response.text)
     assert "Valor desconocido" not in response.text
+
+
+@pytest.mark.parametrize(
+    "paging, wanted, said",
+    [
+        ("page=abc", {"page": 1, "size": 50}, "Se muestra la primera página."),
+        ("page=0&size=10", {"page": 1, "size": 10}, "Se muestra la primera página."),
+        ("page=2&size=9999", {"page": 2, "size": 50}, "Se muestran 50 tareas por página."),
+    ],
+)
+def test_an_invalid_page_or_size_keeps_the_valid_filters(
+    paging: str, wanted: dict[str, int], said: str
+) -> None:
+    client, repo = _fixture_client()
+    response = client.get(f"/corridas/1/ejecucion?estado=fallida&family=ml&{paging}")
+    assert response.status_code == 200
+    assert repo.status_calls[-1] == (
+        "1",
+        {"estado": "fallida", "sku": None, "family": "ml", **wanted},
+    )
+    text = _text(response.text)
+    assert said in text
+    assert "Ese filtro no existe" not in text
+    # The links and the poll keep the filters, without the invalid value.
+    assert "estado=fallida&amp;family=ml" in response.text
+    assert "abc" not in response.text.split('id="ejecucion-cuerpo"')[1].split(">")[0]
+
+
+def test_an_invalid_page_keeps_the_polled_run(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    assert _launch(client, env, seed="18").status_code == 303
+    response = client.get("/ejecucion/estado?ejecucion=1&page=abc")
+    assert 'data-pred-run-summary="Ejecución 1:' in response.text
+    assert 'Ejecución <span class="mono">#1</span>' in response.text
 
 
 @pytest.mark.parametrize("failure", [ArtifactMissing, InvalidQuery])
@@ -1698,6 +1819,42 @@ def test_a_stopped_embedded_worker_is_reported_in_the_run_and_launch_form(env: E
     assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
 
 
+def test_a_worker_that_cannot_open_its_lock_is_the_reason_given_for_the_wait(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without chmod (root ignores it): the lock file refuses to open until the folder is fixed.
+    _launch(_dal_client(env), env)
+    refused = threading.Event()
+    refused.set()
+    acquire = WorkerLock.acquire
+
+    def acquire_or_refuse(self: WorkerLock) -> bool:
+        if refused.is_set():
+            raise PermissionError(13, "Permission denied", str(self.path))
+        return acquire(self)
+
+    monkeypatch.setattr(WorkerLock, "acquire", acquire_or_refuse)
+    app = create_app(replace(env.settings, worker="embedded"))
+    with TestClient(app) as served:
+        _wait(lambda: app.state.worker.lock_problem is not None)
+        assert app.state.worker_thread.is_alive()
+        run_page = _text(served.get("/ejecucion?ejecucion=1").text)
+        polled = _text(served.get("/ejecucion/estado?ejecucion=1").text)
+        form = _text(_review(served, env, seed="5"))
+        for text in (run_page, polled):
+            assert "no puede abrir su archivo de bloqueo" in text
+            assert "empezará cuando el procesador de ejecuciones la tome" not in text
+            assert "termine la ejecución anterior" not in text
+        assert "no puede abrir su archivo de bloqueo" in form
+        assert "Puede lanzar; la corrida esperará en cola" in form
+        refused.clear()
+        _wait(lambda: app.state.worker.lock_problem is None)
+        _wait(lambda: env.rows("SELECT estado FROM ejecuciones") == [("completada",)])
+        assert "no puede abrir su archivo de bloqueo" not in _text(
+            served.get("/ejecucion?ejecucion=1").text
+        )
+
+
 def test_once_without_a_lock_file_logs_why_and_leaves_the_queue(
     env: Env, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -2151,6 +2308,7 @@ def test_avisos_de_ejecucion_sin_textos_tecnicos(env: Env) -> None:
     ).encode("utf-8")
     resp_missing = client.post(
         "/ejecucion/configuracion",
+        data={"draft_rev": _draft_rev(client)},
         files={"archivo": ("corrida.json", missing_cfg, "application/json")},
     )
     assert resp_missing.status_code == 200
@@ -2265,3 +2423,13 @@ def _element_by_id(html: str, element_id: str) -> str:
         if depth == 0:
             return html[position : position + match.start()]
     raise AssertionError(f"{element_id} is not closed")
+
+
+def test_the_family_matrix_counts_one_product_in_singular(env: Env) -> None:
+    """La matriz de Ajustes dice «1 producto» y «0 productos», no «1 productos» (#302)."""
+    client = _dal_client(env)
+    page = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text
+    head = re.search(r'<table class="pred-family-matrix">.*?</thead>', page, re.S)
+    assert head is not None
+    counts = re.findall(r"<small>([^<]*productos?)</small>", head.group())
+    assert sorted(counts) == ["0 productos", "1 producto", "1 producto", "1 producto"]
