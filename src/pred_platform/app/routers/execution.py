@@ -130,15 +130,20 @@ def _control(request: Request) -> RunControl:
     return request.app.state.run_control  # type: ignore[no-any-return]
 
 
-def _worker_state(request: Request) -> Literal["active", "off", "stopped"]:
+def _worker_state(request: Request) -> Literal["active", "off", "stopped", "unlockable"]:
     """Whether a worker follows the queue: this app's live thread, or another process that holds
     the database. Otherwise a launched run waits for ``make worker``: ``off`` when this app runs
-    no worker, ``stopped`` when its thread ended (the app log says why)."""
+    no worker, ``stopped`` when its thread ended (the app log says why). ``unlockable`` is this
+    app's thread alive but retrying because it cannot open its lock file: nobody takes the
+    queue until the folder is writable, and no earlier run is to blame."""
     settings = request.app.state.settings
     if settings.data_source != "dal":
         return "off"
     thread = getattr(request.app.state, "worker_thread", None)
     if thread is not None and thread.is_alive():
+        worker = getattr(request.app.state, "worker", None)
+        if worker is not None and worker.lock_problem is not None:
+            return "unlockable"
         return "active"
     if WorkerLock.for_database(settings.db_path).held_elsewhere():
         return "active"

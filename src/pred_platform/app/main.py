@@ -111,15 +111,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _import_engine_reports(active)
         stop = threading.Event()
         thread: threading.Thread | None = None
+        worker: Worker | None = None
         if active.data_source == "dal" and active.worker == "embedded":
             # El worker corre como hilo de la app; el mismo código se puede correr aparte con
             # `python -m pred_platform.worker`.
+            worker = Worker(active)
             thread = threading.Thread(
-                target=Worker(active).run_forever, args=(stop,), name="pred-worker", daemon=True
+                target=worker.run_forever, args=(stop,), name="pred-worker", daemon=True
             )
             thread.start()
-        # The pages ask this thread whether the embedded worker still follows the queue.
+        # The pages ask this thread whether the embedded worker still follows the queue, and the
+        # worker whether it is held back by a lock it cannot open.
         app.state.worker_thread = thread
+        app.state.worker = worker
         try:
             yield
         finally:

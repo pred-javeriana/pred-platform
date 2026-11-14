@@ -75,6 +75,9 @@ class Worker:
         # The runs this worker could not settle: their final result import failed after the
         # engine had finished, or their engine outlived its stop and keeps the run.
         self._failed: set[str] = set()
+        # Why this worker cannot take its lock now, while it retries; the pages say so instead
+        # of telling the operator the queue waits for an earlier run.
+        self.lock_problem: str | None = None
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
@@ -167,10 +170,13 @@ class Worker:
         while not stop.is_set():
             try:
                 if self._lock.acquire():
+                    self.lock_problem = None
                     return True
             except OSError as exc:
+                self.lock_problem = str(exc)
                 self._log_unlockable(exc)
             else:
+                self.lock_problem = None
                 if not waiting:
                     _logger.warning(
                         "Otro worker ya atiende %s; este espera a que termine para seguir la cola",

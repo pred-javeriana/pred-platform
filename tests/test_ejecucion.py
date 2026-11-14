@@ -1810,6 +1810,42 @@ def test_a_stopped_embedded_worker_is_reported_in_the_run_and_launch_form(env: E
     assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
 
 
+def test_a_worker_that_cannot_open_its_lock_is_the_reason_given_for_the_wait(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without chmod (root ignores it): the lock file refuses to open until the folder is fixed.
+    _launch(_dal_client(env), env)
+    refused = threading.Event()
+    refused.set()
+    acquire = WorkerLock.acquire
+
+    def acquire_or_refuse(self: WorkerLock) -> bool:
+        if refused.is_set():
+            raise PermissionError(13, "Permission denied", str(self.path))
+        return acquire(self)
+
+    monkeypatch.setattr(WorkerLock, "acquire", acquire_or_refuse)
+    app = create_app(replace(env.settings, worker="embedded"))
+    with TestClient(app) as served:
+        _wait(lambda: app.state.worker.lock_problem is not None)
+        assert app.state.worker_thread.is_alive()
+        run_page = _text(served.get("/ejecucion?ejecucion=1").text)
+        polled = _text(served.get("/ejecucion/estado?ejecucion=1").text)
+        form = _text(_review(served, env, seed="5"))
+        for text in (run_page, polled):
+            assert "no puede abrir su archivo de bloqueo" in text
+            assert "empezará cuando el procesador de ejecuciones la tome" not in text
+            assert "termine la ejecución anterior" not in text
+        assert "no puede abrir su archivo de bloqueo" in form
+        assert "Puede lanzar; la corrida esperará en cola" in form
+        refused.clear()
+        _wait(lambda: app.state.worker.lock_problem is None)
+        _wait(lambda: env.rows("SELECT estado FROM ejecuciones") == [("completada",)])
+        assert "no puede abrir su archivo de bloqueo" not in _text(
+            served.get("/ejecucion?ejecucion=1").text
+        )
+
+
 def test_once_without_a_lock_file_logs_why_and_leaves_the_queue(
     env: Env, caplog: pytest.LogCaptureFixture
 ) -> None:

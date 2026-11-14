@@ -99,6 +99,8 @@
   {% endif %}
   {% if run.estado == "pendiente" and worker == "stopped" and not control_reason %}
   <p class="pred-note">En cola: el procesador de ejecuciones de esta instalación se detuvo, así que nadie atiende la cola. El registro de la aplicación dice por qué.</p>
+  {% elif run.estado == "pendiente" and worker == "unlockable" and not control_reason %}
+  <p class="pred-note">En cola: el procesador de ejecuciones de esta instalación no puede abrir su archivo de bloqueo junto a la base de datos, así que no toma ejecuciones. Empezará cuando la carpeta de la base permita escribir; el registro de la aplicación dice qué archivo.</p>
   {% elif run.estado == "pendiente" and worker == "off" and not control_reason %}
   <p class="pred-note">En cola: esta instalación no procesa ejecuciones por sí sola. Para que empiece, quien administra PRED debe iniciar el procesador de ejecuciones.</p>
   <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Comando: <span class="mono">make worker</span></p></details>

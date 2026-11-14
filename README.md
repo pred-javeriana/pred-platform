@@ -314,7 +314,9 @@ and tasks. Without `--once`, the command only queues the run for the worker.
 - **One worker per database.** A worker holds an exclusive lock on `<database>.worker.lock`
   (beside `PRED_DB_PATH`) for as long as it runs; the operating system frees it when the worker
   exits or crashes. A worker that cannot open or lock that file logs why and retries until
-  shutdown; `--once` reports the error and exits with code 1. A second `make worker` or app worker
+  shutdown; while the app's own worker retries, Ejecución and Revisar say that it cannot open its
+  lock file instead of promising that a queued run will start. `--once` reports the error and
+  exits with code 1. A second `make worker` or app worker
   waits without touching any run and takes over when the first stops. `--once` next to a running
   worker exits without executing anything: queued runs wait for that worker or the next one,
   with no guarantee that either will execute them. Thus `make launch ARGS="... --once"` while the
