@@ -108,6 +108,8 @@
 .pred-result-pairs > span { display: inline-flex; align-items: center; gap: 8px; }
 .pred-results .pred-filters--bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px 16px; }
 .pred-results .pred-filters--bar .pred-field { min-width: 0; }
+/* La barra de semillas no usa la rejilla de cuatro columnas iguales: ver .pred-filters--seeds. */
+.pred-results .pred-filters--seeds { display: flex; flex-wrap: wrap; }
 .pred-results-list .pred-significance { min-width: 11rem; }
 .pred-significance .pred-kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .pred-significance .pred-kv dd { margin-bottom: 8px; }

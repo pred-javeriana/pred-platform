@@ -1549,6 +1549,17 @@ button.pred-btn--large {
   min-height: 2.5rem;
 }
 
+/* Los selectores de semilla muestran una fecha con hora: cada campo crece hasta que la etiqueta
+   cabe entera y el botón, a su ancho, pasa a otra línea antes de cortarla. */
+.pred-filters--seeds .pred-field {
+  flex: 1 1 15rem;
+  max-width: none;
+}
+
+.pred-filters--seeds > .pred-btn {
+  flex: 0 0 auto;
+}
+
 /* --------------------------------------------------------------- Alertas */
 /* Texto e ícono sobre la superficie, sin caja: el color refuerza, no informa solo. */
 .pred-alert {
