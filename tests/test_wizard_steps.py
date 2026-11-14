@@ -661,3 +661,80 @@ def test_a_settings_tab_left_open_keeps_editing_after_another_tab_launches(env: 
     # Once the open tab wrote a new draft, another stale page is refused again.
     assert _autosave(client, env, open_tab, seed="98").status_code == 409
     assert _shown(client) == ("99", "2")
+
+
+def test_reloading_a_copy_link_keeps_the_later_edits(env: Env) -> None:
+    """Refs #319: the copy link saves once and redirects; reloading, Back or a restored session
+    ask for the redirected address, which writes nothing."""
+    client = _dal_client(env)
+    _launch(client, env, seed="99", horizon="5")
+    linked = client.get("/corridas/nueva/ajustes?copiar_de=1", follow_redirects=False)
+    assert (linked.status_code, linked.headers["location"]) == (
+        303,
+        "/corridas/nueva/ajustes?aviso=copiado&corrida=1",
+    )
+    assert COOKIE in linked.headers["set-cookie"]
+    page = client.get(linked.headers["location"])
+    assert "Ajustes copiados de la corrida #1" in _text(page.text)
+    assert "set-cookie" not in page.headers
+    stamp = re.search(r'name="draft_rev" value="([^"]+)"', page.text)
+    assert stamp is not None
+    assert _autosave(client, env, stamp.group(1), seed="91", horizon="4").status_code == 200
+
+    again = client.get(linked.headers["location"])
+    assert "set-cookie" not in again.headers
+    assert _shown(client, linked.headers["location"]) == ("91", "4")
+    assert _shown(client, "/corridas/nueva/revisar") == ("91", "4")
+
+
+@pytest.mark.parametrize("action", ["copy", "import"])
+def test_copy_and_import_answer_with_a_redirect_that_writes_nothing(env: Env, action: str) -> None:
+    """Refs #319: reloading the result of the copy or import form asks for Ajustes again
+    instead of sending the form with its old stamp (a false conflict)."""
+    client = _dal_client(env)
+    _launch(client, env, seed="99", horizon="5")
+    if action == "copy":
+        sent = client.post(
+            "/corridas/nueva/copiar",
+            data={"copiar": "1", "draft_rev": _stamp(client)},
+            follow_redirects=False,
+        )
+        target = "/corridas/nueva/ajustes?aviso=copiado&corrida=1"
+        notice = "Ajustes copiados de la corrida #1"
+    else:
+        document = client.get("/ejecucion/configuracion.json?ejecucion=1").json()
+        sent = client.post(
+            "/ejecucion/configuracion",
+            data={"draft_rev": _stamp(client)},
+            files={"archivo": ("ajustes.json", json.dumps(document))},
+            follow_redirects=False,
+        )
+        target = "/corridas/nueva/ajustes?aviso=importado"
+        notice = "Configuración importada"
+    assert (sent.status_code, sent.headers["location"]) == (303, target)
+    page = client.get(target)
+    assert notice in _text(page.text)
+    assert not re.search(r'id="conflicto-borrador"(?![^>]*hidden)', page.text)
+    stamp = re.search(r'name="draft_rev" value="([^"]+)"', page.text)
+    assert stamp is not None
+    assert _autosave(client, env, stamp.group(1), seed="91", horizon="5").status_code == 200
+    assert "set-cookie" not in client.get(target).headers
+    assert _shown(client, target) == ("91", "5")
+
+
+def test_a_link_with_the_file_already_in_the_draft_writes_nothing(env: Env) -> None:
+    """Refs #319: reloading ``?ingest_id=`` does not raise the revision, so a pending save from
+    the page left and other Ajustes tabs stay current."""
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="44"))
+    stamp = _stamp(client)
+    page = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    assert page.status_code == 200 and "set-cookie" not in page.headers
+    assert _autosave(client, env, stamp, seed="45").status_code == 200
+
+
+def test_an_unknown_notice_shows_nothing(env: Env) -> None:
+    client = _dal_client(env)
+    for query in ("aviso=copiado&corrida=<b>", "aviso=otro", "aviso=copiado"):
+        page = client.get(f"/corridas/nueva/ajustes?{query}").text
+        assert "Ajustes copiados" not in page and "<b>" not in page

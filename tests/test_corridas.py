@@ -703,9 +703,13 @@ def test_a_link_that_chooses_a_file_puts_it_in_the_draft(env: Env) -> None:
     client = _dal_client(env)
     client.cookies.set(COOKIE, _draft_cookie(SOME_INGEST))
 
-    ajustes = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    linked = client.get(
+        f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}", follow_redirects=False
+    )
 
-    assert COOKIE in ajustes.headers["set-cookie"]
+    assert (linked.status_code, linked.headers["location"]) == (303, "/corridas/nueva/ajustes")
+    assert COOKIE in linked.headers["set-cookie"]
+    ajustes = client.get(linked.headers["location"])
     assert formulario_html.submit(ajustes.text, _AJUSTES_FORM)["ingest_id"] == [env.ingest_id]
     # Datos, the rail and Revisar read the file the page shows, not the earlier draft.
     assert [state for state, _ in _rail(ajustes.text)][0] == "done"
@@ -826,8 +830,14 @@ def test_an_imported_configuration_is_kept_in_the_draft(env: Env) -> None:
     imported = client.post(
         "/ejecucion/configuracion",
         files={"archivo": ("c.json", json.dumps(document).encode(), "application/json")},
+        follow_redirects=False,
     )
-    assert imported.status_code == 200 and COOKIE in imported.headers["set-cookie"]
+    # Saved, then back to Ajustes with a 303: reloading that page does not import again.
+    assert (imported.status_code, imported.headers["location"]) == (
+        303,
+        "/corridas/nueva/ajustes?aviso=importado",
+    )
+    assert COOKIE in imported.headers["set-cookie"]
 
     # Leaving Ajustes and coming back keeps the import; Revisar lists it.
     client.get("/corridas/nueva/datos")

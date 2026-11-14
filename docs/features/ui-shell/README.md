@@ -26,7 +26,10 @@ no administration screen. M0 is out of the flow.
   their own `destino`, so no exit loses what was typed, even without JavaScript. Ajustes never
   chooses a file for the person, and choosing another file marks Ajustes to do again. A link that
   chooses a runnable file (`/corridas/nueva/ajustes?ingest_id=`), a copied run and an imported
-  configuration write it too. Revisar and launching validate everything again with the worker's
+  configuration write it too, and then redirect (303) to Ajustes (Post/Redirect/Get) with a
+  presentation-only `?aviso=` for the notice, so reloading, the browser's Back button or a
+  restored session never repeats the write over later edits; a link with the file already in the
+  draft writes nothing. Revisar and launching validate everything again with the worker's
   rule. Launching discards the draft without going back to revision 0: it leaves an empty
   draft marked as launched with one more revision, so an Ajustes tab left open can still save a
   later edit as a new draft (there is no newer choice to lose) and the guide asks to review

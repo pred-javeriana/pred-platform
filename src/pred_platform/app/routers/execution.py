@@ -536,15 +536,13 @@ def _render_ajustes(
 ) -> HTMLResponse:
     """Ajustes de la corrida nueva: el formulario con los valores del borrador (o los enviados).
 
-    ``imported`` es el aviso (variante, texto) de una configuración importada: rellena el
-    formulario y, si el archivo trae otra ingesta que esta plataforma no tiene, lo deja sin
-    ingesta elegida, para que nadie lance los ajustes importados sobre otros datos sin darse
-    cuenta. ``exclusion`` es el aviso de los SKU que quedarían sin campeón, junto al rechazo que
-    impide continuar. ``save`` es el borrador que la página guarda y muestra en la barra de pasos;
-    ``autosave``, que lo guarda el guardado automático. ``conflict`` avisa que lo enviado no se
-    guardó porque el borrador cambió después de abrir esa página. ``checked`` dice que quien
-    llama ya aplicó la regla de lanzamiento a ``form`` (``exclusion`` es su aviso, o ``None``), y
-    ``ingests``, las ingestas aceptadas si ya las leyó: la página no las lee otra vez.
+    ``imported`` es el aviso (variante, texto) de una copia o una importación, o de por qué no
+    se pudo copiar. ``exclusion`` es el aviso de los SKU que quedarían sin campeón, junto al
+    rechazo que impide continuar. ``save`` es el borrador que la página guarda y muestra en la
+    barra de pasos; ``autosave``, que lo guarda el guardado automático. ``conflict`` avisa que lo
+    enviado no se guardó porque el borrador cambió después de abrir esa página. ``checked`` dice
+    que quien llama ya aplicó la regla de lanzamiento a ``form`` (``exclusion`` es su aviso, o
+    ``None``), y ``ingests``, las ingestas aceptadas si ya las leyó: la página no las lee otra vez.
     """
     if save is not None:
         save = next_revision(request, save)
@@ -737,39 +735,92 @@ def _render_record(
     return _render(request, template, context)
 
 
-@router.get("/corridas/{corrida}/ajustes", response_class=HTMLResponse)
+@router.get("/corridas/{corrida}/ajustes", response_class=HTMLResponse, response_model=None)
 def paso_ajustes(
     request: Request,
     corrida: str,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     if corrida == NEW:
         # ``?ingest_id=`` llega de un enlace que ya eligió el archivo (Resultados, rutas viejas):
         # si se puede ejecutar, el borrador lo guarda, para que Datos, la barra de pasos y Revisar
-        # lean el mismo archivo que muestra la página.
+        # lean el mismo archivo que muestra la página. Un archivo igual al del borrador no escribe
+        # nada: recargar el enlace no deja vieja a ninguna página.
         linked = request.query_params.get("ingest_id") or None
         accepted = accepted_ingests(repository)
         runnable = {i.item.ingest_id for i in accepted if not i.synthetic}
-        save = read_draft(request).with_ingest(linked) if linked and linked in runnable else None
+        draft = read_draft(request)
         # Un enlace con un archivo que no se puede ejecutar muestra el del borrador.
-        shown = linked if save is not None else None
+        shown = linked if linked and linked in runnable else None
+        save = draft.with_ingest(shown) if shown and shown != draft.ingest_id else None
         copiar_de = (request.query_params.get("copiar_de") or "").strip().lstrip("#")
         if copiar_de:
             return _copy_settings(request, repository, copiar_de, ingest_id=shown, save=save)
-        return _render_ajustes(request, repository, ingest_id=shown, save=save, ingests=accepted)
+        if save is not None:
+            return _saved_to_ajustes(request, save)
+        return _render_ajustes(
+            request,
+            repository,
+            ingest_id=shown,
+            imported=_shown_notice(request),
+            ingests=accepted,
+        )
     facts = run_facts(repository, corrida)
     if facts is None:
         return render_missing_run(request, corrida)
     return _render_record(request, repository, facts, "ajustes")
 
 
-@router.post("/corridas/nueva/copiar", response_class=HTMLResponse)
+def _saved_to_ajustes(request: Request, draft: Draft, **notice: str) -> RedirectResponse:
+    """Guarda ``draft`` y vuelve a Ajustes con un 303 (Post/Redirect/Get).
+
+    Recargar, el botón Atrás del navegador o restaurar la sesión piden después esa dirección, que
+    no escribe nada: una copia, una importación o un enlace no se repiten sobre lo que se editó
+    después. ``notice`` (``aviso`` y ``corrida``) solo dice qué aviso mostrar."""
+    target = step_href(NEW, "ajustes")
+    if notice:
+        target += "?" + urlencode(notice)
+    response = RedirectResponse(target, status_code=303)
+    save_draft(request, response, next_revision(request, draft))
+    return response
+
+
+def _shown_notice(request: Request) -> tuple[str, str] | None:
+    """El aviso de una copia o importación ya guardada (``?aviso=``), solo para mostrar."""
+    aviso = request.query_params.get("aviso")
+    corrida = request.query_params.get("corrida") or ""
+    if aviso in ("copiado", "copiado_sin_datos") and not corrida.isdigit():
+        return None
+    return {
+        "copiado": (
+            "info",
+            f"Ajustes copiados de la corrida #{corrida}. Cambie la semilla y continúe.",
+        ),
+        "copiado_sin_datos": (
+            "warning",
+            f"Ajustes copiados de la corrida #{corrida}, pero el archivo de esa corrida no está "
+            "disponible. Elija otros datos y cambie la semilla antes de continuar.",
+        ),
+        "importado": (
+            "success",
+            "Configuración importada. Revise los valores y continúe para lanzarla.",
+        ),
+        "importado_sin_datos": (
+            "warning",
+            "Configuración importada, pero sus datos no están cargados en esta plataforma. "
+            "Cargue ese archivo en Datos o elija otro antes de lanzar: los resultados solo son "
+            "comparables sobre los mismos datos.",
+        ),
+    }.get(aviso or "")
+
+
+@router.post("/corridas/nueva/copiar", response_model=None)
 def copiar_ajustes(
     request: Request,
     copiar: Annotated[str, Form()],
     repository: DataRepository = Depends(get_repository),  # noqa: B008
     draft_rev: Annotated[str | None, Form()] = None,
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     """«Partir de una corrida anterior» en Ajustes."""
     if is_stale(request, draft_rev):
         return _render_ajustes(request, repository, conflict=True, status_code=409)
@@ -783,11 +834,11 @@ def _copy_settings(
     *,
     ingest_id: str | None = None,
     save: Draft | None = None,
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     """Copia todos los ajustes guardados de una corrida al borrador, sin validarlos: no crea ni
     reanuda una corrida, y Ajustes queda por revisar. Si no se puede copiar, el borrador no cambia
     y Ajustes dice por qué. Lo usan el formulario de copia y el enlace ``?copiar_de=`` de
-    Resultados."""
+    Resultados. Lo copiado se guarda y la respuesta lleva a Ajustes (``_saved_to_ajustes``)."""
 
     def refused(reason: str) -> HTMLResponse:
         notice = (
@@ -808,19 +859,9 @@ def _copy_settings(
         return refused(str(exc).rstrip("."))
     known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
     values["ingest_id"] = detail.ingest_sha256 if detail.ingest_sha256 in known else ""
-    notice = (
-        ("info", f"Ajustes copiados de la corrida #{reference}. Cambie la semilla y continúe.")
-        if values["ingest_id"]
-        else (
-            "warning",
-            f"Ajustes copiados de la corrida #{reference}, pero el archivo de esa corrida no está "
-            "disponible. Elija otros datos y cambie la semilla antes de continuar.",
-        )
-    )
     copy = read_draft(request).with_values(values["ingest_id"] or None, values)
-    return _render_ajustes(
-        request, repository, form=FormResult(values, None, {}), imported=notice, save=copy
-    )
+    aviso = "copiado" if values["ingest_id"] else "copiado_sin_datos"
+    return _saved_to_ajustes(request, copy, aviso=aviso, corrida=str(detail.id))
 
 
 @router.post("/corridas/nueva/ajustes/comprobar", response_model=None)
@@ -1012,8 +1053,8 @@ def importar_configuracion(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
     archivo: Annotated[UploadFile | None, File()] = None,
     draft_rev: Annotated[str | None, Form()] = None,
-) -> HTMLResponse:
-    """Rellena Ajustes y el borrador con un archivo exportado, sin validarlo. No lanza."""
+) -> HTMLResponse | RedirectResponse:
+    """Rellena el borrador con un archivo exportado, sin validarlo, y vuelve a Ajustes. No lanza."""
     if is_stale(request, draft_rev):
         return _render_ajustes(request, repository, conflict=True, status_code=409)
     raw = b"" if archivo is None else archivo.file.read(MAX_BYTES + 1)
@@ -1022,24 +1063,14 @@ def importar_configuracion(
         problem = f"No se importó la configuración. {' '.join(imported.errors)}"
         return _render_ajustes(request, repository, import_error=problem, status_code=400)
     known = {i.item.ingest_id for i in accepted_ingests(repository) if not i.synthetic}
-    form = FormResult(imported.values, None, {})
-    if imported.ingest_sha256 in known:
-        form.values["ingest_id"] = imported.ingest_sha256
-        notice = (
-            "success",
-            "Configuración importada. Revise los valores y continúe para lanzarla.",
-        )
-    else:
-        form.values["ingest_id"] = ""
-        notice = (
-            "warning",
-            "Configuración importada, pero sus datos no están cargados en esta plataforma. "
-            "Cargue ese archivo en Datos o elija otro antes de lanzar: los resultados solo son "
-            "comparables sobre los mismos datos.",
-        )
+    values = dict(imported.values)
+    # Si el archivo trae otra ingesta que esta plataforma no tiene, queda sin ingesta elegida,
+    # para que nadie lance los ajustes importados sobre otros datos sin darse cuenta.
+    values["ingest_id"] = imported.ingest_sha256 if imported.ingest_sha256 in known else ""
     # El borrador guarda lo importado: salir de Ajustes no lo pierde (Revisar lo valida).
-    save = read_draft(request).with_values(form.values["ingest_id"] or None, form.values)
-    return _render_ajustes(request, repository, form=form, imported=notice, save=save)
+    save = read_draft(request).with_values(values["ingest_id"] or None, values)
+    aviso = "importado" if values["ingest_id"] else "importado_sin_datos"
+    return _saved_to_ajustes(request, save, aviso=aviso)
 
 
 def _render_action_error(
