@@ -335,8 +335,11 @@ and tasks. Without `--once`, the command only queues the run for the worker.
   the database, `--once` included, queues it again. Stopping one worker does not stop the work
   while another waits on the same database: that worker resumes it immediately, outside any
   resource guard of the stopped worker. Run the app with `PRED_WORKER=off` while a guarded CLI
-  worker serves its queue. On Linux, launching the engine requires `setpriv` (util-linux): the
-  kernel sends SIGTERM to the engine even if the supervisor dies before cleanup can run.
+  worker serves its queue. On Linux, launching the engine requires `setpriv` (util-linux): if the supervisor dies
+  before cleanup can run, the kernel sends SIGTERM to the launched command, the leader of the
+  engine's process group. When that command is a wrapper (a resource-slot script, `uv run`), the
+  engine it started can survive the supervisor's abrupt death; the next worker that takes the
+  database stops the whole process group before it queues the run again.
   Closing a browser tab leaves the server worker running. The accompanying engine checkpoint
   change also skips successful L2/L3 units; updating platform alone cannot provide that guarantee. See
   [recovery and verification](docs/features/reanudacion/README.md).

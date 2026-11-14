@@ -50,8 +50,11 @@ Esta carrera también corresponde al diagnóstico de
   PID aún no esté registrado o ya se haya liberado. No borre ese archivo mientras corre un worker.
 - Mientras un worker de CLI con guardián de recursos atiende la cola, ejecutar la aplicación con
   `PRED_WORKER=off`. Detener solo ese worker no detiene el trabajo si otro espera en la misma base.
-- En Linux se necesita `setpriv` (util-linux). El motor recibe SIGTERM del kernel si muere su
-  supervisor, incluso cuando un cierre abrupto impide ejecutar la limpieza de Python.
+- En Linux se necesita `setpriv` (util-linux). Si muere el supervisor, incluso cuando un cierre
+  abrupto impide ejecutar la limpieza de Python, el kernel envía SIGTERM al comando lanzado, líder
+  del grupo de procesos del motor. Si ese comando es un envoltorio (un script de recursos,
+  `uv run`), el motor que inició puede seguir vivo tras la muerte abrupta del supervisor: el
+  siguiente worker que toma la base detiene todo el grupo antes de volver a encolar la corrida.
 - Si no se puede abrir o tomar el bloqueo por permisos o un error del sistema, el worker registra
   la ruta y reintenta hasta el cierre. `--once` informa el error y termina con código 1.
 - Un error inesperado de supervisión detiene el motor y deja la corrida `detenida` con su causa,
