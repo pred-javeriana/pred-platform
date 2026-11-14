@@ -1015,3 +1015,34 @@ def test_published_seed_without_a_class_champion_is_not_pending(env: Env) -> Non
     assert "Faltan corridas" not in row
     assert "No confirmada en las tres" in _text(row)
     assert "No concluyente" in text
+
+
+@pytest.mark.parametrize(
+    "column,stored",
+    [
+        ("p.protocolo", "{roto"),
+        ("p.protocolo", "[]"),
+        ("c.creado_en", "ayer"),
+        ("c.creado_en", b"\x00"),
+    ],
+)
+def test_a_malformed_stored_publication_does_not_break_the_home(
+    published: tuple[TestClient, str], env: Env, column: str, stored: object
+) -> None:
+    client, number = published
+    [(engine_run,)] = env.rows("SELECT run_id FROM ejecuciones WHERE id = ?", number)
+    _publish_evaluation(env, engine_run, "m3-ui-old", 0, creado_en="2026-10-26 10:00:00")
+    table, name = (
+        ("m3_protocolos", "protocolo") if column.startswith("p.") else ("m3_corridas", "creado_en")
+    )
+    [(original,)] = env.rows(f"SELECT {name} FROM {table} WHERE run_id = 'm3-ui-old'")
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(f"UPDATE {table} SET {name} = ? WHERE run_id = 'm3-ui-old'", (stored,))
+    # An unreadable publication that is not the one shown is a read problem, not an HTTP 500.
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Ver la corrida" in _text(response.text)
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(f"UPDATE {table} SET {name} = ? WHERE run_id = 'm3-ui-old'", (original,))
+    restored = _text(client.get("/").text)
+    assert "resultados listos" in restored and "Ver resultados" in restored
