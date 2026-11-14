@@ -1060,12 +1060,22 @@ def published_funnel(
     try:
         if m3_run_id is None:
             m3_run_id = repository.list_m3_runs(run_id_m2=m2_run_id).selected_run_id
-        if m3_run_id is None:
-            return None
-        evidence = repository.get_m3_evidence(m3_run_id, size=1)
     except (InvalidQuery, DataLayerError):
         return None
-    return evidence.funnel if evidence.availability.status == "available" else None
+    return None if m3_run_id is None else _published_evidence(repository, m3_run_id)[0]
+
+
+def _published_evidence(
+    repository: DataRepository, m3_run_id: str
+) -> tuple[models_v2.M3Funnel | None, M3Problem | None]:
+    """El embudo de una evaluación publicada, o por qué no se pudo leer su evidencia."""
+    try:
+        evidence = repository.get_m3_evidence(m3_run_id, size=1)
+    except (InvalidQuery, DataLayerError) as exc:
+        return None, _read_problem(exc)
+    if evidence.availability.status != "available":
+        return None, _unavailable_evidence(evidence.availability)
+    return evidence.funnel, None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1102,10 +1112,11 @@ def run_outcome_details(
 
     Una ejecución «completada con fallos» terminó: algunas tareas de un modelo fallaron, y la
     evaluación final igual dio veredicto a los productos que pudo comparar. ``funnel`` es el
-    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada. ``published`` es
-    lo que la vista ya sabe de la publicación (``published_evaluation``): con ``False`` no se
-    busca el embudo y, con ``True``, una evidencia que no se puede leer no retira la
-    publicación; el texto dice que la evidencia no está disponible.
+    embudo que la vista ya leyó; sin él, se lee el de la evaluación publicada (``m3_run_id``, la
+    que la vista ya resolvió, o la más nueva). ``published`` es lo que la vista ya sabe de la
+    publicación (``published_evaluation``): con ``False`` no se busca el embudo. Una evaluación
+    publicada cuya evidencia no se puede leer conserva la publicación y no se presenta como si no
+    hubiera veredictos publicados: el texto dice por qué no se pudo leer.
     """
     if run.estado not in ("completada", "completada_con_fallos"):
         return RunOutcome(None, False)
@@ -1124,15 +1135,19 @@ def run_outcome_details(
         )
     elif total:
         parts.append("Ninguna tarea falló.")
+    problem = None
     if funnel is None and published is not False:
-        funnel = published_funnel(repository, run.id, m3_run_id)
+        if m3_run_id is not None:
+            funnel, problem = _published_evidence(repository, m3_run_id)
+        else:
+            funnel = published_funnel(repository, run.id)
+    if funnel is None and (published or problem is not None):
+        parts.append("La evaluación final está publicada, pero sus veredictos no se pudieron leer.")
+        parts.append(
+            problem.title if problem is not None else "Recargue la página para intentarlo de nuevo."
+        )
+        return RunOutcome(" ".join(parts), True)
     if funnel is None:
-        if published:
-            parts.append(
-                "La evaluación final está publicada, pero su evidencia no se pudo leer ahora; "
-                "recargue la página para intentarlo de nuevo."
-            )
-            return RunOutcome(" ".join(parts), True)
         parts.append("Todavía no hay veredictos publicados.")
         return RunOutcome(" ".join(parts), False)
     lead = "Aun así, " if failed else ""

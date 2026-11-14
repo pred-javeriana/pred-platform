@@ -1046,3 +1046,35 @@ def test_a_malformed_stored_publication_does_not_break_the_home(
         conn.execute(f"UPDATE {table} SET {name} = ? WHERE run_id = 'm3-ui-old'", (original,))
     restored = _text(client.get("/").text)
     assert "resultados listos" in restored and "Ver resultados" in restored
+
+
+@pytest.mark.parametrize(
+    "broken,cause",
+    [
+        (
+            "DELETE FROM m3_cortes WHERE run_id = 'm3-ui-0'",
+            "no trae la lista de productos excluidos",
+        ),
+        (
+            "UPDATE m3_veredictos SET n_ventanas = -1 WHERE run_id = 'm3-ui-0'",
+            "No fue posible leer la evaluación.",
+        ),
+    ],
+)
+def test_a_publication_with_unreadable_evidence_is_not_called_unpublished(
+    published: tuple[TestClient, str], env: Env, broken: str, cause: str
+) -> None:
+    client, number = published
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute(broken)
+    for chapter in ("resumen", "p1", "productos"):
+        response = client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0")
+        assert response.status_code == 200
+        outcome = re.search(r'id="resultado-ejecucion">(.*?)</p>', response.text, re.S)
+        assert outcome is not None, chapter
+        text = _text(unescape(outcome.group(1)))
+        assert "Todavía no hay veredictos publicados" not in text
+        assert (
+            "La evaluación final está publicada, pero sus veredictos no se pudieron leer." in text
+        )
+        assert cause in text

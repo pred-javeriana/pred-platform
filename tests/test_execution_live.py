@@ -151,7 +151,7 @@ def test_a_published_run_stays_published_when_its_evidence_cannot_be_read(
     for route in ("/corridas/1/ejecucion", "/ejecucion/estado?ejecucion=1"):
         body = client.get(route).text
         assert "Publicados" in _navigation(body, "barra-pasos")
-        assert "evidencia no se pudo leer ahora" in _text(body)
+        assert "pero sus veredictos no se pudieron leer" in _text(body)
         assert "Todavía no hay veredictos publicados." not in _text(body)
 
 
