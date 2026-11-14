@@ -142,13 +142,14 @@ def list_group_runs(db_path: Path) -> tuple[GroupRunOption, ...]:
                 continue
             seed = config.get("seed")
             if type(seed) is int and seed in (0, 1, 2) and "bloques" in protocol:
+                # Like a malformed protocol, one unreadable time must not hide the other choices.
+                try:
+                    created = _utc(row["creado_en"])
+                except (TypeError, ValueError):
+                    continue
                 options.append(
                     GroupRunOption(
-                        row["run_id"],
-                        seed,
-                        row["ingesta_sha256"],
-                        row["run_id_m2"],
-                        _utc(row["creado_en"]),
+                        row["run_id"], seed, row["ingesta_sha256"], row["run_id_m2"], created
                     )
                 )
         return tuple(options)
