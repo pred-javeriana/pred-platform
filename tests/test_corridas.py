@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.borrador import COOKIE, Draft, save_draft
 from pred_platform.app.configuracion import FORMAT, FORMAT_VERSION
+from pred_platform.app.ejecucion import draft_items
 from pred_platform.app.main import create_app
 from pred_platform.config import Settings
 from pred_platform.contract.errors import ArtifactMissing
@@ -1052,3 +1053,23 @@ def test_the_scenario_errores_has_the_selections_of_its_current_run() -> None:
     assert "No hay selecciones para la ejecución" not in sku.text
     assert "FIL-0001" in sku.text
     assert client.get("/corridas/1/resultados?vista=sku").status_code == 200
+
+
+def test_review_says_one_day_in_singular(env: Env) -> None:
+    """Revisar y lanzar dice «1 día», no «1 días», para el horizonte y el paso (#328)."""
+    client = _dal_client(env)
+    values = {**FORM, "horizon": "1", "step": "1", "min_train": "40"}
+    saved = client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **values},
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    text = _main(client.get("/corridas/nueva/revisar").text)
+    assert "1 días" not in text
+    assert "40 días como mínimo, para entrenar 1 día de pronóstico" in text
+    assert "al menos 40 días y pronostica el día siguiente. La prueba se repite cada día." in text
+    # The rows of a launched run, and of a draft, name the setting in days with its number.
+    rows = dict(draft_items(values))
+    assert (rows["Horizonte"], rows["Paso entre ventanas"]) == ("1 día", "1 día")
+    assert rows["Mínimo de entrenamiento"] == "40 días"

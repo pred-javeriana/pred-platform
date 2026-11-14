@@ -197,12 +197,15 @@ def test_the_product_detail_shares_the_chapter_links_and_keeps_the_chosen_evalua
         ("p1", "1 producto comparable", "1 productos comparables"),
         ("p2", "0 de 1 producto ", "0 de 1 productos"),
         ("estabilidad", "1 tipo con campeona confirmada", "1 tipos con campeona"),
+        ("resumen", "0 de 1 producto ", "0 de 1 productos"),
+        ("resumen", "Respaldada para 1 producto ", "Respaldada para 1 productos"),
     ],
 )
 def test_a_count_of_one_reads_in_singular(
     published: tuple[TestClient, str], chapter: str, singular: str, plural: str
 ) -> None:
-    """Errática tiene un solo producto comparable y probado, y solo Suave se confirma (#310)."""
+    """Errática tiene un solo producto comparable y probado, solo Suave se confirma y un solo
+    producto tiene mejora verificada (#310, #328)."""
     client, number = published
     text = _text(client.get(f"/corridas/{number}/resultados/{chapter}?m3=m3-ui-0").text)
     assert singular in text

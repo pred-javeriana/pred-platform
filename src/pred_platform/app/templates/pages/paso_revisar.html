@@ -68,8 +68,8 @@
       <dl class="pred-review__eval">
         <div><dt>{{ icon("i-target") }}Métrica de selección</dt><dd>{{ metric_label(form.metric) }}<small>{{ metric_term(form.metric).hint }}</small></dd></div>
         <div><dt>{{ icon("i-window") }}Ventana</dt>
-          <dd class="pred-window" aria-hidden="true"><span class="pred-window__train"><b>{{ form.min_train }} días</b>como mínimo, para entrenar</span><span class="pred-window__test"><b>{{ form.horizon }} días</b>de pronóstico</span></dd>
-          <dd class="pred-window-text">Cada modelo entrena con al menos {{ form.min_train }} días y pronostica los {{ form.horizon }} días siguientes. La prueba se repite cada {{ form.step }} días.</dd>
+          <dd class="pred-window" aria-hidden="true"><span class="pred-window__train"><b>{{ count_noun(form.min_train, "día", "días") }}</b>como mínimo, para entrenar</span><span class="pred-window__test"><b>{{ count_noun(form.horizon, "día", "días") }}</b>de pronóstico</span></dd>
+          <dd class="pred-window-text">Cada modelo entrena con al menos {{ count_noun(form.min_train, "día", "días") }} y pronostica {{ "el día siguiente" if form.horizon | string == "1" else "los " ~ form.horizon ~ " días siguientes" }}. La prueba se repite {{ "cada día" if form.step | string == "1" else "cada " ~ form.step ~ " días" }}.</dd>
         </div>
       </dl>
       <dl class="pred-review__facts">

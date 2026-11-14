@@ -20,6 +20,7 @@ from pred_platform.app.presentation import (
     SKU_CLASS_ORDER,
     STAGE_ORDER,
     aggregation_label,
+    count_noun,
     family_label,
     format_count,
     format_decimal,
@@ -733,6 +734,11 @@ def _percent(share: float) -> str:
     return format_decimal(value, 0 if value == int(value) else 1)
 
 
+def _days(value: object) -> str:
+    """«1 día», «7 días»: un ajuste en días, del formulario o de la corrida lanzada."""
+    return count_noun(value if isinstance(value, int) else str(value), "día", "días")
+
+
 def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
     """Los ajustes de una corrida por lanzar (los valores del formulario), como «etiqueta, valor»,
     con los mismos nombres que :func:`settings_items` usa para una corrida lanzada."""
@@ -741,10 +747,10 @@ def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
     return [
         ("Familias", ", ".join(family_label(f) for f in families) if families else "—"),
         ("Métrica de selección", metric_label(values.get("metric") or _DEFAULTS.metric)),
-        ("Mínimo de entrenamiento", f"{values.get('min_train')} días"),
-        ("Horizonte", f"{values.get('horizon')} días"),
-        ("Paso entre ventanas", f"{values.get('step')} días"),
-        ("Estacionalidad", f"{values.get('seasonality')} días"),
+        ("Mínimo de entrenamiento", _days(values.get("min_train"))),
+        ("Horizonte", _days(values.get("horizon"))),
+        ("Paso entre ventanas", _days(values.get("step"))),
+        ("Estacionalidad", _days(values.get("seasonality"))),
         (
             "Configuraciones por SKU y familia",
             trials if trials else "Las que cada familia prueba por defecto",
@@ -764,10 +770,10 @@ def settings_items(settings: RunSettings) -> list[tuple[str, str]]:
     return [
         ("Familias", families),
         ("Métrica de selección", metric_label(settings.metric)),
-        ("Mínimo de entrenamiento", f"{settings.min_train} días"),
-        ("Horizonte", f"{settings.horizon} días"),
-        ("Paso entre ventanas", f"{settings.step} días"),
-        ("Estacionalidad", f"{settings.seasonality} días"),
+        ("Mínimo de entrenamiento", _days(settings.min_train)),
+        ("Horizonte", _days(settings.horizon)),
+        ("Paso entre ventanas", _days(settings.step)),
+        ("Estacionalidad", _days(settings.seasonality)),
         (
             "Resumen de las ventanas",
             f"{aggregation_label(settings.aggregation)} "
