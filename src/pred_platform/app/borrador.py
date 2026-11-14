@@ -161,7 +161,9 @@ def next_revision(request: Request, draft: Draft) -> Draft:
 def is_stale(request: Request, page_stamp: str | None) -> bool:
     """Si la página que envía no vio el borrador vigente: otra página lo escribió después.
 
-    Sin marca (un cliente que no la conoce) no hay con qué comparar; una ilegible se rechaza.
+    Una marca ilegible se rechaza. Sin marca (una página dibujada antes de que existiera) solo vale
+    mientras el borrador sigue en la revisión 0, como una cookie de antes de la revisión: después
+    de cualquier escritura no hay cómo saber si la página la vio.
     """
     current = read_draft(request)
     if current.launched:
@@ -169,7 +171,7 @@ def is_stale(request: Request, page_stamp: str | None) -> bool:
         # que sigue abierta puede guardar lo que se escriba después como un borrador nuevo.
         return False
     if page_stamp is None or not page_stamp.strip():
-        return False
+        return current.rev > 0
     return page_stamp != current.stamp
 
 

@@ -23,6 +23,7 @@ from pred_platform.dal.importacion import import_reports
 from pred_platform.data.fixtures import FixtureRepository
 from tests import formulario_html
 from tests.m3_publicada import publish
+from tests.test_ejecucion import _draft_rev
 from tests.test_ui_review import Markup
 from tests.test_worker import Env, _fixture_id
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
@@ -463,7 +464,7 @@ def test_choosing_settings_and_launching_walks_the_draft_through_the_steps(env: 
 
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "17"},
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "17", "draft_rev": _draft_rev(client)},
         follow_redirects=False,
     )
     assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/revisar")
@@ -550,7 +551,13 @@ def test_leaving_ajustes_by_atras_keeps_what_was_typed(env: Env) -> None:
 
     left = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "149", "destino": "datos"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "seed": "149",
+            "destino": "datos",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
 
@@ -568,7 +575,13 @@ def test_a_value_left_unfinished_is_kept_but_revisar_still_checks_it(env: Env) -
     _choose(client, env.ingest_id)
     left = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "datos"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "horizon": "0",
+            "destino": "datos",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
     assert left.headers["location"] == "/corridas/nueva/datos"
@@ -581,7 +594,13 @@ def test_a_value_left_unfinished_is_kept_but_revisar_still_checks_it(env: Env) -
     # The rail's Revisar link checks like «Continuar»: an error stays in Ajustes, unsaved.
     to_revisar = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "revisar"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "horizon": "0",
+            "destino": "revisar",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
     assert to_revisar.status_code == 200 and "is-error" in to_revisar.text
@@ -716,7 +735,10 @@ def test_a_new_file_requires_reviewing_settings_again(env: Env) -> None:
     assert import_reports(env.db, root).ok
     client = _dal_client(env)
     _choose(client, env.ingest_id)
-    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM})
+    client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "draft_rev": _draft_rev(client)},
+    )
     assert _rail(client.get("/corridas/nueva/datos").text)[1][0] == "done"
     # The same file keeps completion; another accepted file requires a fresh review.
     same = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text
@@ -733,10 +755,19 @@ def test_a_new_file_requires_reviewing_settings_again(env: Env) -> None:
 def test_saving_each_edit_keeps_the_new_value_for_revisar_without_validating(env: Env) -> None:
     client = _dal_client(env)
     _choose(client, env.ingest_id)
-    client.post("/corridas/nueva/ajustes", data={"ingest_id": env.ingest_id, **FORM, "seed": "64"})
+    client.post(
+        "/corridas/nueva/ajustes",
+        data={"ingest_id": env.ingest_id, **FORM, "seed": "64", "draft_rev": _draft_rev(client)},
+    )
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "99", "destino": "ajustes"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "seed": "99",
+            "destino": "ajustes",
+            "draft_rev": _draft_rev(client),
+        },
         follow_redirects=False,
     )
     assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/ajustes")
@@ -746,7 +777,13 @@ def test_saving_each_edit_keeps_the_new_value_for_revisar_without_validating(env
     )
     client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "horizon": "0", "destino": "ajustes"},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "horizon": "0",
+            "destino": "ajustes",
+            "draft_rev": _draft_rev(client),
+        },
     )
     assert "Estos ajustes no se pueden lanzar" in client.get("/corridas/nueva/revisar").text
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(0,)]
@@ -968,7 +1005,13 @@ def test_the_rail_says_what_the_saved_draft_holds(env: Env) -> None:
 
     client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, "seed": "17", "families": ["classical", "ml"]},
+        data={
+            "ingest_id": env.ingest_id,
+            **FORM,
+            "seed": "17",
+            "families": ["classical", "ml"],
+            "draft_rev": _draft_rev(client),
+        },
     )
 
     for path in ("/corridas/nueva/ajustes", "/corridas/nueva/revisar", "/corridas/nueva/datos"):

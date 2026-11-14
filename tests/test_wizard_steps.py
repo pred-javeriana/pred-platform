@@ -100,7 +100,9 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
 def test_copying_a_missing_run_does_not_replace_the_draft(env: Env) -> None:
     client = _dal_client(env)
     _review(client, env, seed="123")
-    missing = client.post("/corridas/nueva/copiar", data={"copiar": "999"})
+    missing = client.post(
+        "/corridas/nueva/copiar", data={"copiar": "999", "draft_rev": _stamp(client)}
+    )
     assert "No se pudieron copiar los ajustes de la corrida #999: no existe esa corrida." in (
         _text(missing.text)
     )
@@ -538,11 +540,42 @@ def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env)
 
 
 @pytest.mark.parametrize("stamp", [None, ""])
-def test_a_client_without_a_stamp_is_not_compared(env: Env, stamp: str | None) -> None:
+def test_a_page_without_a_stamp_only_saves_over_a_draft_from_before_the_revision(
+    env: Env, stamp: str | None
+) -> None:
+    """Refs #321: a page drawn before the stamp existed is compared too."""
     client = _dal_client(env)
-    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12))
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, seed="21"))
     assert _autosave(client, env, stamp, seed="77").status_code == 200
     assert _shown(client)[0] == "77"
+
+    client.cookies.clear()
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="21"))
+    assert _autosave(client, env, stamp, seed="78").status_code == 409
+    assert _shown(client)[0] == "21"
+
+
+@pytest.mark.parametrize("stamp", [None, ""])
+def test_a_submit_without_a_stamp_cannot_replace_a_later_copy(env: Env, stamp: str | None) -> None:
+    """Refs #321: tab A saved, tab B copied, then a page without ``draft_rev`` edits and
+    continues: both are refused and the copy stays the draft."""
+    client = _dal_client(env)
+    _launch(client, env, seed="99", horizon="5")
+    assert _autosave(client, env, _stamp(client), seed="21").status_code == 200
+    copied = client.post(
+        "/corridas/nueva/copiar", data={"copiar": "1", "draft_rev": _stamp(client)}
+    )
+    assert copied.status_code == 200
+    assert _shown(client) == ("99", "5")
+
+    data = {"ingest_id": env.ingest_id, **FORM, "seed": "33"}
+    if stamp is not None:
+        data["draft_rev"] = stamp
+    assert _autosave(client, env, stamp, seed="33").status_code == 409
+    refused = client.post("/corridas/nueva/ajustes", data=data, follow_redirects=False)
+    assert refused.status_code == 409 and "set-cookie" not in refused.headers
+    assert _shown(client) == ("99", "5")
+    assert _shown(client, "/corridas/nueva/revisar") == ("99", "5")
 
 
 def test_an_unreadable_stamp_is_refused(env: Env) -> None:

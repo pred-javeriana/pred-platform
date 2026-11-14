@@ -194,7 +194,7 @@ def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
     # Ajustes still saves the draft (nothing is written); Lanzar, in Revisar, stays off.
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": ingest_id, **default_form_values()},
+        data={"ingest_id": ingest_id, **default_form_values(), "draft_rev": _draft_rev(client)},
         follow_redirects=False,
     )
     assert saved.headers["location"] == "/corridas/nueva/revisar"
@@ -396,11 +396,20 @@ def _launch(client: TestClient, env: Env, **overrides: Any):
     )
 
 
+def _draft_rev(client: TestClient) -> str:
+    """The draft stamp an Ajustes page carries and sends back with each form, as a browser does."""
+    found = re.search(
+        r'name="draft_rev" value="([^"]*)"', client.get("/corridas/nueva/ajustes").text
+    )
+    assert found is not None
+    return found.group(1)
+
+
 def _review(client: TestClient, env: Env, **overrides: Any) -> str:
     """Saves the settings of a new run as a person does (Ajustes, Continuar) and opens Revisar."""
     saved = client.post(
         "/corridas/nueva/ajustes",
-        data={"ingest_id": env.ingest_id, **FORM, **overrides},
+        data={"ingest_id": env.ingest_id, **FORM, **overrides, "draft_rev": _draft_rev(client)},
         follow_redirects=False,
     )
     assert (saved.status_code, saved.headers["location"]) == (303, "/corridas/nueva/revisar")
@@ -2299,6 +2308,7 @@ def test_avisos_de_ejecucion_sin_textos_tecnicos(env: Env) -> None:
     ).encode("utf-8")
     resp_missing = client.post(
         "/ejecucion/configuracion",
+        data={"draft_rev": _draft_rev(client)},
         files={"archivo": ("corrida.json", missing_cfg, "application/json")},
     )
     assert resp_missing.status_code == 200

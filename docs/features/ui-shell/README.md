@@ -34,7 +34,9 @@ no administration screen. M0 is out of the flow.
 - Every draft write raises a revision and gets its own mark, both stored in the cookie; a cookie
   from before the revision loads as revision 0. Each Ajustes page carries the stamp it saw
   (`draft_rev`, also in the copy and import forms) and `POST /corridas/nueva/ajustes`, the copy and
-  the import refuse a stamp that is not the current draft's: nothing is saved, the answer is 409
+  the import refuse a stamp that is not the current draft's (a missing stamp, from a page drawn
+  before stamps existed, only passes while the draft is still at revision 0): nothing is saved, the
+  answer is 409
   (`X-Pred-Draft-Rev` names the current stamp) and the page shows `#conflicto-borrador` with a
   reload link; the script does not retry. The autosave writes its own cookie per revision
   (`pred_borrador_a<rev>`) and never the main one: the current draft is the highest revision, and

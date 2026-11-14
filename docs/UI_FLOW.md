@@ -35,7 +35,9 @@ la revisión 0, así que una pestaña de Ajustes que quedó abierta puede guarda
 como un borrador nuevo, con Ajustes por revisar. El borrador
 lleva una revisión y una marca por escritura, y cada página de Ajustes devuelve las que vio: si otra
 página escribió después (una copia, una importación o una edición en otra pestaña), el servidor no
-guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. El guardado
+guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. Un envío sin esa
+marca (una página dibujada antes de que existiera) solo se acepta mientras el borrador sigue en la
+revisión 0. El guardado
 automático escribe una cookie propia por revisión (`pred_borrador_a<rev>`); gana la de mayor
 revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
 abandonada no reemplace lo elegido después. Una corrida lanzada vive en
