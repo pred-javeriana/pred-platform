@@ -365,7 +365,9 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
     elif run.estado == "detenida":
         execution = ("todo", "Detenida · puede reanudarse" if run.resumable else "Detenida", None)
     else:
-        execution = ("done", f"Terminó en {run.duration}" if run.duration else "Terminó", None)
+        # Desde el primer inicio: en una corrida reanudada incluye el tiempo detenida.
+        span = f"Terminó {run.duration} después de iniciar" if run.duration else "Terminó"
+        execution = ("done", span, None)
     if run.published:
         results: tuple[StepState, str, datetime | None] = ("done", "Publicados", run.publicada_en)
     elif run.finished:

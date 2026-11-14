@@ -759,7 +759,8 @@ def stage_steps(estado: str, etapa: str | None) -> list[Step]:
 
 
 def elapsed_text(run: Ejecucion, now: datetime) -> str | None:
-    """Cuánto lleva o cuánto duró la corrida; ``None`` si todavía no empezó."""
+    """Cuánto lleva o cuánto duró la corrida desde su primer inicio (una reanudada incluye el
+    tiempo detenida); ``None`` si todavía no empezó."""
     if run.iniciada_en is None:
         return None
     end = run.finalizada_en if run.finalizada_en is not None else now

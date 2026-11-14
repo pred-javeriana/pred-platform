@@ -70,7 +70,7 @@
     <div class="pred-live__reading">
   {% endif %}
   {% if run.estado == "ejecutando" %}{{ run_pulse(run, progress, poll) }}{% endif %}
-  {% if finished and elapsed %}<p class="pred-live__finished"><strong>Terminó en {{ elapsed }}.</strong></p>{% endif %}
+  {% if finished and elapsed %}<p class="pred-live__finished"><strong>{% if resumed %}Terminó {{ elapsed }} después del primer inicio.{% else %}Terminó en {{ elapsed }}.{% endif %}</strong></p>{% endif %}
   {% if outcome %}<p class="pred-run__outcome" id="resultado-ejecucion">{{ outcome }}</p>{% endif %}
   {% if run.estado == "detenida" and actions.offers_resume %}<p>Lo terminado queda guardado. Reanudar sigue desde la última tarea guardada.</p>{% endif %}
   {% if progress and progress.etapa_actual == "L4" and run.estado == "ejecutando" %}<p class="pred-meta">En esta etapa el porcentaje de tareas casi no se mueve: la evaluación final trabaja por producto. Siga el conteo de productos.</p>{% endif %}

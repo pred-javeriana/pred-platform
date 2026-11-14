@@ -280,6 +280,27 @@ def test_the_home_groups_the_seeds_that_share_data_and_settings(env: Env) -> Non
     assert text.count("En cola") >= 3
 
 
+def test_the_home_does_not_call_the_span_of_a_resumed_run_its_duration(env: Env) -> None:
+    client = _dal_client(env)
+    launched = client.post(
+        "/ejecucion/lanzar", data={"ingest_id": env.ingest_id, **FORM}, follow_redirects=False
+    )
+    assert launched.status_code == 303
+    # Stopped and resumed: the span from the first start includes the time it stood still.
+    with sqlite3.connect(env.db) as conn:
+        conn.execute(
+            "UPDATE ejecuciones SET estado = 'completada', intento = 2, "
+            "iniciada_en = '2026-11-01T12:00:00+00:00', "
+            "finalizada_en = '2026-11-01T15:00:00+00:00'"
+        )
+    text = _main(client.get("/").text)
+    assert "terminó 3 h 00 min después de iniciar" in text
+    assert "duró" not in text
+    execution = _text(client.get("/corridas/1/ejecucion").text)
+    assert "Terminó 3 h 00 min después del primer inicio." in execution
+    assert "Terminó en 3 h" not in execution
+
+
 # ---------------------------------------------------------------- una corrida lanzada
 def test_a_launched_run_keeps_datos_ajustes_and_revisar_as_a_record() -> None:
     client = _fixture_client()

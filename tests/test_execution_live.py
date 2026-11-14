@@ -114,8 +114,8 @@ def test_polled_navigation_moves_from_queue_to_published_without_reloading(
     _publish(monkeypatch)
     final = client.get("/ejecucion/estado?ejecucion=1")
     assert final.status_code == 286
-    assert "Terminó en" in _navigation(final.text, "barra-pasos")
-    assert "Terminó en" in _navigation(final.text, "resumen-paso")
+    assert "después de iniciar" in _navigation(final.text, "barra-pasos")
+    assert "después de iniciar" in _navigation(final.text, "resumen-paso")
     assert "Publicados" in _navigation(final.text, "barra-pasos")
     assert "Parciales" not in _navigation(final.text, "navegacion-pasos")
     assert 'id="paso-despues"' in final.text and "Ya están publicados." in final.text
