@@ -130,7 +130,8 @@ cause, and the published code in `title`.
 It shows group significance by class, full/common-population lumpy medians and ranges, a query
 for one SKU's three source tests, and a JSON download with all values and source row keys.
 Until all three publications are selected, it shows no final-group numbers. The calculation
-runs on read without new tables or an engine change. See [the seed-group rules and command](../../../README.md#final-seed-group-evidence).
+runs on read without new tables or an engine change; the app reuses the last four results, in
+memory only, until `pred.db` or its WAL changes. See [the seed-group rules and command](../../../README.md#final-seed-group-evidence).
 
 ## How
 

@@ -234,9 +234,14 @@ recomputed on a fixed common population, against Seasonal Naive and SARIMA. Each
 requires the policy's minimum common test windows in every run. Medians follow confirmation's
 log scale, including zero-loss limits. Both ranges are descriptive, without subtraction or a
 stability threshold. The reader reconciles full-population calculations with the published
-confirmation before reporting the common-population comparison.
+confirmation before reporting the common-population comparison. A problem that affects only the
+lumpy evidence keeps the group significance and shows its cause in the lumpy section. When the lumpy
+champion is not Foundation in some seed, no common population is formed: the page shows each seed's
+published medians instead of ranges.
 
-The calculation runs on read in one read-only snapshot. It adds no table, migration or file,
+The calculation runs on read in one read-only snapshot. The app keeps the last four results in
+memory only and reuses one for the same selection until `pred.db` or its WAL changes (an empty WAL
+does not count); a restart recomputes them. It adds no table, migration or file,
 does not start the engine, and leaves schema version 12 unchanged. The page links to a JSON
 download with source run IDs, raw p-values and directions, and candidate/window keys for lumpy.
 To read the group without starting the server, after seed 2 publishes:

@@ -289,7 +289,11 @@ class DataRepository(Protocol):
         ...
 
     def get_m3_group(self, run_ids: Sequence[str]) -> GroupEvidence:
-        """Compute the final three-seed evidence on read, without persisting derived rows."""
+        """Compute the final three-seed evidence on read, without persisting derived rows.
+
+        The last few results are kept in memory only and reused until ``pred.db`` or its WAL
+        changes.
+        """
         ...
 
     def comparable_m3_runs(self, reference: str, run_ids: Sequence[str]) -> frozenset[str]:
