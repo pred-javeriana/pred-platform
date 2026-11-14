@@ -508,6 +508,7 @@ class DalRepository(M3DalSource):
             stage_timings=timings,
             last_stage=etapa,
             stopped_before_start=stopped_before_start,
+            attempt=run.intento,
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ejecucion=_ejecucion(run, self.db_path),
             settings=models.RunSettings(

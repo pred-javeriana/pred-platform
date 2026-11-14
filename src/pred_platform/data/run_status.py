@@ -68,6 +68,8 @@ class DisplayRunStatus(RunStatus):
     # before it, and none of that describes the retry.
     stopped_before_start: bool = Field(default=False, exclude=True)
     family_states: dict[str, dict[str, FamilyTaskState]] = Field(default_factory=dict, exclude=True)
+    # The stored attempt (``ejecuciones.intento``) from the same row: more than 1 means resumed.
+    attempt: int | None = Field(default=None, exclude=True)
 
 
 def _timestamp(value: object) -> datetime | None:

@@ -214,11 +214,6 @@ def _context(
     poll = should_poll(
         estado, counts, reason=control.reason, stopped_at=run.finalizada_en if run else None
     )
-    detail = (
-        lectura.get_run(request.app.state.settings.db_path, run.id)
-        if run is not None and repository.source == "dal"
-        else None
-    )
     error = run_error(repository.get_run_error(run.id)) if run is not None else None
     actions = run_actions(
         estado,
@@ -255,7 +250,8 @@ def _context(
         and query.ejecucion != LATEST
         else None,
         "run": run,
-        "resumed": detail is not None and detail.intento > 1,
+        # El intento sale de la misma lectura del estado, no de otra consulta de la ejecución.
+        "resumed": (getattr(status, "attempt", None) or 0) > 1,
         "stopped_open": estado == "detenida"
         and not poll
         and counts.get("pendiente", 0) + counts.get("ejecutando", 0) > 0,
