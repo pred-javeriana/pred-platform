@@ -290,8 +290,24 @@ def _windows_is_alive(pid: int) -> bool:
         kernel.CloseHandle(handle)
 
 
-def terminate(pid: int, *, grace: float = 5.0) -> None:
-    """Stop the engine tree: process-group signals on POSIX, taskkill /T on Windows."""
+class EngineStillRunning(TimeoutError):
+    """The engine's processes did not exit after they were killed: its run must stay owned."""
+
+
+# How long ``terminate`` waits for the group to exit after SIGKILL (a process in uninterruptible
+# I/O dies only when that I/O ends).
+KILL_WAIT = 5.0
+
+
+def terminate(pid: int, *, grace: float = 5.0, kill_wait: float | None = None) -> None:
+    """Stop the engine tree: process-group signals on POSIX, taskkill /T on Windows.
+
+    Returns once no process of the tree is left alive.
+
+    Raises:
+        EngineStillRunning: a process of the tree outlived SIGKILL by ``kill_wait`` seconds
+            (``KILL_WAIT`` by default); the caller must not start another engine for its run.
+    """
     if sys.platform == "win32":
         try:
             parent = psutil.Process(pid)
@@ -311,7 +327,7 @@ def terminate(pid: int, *, grace: float = 5.0) -> None:
             raise OSError(f"No se pudo detener el árbol del proceso {pid}.")
         _, alive = psutil.wait_procs(processes, timeout=max(0.0, grace))
         if alive:
-            raise TimeoutError(f"El árbol del proceso {pid} no terminó dentro del plazo.")
+            raise EngineStillRunning(f"El árbol del proceso {pid} no terminó dentro del plazo.")
         return
     try:
         group = os.getpgid(pid)
@@ -331,6 +347,11 @@ def terminate(pid: int, *, grace: float = 5.0) -> None:
         time.sleep(0.05)
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(group, signal.SIGKILL)
+    deadline = time.monotonic() + (KILL_WAIT if kill_wait is None else kill_wait)
+    while _group_members(group):
+        if time.monotonic() >= deadline:
+            raise EngineStillRunning(f"El grupo de procesos {group} sigue vivo después de SIGKILL.")
+        time.sleep(0.05)
 
 
 def log_tail(path: Path, lines: int = 8) -> str:

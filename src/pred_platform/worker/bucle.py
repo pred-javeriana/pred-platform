@@ -69,8 +69,9 @@ class Worker:
         self._lock = lock or WorkerLock.for_database(settings.db_path)
         # The run this worker claimed but could not record as stopped, with the error to record.
         self._unsettled: tuple[Ejecucion, dict[str, Any]] | None = None
-        # The runs whose final result import failed after the engine had finished.
-        self._import_failed: set[str] = set()
+        # The runs this worker could not settle: their final result import failed after the
+        # engine had finished, or their engine outlived its stop and keeps the run.
+        self._failed: set[str] = set()
 
     # ------------------------------------------------------------------ lifecycle
     def run_forever(self, stop: threading.Event) -> None:
@@ -100,8 +101,8 @@ class Worker:
     def drain(self) -> bool:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``).
 
-        Returns whether every final result import succeeded; a failed import leaves its run
-        recoverable and the caller exits non-zero.
+        Returns whether every run was settled: a failed final result import, or an engine that
+        outlived its stop, leaves its run recoverable and the caller exits non-zero.
 
         While another worker holds the database, this one exits without running anything;
         queued work waits for that worker or the next one. A read-only database is left alone.
@@ -131,7 +132,7 @@ class Worker:
                     time.sleep(self.poll_interval)  # the database still fails: wait, then retry
         finally:
             self._lock.release()
-        return not self._import_failed
+        return not self._failed
 
     def _log_unlockable(self, exc: OSError) -> None:
         _logger.error(
@@ -205,7 +206,18 @@ class Worker:
                         )
                         continue
                     if owner == "this":
-                        engine.terminate(run.pid)
+                        try:
+                            engine.terminate(run.pid)
+                        except engine.EngineStillRunning:
+                            # Queueing it again would start a second engine beside this one.
+                            _logger.exception(
+                                "Corrida %s: su motor (pid %s) no terminó; la corrida queda "
+                                "como está hasta el siguiente arranque",
+                                run.run_id,
+                                run.pid,
+                            )
+                            self._failed.add(run.run_id)
+                            continue
                 if dal.requeue(conn, run.id):
                     _logger.info("Corrida %s retomada tras una caída", run.run_id)
 
@@ -224,11 +236,18 @@ class Worker:
                 return False
             try:
                 self._execute(conn, run, stop or threading.Event())
+            except engine.EngineStillRunning:
+                # Settling the claim would release the run while its engine still runs, and the
+                # next claim would start a second one beside it. It stays as it is, with its
+                # process, for the next worker start to recover.
+                _logger.exception("Corrida %s: el motor no terminó", run.run_id)
+                conn.rollback()
+                self._failed.add(run.run_id)
             except _ResultImportFailed as failure:
                 cause = failure.__cause__
                 _logger.exception("Corrida %s: falló la importación de resultados", run.run_id)
                 conn.rollback()
-                self._import_failed.add(run.run_id)
+                self._failed.add(run.run_id)
                 self._unsettled = (
                     run,
                     result_import_error(
@@ -270,7 +289,7 @@ class Worker:
             if dal.stop_claimed(
                 conn, run.id, intento=run.intento, error=error, unimported=_unimported(error)
             ):
-                self._import_failed.add(run.run_id)
+                self._failed.add(run.run_id)
         except sqlite3.Error:
             # Still failing: keep the claim and try again on the next pass of the loop.
             _logger.exception("Corrida %s: no se pudo registrar el diagnóstico", run.run_id)
@@ -403,9 +422,13 @@ class Worker:
             )
         except BaseException:
             # An interrupt or a shutdown: the engine runs in its own session, so stop it here.
-            # The run stays `ejecutando` for recovery.
-            engine.terminate(process.pid)
-            process.wait()
+            # The run stays `ejecutando` for recovery, even if its engine outlives the stop.
+            try:
+                engine.terminate(process.pid)
+            except engine.EngineStillRunning:
+                _logger.exception("Corrida %s: el motor no terminó", run.run_id)
+            else:
+                process.wait()
             raise
 
         if stopped_by_user is not None:

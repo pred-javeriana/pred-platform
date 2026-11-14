@@ -701,3 +701,97 @@ def test_recovery_leaves_alone_a_group_whose_processes_name_different_databases(
         os.killpg(leader, signal.SIGKILL)
         process.wait(timeout=10)
         _wait(lambda: not engine.is_alive(member), timeout=5, what="member to be killed")
+
+
+def _unkillable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SIGKILL never reaches the group, as for a process stuck in uninterruptible I/O."""
+    killpg = os.killpg
+
+    def without_sigkill(group: int, signum: int) -> None:
+        if signum != signal.SIGKILL:
+            killpg(group, signum)
+
+    monkeypatch.setattr(os, "killpg", without_sigkill)
+
+
+def _stubborn_engine(db: Path) -> subprocess.Popen[bytes]:
+    """A group leader for ``db`` that ignores SIGTERM, returned once it does."""
+    ready = db.with_name(f"{db.name}.ready")
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import signal, sys, time; from pathlib import Path; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); Path(sys.argv[1]).touch(); "
+            "time.sleep(300)",
+            str(ready),
+        ],
+        env={**os.environ, "PRED_DB_PATH": str(db)},
+        start_new_session=True,
+    )
+    _wait(ready.exists, timeout=10, what="the engine to ignore SIGTERM")
+    return process
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+def test_termination_reports_a_group_that_outlives_sigkill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    process = _stubborn_engine(tmp_path / "pred.db")
+    try:
+        assert engine.engine_owner(process.pid, tmp_path / "pred.db") == "this"
+        with monkeypatch.context() as patch:
+            _unkillable(patch)
+            with pytest.raises(engine.EngineStillRunning):
+                engine.terminate(process.pid, grace=0.2, kill_wait=0.3)
+        assert process.poll() is None
+        engine.terminate(process.pid, grace=0.2)  # SIGKILL now reaches it, and it is confirmed
+        assert not _group_exists(process.pid) or not engine.is_alive(process.pid)
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+def test_recovery_keeps_the_run_of_an_engine_that_outlives_its_stop(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+):
+    from functools import partial
+
+    from pred_platform.dal import ejecuciones as dal
+
+    process = _stubborn_engine(env.db)
+    try:
+        assert engine.engine_owner(process.pid, env.db) == "this"
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        with closing(dal.connect(env.db)) as conn:
+            run = dal.claim_pending(conn)
+            assert run is not None
+            dal.set_launch(conn, run.id, pid=process.pid, ruta_corrida=f"runs/{run.run_id}")
+        launched: list[list[str]] = []
+
+        def launcher(command, **kwargs):
+            launched.append(command)
+            return engine.launch(command, **kwargs)
+
+        with monkeypatch.context() as patch:
+            _unkillable(patch)
+            patch.setattr(engine, "KILL_WAIT", 0.3)
+            patch.setattr(engine, "terminate", partial(engine.terminate, grace=0.2))
+            # No second engine starts beside the first: the run keeps it, and --once fails.
+            assert not Worker(env.settings, launcher=launcher).drain()
+        assert launched == []
+        assert process.poll() is None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [
+            ("ejecutando", 1, process.pid)
+        ]
+
+        # Once the old engine is gone, the next start queues the run again and finishes it.
+        assert Worker(env.settings).drain()
+        assert process.wait(timeout=10) is not None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=10)
