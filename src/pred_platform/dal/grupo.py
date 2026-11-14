@@ -47,7 +47,10 @@ def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) 
         raise EvidenceInvalid("Seleccione una corrida distinta por semilla.")
     db_path = db_path.resolve()
     with _cache_lock:
-        key = (db_path, tuple(run_ids), preview, _stamp(db_path), _stamp(Path(f"{db_path}-wal")))
+        wal = _stamp(Path(f"{db_path}-wal"))
+        # An empty WAL holds no pages: the main file's stamp already covers the committed
+        # state. SQLite creates and deletes empty WALs as connections open and close.
+        key = (db_path, tuple(run_ids), preview, _stamp(db_path), wal if wal and wal[1] else None)
         if key in _cache:
             _cache.move_to_end(key)
             return _cache[key]
@@ -57,7 +60,9 @@ def read_group(db_path: Path, run_ids: Sequence[str], *, preview: bool = False) 
             try:
                 lumpy = _lumpy(conn, runs)
             except (sqlite3.Error, KeyError, TypeError, ValueError, ArithmeticError) as exc:
-                lumpy = LumpyEvidence((), (), (), (), f"La evidencia lumpy no es válida: {exc}")
+                lumpy = LumpyEvidence(
+                    (), (), (), (), f"La evidencia de la demanda grumosa no es válida: {exc}"
+                )
         result = GroupEvidence(significance, lumpy)
         _cache[key] = result
         if len(_cache) > 4:
@@ -137,13 +142,14 @@ def list_group_runs(db_path: Path) -> tuple[GroupRunOption, ...]:
                 continue
             seed = config.get("seed")
             if type(seed) is int and seed in (0, 1, 2) and "bloques" in protocol:
+                # Like a malformed protocol, one unreadable time must not hide the other choices.
+                try:
+                    created = _utc(row["creado_en"])
+                except (TypeError, ValueError):
+                    continue
                 options.append(
                     GroupRunOption(
-                        row["run_id"],
-                        seed,
-                        row["ingesta_sha256"],
-                        row["run_id_m2"],
-                        _utc(row["creado_en"]),
+                        row["run_id"], seed, row["ingesta_sha256"], row["run_id_m2"], created
                     )
                 )
         return tuple(options)
@@ -244,6 +250,8 @@ def _lumpy(conn: sqlite3.Connection, runs: Sequence[RunEvidence]) -> LumpyEviden
             date.fromisoformat(origin)
             value = row["valor"]
             if not isinstance(value, (float, int)) or not math.isfinite(value) or value < 0:
-                raise EvidenceInvalid("Una ventana lumpy tiene RMSE no finito o negativo.")
+                raise EvidenceInvalid(
+                    "Una ventana de la demanda grumosa tiene RMSE no finito o negativo."
+                )
             windows.setdefault((run.run_id, row["sku"], row["candidato_id"]), {})[origin] = value
     return calculate_lumpy(runs, windows, published, champions)

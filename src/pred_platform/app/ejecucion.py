@@ -20,6 +20,7 @@ from pred_platform.app.presentation import (
     SKU_CLASS_ORDER,
     STAGE_ORDER,
     aggregation_label,
+    count_noun,
     family_label,
     format_count,
     format_decimal,
@@ -42,7 +43,7 @@ from pred_platform.contract.models import (
     TopologyMetrics,
 )
 from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
-from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
+from pred_platform.data.query import DEFAULT_SIZE, LATEST, PageRequest, int_param
 from pred_platform.data.repository import DataRepository
 from pred_platform.fallas import Falla, describir_falla
 from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS
@@ -141,16 +142,54 @@ class ExecutionQuery:
         return urlencode([(k, str(v)) for k, v in values.items() if v not in ("", None)])
 
 
-def parse_execution_query(params: Mapping[str, str]) -> ExecutionQuery:
-    return ExecutionQuery(
+def _paging(params: Mapping[str, str], name: str, default: int) -> int:
+    """La página o el tamaño pedido, un entero en el rango que acepta el repositorio."""
+    value = int_param(params.get(name), default, name)
+    if name == "page":
+        PageRequest(value, DEFAULT_SIZE)
+    else:
+        PageRequest(1, value)
+    return value
+
+
+# Lo que se muestra en lugar de una página o un tamaño inválido, dicho junto a la causa.
+_PAGING_RESET = {
+    "page": "Se muestra la primera página.",
+    "size": f"Se muestran {DEFAULT_SIZE} tareas por página.",
+}
+
+
+def read_execution_query(params: Mapping[str, str]) -> tuple[ExecutionQuery, str | None]:
+    """La consulta de Ejecución y, si la página o el tamaño no eran válidos, qué se muestra.
+
+    La página y el tamaño se validan por separado: uno inválido vuelve a su valor por omisión y
+    la consulta conserva la corrida pedida y los filtros. Un filtro con una opción desconocida lo
+    rechaza el repositorio, que es quien conoce las opciones.
+    """
+    paging = {"page": 1, "size": DEFAULT_SIZE}
+    problems = []
+    for name, default in tuple(paging.items()):
+        try:
+            paging[name] = _paging(params, name, default)
+        except InvalidQuery as exc:
+            problems.append(f"{exc} {_PAGING_RESET[name]}")
+    query = ExecutionQuery(
         ejecucion=(params.get("ejecucion") or "").strip() or LATEST,
         estado=params.get("estado") or None,
         sku=(params.get("sku") or "").strip() or None,
         family=params.get("family") or None,
-        page=int_param(params.get("page"), 1, "page"),
-        size=int_param(params.get("size"), DEFAULT_SIZE, "size"),
+        page=paging["page"],
+        size=paging["size"],
         todas=params.get("tareas") == "todas",
     )
+    return query, " ".join(problems) or None
+
+
+def parse_execution_query(params: Mapping[str, str]) -> ExecutionQuery:
+    """La consulta de Ejecución; ``InvalidQuery`` si la página o el tamaño no son válidos."""
+    for name, default in (("page", 1), ("size", DEFAULT_SIZE)):
+        _paging(params, name, default)
+    return read_execution_query(params)[0]
 
 
 # Mientras la ejecución avanza, la página muestra a lo sumo estas tareas bajo el avance.
@@ -720,7 +759,8 @@ def stage_steps(estado: str, etapa: str | None) -> list[Step]:
 
 
 def elapsed_text(run: Ejecucion, now: datetime) -> str | None:
-    """Cuánto lleva o cuánto duró la corrida; ``None`` si todavía no empezó."""
+    """Cuánto lleva o cuánto duró la corrida desde su primer inicio (una reanudada incluye el
+    tiempo detenida); ``None`` si todavía no empezó."""
     if run.iniciada_en is None:
         return None
     end = run.finalizada_en if run.finalizada_en is not None else now
@@ -733,6 +773,11 @@ def _percent(share: float) -> str:
     return format_decimal(value, 0 if value == int(value) else 1)
 
 
+def _days(value: object) -> str:
+    """«1 día», «7 días»: un ajuste en días, del formulario o de la corrida lanzada."""
+    return count_noun(value if isinstance(value, int) else str(value), "día", "días")
+
+
 def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
     """Los ajustes de una corrida por lanzar (los valores del formulario), como «etiqueta, valor»,
     con los mismos nombres que :func:`settings_items` usa para una corrida lanzada."""
@@ -741,10 +786,10 @@ def draft_items(values: Mapping[str, Any]) -> list[tuple[str, str]]:
     return [
         ("Familias", ", ".join(family_label(f) for f in families) if families else "—"),
         ("Métrica de selección", metric_label(values.get("metric") or _DEFAULTS.metric)),
-        ("Mínimo de entrenamiento", f"{values.get('min_train')} días"),
-        ("Horizonte", f"{values.get('horizon')} días"),
-        ("Paso entre ventanas", f"{values.get('step')} días"),
-        ("Estacionalidad", f"{values.get('seasonality')} días"),
+        ("Mínimo de entrenamiento", _days(values.get("min_train"))),
+        ("Horizonte", _days(values.get("horizon"))),
+        ("Paso entre ventanas", _days(values.get("step"))),
+        ("Estacionalidad", _days(values.get("seasonality"))),
         (
             "Configuraciones por SKU y familia",
             trials if trials else "Las que cada familia prueba por defecto",
@@ -764,10 +809,10 @@ def settings_items(settings: RunSettings) -> list[tuple[str, str]]:
     return [
         ("Familias", families),
         ("Métrica de selección", metric_label(settings.metric)),
-        ("Mínimo de entrenamiento", f"{settings.min_train} días"),
-        ("Horizonte", f"{settings.horizon} días"),
-        ("Paso entre ventanas", f"{settings.step} días"),
-        ("Estacionalidad", f"{settings.seasonality} días"),
+        ("Mínimo de entrenamiento", _days(settings.min_train)),
+        ("Horizonte", _days(settings.horizon)),
+        ("Paso entre ventanas", _days(settings.step)),
+        ("Estacionalidad", _days(settings.seasonality)),
         (
             "Resumen de las ventanas",
             f"{aggregation_label(settings.aggregation)} "

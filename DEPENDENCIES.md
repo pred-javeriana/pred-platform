@@ -14,7 +14,9 @@
 | `pydantic` | Models of the data contract (declared directly; `>=2.13`, the version the contract's JSON Schemas were exported with) |
 
 On Linux, `setpriv` from util-linux must be on `PATH`. The worker uses it to request a kernel
-SIGTERM for the engine when its supervisor dies before cleanup can run.
+SIGTERM for the launched command when its supervisor dies before cleanup can run. The signal
+reaches only that command, the leader of the engine's process group: the engine a wrapper
+started can survive, and recovery stops the whole group.
 
 ## Development dependencies
 

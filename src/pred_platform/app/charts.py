@@ -7,6 +7,7 @@ La serie del campeón conserva los valores publicados y los bloques ya resueltos
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Callable, Sequence
 from datetime import date
@@ -14,6 +15,7 @@ from html import escape as attr_escape
 from xml.sax.saxutils import escape
 
 from pred_platform.app.presentation import (
+    count_noun,
     family_label,
     format_date,
     format_decimal,
@@ -302,8 +304,68 @@ def champion_forecast_svg(series: ChampionForecastSeries) -> str:
     if series.alt_forecast:
         parts.append(_forecast_line(series.alt_forecast, "alt_forecast", x, y))
     parts.append(_forecast_line(series.forecast, "forecast", x, y))
+    parts.append(_forecast_reader(series, dates, x, y, (left, right, top, bottom)))
     parts.append("</svg>")
     return "".join(parts)
+
+
+def _forecast_reader(
+    series: ChampionForecastSeries,
+    dates: Sequence[str],
+    x: Callable[[str], float],
+    y: Callable[[float], float],
+    plot: tuple[float, float, float, float],
+) -> str:
+    """La lectura con puntero y flechas: una fecha por punto, en el contrato de ``charts.js``.
+
+    Cada punto lleva su posición, la de la demanda observada y la del pronóstico (``None`` si
+    falta) y el texto ya escrito; el script solo elige el punto más cercano y lo muestra.
+    """
+    observed = {p.fecha: p.valor for p in series.observed}
+    forecast = {p.fecha: p for p in series.forecast}
+    alt = {p.fecha: p.valor for p in series.alt_forecast}
+    alt_name = model_label(series.alt_model or series.alt_candidate or "") or "Alternativa"
+
+    def number(value: float | None) -> str:
+        return format_decimal(value, 3) if value is not None else "sin valor"
+
+    points = []
+    for fecha in dates:
+        seen, made = observed.get(fecha), forecast.get(fecha)
+        guess = made.valor if made is not None else None
+        label = f"Observada: {number(seen)} · Pronóstico: {number(guess)}"
+        if fecha in alt:
+            label += f" · {alt_name}: {number(alt[fecha])}"
+        points.append(
+            {
+                "x": round(x(fecha), 2),
+                "y": round(y(seen), 2) if seen is not None else None,
+                "forecastY": round(y(guess), 2) if guess is not None else None,
+                "tip": format_date(fecha),
+                "label": label,
+                "detail": (
+                    f"Pronóstico hecho el {format_date(made.origen)}"
+                    if made is not None and made.origen
+                    else ""
+                ),
+            }
+        )
+    left, right, top, bottom = plot
+    return (
+        '<g class="pred-forecast__reading">'
+        f'<line data-pointer-mark="line" class="pred-forecast__cursor" visibility="hidden" '
+        f'x1="{left}" x2="{left}" y1="{top}" y2="{bottom}" />'
+        '<circle data-pointer-mark="observed" class="pred-forecast__cursor-observed" r="5" '
+        'visibility="hidden" cx="0" cy="0" />'
+        '<circle data-pointer-mark="forecast" class="pred-forecast__cursor-forecast" r="5" '
+        'visibility="hidden" cx="0" cy="0" />'
+        f'<rect x="{left}" y="{top}" width="{right - left}" height="{bottom - top}" '
+        'class="pred-forecast__reader" tabindex="0" focusable="true" role="img" '
+        'aria-label="Leer el gráfico fecha por fecha: flechas izquierda y derecha, Mayús con '
+        'flecha avanza una semana, Inicio y Fin van a los extremos" '
+        f"data-pointer-points='{attr_escape(json.dumps(points, ensure_ascii=False))}' />"
+        "</g>"
+    )
 
 
 def _forecast_line(
@@ -991,10 +1053,13 @@ def selection_svg(rows: Sequence[models_v2.M3Category]) -> str:
     y = 30
     for row in rows:
         label = sku_class_label(row.sku_class)
+        comparable = count_noun(
+            len(row.skus_comparables), "producto comparable", "productos comparables"
+        )
         body += _text(
             0,
             y + 17,
-            f"{label} · {len(row.skus_comparables):,} productos comparables".replace(",", "."),
+            f"{label} · {comparable}",
             "group",
         )
         y += 32
@@ -1012,7 +1077,7 @@ def selection_svg(rows: Sequence[models_v2.M3Category]) -> str:
                 26,
                 ratio_text(value),
                 f"{family_label(family)} · {label}",
-                f"{len(row.skus_comparables)} productos comparables. "
+                f"{comparable}. "
                 + ("Campeona de este tipo." if champion else "Bloque de selección."),
                 family=family,
             )

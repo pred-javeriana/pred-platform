@@ -103,7 +103,7 @@ def run_id_for(ingest_sha256: str, settings: LaunchSettings) -> str:
 class EnqueueResult:
     ejecucion_id: int
     run_id: str
-    queued: bool  # False: it already existed and is pending, running or completed
+    queued: bool  # False: it already existed, in any state; only resume_run queues it again
 
 
 def enqueue_run(

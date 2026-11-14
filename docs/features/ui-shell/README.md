@@ -26,17 +26,34 @@ no administration screen. M0 is out of the flow.
   their own `destino`, so no exit loses what was typed, even without JavaScript. Ajustes never
   chooses a file for the person, and choosing another file marks Ajustes to do again. A link that
   chooses a runnable file (`/corridas/nueva/ajustes?ingest_id=`), a copied run and an imported
-  configuration write it too. Revisar and launching validate everything again with the worker's
-  rule; launching clears the draft.
+  configuration write it too, and then redirect (303) to Ajustes (Post/Redirect/Get) with a
+  presentation-only `?aviso=` for the notice, so reloading, the browser's Back button or a
+  restored session never repeats the write over later edits; a link with the file already in the
+  draft writes nothing. Revisar and launching validate everything again with the worker's
+  rule. Launching discards the draft without going back to revision 0: it leaves an empty
+  draft marked as launched with one more revision, so an Ajustes tab left open can still save a
+  later edit as a new draft (there is no newer choice to lose) and the guide asks to review
+  Ajustes again.
 - Every draft write raises a revision and gets its own mark, both stored in the cookie; a cookie
   from before the revision loads as revision 0. Each Ajustes page carries the stamp it saw
   (`draft_rev`, also in the copy and import forms) and `POST /corridas/nueva/ajustes`, the copy and
-  the import refuse a stamp that is not the current draft's: nothing is saved, the answer is 409
+  the import refuse a stamp that is not the current draft's (a missing stamp, from a page drawn
+  before stamps existed, only passes while the draft is still at revision 0): nothing is saved, the
+  answer is 409
   (`X-Pred-Draft-Rev` names the current stamp) and the page shows `#conflicto-borrador` with a
-  reload link; the script does not retry. The autosave writes its own cookie per revision
-  (`pred_borrador_a<rev>`) and never the main one: the current draft is the highest revision, and
-  the main cookie wins a tie, so a response that arrives late from a page already left cannot
-  replace a later copy, import or edit. Ajustes is sent with `Cache-Control: no-store` so the
+  reload link; the script does not retry, and the guide shows the draft as it is. A save that
+  fails (network or server) says so beside the form (`#guardado-fallido`) and stays pending for
+  the next edit or the exit; a save that succeeds hides both notices. The pending save is sent on
+  `beforeunload`, before a reload asks for the next page, with `pagehide` as a fallback; if its
+  answer still arrives after the reloaded page was drawn, that page's first save is refused and
+  the script reloads it once more instead of warning about another tab. The autosave writes its own cookie per write
+  (`pred_borrador_a<rev>_<mark>`) and never the main one: the current draft is the highest
+  revision, and the main cookie wins a tie, so a response that arrives late from a page already
+  left cannot replace a later copy, import or Continuar/Atrás. Two autosaves from the same
+  revision whose answers cross (two tabs, or the page left and the reloaded one) leave two cookies
+  of that revision: the draft then shows one of them without a mark, so neither page matches it
+  and each is told on its next save (409 and the notice) instead of one edit replacing the other
+  silently. Ajustes is sent with `Cache-Control: no-store` so the
   browser's Back button asks for the page again, with the current stamp.
 - `docs/UI_FLOW.md` maps the routes and lists their `DataRepository` operations and
   capabilities.

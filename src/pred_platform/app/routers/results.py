@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import replace
 from typing import Any
@@ -43,6 +44,7 @@ from pred_platform.app.ejecucion import run_resumable
 from pred_platform.app.execution_display import task_rows
 from pred_platform.app.pasos import (
     NEW,
+    RunFacts,
     Wizard,
     draft_resume,
     draft_wizard,
@@ -90,6 +92,7 @@ from pred_platform.app.resultados_m3 import (
     publication_time,
     published_executions,
     published_funnel,
+    reserve_blocks,
     reserve_windows,
     run_outcome,
     summary,
@@ -229,7 +232,12 @@ def paso_resultados(
             draft_wizard("resultados", draft),
         )
     executions = published_executions(repository, limit=None)
-    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    # Los estados que leyó la lista de publicadas sirven a la barra de pasos, al encabezado y a
+    # las semillas: no se leen otra vez.
+    statuses = {e.ejecucion_id: e.status for e in executions if e.status is not None}
+    facts = run_facts(
+        repository, corrida, frozenset(e.ejecucion_id for e in executions), statuses.get(corrida)
+    )
     if facts is None:
         return render_missing_run(request, corrida)
     wizard = run_wizard("resultados", facts)
@@ -262,7 +270,7 @@ def paso_resultados(
     if capitulo is None:
         return _chapter_redirect(request, corrida, "resumen" if facts.published else "productos")
     return _resultados_page(
-        request, repository, facts.id, wizard, executions, capitulo, seed=facts.seed
+        request, repository, facts, wizard, executions, capitulo, statuses=statuses
     )
 
 
@@ -279,15 +287,18 @@ def _chapter_redirect(request: Request, corrida: str, chapter: str) -> RedirectR
 def _resultados_page(
     request: Request,
     repository: DataRepository,
-    reference: str,
+    facts: RunFacts,
     wizard: Wizard,
     published: list[ExecutionChoice],
     chapter: str,
     *,
-    seed: int | None = None,
+    statuses: Mapping[str, RunStatus] | None = None,
 ) -> HTMLResponse:
-    """La página del paso para la corrida ``reference``; ``published`` son las corridas con
-    evidencia M3 publicada, de la más nueva a la más vieja."""
+    """La página del paso para la corrida ``facts``; ``published`` son las corridas con
+    evidencia M3 publicada, de la más nueva a la más vieja, y ``statuses``, los estados
+    (``size=1``) ya leídos por número de ejecución."""
+    reference, seed = facts.id, facts.seed
+    statuses = statuses or {}
     params = dict(request.query_params)
     probe = _base_context(repository, "")
     champion = probe["champion_capability"].available
@@ -308,7 +319,7 @@ def _resultados_page(
             SelectionQuery(ejecucion=reference, m3=wanted_m3, size=PRODUCT_PAGE_SIZE),
             str(exc),
         )
-    run = _run_header(repository, reference)
+    run = statuses.get(reference) or _run_header(repository, reference)
     context.update(
         query=query,
         query_error=query_error,
@@ -333,6 +344,7 @@ def _resultados_page(
         published_seed_count=0,
         stability_rows=[],
         blocks=None,
+        blocks_problem=None,
         family_colors=charts.FAMILY_COLORS,
         family_chart_order=charts.FAMILY_CHART_ORDER,
         selection_svg="",
@@ -369,9 +381,10 @@ def _resultados_page(
     elif vista == "exportar":
         _fill_exportar(repository, run.ejecucion.id, query, context, seed=seed)
     elif champion:
-        _fill_m3_view(repository, run.ejecucion.id, vista, params, context)
+        _fill_m3_view(repository, run.ejecucion.id, vista, params, context, statuses)
     resolved = context["m3"].run
     _describe_run(repository, run, resolved, context)
+    context["wizard"] = _results_wizard(facts, wizard, resolved, context)
     if resolved is not None:
         # Las pestañas conservan la corrida M3 resuelta, no «la más nueva».
         context["tab_query"] = urlencode(
@@ -429,6 +442,26 @@ def _describe_run(
     )
 
 
+def _results_wizard(
+    facts: RunFacts,
+    wizard: Wizard,
+    resolved: models_v2.M3Run | None,
+    context: dict[str, Any],
+) -> Wizard:
+    """La barra de pasos de Resultados con la fecha de la evaluación mostrada.
+
+    Con una evaluación PUBLICADA resuelta, «Publicados» lleva la misma fecha que el contexto (el
+    fin del L4 que la creó), aunque un intento posterior haya terminado otro L4. Sin ella queda
+    la fecha de la última publicación, como en Inicio y en los demás pasos.
+    """
+    if resolved is None or resolved.estado != "PUBLICADA":
+        return wizard
+    shown = context.get("m3_published_at")
+    if shown == facts.publicada_en:
+        return wizard
+    return run_wizard("resultados", replace(facts, publicada_en=shown))
+
+
 def _render(request: Request, context: dict[str, Any]) -> HTMLResponse:
     return request.app.state.templates.TemplateResponse(request, "pages/results.html", context)
 
@@ -439,8 +472,12 @@ def _fill_m3_view(
     vista: str,
     params: dict[str, str],
     context: dict[str, Any],
+    statuses: Mapping[str, RunStatus] | None = None,
 ) -> None:
-    """Resumen, Por clase y Perfiles de error: la misma corrida M3 resuelta para la ejecución."""
+    """Resumen, Por clase y Perfiles de error: la misma corrida M3 resuelta para la ejecución.
+
+    La corrida M3 se resuelve una vez y la reciben el resumen y las semillas; las corridas M3 que
+    leyeron las semillas sirven a la lista de otras publicaciones."""
     query: SelectionQuery = context["query"]
     base = {"vista": vista, "ejecucion": context["reference"]}
     resolved: models_v2.M3Run | None
@@ -449,8 +486,10 @@ def _fill_m3_view(
     context["answers"] = answers(found_classes)
     exact_m3 = resolved.run_id if resolved else query.m3
     if vista in ("resumen", "prueba"):
-        context["m3_summary"] = found_summary = summary(repository, ejecucion_id, exact_m3)
-        context["answers"] = answers(found_classes, found_summary.verdicts)
+        context["m3_summary"] = found_summary = summary(
+            repository, ejecucion_id, exact_m3, run=resolved
+        )
+        context["answers"] = answers(found_classes, found_summary.verdicts, found_summary.problem)
         resolved = found_summary.run or resolved
     if vista == "clase":
         context["m3_profiles"] = found_profiles = profiles(
@@ -458,8 +497,9 @@ def _fill_m3_view(
         )
         resolved = found_profiles.run or resolved
         if resolved:
-            with suppress(DataLayerError, InvalidQuery):
-                context["blocks"] = repository.get_m3_reserve_blocks(resolved.run_id)
+            context["blocks"], context["blocks_problem"] = reserve_blocks(
+                repository, resolved.run_id
+            )
         metric_base = {"m3": resolved.run_id} if resolved else {}
         context["metric_hrefs"] = {
             name: context["results_base"]
@@ -469,7 +509,7 @@ def _fill_m3_view(
             for name in PROFILE_METRICS
         }
     if vista in ("resumen", "estabilidad"):
-        seeds = seed_evidence(repository, context["run"], found_classes)
+        seeds = seed_evidence(repository, context["run"], found_classes, statuses)
         context["seeds"] = seeds
         context["published_seed_count"] = sum(1 for seed in seeds if seed.published)
         context["stability_rows"] = stability_rows(seeds)
@@ -484,7 +524,12 @@ def _fill_m3_view(
     if resolved is not None:
         # El encabezado muestra la misma corrida M3 que la pestaña; la causa de un problema la
         # explica solo la pestaña.
-        others = other_publications(repository, resolved)
+        known = {
+            seed.evidence.run.run_id: seed.evidence.run
+            for seed in context["seeds"]
+            if seed.evidence is not None and seed.evidence.run is not None
+        }
+        others = other_publications(repository, resolved, known)
         context["m3"] = M3Decision(run=resolved, others=others)
         context["m3_hrefs"] = {
             other.run_id: "/resultados?" + urlencode({**base, "m3": other.run_id})
@@ -745,7 +790,12 @@ def _producto_detalle_page(
             draft_wizard("resultados", draft),
         )
     executions = published_executions(repository, limit=None)
-    facts = run_facts(repository, corrida, frozenset(e.ejecucion_id for e in executions))
+    # Los estados que leyó la lista de publicadas sirven a la barra de pasos, al encabezado y a
+    # las semillas: no se leen otra vez.
+    statuses = {e.ejecucion_id: e.status for e in executions if e.status is not None}
+    facts = run_facts(
+        repository, corrida, frozenset(e.ejecucion_id for e in executions), statuses.get(corrida)
+    )
     if facts is None:
         return render_missing_run(request, corrida)
     wizard = run_wizard("resultados", facts)
@@ -919,6 +969,10 @@ def _producto_detalle_page(
         not_found=status == 404,
         results_href=results_href,
         list_href=list_href,
+        chapters=CHAPTERS,
+        current_chapter="productos",
+        results_base=step_href(corrida, "resultados"),
+        chapter_query=urlencode({"m3": resolved_m3}) if resolved_m3 else "",
         run=run,
         m3=m3,
         verdict=verdict,
@@ -953,6 +1007,7 @@ def _producto_detalle_page(
     )
     if run is not None:
         _describe_run(repository, run, m3.run, context)
+        context["wizard"] = _results_wizard(facts, wizard, m3.run, context)
 
     return request.app.state.templates.TemplateResponse(
         request, "pages/results_producto.html", context, status_code=status

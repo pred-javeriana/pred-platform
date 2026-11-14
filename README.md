@@ -176,10 +176,15 @@ chmod 0444 copia/pred.db
 PRED_DB_PATH=copia/pred.db PRED_WORKER=off make run
 ```
 
-Keep the copy in a folder the app can write: a database in WAL mode, as `.backup` leaves it,
-creates its `-wal` and `-shm` files there even to read. For a read-only folder or mount, switch
-the copy to a rollback journal first (`sqlite3 copia/pred.db "PRAGMA journal_mode=DELETE"`, before
-`chmod`). A WAL copy in a read-only folder stops the app at startup with that advice.
+A database in WAL mode, as `.backup` leaves it, creates its `-wal` and `-shm` files beside it
+even to read. A consolidated WAL copy (no `-wal` or `-shm` file beside it) in a read-only folder or
+mount is still served: the app opens it with SQLite's `immutable=1`, which reads that snapshot
+without creating them, and skips the migration and the import of ingest reports at startup. It must
+already be at the platform's schema version; an older copy stops the app at startup, because a
+read-only copy cannot be migrated. A WAL copy in a read-only folder that keeps a `-wal` file (for
+example, one taken with `cp`) stops the app at startup too: switch it to a rollback journal first
+(`sqlite3 copia/pred.db "PRAGMA journal_mode=DELETE"`, before `chmod`), which also works for any
+read-only folder.
 
 ### Adding a migration
 
@@ -234,9 +239,14 @@ recomputed on a fixed common population, against Seasonal Naive and SARIMA. Each
 requires the policy's minimum common test windows in every run. Medians follow confirmation's
 log scale, including zero-loss limits. Both ranges are descriptive, without subtraction or a
 stability threshold. The reader reconciles full-population calculations with the published
-confirmation before reporting the common-population comparison.
+confirmation before reporting the common-population comparison. A problem that affects only the
+lumpy evidence keeps the group significance and shows its cause in the lumpy section. When the lumpy
+champion is not Foundation in some seed, no common population is formed: the page shows each seed's
+published medians instead of ranges.
 
-The calculation runs on read in one read-only snapshot. It adds no table, migration or file,
+The calculation runs on read in one read-only snapshot. The app keeps the last four results in
+memory only and reuses one for the same selection until `pred.db` or its WAL changes (an empty WAL
+does not count); a restart recomputes them. It adds no table, migration or file,
 does not start the engine, and leaves schema version 12 unchanged. The page links to a JSON
 download with source run IDs, raw p-values and directions, and candidate/window keys for lumpy.
 To read the group without starting the server, after seed 2 publishes:
@@ -249,6 +259,11 @@ uv run python -m pred_platform.evidence --db path/to/pred.db \
 For a provisional two-seed check, pass only seeds 0 and 1 and add `--preview`.
 The result then carries a top-level `complete: false`, which covers every number in the file;
 it is not a final-group result.
+
+`complete` covers the set of seeds, not the lumpy evidence. When `lumpy.cause` is present, the lumpy
+numbers are at most the medians published per run, without ranges; `common_count` is 0 with
+`common_cause` `campeona_distinta` when no common population was formed, not a count of zero
+shared products.
 
 ## Importing ingest reports
 
@@ -304,7 +319,9 @@ and tasks. Without `--once`, the command only queues the run for the worker.
 - **One worker per database.** A worker holds an exclusive lock on `<database>.worker.lock`
   (beside `PRED_DB_PATH`) for as long as it runs; the operating system frees it when the worker
   exits or crashes. A worker that cannot open or lock that file logs why and retries until
-  shutdown; `--once` reports the error and exits with code 1. A second `make worker` or app worker
+  shutdown; while the app's own worker retries, Ejecución and Revisar say that it cannot open its
+  lock file instead of promising that a queued run will start. `--once` reports the error and
+  exits with code 1. A second `make worker` or app worker
   waits without touching any run and takes over when the first stops. `--once` next to a running
   worker exits without executing anything: queued runs wait for that worker or the next one,
   with no guarantee that either will execute them. Thus `make launch ARGS="... --once"` while the
@@ -321,12 +338,16 @@ and tasks. Without `--once`, the command only queues the run for the worker.
   con fallos to queue it again with the same task rows. Successful tasks retain their state;
   historical progress is not replayed as live work. Graceful app shutdown
   queues interrupted work, and a crash is recovered on startup. Ctrl-C stops the worker's engine
-  and leaves the run `ejecutando`; SIGTERM and SIGHUP do the same. The next worker that takes
+  and leaves the run `ejecutando`; SIGTERM and SIGHUP do the same, unless SIGHUP is ignored
+  (as under `nohup`), which the worker keeps ignoring. The next worker that takes
   the database, `--once` included, queues it again. Stopping one worker does not stop the work
   while another waits on the same database: that worker resumes it immediately, outside any
   resource guard of the stopped worker. Run the app with `PRED_WORKER=off` while a guarded CLI
-  worker serves its queue. On Linux, launching the engine requires `setpriv` (util-linux): the
-  kernel sends SIGTERM to the engine even if the supervisor dies before cleanup can run.
+  worker serves its queue. On Linux, launching the engine requires `setpriv` (util-linux): if the supervisor dies
+  before cleanup can run, the kernel sends SIGTERM to the launched command, the leader of the
+  engine's process group. When that command is a wrapper (a resource-slot script, `uv run`), the
+  engine it started can survive the supervisor's abrupt death; the next worker that takes the
+  database stops the whole process group before it queues the run again.
   Closing a browser tab leaves the server worker running. The accompanying engine checkpoint
   change also skips successful L2/L3 units; updating platform alone cannot provide that guarantee. See
   [recovery and verification](docs/features/reanudacion/README.md).
@@ -373,8 +394,9 @@ Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots t
 runtime dependencies only and requests `/health` and `/` (the Corridas home).
 
 The test suite also runs `pred.js` and HTMX in real headless Chromium through Node's built-in
-runner. Install Chromium and Node >= 22 to run `uv run pytest tests/test_browser.py` locally;
-`CHROME_BIN` selects the browser executable. Without either executable the browser test is
+runner. Install Chromium and Node >= 22 and run `uv run pytest` locally to include it; run alone,
+`tests/test_browser.py` covers far less than the 80% minimum, so that command fails even when
+the test passes. `CHROME_BIN` selects the browser executable. Without either executable the browser test is
 skipped locally. CI sets `PRED_BROWSER_REQUIRED=1`, so a missing executable fails the suite.
 The browser checks fixed demo pages, pause/resume, connection loss, request timeout and recovery.
 

@@ -13,9 +13,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-# Byte 18 of the SQLite header, the file format write version: 1 rollback journal, 2 WAL.
-_HEADER_FORMAT_BYTE = 18
-_WAL = 2
+from pred_platform.dal.lectura import immutable_wal_copy, is_wal
 
 
 def database_read_only(db_path: Path) -> bool:
@@ -28,10 +26,12 @@ def database_read_only(db_path: Path) -> bool:
     """
     if not db_path.exists():
         return False
+    if immutable_wal_copy(db_path):
+        return True
     for path in (db_path, *(db_path.with_name(db_path.name + s) for s in ("-wal", "-shm"))):
         if path.exists() and not os.access(path, os.W_OK):
             return True
-    return not os.access(db_path.parent, os.W_OK) and not _is_wal(db_path)
+    return not os.access(db_path.parent, os.W_OK) and not is_wal(db_path)
 
 
 def is_read_only_error(exc: sqlite3.Error) -> bool:
@@ -41,15 +41,6 @@ def is_read_only_error(exc: sqlite3.Error) -> bool:
     """
     code = getattr(exc, "sqlite_errorcode", None)
     return code is not None and (code & 0xFF) in (sqlite3.SQLITE_READONLY, sqlite3.SQLITE_CANTOPEN)
-
-
-def _is_wal(db_path: Path) -> bool:
-    try:
-        with db_path.open("rb") as file:
-            header = file.read(_HEADER_FORMAT_BYTE + 1)
-    except OSError:
-        return False
-    return len(header) > _HEADER_FORMAT_BYTE and header[_HEADER_FORMAT_BYTE] == _WAL
 
 
 __all__ = ["database_read_only", "is_read_only_error"]

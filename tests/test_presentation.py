@@ -12,6 +12,7 @@ from pred_platform.app.presentation import (
     VERDICT_ORDER,
     UnknownStatus,
     abbreviate_id,
+    count_noun,
     describe_run,
     describe_status,
     exact_when,
@@ -321,3 +322,18 @@ def test_ayudas_de_estado_en_lenguaje_llano() -> None:
     assert describe_status("verdict", "FALLO_TECNICO").hint == (
         "El modelo campeón o todos los modelos candidatos no dieron un pronóstico de prueba."
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, "0 días"),
+        (1, "1 día"),
+        (2, "2 días"),
+        (1234, "1.234 días"),
+        ("1", "1 día"),
+        ("7", "7 días"),
+    ],
+)
+def test_count_noun_uses_the_singular_only_for_one(value: int | str, expected: str) -> None:
+    assert count_noun(value, "día", "días") == expected

@@ -31,9 +31,12 @@ The champion, the verdict and its evidence come from one exact M3 run of the M2 
 v2): the one in `?m3=` or, without it, the newest PUBLICADA one that `list_m3_runs` resolves. Detail
 links, filters and pages keep that resolved run. A context bar above the tabs names the execution,
 its ingest, the M3 run and the data origin. The publication time is the end of the L4 stage that
-created the shown M3 run, read by `get_stage_timings` from the run's `progreso.jsonl`; without
+created the shown M3 run, read by `get_stage_timings` from the run's `progreso.jsonl`. It shares
+the cached reader of Ejecución (`run_status.read_stage_attempts`, every attempt in log order, an
+end before its start is dropped and only a `completed` L4 publishes); without
 that log the bar says the time is unknown and never shows `m3_corridas.creado_en`, which is the
-start of L4. When several PUBLICADA runs share an identity the bar
+start of L4. The steps rail of Results dates «Publicados» with that same L4 end; Inicio and
+the other steps keep the run's latest publication. When several PUBLICADA runs share an identity the bar
 shows the contract's notice and links to the others. Each verdict is shown with its Spanish
 label and a one-line explanation, both owned by `app/presentation.py`; the published code stays
 in filters, CSV, `data-*` attributes and engine output, not in `title`. The detail adds why the SKU got its verdict (`verdict_reason`, in the
@@ -53,7 +56,10 @@ median ratio, Hodges-Lehmann, victories with Wilson intervals, the Wilcoxon stat
 Chapter 2 has 100% outcome bars, r histograms, BH/BY/FCR counts and descriptive verdicts.
 Chapter 3 shows the champion and confirmation per seed, and the range between published effects.
 It does not infer stability from two seeds or apply an effect-size threshold. Missing evidence
-stays missing. All charts are server-rendered SVG, with values in `data-*` attributes for hover
+stays missing. `get_m3_confirmation` validates each stored confirmation and significance row on
+its own: a row that breaks a rule is listed in `rechazos` with its type and cause, the chapters
+say «No se pudo leer» for that type and keep every valid row of both sections. Reserve blocks
+that cannot be read are explained where the block figure would be. All charts are server-rendered SVG, with values in `data-*` attributes for hover
 and keyboard focus. Every value remains available in a label or a closed table. The SKU detail also draws the champion's published h=1 forecast
 against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
 champion and Seasonal Naive.
@@ -130,7 +136,8 @@ cause, and the published code in `title`.
 It shows group significance by class, full/common-population lumpy medians and ranges, a query
 for one SKU's three source tests, and a JSON download with all values and source row keys.
 Until all three publications are selected, it shows no final-group numbers. The calculation
-runs on read without new tables or an engine change. See [the seed-group rules and command](../../../README.md#final-seed-group-evidence).
+runs on read without new tables or an engine change; the app reuses the last four results, in
+memory only, until `pred.db` or its WAL changes. See [the seed-group rules and command](../../../README.md#final-seed-group-evidence).
 
 ## How
 

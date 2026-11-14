@@ -18,6 +18,13 @@ STAGES = ("L1", "L2", "L3", "L4")
 
 
 class StageTiming(BaseModel):
+    """El inicio y el fin de una etapa del motor (L1 a L4) en un intento de la corrida.
+
+    ``finished_at`` queda vacío si la etapa no terminó o si su fin es anterior a su inicio (un
+    reloj que retrocede); ``finish_state`` es el estado final que escribió el motor. Solo una
+    etapa ``completed`` publica.
+    """
+
     code: str
     started_at: AwareDatetime
     finished_at: AwareDatetime | None = None
@@ -68,6 +75,8 @@ class DisplayRunStatus(RunStatus):
     # before it, and none of that describes the retry.
     stopped_before_start: bool = Field(default=False, exclude=True)
     family_states: dict[str, dict[str, FamilyTaskState]] = Field(default_factory=dict, exclude=True)
+    # The stored attempt (``ejecuciones.intento``) from the same row: more than 1 means resumed.
+    attempt: int | None = Field(default=None, exclude=True)
 
 
 def _timestamp(value: object) -> datetime | None:
@@ -91,7 +100,11 @@ def _unit(event: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
 
 type ProgressSummary = tuple[str | None, int | None, int | None, list[StageTiming], bool]
 
-_PROGRESS_CACHE: OrderedDict[Path, tuple[tuple[int, int, int], ProgressSummary]] = OrderedDict()
+# The summary of the current attempt, and every stage of every attempt in log order.
+type _Progress = tuple[ProgressSummary, tuple[StageTiming, ...]]
+
+_EMPTY: _Progress = ((None, None, None, [], False), ())
+_PROGRESS_CACHE: OrderedDict[Path, tuple[tuple[int, int, int], _Progress]] = OrderedDict()
 _PROGRESS_CACHE_LOCK = Lock()
 
 
@@ -104,6 +117,21 @@ def read_run_progress(
     Missing timestamps never become invented durations. Keep one small summary per file, so
     successive live versions cannot evict unchanged completed files from the eight-file cache.
     """
+    return _progress(path)[0]
+
+
+def read_stage_attempts(path: Path) -> tuple[StageTiming, ...]:
+    """Every stage every attempt of the log opened, in log order, from the same cached read.
+
+    The stages of the current attempt are the ones :func:`read_run_progress` returns, with the
+    same rules: an end before the start is not kept and ``finish_state`` says how it ended. The
+    publication date of Results needs the earlier attempts too, to date an older publication by
+    the L4 that created it.
+    """
+    return _progress(path)[1]
+
+
+def _progress(path: Path) -> _Progress:
     try:
         stat = path.stat()
         version = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
@@ -112,22 +140,25 @@ def read_run_progress(
             if cached is not None and cached[0] == version:
                 _PROGRESS_CACHE.move_to_end(path)
                 return cached[1]
-        summary = _read_progress(path)
+        progress = _read_progress(path)
         with _PROGRESS_CACHE_LOCK:
-            _PROGRESS_CACHE[path] = version, summary
+            _PROGRESS_CACHE[path] = version, progress
             _PROGRESS_CACHE.move_to_end(path)
             if len(_PROGRESS_CACHE) > 8:
                 _PROGRESS_CACHE.popitem(last=False)
-        return summary
+        return progress
     except OSError:
-        return None, None, None, [], False
+        return _EMPTY
 
 
-def _read_progress(path: Path) -> ProgressSummary:
+def _read_progress(path: Path) -> _Progress:
     stage = None
     plan = None
     finished = set()
     timings: dict[str, StageTiming] = {}
+    # Every attempt's stages; the open one of each code may belong to an earlier attempt.
+    attempts: list[StageTiming] = []
+    open_stage: dict[str, StageTiming] = {}
     ended = False
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     for line in lines:
@@ -149,13 +180,18 @@ def _read_progress(path: Path) -> ProgressSummary:
                 stage, plan, finished = code, None, set()
             stamp = _timestamp(event.get("t"))
             if stamp is not None:
-                timings[code] = StageTiming(code=code, started_at=stamp)
-        elif kind == "stage_finished" and isinstance(code, str) and code in timings:
+                timings[code] = open_stage[code] = StageTiming(code=code, started_at=stamp)
+                attempts.append(timings[code])
+        elif kind == "stage_finished" and isinstance(code, str):
+            timing = timings[code] if code in timings else open_stage.get(code)
+            if timing is None:
+                continue
+            open_stage.pop(code, None)
             state = event.get("state")
-            timings[code].finish_state = state if isinstance(state, str) else None
+            timing.finish_state = state if isinstance(state, str) else None
             stamp = _timestamp(event.get("t"))
-            if stamp is not None and stamp >= timings[code].started_at:
-                timings[code].finished_at = stamp
+            if stamp is not None and stamp >= timing.started_at:
+                timing.finished_at = stamp
         elif kind == "planned" and code == stage:
             units = event.get("units")
             if isinstance(units, list):
@@ -165,7 +201,7 @@ def _read_progress(path: Path) -> ProgressSummary:
             finished.add(_unit(event))
     ordered = [timings[code] for code in STAGES if code in timings]
     if plan is None:
-        return stage, None, None, ordered, ended
+        return (stage, None, None, ordered, ended), tuple(attempts)
     skus = {sku for sku, _, _ in plan}
     pending = {sku for sku, _, _ in plan - finished}
-    return stage, len(skus), len(skus - pending), ordered, ended
+    return (stage, len(skus), len(skus - pending), ordered, ended), tuple(attempts)

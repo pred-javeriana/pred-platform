@@ -66,6 +66,9 @@ class LumpyEvidence:
     cause: str | None = None
 
 
+# Visible names of the rivals; causes reach the page and must not show family codes.
+_RIVALS = {"seasonal_naive": "la línea base", "classical": "SARIMA"}
+
 # (run_id, sku, candidate_id) -> origin -> RMSE, all from m3_metricas.
 Windows = Mapping[tuple[str, str, str], Mapping[str, float]]
 # (run_id, comparison family) -> (published count, published median).
@@ -110,13 +113,18 @@ def calculate_lumpy(
             if (run.run_id, comparison) in published
             for count, value in [published[run.run_id, comparison]]
         )
+        # ADR-03-012 calls a champion that wins and is confirmed in every seed stable.
+        reason = (
+            "La campeona de la demanda grumosa cambia entre evaluaciones: la clase no es estable."
+            if len(set(champions.values())) > 1
+            else "La campeona de la demanda grumosa no es Fundacional en ninguna evaluación."
+        )
         return LumpyEvidence(
             tuple(sorted(common)),
             effects,
             (),
             (),
-            "La campeona de la demanda grumosa cambia entre evaluaciones: la clase no es estable. "
-            "Se muestran las medianas publicadas de cada evaluación.",
+            f"{reason} Se muestran las medianas publicadas de cada evaluación.",
         )
     comparisons = ("seasonal_naive", "classical")
     products = tuple(
@@ -139,12 +147,16 @@ def calculate_lumpy(
             full_median, _ = _center(full)
             common_median, common_cause = _center(shared)
             if (run.run_id, comparison) not in published:
-                raise EvidenceInvalid(f"Falta el efecto publicado de {comparison} en {run.run_id}.")
+                raise EvidenceInvalid(
+                    f"Falta el efecto publicado frente a {_RIVALS[comparison]} "
+                    f"en la semilla {run.seed}."
+                )
             count, stored = published[run.run_id, comparison]
             if count != len(full) or not _same(stored, full_median):
                 raise EvidenceInvalid(
-                    f"Las ventanas no reproducen el efecto publicado de {comparison} "
-                    f"en {run.run_id}; no se atribuye una diferencia sin reconciliarla."
+                    f"Las ventanas no reproducen el efecto publicado frente a "
+                    f"{_RIVALS[comparison]} en la semilla {run.seed}; "
+                    "no se atribuye una diferencia sin reconciliarla."
                 )
             seeds.append(
                 SeedEffect(

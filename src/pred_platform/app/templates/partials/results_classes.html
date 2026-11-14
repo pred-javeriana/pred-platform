@@ -1,12 +1,12 @@
 {% from "components/falla.html" import soporte %}
 {% from "components/tables.html" import table_start, table_end %}
-{% from "partials/results_macros.html" import answer, family, family_legend, key, problem %}
+{% from "partials/results_macros.html" import answer, family, family_legend, key, problem, rejected_note %}
 {{ problem(m3_classes) }}
 {% if m3_classes.run %}
 {% call answer('Pregunta 1 · ¿Qué familia pronostica mejor cada tipo de demanda?', answers.selection, answers.label, answers.tone) %}
-<dl class="pred-results-kpis">
+<dl class="pred-results-kpis pred-results-kpis--types" style="--n: {{ [m3_classes.rows | length, 4] | min or 1 }}">
 {% for row in m3_classes.rows %}{% set confirmation = m3_classes.confirmations.get(row.sku_class) %}
-<div><dt>{{ family(row.familia_campeona, family_colors) }} · {{ sku_class_label(row.sku_class) }}</dt><dd>{% if confirmation and confirmation.efecto_mediana_r is not none %}{% set effect = effect_parts(confirmation.efecto_mediana_r) %}{{ effect[0] }}<small>{{ effect[1] }}</small>{% else %}<span class="pred-kpi-text">{{ 'No se pudo leer' if answers.unread else 'Sin efecto publicado' }}</span>{% endif %}<small>{{ CONFIRMATION_STATES[confirmation.estado] if confirmation else 'No se pudo leer la confirmación' if answers.unread else 'Sin confirmación publicada' }}</small></dd></div>
+<div><dt>{{ family(row.familia_campeona, family_colors) }} · {{ sku_class_label(row.sku_class) }}</dt><dd>{% if confirmation and confirmation.efecto_mediana_r is not none %}{% set effect = effect_parts(confirmation.efecto_mediana_r) %}{{ effect[0] }}<small>{{ effect[1] }}</small>{% else %}<span class="pred-kpi-text">{{ 'No se pudo leer' if answers.unread or row.sku_class in m3_classes.rejected_confirmations else 'Sin efecto publicado' }}</span>{% endif %}<small>{{ CONFIRMATION_STATES[confirmation.estado] if confirmation else 'No se pudo leer la confirmación' if answers.unread or row.sku_class in m3_classes.rejected_confirmations else 'Sin confirmación publicada' }}</small></dd></div>
 {% endfor %}
 </dl>
 {% endcall %}
@@ -23,6 +23,8 @@
     {% for label, block in [('Fechas de selección', blocks.selection_dates), ('Fechas de prueba', blocks.test_dates), ('Orígenes de selección', blocks.selection_origins), ('Orígenes de embargo', blocks.embargo_origins), ('Orígenes de prueba', blocks.test_origins)] %}<tr><th scope="row">{{ label }}</th><td>{{ format_date(block.start) if block.start else '—' }}</td><td>{{ format_date(block.end) if block.end else '—' }}</td><td class="num">{{ format_count(block.count) }}</td></tr>{% endfor %}
     {{ table_end() }}
   </details>
+  {% elif blocks_problem %}
+  <p class="pred-note" id="bloques-ilegibles">No se pudieron leer los bloques de la reserva de esta evaluación: la figura y las cifras de los bloques no se muestran. {{ blocks_problem.detail }}</p>{% if blocks_problem.support %}{{ soporte(blocks_problem.support) }}{% endif %}
   {% endif %}
   <figure class="pred-results-figure"><figcaption><strong>Razón de error mediana por familia</strong><span>Mediana sobre los mismos productos para todas las familias. Escala logarítmica. Pase el puntero o enfoque una fila para ver el detalle.</span></figcaption>
     {{ family_legend(family_colors) }}
@@ -43,8 +45,10 @@
   <h2>Después se verificó: el bloque de prueba</h2>
   <p class="pred-results-lead">Con días que no se usaron para elegir la campeona, se compara la campeona congelada con la línea base y con cada familia. El punto es la mediana de la razón de error y la línea, su intervalo.</p>
   {% if m3_classes.confirmation_problem %}<p class="pred-note">{{ m3_classes.confirmation_problem.title }} {{ m3_classes.confirmation_problem.detail }}</p>{% if m3_classes.confirmation_problem.support %}{{ soporte(m3_classes.confirmation_problem.support) }}{% endif %}
+  {% elif not m3_classes.confirmation.clases and m3_classes.rejected_confirmations %}{{ rejected_note(m3_classes) }}
   {% elif not m3_classes.confirmation %}<p class="pred-note">La evaluación final no publicó la confirmación del campeón para esta ejecución. Las evaluaciones anteriores a los bloques de selección y de prueba no la tienen.</p>
   {% else %}
+    {{ rejected_note(m3_classes) }}
     <details class="pred-details pred-details--inline" id="metodo-confirmacion"><summary>Cómo se decide la confirmación</summary>
       <p class="pred-meta">La razón de un SKU es RMSE de la campeona / RMSE de la competidora: menos de 1 favorece a la campeona. Hodges-Lehmann estima la razón típica y las victorias cuentan los SKU con razón menor que 1. El p IUT de una competidora es su p de Wilcoxon si la mediana favorece a la campeona, y 1 si no; el de la clase es el mayor, y p Holm lo ajusta entre clases. La campeona queda confirmada si p Holm ≤ α y el intervalo bootstrap de la mediana de razones queda bajo 1 frente a cada competidora.</p>
     </details>

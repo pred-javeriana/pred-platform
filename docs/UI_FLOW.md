@@ -30,13 +30,19 @@ hace, sin validarlo, y Atrás y los pasos de la barra lo guardan también sin Ja
 elige un archivo por la persona, y elegir otro archivo deja Ajustes por revisar. También lo
 escriben un enlace que elige un archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`), la
 copia de una corrida (`?copiar_de=` o el formulario de copia) y una configuración importada. Revisar
-y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. El borrador
+y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador sin volver a
+la revisión 0, así que una pestaña de Ajustes que quedó abierta puede guardar una edición posterior
+como un borrador nuevo, con Ajustes por revisar. El borrador
 lleva una revisión y una marca por escritura, y cada página de Ajustes devuelve las que vio: si otra
 página escribió después (una copia, una importación o una edición en otra pestaña), el servidor no
-guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. El guardado
-automático escribe una cookie propia por revisión (`pred_borrador_a<rev>`); gana la de mayor
-revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
-abandonada no reemplace lo elegido después. Una corrida lanzada vive en
+guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. Un envío sin esa
+marca (una página dibujada antes de que existiera) solo se acepta mientras el borrador sigue en la
+revisión 0. El guardado
+automático escribe una cookie propia por escritura (`pred_borrador_a<rev>_<marca>`); gana la de
+mayor revisión y, a igual revisión, la principal, para que una respuesta tardía de una página ya
+abandonada no reemplace lo elegido después. Dos guardados automáticos de la misma revisión cuyas
+respuestas se cruzan no eligen uno en silencio: el borrador queda sin marca y cada página avisa en
+su siguiente guardado. Una corrida lanzada vive en
 `/corridas/<id>/<paso>`: Datos, Ajustes y Revisar quedan como registro de solo lectura de lo que
 se eligió. `app/pasos.py` es el único dueño del modelo de pasos: el nombre, el propósito y el
 «Después» de cada paso, su estado (hecho, por hacer, en curso o bloqueado) y adónde llevan Atrás
@@ -46,9 +52,9 @@ y Siguiente.
 | --- | --- |
 | `/` | Corridas: el inicio |
 | `/corridas/nueva/datos` | Paso 1 de una corrida nueva. `POST` elige el archivo y lleva a Ajustes |
-| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; con `destino` guarda lo escrito sin validar y va a ese paso. `?ingest_id=` llega con el archivo ya elegido y `?copiar_de=` copia los ajustes de una corrida |
+| `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; con `destino` guarda lo escrito sin validar y va a ese paso. `?ingest_id=` llega con el archivo ya elegido (si es otro que el del borrador, lo guarda y redirige, 303, a Ajustes) y `?copiar_de=` copia los ajustes de una corrida, los guarda y redirige a `?aviso=copiado&corrida=<id>`, que solo muestra el aviso: recargar o volver con Atrás no vuelve a escribir el borrador |
 | `/corridas/nueva/revisar` | Paso 3: resumen por secciones (Datos, Familias de modelos, Evaluación) con «Cambiar» por sección, duraciones publicadas de corridas anteriores y Lanzar (`POST /ejecucion/lanzar`). Un duplicado deshabilita Lanzar y enlaza a la corrida existente. Sin archivo elegido está bloqueado |
-| `POST /corridas/nueva/copiar` | Copia todos los ajustes de una corrida al borrador, sin lanzarla |
+| `POST /corridas/nueva/copiar` | Copia todos los ajustes de una corrida al borrador, sin lanzarla, y redirige (303) a Ajustes con el aviso |
 | `POST /corridas/nueva/ajustes/comprobar` | Actualiza la matriz y sus avisos al cambiar un campo; no guarda ni lanza |
 | `/corridas/nueva/ejecucion`, `/corridas/nueva/resultados` | Bloqueados hasta lanzar: dicen qué falta y llevan al primer paso por hacer |
 | `/corridas/{id}/datos`, `/corridas/{id}/ajustes`, `/corridas/{id}/revisar` | Registro de lo que eligió la corrida lanzada |
@@ -59,7 +65,7 @@ y Siguiente.
 | `/datos`, `/ejecucion`, `/resultados` | Rutas anteriores: redirigen (307) al paso que corresponde con la misma consulta. `/datos` va a Datos de la corrida nueva. `/ejecucion?ingest_id=` va a Ajustes de la corrida nueva; `?lanzar=1`, a su Datos; `?ejecucion=<id>` o, sin ella, la corrida más reciente, al paso Ejecución. `/resultados?ejecucion=<id>` o, sin ella, la corrida más nueva con evidencia publicada (o la más reciente), al paso Resultados. Sin corridas, a la corrida nueva |
 | `/ejecucion/estado` | El cuerpo de Ejecución para el sondeo HTMX |
 | `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
-| `POST /ejecucion/configuracion` | Importa ese JSON y rellena el borrador en Ajustes; no escribe la base de datos ni lanza |
+| `POST /ejecucion/configuracion` | Importa ese JSON en el borrador y redirige (303) a Ajustes con el aviso (`?aviso=importado`); no escribe la base de datos ni lanza |
 | `/resultados/sku/{sku_id}` | Detalle de un SKU: ruta de migas, decisión, familias y evidencia bajo demanda |
 | `/resultados/exportar.csv` | Descarga CSV de los veredictos filtrados en «Veredictos», sin el límite de página |
 | `/resultados/exclusiones.csv` | Descarga CSV de las exclusiones de toda la evaluación final (lanzamientos tardíos y elegibilidad) |

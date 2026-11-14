@@ -1549,6 +1549,17 @@ button.pred-btn--large {
   min-height: 2.5rem;
 }
 
+/* Los selectores de semilla muestran una fecha con hora: cada campo crece hasta que la etiqueta
+   cabe entera y el botón, a su ancho, pasa a otra línea antes de cortarla. */
+.pred-filters--seeds .pred-field {
+  flex: 1 1 15rem;
+  max-width: none;
+}
+
+.pred-filters--seeds > .pred-btn {
+  flex: 0 0 auto;
+}
+
 /* --------------------------------------------------------------- Alertas */
 /* Texto e ícono sobre la superficie, sin caja: el color refuerza, no informa solo. */
 .pred-alert {
@@ -3701,49 +3712,32 @@ abbr[title] {
 .pred-forecast__key--observed { color: var(--ink); }
 .pred-forecast__key--forecast { color: var(--data-text); }
 .pred-forecast .pred-chart:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* La lectura con puntero y flechas (charts.js): una capa transparente sobre el área del gráfico,
+   una línea vertical en la fecha leída y un anillo en cada serie que tiene valor ese día. */
+.pred-forecast__reader { fill: transparent; pointer-events: all; cursor: crosshair; }
+.pred-forecast__reader:focus { outline: none; }
+.pred-forecast__reader:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pred-forecast__cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.pred-forecast__cursor-observed, .pred-forecast__cursor-forecast { fill: none; stroke-width: 2; pointer-events: none; }
+.pred-forecast__cursor-observed { stroke: var(--ink); }
+.pred-forecast__cursor-forecast { stroke: var(--data-text); }
+/* La ficha del dato que muestra charts.js; la usan Resultados y el detalle de producto. */
+.pred-chart-tip { position: fixed; z-index: 100; max-width: min(340px, calc(100vw - 24px)); padding: 12px 14px; border: 1px solid var(--border-strong); background: var(--surface); box-shadow: 0 3px 12px rgb(0 0 0 / 12%); color: var(--ink-soft); font-size: 13px; line-height: 1.45; }
+.pred-chart-tip[hidden] { display: none; }
+.pred-chart-tip strong, .pred-chart-tip span { display: block; }
+.pred-chart-tip strong { font: 600 17px/1.5 var(--font-mono); color: var(--ink); }
+.pred-chart-tip small { display: block; font-size: 12px; color: var(--muted-text); }
 
 /* ------------------------------------------------------- Wizard: capítulos, producto y exportar */
 
-.wz-chapters {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 0;
-  border-bottom: 1px solid var(--border-strong);
-  margin: 0 0 var(--space-4);
-}
-
-.wz-chapters a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px 10px;
-  text-decoration: none;
-  color: var(--ink-soft);
-  font-size: 15px;
-  white-space: nowrap;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -1px;
-}
-
-.wz-chapters a[aria-current] {
-  border-bottom-color: var(--primary);
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.wz-chapters a:hover {
-  color: var(--ink);
-}
-
-.wz-chapters .wz-ch-n {
-  font: 700 11.5px/1 var(--font-body);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid currentColor;
+/* Los capítulos de Resultados: los usan los capítulos y el detalle de producto. En pantallas
+   angostas pasan a otra fila en vez de esconderse tras un desplazamiento. */
+.pred-chapters { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0; border-bottom: 1px solid var(--border-strong); margin: 0 0 var(--space-4); }
+.pred-chapters a { display: flex; gap: 8px; align-items: center; white-space: nowrap; padding: 12px 14px 10px; border-bottom: 3px solid transparent; text-decoration: none; color: var(--ink-soft); font-size: 14px; }
+.pred-chapters a[aria-current] { border-bottom-color: var(--primary); font-weight: 700; color: var(--ink); }
+.pred-chapters__number { display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 12px; font-weight: 700; }
+@media (max-width: 1100px) {
+  .pred-chapters a { padding-right: 10px; padding-left: 10px; font-size: 13px; }
 }
 
 .wz-crumb {

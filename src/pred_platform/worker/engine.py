@@ -187,7 +187,7 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
 
 
 # Which database a live process is an engine for (``engine_owner``).
-EngineOwner = Literal["this", "other", "none"]
+EngineOwner = Literal["this", "other", "conflict", "none"]
 
 
 def engine_owner(pid: int, db_path: Path) -> EngineOwner:
@@ -195,28 +195,40 @@ def engine_owner(pid: int, db_path: Path) -> EngineOwner:
 
     ``launch`` sets that variable for every engine. ``"this"``: an engine of ``db_path``.
     ``"other"``: an engine of another database, such as the original of a copy served here.
-    ``"none"``: no such process, or a process that is not a platform engine (a reused pid, or
-    one this user cannot inspect).
+    ``"conflict"``: the members of its process group name different databases, so none of them
+    is trusted. ``"none"``: no such process, or a process that is not a platform engine (a reused
+    pid, or one this user cannot inspect).
 
     ``launch`` makes the engine command the leader of its own process group, so the group keeps
     the recorded pid as its id. Its members are read too: a wrapper command (a resource-slot
-    script, ``uv run``) can die while the engine it started keeps running in that group.
+    script, ``uv run``) can die while the engine it started keeps running in that group. A live
+    leader is authoritative: when it names another database, the group is ``"other"`` whatever
+    its members say. Only a group whose every identity names ``db_path`` is ``"this"``, the one
+    answer that lets a caller stop it.
     """
-    candidates = [pid]
+    own = os.path.normcase(db_path.resolve())
+    leader = _served_database(pid)
+    if leader is not None and leader != own:
+        return "other"
+    identities = {leader} if leader is not None else set()
     if sys.platform != "win32":
-        candidates += [member for member in _group_members(pid) if member != pid]
-    owner: EngineOwner = "none"
-    for candidate in candidates:
-        try:
-            served = psutil.Process(candidate).environ().get("PRED_DB_PATH")
-        except psutil.Error:
-            continue
-        if not served:
-            continue
-        if os.path.normcase(Path(served).resolve()) == os.path.normcase(db_path.resolve()):
-            return "this"
-        owner = "other"
-    return owner
+        for member in _group_members(pid):
+            if member != pid and (served := _served_database(member)) is not None:
+                identities.add(served)
+    if not identities:
+        return "none"
+    if len(identities) > 1:
+        return "conflict"
+    return "this" if identities == {own} else "other"
+
+
+def _served_database(pid: int) -> str | None:
+    """The normalized ``PRED_DB_PATH`` of the live process ``pid``, if it has one we can read."""
+    try:
+        served = psutil.Process(pid).environ().get("PRED_DB_PATH")
+    except psutil.Error:
+        return None
+    return os.path.normcase(Path(served).resolve()) if served else None
 
 
 def _group_members(group: int) -> list[int]:
@@ -230,7 +242,11 @@ def _group_members(group: int) -> list[int]:
 
 
 def is_alive(pid: int) -> bool:
-    """Whether a process with this id exists (used to clean up after a crashed platform)."""
+    """Whether a live process with this id exists; a zombie counts as gone.
+
+    Used to clean up after a crashed platform. A process that this user cannot inspect counts as
+    alive.
+    """
     if sys.platform == "win32":
         return _windows_is_alive(pid)
     try:
@@ -274,8 +290,24 @@ def _windows_is_alive(pid: int) -> bool:
         kernel.CloseHandle(handle)
 
 
-def terminate(pid: int, *, grace: float = 5.0) -> None:
-    """Stop the engine tree: process-group signals on POSIX, taskkill /T on Windows."""
+class EngineStillRunning(TimeoutError):
+    """The engine's processes did not exit after they were killed: its run must stay owned."""
+
+
+# How long ``terminate`` waits for the group to exit after SIGKILL (a process in uninterruptible
+# I/O dies only when that I/O ends).
+KILL_WAIT = 5.0
+
+
+def terminate(pid: int, *, grace: float = 5.0, kill_wait: float | None = None) -> None:
+    """Stop the engine tree: process-group signals on POSIX, taskkill /T on Windows.
+
+    Returns once no process of the tree is left alive.
+
+    Raises:
+        EngineStillRunning: a process of the tree outlived SIGKILL by ``kill_wait`` seconds
+            (``KILL_WAIT`` by default); the caller must not start another engine for its run.
+    """
     if sys.platform == "win32":
         try:
             parent = psutil.Process(pid)
@@ -295,7 +327,7 @@ def terminate(pid: int, *, grace: float = 5.0) -> None:
             raise OSError(f"No se pudo detener el árbol del proceso {pid}.")
         _, alive = psutil.wait_procs(processes, timeout=max(0.0, grace))
         if alive:
-            raise TimeoutError(f"El árbol del proceso {pid} no terminó dentro del plazo.")
+            raise EngineStillRunning(f"El árbol del proceso {pid} no terminó dentro del plazo.")
         return
     try:
         group = os.getpgid(pid)
@@ -315,6 +347,11 @@ def terminate(pid: int, *, grace: float = 5.0) -> None:
         time.sleep(0.05)
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(group, signal.SIGKILL)
+    deadline = time.monotonic() + (KILL_WAIT if kill_wait is None else kill_wait)
+    while _group_members(group):
+        if time.monotonic() >= deadline:
+            raise EngineStillRunning(f"El grupo de procesos {group} sigue vivo después de SIGKILL.")
+        time.sleep(0.05)
 
 
 def log_tail(path: Path, lines: int = 8) -> str:

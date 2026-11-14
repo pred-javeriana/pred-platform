@@ -1,0 +1,9 @@
+{# Los capítulos de Resultados, compartidos por los capítulos y por el detalle de producto.
+   Necesita chapters, results_base, chapter_query (la M3 elegida) y el capítulo actual: chapter,
+   o current_chapter en el detalle de producto, que no es un capítulo y abre bajo Productos. #}
+{% set current = current_chapter if current_chapter is defined else chapter %}
+<nav class="pred-chapters" aria-label="Capítulos de resultados">
+  {% for key, label, number in chapters %}
+  <a href="{{ results_base }}/{{ key }}{{ '?' ~ chapter_query if chapter_query else '' }}"{% if current == key %} aria-current="page"{% endif %}>{% if number %}<span class="pred-chapters__number">{{ number }}</span>{% endif %}{{ label }}</a>
+  {% endfor %}
+</nav>

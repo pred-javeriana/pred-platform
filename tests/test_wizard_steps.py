@@ -62,7 +62,17 @@ def test_records_keep_the_window_aggregation(env: Env, step: str, reported: bool
 
 def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env) -> None:
     client = _dal_client(env)
-    _launch(client, env, seasonality="14", trials="3", workers="7", seed="1")
+    # A step and a training length other than the defaults: the copy must read them (Refs #330).
+    _launch(
+        client,
+        env,
+        min_train="21",
+        step="14",
+        seasonality="14",
+        trials="3",
+        workers="7",
+        seed="1",
+    )
     before = env.rows("SELECT estado, finalizada_en FROM ejecuciones")
 
     copied = client.post("/corridas/nueva/copiar", data={"copiar": "1"})
@@ -74,9 +84,9 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
     # The copy survives navigation without pressing Continuar first.
     html = client.get("/corridas/nueva/ajustes").text
     for name, expected in {
-        "min_train": "40",
+        "min_train": "21",
         "horizon": "2",
-        "step": "7",
+        "step": "14",
         "seasonality": "14",
         "trials": "3",
         "seed": "1",
@@ -87,6 +97,8 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
     assert _launch_payload(review) == {
         "ingest_id": env.ingest_id,
         **FORM,
+        "min_train": "21",
+        "step": "14",
         "seasonality": "14",
         "trials": "3",
         "workers": "7",
@@ -100,7 +112,9 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
 def test_copying_a_missing_run_does_not_replace_the_draft(env: Env) -> None:
     client = _dal_client(env)
     _review(client, env, seed="123")
-    missing = client.post("/corridas/nueva/copiar", data={"copiar": "999"})
+    missing = client.post(
+        "/corridas/nueva/copiar", data={"copiar": "999", "draft_rev": _stamp(client)}
+    )
     assert "No se pudieron copiar los ajustes de la corrida #999: no existe esa corrida." in (
         _text(missing.text)
     )
@@ -454,12 +468,48 @@ def test_autosave_writes_its_own_cookie_and_never_the_main_one(env: Env) -> None
     saved = _autosave(client, env, _stamp(client), seed="74")
 
     written = [value.split("=", 1)[0] for value in saved.headers.get_list("set-cookie")]
-    assert written == [f"{COOKIE}_a1"]
-    # The next save retires the earlier autosave cookie and keeps naming the revision.
+    first = saved.headers["X-Pred-Draft-Rev"].replace(".", "_")
+    assert written == [f"{COOKIE}_a{first}"]
+    # The next save retires the earlier autosave cookie; each name says its revision and mark.
     again = _autosave(client, env, saved.headers["X-Pred-Draft-Rev"], seed="75")
     changed = [value.split("=", 1)[0] for value in again.headers.get_list("set-cookie")]
-    assert changed == [f"{COOKIE}_a2", f"{COOKIE}_a1"]
+    second = again.headers["X-Pred-Draft-Rev"].replace(".", "_")
+    assert second.startswith("2_")
+    assert changed == [f"{COOKIE}_a{second}", f"{COOKIE}_a{first}"]
     assert _shown(client) == ("75", "2")
+
+
+def test_two_autosaves_of_the_same_revision_ask_both_pages_to_reload(env: Env) -> None:
+    """Refs #320: two pages save from revision 1 and their answers cross. The browser keeps both
+    cookies; neither page is the current draft any more, so both are told on their next save."""
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=1, token="a" * 12, seed="60"))
+    start = _stamp(client)
+    first = _autosave(client, env, start, seed="61")
+    tab_a = first.headers["X-Pred-Draft-Rev"]
+    # Tab B saved from the same revision: its cookie arrives too, with its own name.
+    tab_b = "2." + "f" * 12
+    client.cookies.set(
+        f"{COOKIE}_a2_{'f' * 12}", _draft_cookie(env.ingest_id, rev=2, token="f" * 12, seed="62")
+    )
+    assert len([name for name in client.cookies if name.startswith(f"{COOKIE}_a2_")]) == 2
+
+    current = _stamp(client)
+    assert current == "2."
+    for stamp, seed in ((tab_a, "63"), (tab_b, "64")):
+        refused = _autosave(client, env, stamp, seed=seed)
+        assert refused.status_code == 409 and "set-cookie" not in refused.headers
+        assert refused.headers["X-Pred-Draft-Rev"] == current
+    # Ajustes and Revisar agree on what is shown; the reloaded page goes on from there.
+    shown = _shown(client)
+    assert shown[0] in {"61", "62"} and _shown(client, "/corridas/nueva/revisar") == shown
+    saved = _autosave(client, env, current, seed="65")
+    assert saved.status_code == 200 and saved.headers["X-Pred-Draft-Rev"].startswith("3.")
+    assert _shown(client)[0] == "65"
+    expired = [c.split(";")[0] for c in saved.headers.get_list("set-cookie") if "Max-Age=0" in c]
+    assert sorted(expired) == sorted(
+        f'{COOKIE}_a{stamp.replace(".", "_")}=""' for stamp in (tab_a, tab_b)
+    )
 
 
 def test_the_current_draft_is_the_highest_revision_and_a_tie_goes_to_the_main_cookie(
@@ -488,6 +538,8 @@ def test_the_current_draft_is_the_highest_revision_and_a_tie_goes_to_the_main_co
 def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env) -> None:
     client = _dal_client(env)
     _launch(client, env, seed="61")
+    # Launching left its own (empty) draft: this test starts from another one.
+    client.cookies.clear()
     client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="44"))
     old = _stamp(client)
     # Another page copies, so the first page's stamp is no longer the draft's.
@@ -500,6 +552,9 @@ def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env)
     stale = _autosave(client, env, old, seed="99")
     assert stale.status_code == 409 and "set-cookie" not in stale.headers
     assert stale.headers["X-Pred-Draft-Rev"] == _stamp(client)
+    # The refused autosave gets the guide of the draft as it is (Refs #306).
+    assert re.search(r'id="conflicto-borrador"(?![^>]*hidden)', stale.text)
+    assert 'id="barra-pasos"' in stale.text and "semilla 61" in _text(stale.text)
 
     refused = [
         client.post("/corridas/nueva/copiar", data={"copiar": "1", "draft_rev": old}),
@@ -536,11 +591,42 @@ def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env)
 
 
 @pytest.mark.parametrize("stamp", [None, ""])
-def test_a_client_without_a_stamp_is_not_compared(env: Env, stamp: str | None) -> None:
+def test_a_page_without_a_stamp_only_saves_over_a_draft_from_before_the_revision(
+    env: Env, stamp: str | None
+) -> None:
+    """Refs #321: a page drawn before the stamp existed is compared too."""
     client = _dal_client(env)
-    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12))
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, seed="21"))
     assert _autosave(client, env, stamp, seed="77").status_code == 200
     assert _shown(client)[0] == "77"
+
+    client.cookies.clear()
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="21"))
+    assert _autosave(client, env, stamp, seed="78").status_code == 409
+    assert _shown(client)[0] == "21"
+
+
+@pytest.mark.parametrize("stamp", [None, ""])
+def test_a_submit_without_a_stamp_cannot_replace_a_later_copy(env: Env, stamp: str | None) -> None:
+    """Refs #321: tab A saved, tab B copied, then a page without ``draft_rev`` edits and
+    continues: both are refused and the copy stays the draft."""
+    client = _dal_client(env)
+    _launch(client, env, seed="99", horizon="5")
+    assert _autosave(client, env, _stamp(client), seed="21").status_code == 200
+    copied = client.post(
+        "/corridas/nueva/copiar", data={"copiar": "1", "draft_rev": _stamp(client)}
+    )
+    assert copied.status_code == 200
+    assert _shown(client) == ("99", "5")
+
+    data = {"ingest_id": env.ingest_id, **FORM, "seed": "33"}
+    if stamp is not None:
+        data["draft_rev"] = stamp
+    assert _autosave(client, env, stamp, seed="33").status_code == 409
+    refused = client.post("/corridas/nueva/ajustes", data=data, follow_redirects=False)
+    assert refused.status_code == 409 and "set-cookie" not in refused.headers
+    assert _shown(client) == ("99", "5")
+    assert _shown(client, "/corridas/nueva/revisar") == ("99", "5")
 
 
 def test_an_unreadable_stamp_is_refused(env: Env) -> None:
@@ -552,3 +638,118 @@ def test_an_unreadable_stamp_is_refused(env: Env) -> None:
 def test_the_conflict_notice_is_hidden_until_there_is_a_conflict(env: Env) -> None:
     page = _dal_client(env).get("/corridas/nueva/ajustes").text
     assert re.search(r'id="conflicto-borrador" hidden', page)
+
+
+def _rail_done(html: str, step: str) -> bool:
+    found = re.search(rf'<li class="([^"]*)" id="paso-{step}"', html)
+    assert found is not None
+    return "is-done" in found.group(1).split()
+
+
+def test_a_settings_tab_left_open_keeps_editing_after_another_tab_launches(env: Env) -> None:
+    """Refs #306: launching discards the draft but keeps counting revisions, so the Ajustes tab
+    left open saves a later edit as a new draft, and the guide asks to review Ajustes again."""
+    client = _dal_client(env)
+    _review(client, env, seed="75")
+    page = client.get("/corridas/nueva/ajustes").text
+    assert _rail_done(page, "ajustes")
+    open_tab = _stamp(client)
+    before = int(open_tab.split(".")[0])
+
+    review = client.get("/corridas/nueva/revisar").text
+    launched = client.post(
+        "/ejecucion/lanzar", data=_launch_payload(review), follow_redirects=False
+    )
+    assert launched.status_code == 303
+    # The draft is empty after launching, but its revision did not go back to 0.
+    after = _stamp(client)
+    assert int(after.split(".")[0]) == before + 1
+    assert not _rail_done(client.get("/corridas/nueva/ajustes").text, "ajustes")
+
+    saved = _autosave(client, env, open_tab, seed="99")
+    assert saved.status_code == 200
+    assert not _rail_done(saved.text, "ajustes")
+    assert _shown(client) == ("99", "2")
+    assert re.search(
+        rf'<option value="{env.ingest_id}" selected', client.get("/corridas/nueva/ajustes").text
+    )
+    # Once the open tab wrote a new draft, another stale page is refused again.
+    assert _autosave(client, env, open_tab, seed="98").status_code == 409
+    assert _shown(client) == ("99", "2")
+
+
+def test_reloading_a_copy_link_keeps_the_later_edits(env: Env) -> None:
+    """Refs #319: the copy link saves once and redirects; reloading, Back or a restored session
+    ask for the redirected address, which writes nothing."""
+    client = _dal_client(env)
+    _launch(client, env, seed="99", horizon="5")
+    linked = client.get("/corridas/nueva/ajustes?copiar_de=1", follow_redirects=False)
+    assert (linked.status_code, linked.headers["location"]) == (
+        303,
+        "/corridas/nueva/ajustes?aviso=copiado&corrida=1",
+    )
+    assert COOKIE in linked.headers["set-cookie"]
+    page = client.get(linked.headers["location"])
+    assert "Ajustes copiados de la corrida #1" in _text(page.text)
+    assert "set-cookie" not in page.headers
+    stamp = re.search(r'name="draft_rev" value="([^"]+)"', page.text)
+    assert stamp is not None
+    assert _autosave(client, env, stamp.group(1), seed="91", horizon="4").status_code == 200
+
+    again = client.get(linked.headers["location"])
+    assert "set-cookie" not in again.headers
+    assert _shown(client, linked.headers["location"]) == ("91", "4")
+    assert _shown(client, "/corridas/nueva/revisar") == ("91", "4")
+
+
+@pytest.mark.parametrize("action", ["copy", "import"])
+def test_copy_and_import_answer_with_a_redirect_that_writes_nothing(env: Env, action: str) -> None:
+    """Refs #319: reloading the result of the copy or import form asks for Ajustes again
+    instead of sending the form with its old stamp (a false conflict)."""
+    client = _dal_client(env)
+    _launch(client, env, seed="99", horizon="5")
+    if action == "copy":
+        sent = client.post(
+            "/corridas/nueva/copiar",
+            data={"copiar": "1", "draft_rev": _stamp(client)},
+            follow_redirects=False,
+        )
+        target = "/corridas/nueva/ajustes?aviso=copiado&corrida=1"
+        notice = "Ajustes copiados de la corrida #1"
+    else:
+        document = client.get("/ejecucion/configuracion.json?ejecucion=1").json()
+        sent = client.post(
+            "/ejecucion/configuracion",
+            data={"draft_rev": _stamp(client)},
+            files={"archivo": ("ajustes.json", json.dumps(document))},
+            follow_redirects=False,
+        )
+        target = "/corridas/nueva/ajustes?aviso=importado"
+        notice = "Configuración importada"
+    assert (sent.status_code, sent.headers["location"]) == (303, target)
+    page = client.get(target)
+    assert notice in _text(page.text)
+    assert not re.search(r'id="conflicto-borrador"(?![^>]*hidden)', page.text)
+    stamp = re.search(r'name="draft_rev" value="([^"]+)"', page.text)
+    assert stamp is not None
+    assert _autosave(client, env, stamp.group(1), seed="91", horizon="5").status_code == 200
+    assert "set-cookie" not in client.get(target).headers
+    assert _shown(client, target) == ("91", "5")
+
+
+def test_a_link_with_the_file_already_in_the_draft_writes_nothing(env: Env) -> None:
+    """Refs #319: reloading ``?ingest_id=`` does not raise the revision, so a pending save from
+    the page left and other Ajustes tabs stay current."""
+    client = _dal_client(env)
+    client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="44"))
+    stamp = _stamp(client)
+    page = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}")
+    assert page.status_code == 200 and "set-cookie" not in page.headers
+    assert _autosave(client, env, stamp, seed="45").status_code == 200
+
+
+def test_an_unknown_notice_shows_nothing(env: Env) -> None:
+    client = _dal_client(env)
+    for query in ("aviso=copiado&corrida=<b>", "aviso=otro", "aviso=copiado"):
+        page = client.get(f"/corridas/nueva/ajustes?{query}").text
+        assert "Ajustes copiados" not in page and "<b>" not in page
