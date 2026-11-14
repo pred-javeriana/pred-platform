@@ -3704,46 +3704,14 @@ abbr[title] {
 
 /* ------------------------------------------------------- Wizard: capítulos, producto y exportar */
 
-.wz-chapters {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 0;
-  border-bottom: 1px solid var(--border-strong);
-  margin: 0 0 var(--space-4);
-}
-
-.wz-chapters a {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px 10px;
-  text-decoration: none;
-  color: var(--ink-soft);
-  font-size: 15px;
-  white-space: nowrap;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -1px;
-}
-
-.wz-chapters a[aria-current] {
-  border-bottom-color: var(--primary);
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.wz-chapters a:hover {
-  color: var(--ink);
-}
-
-.wz-chapters .wz-ch-n {
-  font: 700 11.5px/1 var(--font-body);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid currentColor;
+/* Los capítulos de Resultados: los usan los capítulos y el detalle de producto. En pantallas
+   angostas pasan a otra fila en vez de esconderse tras un desplazamiento. */
+.pred-chapters { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0; border-bottom: 1px solid var(--border-strong); margin: 0 0 var(--space-4); }
+.pred-chapters a { display: flex; gap: 8px; align-items: center; white-space: nowrap; padding: 12px 14px 10px; border-bottom: 3px solid transparent; text-decoration: none; color: var(--ink-soft); font-size: 14px; }
+.pred-chapters a[aria-current] { border-bottom-color: var(--primary); font-weight: 700; color: var(--ink); }
+.pred-chapters__number { display: grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 12px; font-weight: 700; }
+@media (max-width: 1100px) {
+  .pred-chapters a { padding-right: 10px; padding-left: 10px; font-size: 13px; }
 }
 
 .wz-crumb {

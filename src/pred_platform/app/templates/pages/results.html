@@ -20,11 +20,7 @@
   {% elif not run %}
     {{ empty_state("Todavía no hay resultados.", "Aparecerán cuando se publique la evaluación final.", "Ir a Ejecución", "/ejecucion") }}
   {% else %}
-  <nav class="pred-chapters" aria-label="Capítulos de resultados">
-    {% for key, label, number in chapters %}
-    <a href="{{ results_base }}/{{ key }}{{ '?' ~ chapter_query if chapter_query else '' }}"{% if chapter == key %} aria-current="page"{% endif %}>{% if number %}<span class="pred-chapters__number">{{ number }}</span>{% endif %}{{ label }}</a>
-    {% endfor %}
-  </nav>
+  {% include "partials/results_chapters.html" %}
   {% if vista == "exportar" %}
     {% include "partials/results_exportar.html" %}
   {% elif vista == "sku" %}

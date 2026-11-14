@@ -172,6 +172,25 @@ def test_each_chapter_is_server_rendered_and_preserves_the_exact_evaluation(
     assert re.search(r'pred-context__compact-fact">\d+ productos<', html)
 
 
+def test_the_product_detail_shares_the_chapter_links_and_keeps_the_chosen_evaluation(
+    published: tuple[TestClient, str],
+) -> None:
+    """El capítulo 2 del detalle abre la verificación producto a producto (#299)."""
+    client, number = published
+    html = client.get(f"/corridas/{number}/resultados/producto/FIL-0001?m3=m3-ui-0").text
+    nav = re.search(r'<nav class="pred-chapters".*?</nav>', html, re.S)
+    assert nav is not None
+    chapter_two = re.search(
+        r'<a href="([^"]+)"[^>]*><span class="pred-chapters__number">2<', nav.group()
+    )
+    assert chapter_two is not None
+    assert chapter_two.group(1) == f"/corridas/{number}/resultados/p2?m3=m3-ui-0"
+    assert "vista=errores" not in nav.group()
+    for target in ("resumen", "p1", "estabilidad", "exportar"):
+        assert f'/resultados/{target}?m3=m3-ui-0"' in nav.group()
+    assert '/resultados/productos?m3=m3-ui-0" aria-current="page"' in nav.group()
+
+
 @pytest.mark.parametrize(
     ("vista", "chapter", "anchor"),
     [
