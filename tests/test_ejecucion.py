@@ -2342,3 +2342,13 @@ def _element_by_id(html: str, element_id: str) -> str:
         if depth == 0:
             return html[position : position + match.start()]
     raise AssertionError(f"{element_id} is not closed")
+
+
+def test_the_family_matrix_counts_one_product_in_singular(env: Env) -> None:
+    """La matriz de Ajustes dice «1 producto» y «0 productos», no «1 productos» (#302)."""
+    client = _dal_client(env)
+    page = client.get(f"/corridas/nueva/ajustes?ingest_id={env.ingest_id}").text
+    head = re.search(r'<table class="pred-family-matrix">.*?</thead>', page, re.S)
+    assert head is not None
+    counts = re.findall(r"<small>([^<]*productos?)</small>", head.group())
+    assert sorted(counts) == ["0 productos", "1 producto", "1 producto", "1 producto"]
