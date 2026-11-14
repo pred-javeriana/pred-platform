@@ -3701,6 +3701,21 @@ abbr[title] {
 .pred-forecast__key--observed { color: var(--ink); }
 .pred-forecast__key--forecast { color: var(--data-text); }
 .pred-forecast .pred-chart:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* La lectura con puntero y flechas (charts.js): una capa transparente sobre el área del gráfico,
+   una línea vertical en la fecha leída y un anillo en cada serie que tiene valor ese día. */
+.pred-forecast__reader { fill: transparent; pointer-events: all; cursor: crosshair; }
+.pred-forecast__reader:focus { outline: none; }
+.pred-forecast__reader:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pred-forecast__cursor { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.pred-forecast__cursor-observed, .pred-forecast__cursor-forecast { fill: none; stroke-width: 2; pointer-events: none; }
+.pred-forecast__cursor-observed { stroke: var(--ink); }
+.pred-forecast__cursor-forecast { stroke: var(--data-text); }
+/* La ficha del dato que muestra charts.js; la usan Resultados y el detalle de producto. */
+.pred-chart-tip { position: fixed; z-index: 100; max-width: min(340px, calc(100vw - 24px)); padding: 12px 14px; border: 1px solid var(--border-strong); background: var(--surface); box-shadow: 0 3px 12px rgb(0 0 0 / 12%); color: var(--ink-soft); font-size: 13px; line-height: 1.45; }
+.pred-chart-tip[hidden] { display: none; }
+.pred-chart-tip strong, .pred-chart-tip span { display: block; }
+.pred-chart-tip strong { font: 600 17px/1.5 var(--font-mono); color: var(--ink); }
+.pred-chart-tip small { display: block; font-size: 12px; color: var(--muted-text); }
 
 /* ------------------------------------------------------- Wizard: capítulos, producto y exportar */
 
