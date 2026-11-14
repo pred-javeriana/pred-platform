@@ -60,7 +60,11 @@ Esta carrera también corresponde al diagnóstico de
 - Un error inesperado de supervisión detiene el motor y deja la corrida `detenida` con su causa,
   sin abandonar un reclamo `ejecutando`. El worker continúa con las demás corridas de la cola.
   Si el motor ya había terminado el intento (salió o emitió `run_finished` después de sus archivos
-  finales), el worker importa esos archivos. Si el motor ya registró la corrida como `completada`
+  finales), el worker importa esos archivos. Si el fallo ocurre antes, con el motor vivo, sin
+  `run_finished` y sin la corrida registrada como `completada`, la corrida queda `detenida` con su
+  causa y sin PID aunque ya existan `corrida.json`, `unidades.jsonl` y `seleccion.jsonl`: el
+  siguiente arranque del worker no la vuelve a encolar y el operador debe reanudarla, con las
+  mismas tareas, para importar los resultados. Si el motor ya registró la corrida como `completada`
   y la importación no se completa (archivos que no se pueden leer o una base bloqueada), la corrida
   queda `detenida` con `platform.result_import_failed`, nunca como terminada sin resultados, y
   `--once` termina con código 1. Conserva su PID: el siguiente arranque del worker la vuelve a

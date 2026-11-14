@@ -23,6 +23,9 @@ real engine, its heavy dependencies or its running time. The scenario comes from
                   run_finished
     malformed_progress / malformed_after_publication
                   writes a progress record without keys, before or after publishing its state
+    malformed_before_run_finished
+                  like ok, but after its final files writes a progress record without keys
+                  instead of run_finished, then waits until it is killed
     future_schema writes a progress stream of an unsupported major version
     incompatible  refuses the run_id (its stored identity differs) without writing anything
 
@@ -612,6 +615,11 @@ def main() -> int:
     if "FAKE_ENGINE_EVALUATION" in os.environ:
         corrida["evaluation"] = json.loads(os.environ["FAKE_ENGINE_EVALUATION"])
     (folder / "corrida.json").write_text(json.dumps(corrida), encoding="utf-8")
+    if scenario == "malformed_before_run_finished":
+        # Los archivos finales ya existen, pero el motor sigue vivo y aún no emite run_finished.
+        stream.emit("unit_started", stage="L4")
+        time.sleep(60)
+        return 0
     failed = scenario in ("stage_fails", "l4_fails")
     failed_stage = "L3" if scenario == "stage_fails" else "L4" if scenario == "l4_fails" else None
     stream.emit(

@@ -367,6 +367,46 @@ def test_a_supervision_error_after_publication_imports_the_final_files_or_keeps_
     _assert_imported(env, intento=1 if units == "ok" else 2)
 
 
+def test_a_supervision_error_before_run_finished_stops_the_run_until_the_operator_resumes(
+    env: Env, monkeypatch
+):
+    # The engine leaves valid final files, then a progress record without keys breaks the
+    # supervision while it is still alive and before run_finished. The worker cannot tell the
+    # attempt finished, so it stops the run; only the operator's resume runs it again.
+    from pred_platform.dal import ejecuciones as dal
+
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "malformed_before_run_finished")
+    assert Worker(env.settings, poll_interval=0.01).drain()
+    folder = next((env.settings.data_root / "runs").iterdir())
+    for name in ("corrida.json", "unidades.jsonl", "seleccion.jsonl"):
+        assert (folder / name).is_file(), name
+    ((estado, attempt, pid, error),) = env.rows(
+        "SELECT estado, intento, pid, error_json FROM ejecuciones"
+    )
+    assert (estado, attempt, pid) == ("detenida", 1, None)
+    diagnostic = json.loads(error)
+    assert diagnostic["code"] == "pipeline.stage_failed"
+    assert "KeyError" in diagnostic["detail"]
+    assert env.rows("SELECT COUNT(*) FROM selecciones") == [(0,)]
+    with TestClient(create_app(env.settings)) as client:
+        page = client.get("/corridas/1/ejecucion")
+        assert page.status_code == 200
+        assert "Reanudar" in page.text
+    tasks = env.rows("SELECT id FROM tareas ORDER BY id")
+
+    # A restart of the worker leaves it stopped: it has no process left to recover.
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "m3_ok")
+    assert Worker(env.settings).drain()
+    assert env.rows("SELECT estado, intento FROM ejecuciones") == [("detenida", 1)]
+
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, 1)
+    assert Worker(env.settings).drain()
+    _assert_imported(env, intento=2)
+    assert env.rows("SELECT id FROM tareas ORDER BY id") == tasks
+
+
 def test_a_failed_final_import_exits_non_zero_and_a_restart_imports_the_files(
     env: Env, monkeypatch
 ):
