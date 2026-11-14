@@ -13,6 +13,7 @@ import threading
 import time
 from contextlib import closing
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 import psutil
@@ -757,8 +758,6 @@ def test_termination_reports_a_group_that_outlives_sigkill(
 def test_recovery_keeps_the_run_of_an_engine_that_outlives_its_stop(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ):
-    from functools import partial
-
     from pred_platform.dal import ejecuciones as dal
 
     process = _stubborn_engine(env.db)
@@ -795,3 +794,70 @@ def test_recovery_keeps_the_run_of_an_engine_that_outlives_its_stop(
         if process.poll() is None:
             process.kill()
         process.wait(timeout=10)
+
+
+def _live_group(group: int) -> list[int]:
+    """The live (not zombie) processes of the process group ``group``."""
+    members = (p.pid for p in psutil.process_iter() if _pgid(p.pid) == group)
+    return [pid for pid in members if engine.is_alive(pid)]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+@pytest.mark.parametrize("cleanup", ["ok", "fails"])
+def test_a_launcher_that_exits_before_its_engine_does_not_release_the_run_beside_it(
+    env: Env, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cleanup: str
+):
+    from pred_platform.worker import bucle
+
+    # The launcher starts the engine as its child and exits at once, leaving it in its group.
+    wrapper = tmp_path / "engine-launcher.sh"
+    wrapper.write_text(
+        f'#!/bin/sh\n{" ".join(env.settings.engine_command)} "$@" &\nexit 0\n', encoding="utf-8"
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "slow")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    groups: list[int] = []
+    alive_at_import: list[list[int]] = []
+
+    def launcher(command, **kwargs):
+        child = engine.launch(command, **kwargs)
+        groups.append(child.pid)
+        return child
+
+    finalize = bucle.finalize
+
+    def recording_finalize(*args, **kwargs):
+        alive_at_import.append(_live_group(groups[0]))
+        return finalize(*args, **kwargs)
+
+    monkeypatch.setattr(bucle, "finalize", recording_finalize)
+    launched = replace(env.settings, engine_command=(str(wrapper),))
+    try:
+        with monkeypatch.context() as patch:
+            if cleanup == "fails":
+                patch.setattr(os, "killpg", lambda group, signum: None)
+                patch.setattr(engine, "KILL_WAIT", 0.3)
+                patch.setattr(engine, "terminate", partial(engine.terminate, grace=0.2))
+            drained = Worker(launched, launcher=launcher).drain()
+        if cleanup == "ok":
+            # The engine left behind is stopped before the import releases the run.
+            assert alive_at_import == [[]]
+            assert _live_group(groups[0]) == []
+            ((estado, pid, error),) = env.rows("SELECT estado, pid, error_json FROM ejecuciones")
+            assert (estado, pid) == ("detenida", None)
+            assert json.loads(error)["code"] == "platform.artifact_missing"
+            return
+        # The engine outlived the stop: the run keeps its process and nothing is imported.
+        assert not drained
+        assert alive_at_import == []
+        assert _live_group(groups[0])
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("ejecutando", groups[0])]
+        # The next start stops the engine it finds in that group, then runs the run again.
+        monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "ok")
+        assert Worker(env.settings).drain()
+        assert _live_group(groups[0]) == []
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if groups and _group_exists(groups[0]):
+            os.killpg(groups[0], signal.SIGKILL)

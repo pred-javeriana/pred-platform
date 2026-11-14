@@ -459,6 +459,10 @@ class Worker:
                 )
             return
 
+        # The launcher can exit while an engine it started (a wrapper's child) still runs in its
+        # group. Stop and confirm that group before the import releases the run's process; if it
+        # outlives the stop, the run keeps it (run_next leaves the claim to recovery).
+        engine.terminate(process.pid)
         try:
             estado = finalize(
                 conn,
