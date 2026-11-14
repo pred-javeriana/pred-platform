@@ -27,7 +27,10 @@ no administration screen. M0 is out of the flow.
   chooses a file for the person, and choosing another file marks Ajustes to do again. A link that
   chooses a runnable file (`/corridas/nueva/ajustes?ingest_id=`), a copied run and an imported
   configuration write it too. Revisar and launching validate everything again with the worker's
-  rule; launching clears the draft.
+  rule. Launching discards the draft without going back to revision 0: it leaves an empty
+  draft marked as launched with one more revision, so an Ajustes tab left open can still save a
+  later edit as a new draft (there is no newer choice to lose) and the guide asks to review
+  Ajustes again.
 - Every draft write raises a revision and gets its own mark, both stored in the cookie; a cookie
   from before the revision loads as revision 0. Each Ajustes page carries the stamp it saw
   (`draft_rev`, also in the copy and import forms) and `POST /corridas/nueva/ajustes`, the copy and

@@ -30,7 +30,9 @@ hace, sin validarlo, y Atrás y los pasos de la barra lo guardan también sin Ja
 elige un archivo por la persona, y elegir otro archivo deja Ajustes por revisar. También lo
 escriben un enlace que elige un archivo ejecutable (`/corridas/nueva/ajustes?ingest_id=`), la
 copia de una corrida (`?copiar_de=` o el formulario de copia) y una configuración importada. Revisar
-y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador. El borrador
+y lanzar vuelven a validar todo con la regla del worker; lanzar descarta el borrador sin volver a
+la revisión 0, así que una pestaña de Ajustes que quedó abierta puede guardar una edición posterior
+como un borrador nuevo, con Ajustes por revisar. El borrador
 lleva una revisión y una marca por escritura, y cada página de Ajustes devuelve las que vio: si otra
 página escribió después (una copia, una importación o una edición en otra pestaña), el servidor no
 guarda nada, responde 409 y la página avisa y ofrece recargar, sin reintentar. El guardado

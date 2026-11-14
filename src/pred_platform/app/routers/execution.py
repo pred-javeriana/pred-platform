@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 
 from pred_platform.app.borrador import (
     Draft,
-    clear_draft,
+    discard_draft,
     is_stale,
     next_revision,
     read_draft,
@@ -969,7 +969,7 @@ def lanzar(
         f"{step_href(str(result.ejecucion_id), 'ejecucion')}?{urlencode({'aviso': aviso})}",
         status_code=303,
     )
-    clear_draft(request, response)
+    discard_draft(request, response)
     return response
 
 

@@ -488,6 +488,8 @@ def test_the_current_draft_is_the_highest_revision_and_a_tie_goes_to_the_main_co
 def test_a_page_that_is_not_on_the_current_draft_is_refused_everywhere(env: Env) -> None:
     client = _dal_client(env)
     _launch(client, env, seed="61")
+    # Launching left its own (empty) draft: this test starts from another one.
+    client.cookies.clear()
     client.cookies.set(COOKIE, _draft_cookie(env.ingest_id, rev=3, token="a" * 12, seed="44"))
     old = _stamp(client)
     # Another page copies, so the first page's stamp is no longer the draft's.
@@ -552,3 +554,41 @@ def test_an_unreadable_stamp_is_refused(env: Env) -> None:
 def test_the_conflict_notice_is_hidden_until_there_is_a_conflict(env: Env) -> None:
     page = _dal_client(env).get("/corridas/nueva/ajustes").text
     assert re.search(r'id="conflicto-borrador" hidden', page)
+
+
+def _rail_done(html: str, step: str) -> bool:
+    found = re.search(rf'<li class="([^"]*)" id="paso-{step}"', html)
+    assert found is not None
+    return "is-done" in found.group(1).split()
+
+
+def test_a_settings_tab_left_open_keeps_editing_after_another_tab_launches(env: Env) -> None:
+    """Refs #306: launching discards the draft but keeps counting revisions, so the Ajustes tab
+    left open saves a later edit as a new draft, and the guide asks to review Ajustes again."""
+    client = _dal_client(env)
+    _review(client, env, seed="75")
+    page = client.get("/corridas/nueva/ajustes").text
+    assert _rail_done(page, "ajustes")
+    open_tab = _stamp(client)
+    before = int(open_tab.split(".")[0])
+
+    review = client.get("/corridas/nueva/revisar").text
+    launched = client.post(
+        "/ejecucion/lanzar", data=_launch_payload(review), follow_redirects=False
+    )
+    assert launched.status_code == 303
+    # The draft is empty after launching, but its revision did not go back to 0.
+    after = _stamp(client)
+    assert int(after.split(".")[0]) == before + 1
+    assert not _rail_done(client.get("/corridas/nueva/ajustes").text, "ajustes")
+
+    saved = _autosave(client, env, open_tab, seed="99")
+    assert saved.status_code == 200
+    assert not _rail_done(saved.text, "ajustes")
+    assert _shown(client) == ("99", "2")
+    assert re.search(
+        rf'<option value="{env.ingest_id}" selected', client.get("/corridas/nueva/ajustes").text
+    )
+    # Once the open tab wrote a new draft, another stale page is refused again.
+    assert _autosave(client, env, open_tab, seed="98").status_code == 409
+    assert _shown(client) == ("99", "2")

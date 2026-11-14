@@ -12,6 +12,11 @@ o un envío cuando no son las del borrador vigente: una pestaña vieja nunca pis
 importación o una edición hechas después, ni siquiera en la misma revisión. Una cookie de antes de
 la revisión sigue valiendo como la revisión 0 sin marca.
 
+Lanzar no borra la cookie: deja un borrador vacío marcado como lanzado, con una revisión más. La
+cuenta no vuelve a 0, y una pestaña de Ajustes que quedó abierta puede guardar lo que se escriba
+después como un borrador nuevo (no hay una elección más nueva que perder); Ajustes queda por
+revisar.
+
 Una respuesta que llega tarde no puede borrar una cookie más nueva, porque el navegador aplica su
 ``Set-Cookie`` cuando llega. Por eso el guardado automático escribe una cookie propia por revisión
 (``pred_borrador_a<rev>``) y el borrador vigente es la de mayor revisión; con la misma revisión
@@ -64,6 +69,8 @@ class Draft:
     rev: int = 0
     # Identifica la escritura: dos escrituras de la misma revisión no se confunden.
     token: str = ""
+    # El borrador se descartó al lanzar: no queda una elección que proteger.
+    launched: bool = False
 
     @property
     def stamp(self) -> str:
@@ -119,6 +126,7 @@ def _parse(raw: str) -> Draft | None:
         settings_ready=data.get("settings_ready") is True,
         rev=rev if type(rev) is int and 0 < rev < _MAX_REV else 0,
         token=token if isinstance(token, str) and _TOKEN.fullmatch(token) else "",
+        launched=data.get("launched") is True,
     )
 
 
@@ -143,7 +151,10 @@ def read_draft(request: Request) -> Draft:
 def next_revision(request: Request, draft: Draft) -> Draft:
     """El borrador como la elección más nueva: una revisión más que la vigente, con marca nueva."""
     return replace(
-        draft, rev=min(read_draft(request).rev + 1, _MAX_REV - 1), token=uuid4().hex[:12]
+        draft,
+        rev=min(read_draft(request).rev + 1, _MAX_REV - 1),
+        token=uuid4().hex[:12],
+        launched=False,
     )
 
 
@@ -152,9 +163,14 @@ def is_stale(request: Request, page_stamp: str | None) -> bool:
 
     Sin marca (un cliente que no la conoce) no hay con qué comparar; una ilegible se rechaza.
     """
+    current = read_draft(request)
+    if current.launched:
+        # Lanzar descartó el borrador: ninguna elección más nueva se perdería, así que la página
+        # que sigue abierta puede guardar lo que se escriba después como un borrador nuevo.
+        return False
     if page_stamp is None or not page_stamp.strip():
         return False
-    return page_stamp != read_draft(request).stamp
+    return page_stamp != current.stamp
 
 
 def _encode(draft: Draft) -> str:
@@ -165,6 +181,7 @@ def _encode(draft: Draft) -> str:
             "settings_ready": draft.settings_ready,
             "rev": draft.rev,
             "token": draft.token,
+            "launched": draft.launched,
         },
         separators=(",", ":"),
     )
@@ -196,6 +213,12 @@ def save_draft(
         _expire(response, other)
 
 
-def clear_draft(request: Request, response: Response) -> None:
-    for name in (COOKIE, *_autosave_cookies(request)):
-        _expire(response, name)
+def discard_draft(request: Request, response: Response) -> None:
+    """Descarta el borrador al lanzar sin volver a la revisión 0.
+
+    Queda un borrador vacío con una revisión más, marcado como lanzado: la cuenta de revisiones
+    sigue subiendo, así que una respuesta tardía de antes de lanzar no gana a lo que se escriba
+    después, y una pestaña de Ajustes que sigue abierta puede guardar una edición posterior.
+    """
+    empty = next_revision(request, Draft())
+    save_draft(request, response, replace(empty, launched=True))

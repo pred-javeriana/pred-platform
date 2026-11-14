@@ -489,8 +489,9 @@ def test_choosing_settings_and_launching_walks_the_draft_through_the_steps(env: 
         303,
         "/corridas/1/ejecucion?aviso=en_cola",
     )
-    # Launching ends the draft: a new run starts again from Datos.
-    assert f'{COOKIE}=""' in launched.headers["set-cookie"]
+    # Launching ends the draft (an empty one that keeps counting revisions): a new run starts
+    # again from Datos.
+    assert f"{COOKIE}=" in launched.headers["set-cookie"]
     assert "Primero elija los datos" in client.get("/corridas/nueva/revisar").text
     page = client.get(launched.headers["location"]).text
     assert "<title>Ejecución · Corrida #1 · PRED</title>" in page
