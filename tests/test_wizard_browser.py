@@ -278,6 +278,24 @@ def test_demand_descriptions_fit_their_cells(browser: Browser, env: Env, width: 
         browser.command("screenshot", str(Path(evidence) / f"demand-{width}.png"), "--full-page")
 
 
+@pytest.mark.parametrize("width", [1280, 390, 360])
+def test_a_very_large_product_count_fits_its_cell(browser: Browser, env: Env, width: int):
+    """Un conteo de ocho cifras cabe en la columna de productos también en un teléfono (#301)."""
+    browser.open(f"/corridas/nueva/datos?ingest_id={env.ingest_id}")
+    browser.command("resize", str(width), "1000")
+    browser.run("""
+        const overflow = await page.eval(() => {
+            const table = document.querySelector('.pred-types-table');
+            table.querySelector('tbody td.num').firstChild.textContent = '12.345.678';
+            table.querySelector('tfoot td.num').textContent = '12.345.681';
+            return [...table.querySelectorAll('td.num')]
+                .filter(cell => cell.scrollWidth > cell.clientWidth)
+                .map(cell => cell.textContent);
+        });
+        if (overflow.length) throw new Error(JSON.stringify(overflow));
+    """)
+
+
 def _type(browser: Browser, field: str, value: str) -> None:
     browser.run(f"""
         await page.fill('#{field}', '{value}');
