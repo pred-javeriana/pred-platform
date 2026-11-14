@@ -60,7 +60,10 @@ fingerprint (`run.incompatible_config`).
 ## How
 
 - **Reads** go through `DataRepository` (`get_run_status` with the `latest` alias or `?ejecucion=`,
-  `list_ingests`); filters and paging of the tasks are delegated to the repository.
+  `list_ingests`); filters and paging of the tasks are delegated to the repository. The page
+  and the size are checked separately first (`read_execution_query`): an invalid one falls back to
+  its default and says so, keeping the requested run and the state and family filters; only an
+  option the repository does not know resets the filters ("Ese filtro no existe").
 - **Writes** go through `app.state.run_control` (`worker/control.py`), a command service separate
   from the read contract (section 19 of the data contract). `DalRunControl` writes the DAL for the
   worker to follow; with fixtures `UnavailableRunControl` makes every action raise with the reason,
@@ -101,12 +104,24 @@ fingerprint (`run.incompatible_config`).
   run's bars. The full task list and configuration remain in a disclosure below the causes.
 - **Returning to a run.** The browser stores its last visible snapshot locally. After at least a
   minute away, “Desde su última visita” reports observed stage, task and product-count changes.
+  When the tab comes back, the snapshot from leaving is kept until the first fresh poll response
+  (the body on screen may predate leaving, with polling paused or suspended) and compared once,
+  without another request; without active polling it is compared with what is shown. The notice
+  is cleared before each return and only describes the current one. A stored snapshot whose
+  stages, counts, stage or product count do not have the shape the page writes is not compared.
   No previous snapshot means no comparison. Storage failure does not stop progress updates.
+- **Publication.** Whether a run published is one rule, `resultados_m3.published_evaluation`
+  (a PUBLICADA M3 evaluation of the run), used by the step rail on page load and by polling, and
+  independent of the run state and of whether its evidence can be read now. A published run
+  whose evidence cannot be read keeps “Publicados” and its outcome says the evidence is not
+  available. “Continuar a Resultados” is a link once the run has finished, published or not, like
+  step 5 of the rail.
 - **One worker, one run at a time.** A second launch waits in the queue and the screen says so; with
   `PRED_WORKER=off` and no other worker holding the database lock (`WorkerLock.held_elsewhere`) it
-  also says the run waits for `make worker`. If the app's own worker thread has ended, for example
-  because it could not create its lock file in a read-only folder, the screen says that worker
-  stopped and the app log says why.
+  also says the run waits for `make worker`. If the app's own worker cannot open its lock file
+  (for example in a read-only folder), it keeps retrying and the screen says so instead of
+  promising that the queued run will start (`Worker.lock_problem`). If the app's own worker
+  thread has ended, the screen says that worker stopped and the app log says why.
 - **Earlier durations** read `stage_started`/`stage_finished` pairs from `progreso.jsonl` in
   `app/historial.py`. A missing or incomplete trace shows no invented duration. A new attempt
   resets the pairs. Copying and duplicate detection use read-only DAL reads, because the public
