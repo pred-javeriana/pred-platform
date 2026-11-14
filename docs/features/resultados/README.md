@@ -56,7 +56,10 @@ median ratio, Hodges-Lehmann, victories with Wilson intervals, the Wilcoxon stat
 Chapter 2 has 100% outcome bars, r histograms, BH/BY/FCR counts and descriptive verdicts.
 Chapter 3 shows the champion and confirmation per seed, and the range between published effects.
 It does not infer stability from two seeds or apply an effect-size threshold. Missing evidence
-stays missing. All charts are server-rendered SVG, with values in `data-*` attributes for hover
+stays missing. `get_m3_confirmation` validates each stored confirmation and significance row on
+its own: a row that breaks a rule is listed in `rechazos` with its type and cause, the chapters
+say «No se pudo leer» for that type and keep every valid row of both sections. Reserve blocks
+that cannot be read are explained where the block figure would be. All charts are server-rendered SVG, with values in `data-*` attributes for hover
 and keyboard focus. Every value remains available in a label or a closed table. The SKU detail also draws the champion's published h=1 forecast
 against the observed demand and, on request (`?reserva=1`), lists the reserve windows of the
 champion and Seasonal Naive.

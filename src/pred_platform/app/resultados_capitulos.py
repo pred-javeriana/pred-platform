@@ -181,7 +181,10 @@ def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> A
     better = sum(row.n_mejores for row in tests)
     worse = sum(row.n_peores for row in tests)
     selection = _selection_text(found, verdicts)
-    if unread:
+    # Filas guardadas que no se pudieron leer: las demás se cuentan, sin completar las que faltan.
+    unread_tests = [sku_class_label(code) for code in found.rejected_significance]
+    partial = bool(found.rejections)
+    if unread or (unread_tests and not tested):
         verification = "No se pudieron leer las pruebas por producto de esta evaluación."
     elif not tested:
         verification = "Esta evaluación no publicó pruebas por producto."
@@ -190,10 +193,20 @@ def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> A
             f"La mejora se verifica en {format_count(better)} de {format_count(tested)} "
             f"productos probados ({percent_text(better / tested)})."
         )
+        if unread_tests:
+            verification += (
+                f" No se pudieron leer las pruebas de {', '.join(unread_tests).lower()}."
+            )
     effects = [r.efecto_mediana_r for r in confirmations.values() if r.efecto_mediana_r is not None]
-    effect_range = "No se pudo leer" if unread else _effect_range(effects)
+    effect_range = (
+        "No se pudo leer"
+        if unread or (not effects and found.rejected_confirmations)
+        else _effect_range(effects)
+    )
     ranked = bool(types) and all(r.motivo in _RANKED and r.skus_comparables for r in found.rows)
     supported = bool(ranked and confirmed == types and not unread)
+    # Lo que no se pudo leer no se presenta como «no concluyente».
+    concluded = bool(types) and not unread and not partial
     return Answers(
         family if ranked else None,
         confirmed,
@@ -203,11 +216,11 @@ def answers(found: M3Classes, verdicts: Sequence[models_v2.M3Verdict] = ()) -> A
         worse,
         selection,
         verification,
-        "ok" if supported else "warn" if types and not unread else "neutral",
+        "ok" if supported else "warn" if concluded else "neutral",
         "Respaldada en esta corrida"
         if supported
         else "No concluyente"
-        if types and not unread
+        if concluded
         else "Sin responder",
         effect_range,
         unread,
@@ -231,8 +244,23 @@ class SeedEvidence:
 
     @property
     def unread(self) -> M3Problem | None:
-        """Por qué no se pudo leer su confirmación guardada, si la evaluación sí se leyó."""
-        return _unread(self.evidence) if self.evidence else None
+        """Por qué no se pudo leer su confirmación guardada, si la evaluación sí se leyó.
+
+        Una fila de confirmación rechazada también cuenta: ese tipo no se lee como ausente.
+        """
+        if self.evidence is None:
+            return None
+        problem = _unread(self.evidence)
+        rejected = self.evidence.rejected_confirmations
+        if problem is not None or not rejected:
+            return problem
+        return M3Problem(
+            "No se pudo leer la confirmación guardada de "
+            + ", ".join(sku_class_label(code).lower() for code in rejected)
+            + ".",
+            "; ".join(f"{sku_class_label(code)}: {detail}" for code, detail in rejected.items()),
+            "platform.contract_invalid",
+        )
 
 
 def seed_evidence(
@@ -299,6 +327,16 @@ class SeedCell:
     category: models_v2.M3Category | None
     confirmation: M3ClassConfirmation | None
 
+    @property
+    def unread(self) -> bool:
+        """Si la confirmación de este tipo en esta semilla no se pudo leer."""
+        evidence = self.seed.evidence
+        if evidence is None or self.category is None:
+            return False
+        return _unread(evidence) is not None or (
+            self.category.sku_class in evidence.rejected_confirmations
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class StabilityRow:
@@ -337,7 +375,7 @@ def stability_rows(seeds: tuple[SeedEvidence, ...]) -> list[StabilityRow]:
             and cell.confirmation.familia_campeona == cell.category.familia_campeona
         )
         published = sum(1 for cell in cells if cell.seed.published)
-        unread = sum(1 for cell in cells if cell.category is not None and cell.seed.unread)
+        unread = sum(1 for cell in cells if cell.unread)
         result.append(
             StabilityRow(
                 code,

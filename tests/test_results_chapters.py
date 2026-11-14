@@ -776,7 +776,7 @@ def test_a_confirmation_that_cannot_be_read_is_not_reported_as_absent(env: Env) 
     for chapter in ("resumen", "p2", "estabilidad"):
         html = client.get(f"/corridas/{first}/resultados/{chapter}").text
         text = _text(html)
-        assert "no es válida" in text, chapter
+        assert "Suave: p_holm" in text, chapter
         for absence in (
             "no publicó pruebas",
             "Sin confirmación publicada",
@@ -789,7 +789,8 @@ def test_a_confirmation_that_cannot_be_read_is_not_reported_as_absent(env: Env) 
     assert "No se pudo leer" in summary
     assert "Con veredicto" in summary and "Evaluados" in summary  # the readable evidence stays
     verification = _text(client.get(f"/corridas/{first}/resultados/p2").text)
-    assert "No se pudieron leer las pruebas por producto" in verification
+    # Only the confirmation row is unreadable: the product tests of its type are still read.
+    assert "La mejora se verifica en 1 de 3 productos probados" in verification
     assert "Validado no es lo mismo que significativo" in verification
     stability = _text(client.get(f"/corridas/{first}/resultados/estabilidad").text)
     assert "No se pudo leer la confirmación" in stability
@@ -1097,3 +1098,41 @@ def test_malformed_reserve_blocks_say_why_the_block_figure_is_missing(
     assert "platform.contract_invalid" in html  # the support detail names the cause
     # The rest of the chapter keeps what it can read.
     assert "Razón de error mediana por familia" in text
+
+
+def test_an_invalid_confirmation_row_keeps_the_valid_product_tests(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    _sql(env, "UPDATE m3_confirmaciones SET p_holm = 1.5 WHERE run_id = 'm3-ui-0'")
+    summary = _text(client.get(f"/corridas/{number}/resultados/resumen?m3=m3-ui-0").text)
+    verification = _text(client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text)
+    classes = _text(client.get(f"/corridas/{number}/resultados/p1?m3=m3-ui-0").text)
+    for text in (summary, verification, classes):
+        assert "No se pudieron leer algunas filas guardadas de la confirmación por tipo" in text
+        assert "Confirmación · Suave: p_holm" in text
+    # The significance rows of every type are still read and counted.
+    assert "Suave 3 1 1 1 0" in verification
+    assert "1 de 4 productos probados (25,0 %)" in verification
+    assert "No se pudo leer la confirmación" in summary
+    assert "No concluyente" not in summary.split("¿En qué tipos")[0]
+
+
+def test_an_invalid_significance_row_keeps_the_valid_confirmation_and_other_types(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    _sql(
+        env,
+        "UPDATE m3_significancia SET n_mejores_by = 5 WHERE run_id = 'm3-ui-0' "
+        "AND sku_class = 'erratic'",
+    )
+    verification = _text(client.get(f"/corridas/{number}/resultados/p2?m3=m3-ui-0").text)
+    classes = _text(client.get(f"/corridas/{number}/resultados/p1?m3=m3-ui-0").text)
+    assert "Pruebas por producto · Errática" in verification
+    assert "los significativos por BY superan los SKU probados" in verification
+    assert "Errática No se pudo leer" in verification
+    assert "Suave 3 1 1 1 0" in verification
+    assert "No se pudieron leer las pruebas de errática." in verification
+    # The confirmation of Suave is still shown.
+    assert "Suave · Confirmado" in classes

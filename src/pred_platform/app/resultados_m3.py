@@ -755,6 +755,36 @@ class M3Classes:
             key=lambda row: SKU_CLASS_ORDER.index(row.sku_class),
         )
 
+    @property
+    def rejected_confirmations(self) -> dict[str, str]:
+        """Clase -> por qué no se pudo leer su fila de confirmación guardada."""
+        return self._rejected("clases")
+
+    @property
+    def rejected_significance(self) -> dict[str, str]:
+        """Clase -> por qué no se pudo leer su fila de significancia guardada."""
+        return self._rejected("significancia")
+
+    @property
+    def rejections(self) -> list[tuple[str, str, str]]:
+        """(sección, clase, causa) de cada fila guardada que no se pudo leer, para el aviso."""
+        if self.confirmation is None:
+            return []
+        labels = {"clases": "Confirmación", "significancia": "Pruebas por producto"}
+        return [
+            (labels[row.seccion], row.sku_class or "", row.detalle)
+            for row in self.confirmation.rechazos
+        ]
+
+    def _rejected(self, section: str) -> dict[str, str]:
+        if self.confirmation is None:
+            return {}
+        return {
+            row.sku_class or "": row.detalle
+            for row in self.confirmation.rechazos
+            if row.seccion == section
+        }
+
 
 # Las familias que compiten por clase, en el orden de la tabla. La línea base no lleva columna:
 # M3 no publica su mediana de r, que por definición vale 1.

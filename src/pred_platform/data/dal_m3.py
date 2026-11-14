@@ -27,7 +27,11 @@ from pred_platform.contract.errors import ContractInvalid, first_problem
 from pred_platform.dal import evidencia, grupo
 from pred_platform.data import m3_documents as docs
 from pred_platform.data import m3_query
-from pred_platform.data.m3_confirmation import M3Confirmation
+from pred_platform.data.m3_confirmation import (
+    M3ClassConfirmation,
+    M3ClassSignificance,
+    M3Confirmation,
+)
 from pred_platform.data.m3_intervals import M3Interval
 from pred_platform.data.m3_query import VERDICTS, M3Query
 from pred_platform.data.query import DEFAULT_SIZE
@@ -70,6 +74,31 @@ def _date_range(value: Any) -> M3DateRange:
     if date.fromisoformat(start) > date.fromisoformat(end):
         raise ValueError("los extremos están invertidos")
     return M3DateRange(start, end, count)
+
+
+def _rejection(section: str, row: dict[str, Any], detail: str) -> dict[str, Any]:
+    """Una fila guardada de ``section`` que no cumple sus reglas, con la clase que nombra."""
+    sku_class = row.get("sku_class")
+    return {
+        "seccion": section,
+        "sku_class": sku_class if isinstance(sku_class, str) else None,
+        "detalle": detail,
+    }
+
+
+def _valid_rows[T: BaseModel](
+    model: type[T], section: str, rows: list[dict[str, Any]], rejected: list[dict[str, Any]]
+) -> list[T]:
+    """Las filas de ``section`` que cumplen ``model``; las demás van a ``rejected``."""
+    valid = []
+    for row in rows:
+        try:
+            valid.append(model.model_validate(row))
+        except ValidationError as exc:
+            problem = first_problem(exc)
+            detail = str(problem) if problem.field else problem.reason
+            rejected.append(_rejection(section, row, detail))
+    return valid
 
 
 class M3DalSource:
@@ -115,12 +144,35 @@ class M3DalSource:
         return grupo.comparable_runs(self.db_path, reference, run_ids)
 
     def get_m3_confirmation(self, run_id: str) -> M3Confirmation | None:
-        """La confirmación del campeón y la significancia por clase de la corrida, o ``None``."""
+        """La confirmación del campeón y la significancia por clase de la corrida, o ``None``.
+
+        Cada fila se valida por separado: una fila inválida queda en ``rechazos`` con su causa y
+        no oculta las filas válidas de su sección ni las de la otra.
+        """
         rows = evidencia.confirmation(self.db_path, run_id)
         if rows is None:
             return None
+        rejected: list[dict[str, Any]] = []
+        classes = _valid_rows(M3ClassConfirmation, "clases", rows["clases"], rejected)
+        significance = _valid_rows(
+            M3ClassSignificance, "significancia", rows["significancia"], rejected
+        )
+        if len({row.alfa for row in classes}) > 1:
+            # Which class holds the wrong alfa cannot be told: none of them is shown as read.
+            rejected += [
+                _rejection("clases", row.model_dump(), "las clases de una corrida comparten alfa")
+                for row in classes
+            ]
+            classes = []
         try:
-            return M3Confirmation.model_validate(rows)
+            return M3Confirmation.model_validate(
+                {
+                    "run_id": run_id,
+                    "clases": classes,
+                    "significancia": significance,
+                    "rechazos": rejected,
+                }
+            )
         except ValidationError as exc:
             problem = first_problem(exc)
             raise ContractInvalid(

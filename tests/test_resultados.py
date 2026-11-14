@@ -2083,7 +2083,9 @@ def test_an_invalid_confirmation_row_is_a_visible_problem_and_the_champions_stay
     text = _text(html)
 
     assert "Suave Clásica Menor mediana de r 0,800" in text
-    assert "No fue posible leer la evaluación." in text
+    # Only that class's row is left out, with its cause; the other rows are still read.
+    assert "No se pudieron leer algunas filas guardadas de la confirmación por tipo" in text
+    assert "Confirmación · Suave: comparaciones." in text
     assert "ic_mediana: los extremos están invertidos" in text
     assert 'id="significancia-por-clase"' not in html
 
@@ -2111,8 +2113,8 @@ def test_an_incoherent_confirmation_is_a_visible_problem_never_a_confirmed_row(
     html = _dal_client(env).get("/resultados?vista=clase").text
     text = _text(html)
 
-    assert "No fue posible leer la evaluación." in text
-    assert reason in text
+    assert "No se pudieron leer algunas filas guardadas de la confirmación por tipo" in text
+    assert f"Confirmación · Suave: {reason}" in text
     assert "Confirmado" not in _confirmation(env)
 
 
