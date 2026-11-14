@@ -1078,3 +1078,22 @@ def test_a_publication_with_unreadable_evidence_is_not_called_unpublished(
             "La evaluación final está publicada, pero sus veredictos no se pudieron leer." in text
         )
         assert cause in text
+
+
+def test_malformed_reserve_blocks_say_why_the_block_figure_is_missing(
+    published: tuple[TestClient, str], env: Env
+) -> None:
+    client, number = published
+    _sql(
+        env,
+        "UPDATE m3_protocolos SET protocolo = json_set(protocolo, '$.bloques.fechas_prueba.n', -1) "
+        "WHERE run_id = 'm3-ui-0'",
+    )
+    html = client.get(f"/corridas/{number}/resultados/p1?m3=m3-ui-0").text
+    text = _text(html)
+    assert "Ver las cifras de los bloques" not in html
+    note = text.split("No se pudieron leer los bloques de la reserva de esta evaluación", 1)
+    assert len(note) == 2 and "la figura y las cifras de los bloques no se muestran" in note[1]
+    assert "platform.contract_invalid" in html  # the support detail names the cause
+    # The rest of the chapter keeps what it can read.
+    assert "Razón de error mediana por familia" in text

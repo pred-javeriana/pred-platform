@@ -92,6 +92,7 @@ from pred_platform.app.resultados_m3 import (
     publication_time,
     published_executions,
     published_funnel,
+    reserve_blocks,
     reserve_windows,
     run_outcome,
     summary,
@@ -343,6 +344,7 @@ def _resultados_page(
         published_seed_count=0,
         stability_rows=[],
         blocks=None,
+        blocks_problem=None,
         family_colors=charts.FAMILY_COLORS,
         family_chart_order=charts.FAMILY_CHART_ORDER,
         selection_svg="",
@@ -495,8 +497,9 @@ def _fill_m3_view(
         )
         resolved = found_profiles.run or resolved
         if resolved:
-            with suppress(DataLayerError, InvalidQuery):
-                context["blocks"] = repository.get_m3_reserve_blocks(resolved.run_id)
+            context["blocks"], context["blocks_problem"] = reserve_blocks(
+                repository, resolved.run_id
+            )
         metric_base = {"m3": resolved.run_id} if resolved else {}
         context["metric_hrefs"] = {
             name: context["results_base"]

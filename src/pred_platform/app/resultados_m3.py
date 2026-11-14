@@ -160,6 +160,20 @@ def _read_problem(exc: InvalidQuery | DataLayerError) -> M3Problem:
     )
 
 
+def reserve_blocks(
+    repository: DataRepository, run_id: str
+) -> tuple[M3ReserveBlocks | None, M3Problem | None]:
+    """Los bloques de la reserva de la corrida, o por qué no se pudieron leer.
+
+    ``(None, None)`` es una evaluación que no publicó bloques; un protocolo con bloques
+    malformados no se oculta: queda su causa, y no se inventa ningún límite.
+    """
+    try:
+        return repository.get_m3_reserve_blocks(run_id), None
+    except (InvalidQuery, DataLayerError) as exc:
+        return None, _read_problem(exc)
+
+
 def _resolve(
     repository: DataRepository, m2_run_id: str, wanted: str | None
 ) -> models_v2.M3Run | M3Problem:

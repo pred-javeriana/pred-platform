@@ -23,6 +23,8 @@
     {% for label, block in [('Fechas de selección', blocks.selection_dates), ('Fechas de prueba', blocks.test_dates), ('Orígenes de selección', blocks.selection_origins), ('Orígenes de embargo', blocks.embargo_origins), ('Orígenes de prueba', blocks.test_origins)] %}<tr><th scope="row">{{ label }}</th><td>{{ format_date(block.start) if block.start else '—' }}</td><td>{{ format_date(block.end) if block.end else '—' }}</td><td class="num">{{ format_count(block.count) }}</td></tr>{% endfor %}
     {{ table_end() }}
   </details>
+  {% elif blocks_problem %}
+  <p class="pred-note" id="bloques-ilegibles">No se pudieron leer los bloques de la reserva de esta evaluación: la figura y las cifras de los bloques no se muestran. {{ blocks_problem.detail }}</p>{% if blocks_problem.support %}{{ soporte(blocks_problem.support) }}{% endif %}
   {% endif %}
   <figure class="pred-results-figure"><figcaption><strong>Razón de error mediana por familia</strong><span>Mediana sobre los mismos productos para todas las familias. Escala logarítmica. Pase el puntero o enfoque una fila para ver el detalle.</span></figcaption>
     {{ family_legend(family_colors) }}
