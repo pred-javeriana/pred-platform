@@ -187,7 +187,7 @@ def launch(command: list[str], *, settings: Settings, log_path: Path) -> subproc
 
 
 # Which database a live process is an engine for (``engine_owner``).
-EngineOwner = Literal["this", "other", "none"]
+EngineOwner = Literal["this", "other", "conflict", "none"]
 
 
 def engine_owner(pid: int, db_path: Path) -> EngineOwner:
@@ -195,28 +195,40 @@ def engine_owner(pid: int, db_path: Path) -> EngineOwner:
 
     ``launch`` sets that variable for every engine. ``"this"``: an engine of ``db_path``.
     ``"other"``: an engine of another database, such as the original of a copy served here.
-    ``"none"``: no such process, or a process that is not a platform engine (a reused pid, or
-    one this user cannot inspect).
+    ``"conflict"``: the members of its process group name different databases, so none of them
+    is trusted. ``"none"``: no such process, or a process that is not a platform engine (a reused
+    pid, or one this user cannot inspect).
 
     ``launch`` makes the engine command the leader of its own process group, so the group keeps
     the recorded pid as its id. Its members are read too: a wrapper command (a resource-slot
-    script, ``uv run``) can die while the engine it started keeps running in that group.
+    script, ``uv run``) can die while the engine it started keeps running in that group. A live
+    leader is authoritative: when it names another database, the group is ``"other"`` whatever
+    its members say. Only a group whose every identity names ``db_path`` is ``"this"``, the one
+    answer that lets a caller stop it.
     """
-    candidates = [pid]
+    own = os.path.normcase(db_path.resolve())
+    leader = _served_database(pid)
+    if leader is not None and leader != own:
+        return "other"
+    identities = {leader} if leader is not None else set()
     if sys.platform != "win32":
-        candidates += [member for member in _group_members(pid) if member != pid]
-    owner: EngineOwner = "none"
-    for candidate in candidates:
-        try:
-            served = psutil.Process(candidate).environ().get("PRED_DB_PATH")
-        except psutil.Error:
-            continue
-        if not served:
-            continue
-        if os.path.normcase(Path(served).resolve()) == os.path.normcase(db_path.resolve()):
-            return "this"
-        owner = "other"
-    return owner
+        for member in _group_members(pid):
+            if member != pid and (served := _served_database(member)) is not None:
+                identities.add(served)
+    if not identities:
+        return "none"
+    if len(identities) > 1:
+        return "conflict"
+    return "this" if identities == {own} else "other"
+
+
+def _served_database(pid: int) -> str | None:
+    """The normalized ``PRED_DB_PATH`` of the live process ``pid``, if it has one we can read."""
+    try:
+        served = psutil.Process(pid).environ().get("PRED_DB_PATH")
+    except psutil.Error:
+        return None
+    return os.path.normcase(Path(served).resolve()) if served else None
 
 
 def _group_members(group: int) -> list[int]:

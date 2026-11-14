@@ -180,7 +180,8 @@ class Worker:
         own those runs, so an engine still running for one of them is an orphan and is stopped.
         A live engine of another database is left alone with its run: this database is a copy
         taken while that engine ran, and stopping or relaunching it would break the original.
-        A pid now used by a process that is no engine is not stopped either.
+        A pid now used by a process that is no engine is not stopped either, nor a group whose
+        processes name different databases.
         """
         db_path = self.settings.db_path
         with closing(dal.connect(db_path)) as conn:
@@ -191,6 +192,14 @@ class Worker:
                         _logger.warning(
                             "Corrida %s: su motor (pid %s) trabaja para otra base; esta base es "
                             "una copia y la corrida queda como está",
+                            run.run_id,
+                            run.pid,
+                        )
+                        continue
+                    if owner == "conflict":
+                        _logger.warning(
+                            "Corrida %s: los procesos del grupo de su motor (pid %s) declaran "
+                            "bases distintas; no se detienen y la corrida queda como está",
                             run.run_id,
                             run.pid,
                         )

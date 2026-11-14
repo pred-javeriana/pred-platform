@@ -646,3 +646,58 @@ def _group_exists(pid: int) -> bool:
     except ProcessLookupError:
         return False
     return True
+
+
+def _mixed_group(
+    tmp_path: Path, *, leader_db: Path, member_db: Path
+) -> tuple[subprocess.Popen[bytes], int]:
+    """A process group whose leader and member name different databases in ``PRED_DB_PATH``."""
+    marker = tmp_path / "member.pid"
+    member = (
+        "import os, sys, time; from pathlib import Path; "
+        "Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(300)"
+    )
+    leader_code = (
+        "import os, subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {member!r}, sys.argv[1]], "
+        "env={**os.environ, 'PRED_DB_PATH': sys.argv[2]}); time.sleep(300)"
+    )
+    leader = subprocess.Popen(
+        [sys.executable, "-c", leader_code, str(marker), str(member_db)],
+        env={**os.environ, "PRED_DB_PATH": str(leader_db)},
+        start_new_session=True,
+    )
+    _wait(lambda: marker.exists() and marker.read_text() != "", timeout=10)
+    return leader, int(marker.read_text())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="grupos POSIX")
+@pytest.mark.parametrize("leader_is_this", [False, True])
+def test_recovery_leaves_alone_a_group_whose_processes_name_different_databases(
+    env: Env, tmp_path: Path, leader_is_this: bool
+):
+    from pred_platform.dal import ejecuciones as dal
+
+    other = tmp_path / "otra.db"
+    leader_db, member_db = (env.db, other) if leader_is_this else (other, env.db)
+    process, member = _mixed_group(tmp_path, leader_db=leader_db, member_db=member_db)
+    leader = process.pid
+    try:
+        # A live leader of another database is authoritative; a leader of this database whose
+        # member names another one is a contradiction. Neither is stopped.
+        expected = "conflict" if leader_is_this else "other"
+        assert engine.engine_owner(leader, env.db) == expected
+        enqueue_run(env.settings, env.ingest_id, SMALL)
+        with closing(dal.connect(env.db)) as conn:
+            run = dal.claim_pending(conn)
+            assert run is not None
+            dal.set_launch(conn, run.id, pid=leader, ruta_corrida=f"runs/{run.run_id}")
+
+        Worker(env.settings).recover()
+
+        assert engine.is_alive(leader) and engine.is_alive(member)
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("ejecutando", leader)]
+    finally:
+        os.killpg(leader, signal.SIGKILL)
+        process.wait(timeout=10)
+        _wait(lambda: not engine.is_alive(member), timeout=5, what="member to be killed")
