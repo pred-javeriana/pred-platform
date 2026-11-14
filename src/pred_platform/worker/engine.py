@@ -230,7 +230,11 @@ def _group_members(group: int) -> list[int]:
 
 
 def is_alive(pid: int) -> bool:
-    """Whether a process with this id exists (used to clean up after a crashed platform)."""
+    """Whether a live process with this id exists; a zombie counts as gone.
+
+    Used to clean up after a crashed platform. A process that this user cannot inspect counts as
+    alive.
+    """
     if sys.platform == "win32":
         return _windows_is_alive(pid)
     try:

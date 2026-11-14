@@ -1,10 +1,10 @@
 """The worker loop: claim a pending run, launch the engine, follow it, settle it.
 
 One run at a time (the engine already parallelises SKU x family units inside a run), and one worker
-at a time per database (``candado.WorkerLock``): a second worker waits, or with ``--once`` leaves
-the queue to the first. Every state change is its own short transaction, so a crash loses at most
-the event in flight; on the next start, a run left ``ejecutando`` is queued again with the same
-``run_id`` and the engine resumes.
+at a time per database (``candado.WorkerLock``): a second worker waits, or with ``--once`` exits
+without running anything, with no guarantee that another worker will run the queue. Every state
+change is its own short transaction, so a crash loses at most the event in flight; on the next
+start, a run left ``ejecutando`` is queued again with the same ``run_id`` and the engine resumes.
 A run whose database failure could not even be recorded is stopped as soon as the database answers
 again, before the next claim, so a running worker never leaves an unowned run ``ejecutando``.
 A run whose final files could not be imported becomes ``detenida`` with
