@@ -118,6 +118,23 @@ def test_a_stale_report_of_the_same_file_is_not_mistaken_for_the_new_one(env: En
         repo.submit_ingest("a.csv", content)
 
 
+def test_a_failed_retry_of_an_accepted_file_says_the_accepted_ingestion_stands(env: Env) -> None:
+    repo = build_repository(env.settings)
+    content = _csv("BOOM")
+    old = env.settings.data_root / "ingestas" / f"{_sha(content)}.json"
+    old.parent.mkdir(exist_ok=True)
+    old.write_text('{"status": "accepted"}')
+    os.utime(old, (1, 1))  # the engine keeps it, untouched, when the retry fails
+
+    with pytest.raises(
+        EngineUnavailable, match="ingesta aceptada de este archivo sigue vigente"
+    ) as raised:
+        repo.submit_ingest("a.csv", content)
+
+    assert "el motor se cayó" in str(raised.value)
+    assert "sin dejar el informe" not in str(raised.value)
+
+
 def test_an_engine_that_hangs_times_out(env: Env) -> None:
     with pytest.raises(IngestLaunchError, match="tardó más de 1 s"):
         submit_csv(env.settings, "a.csv", _csv("SLOW"), timeout=1)

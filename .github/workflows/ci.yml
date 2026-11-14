@@ -107,6 +107,32 @@ jobs:
           CHROME_BIN: google-chrome
         run: uv run --frozen pytest -ra
 
+  # The wizard browser regressions drive Chromium through the chrome-devtools-axi CLI, which the
+  # test job does not install, so they only run here.
+  wizard-browser:
+    name: Wizard (Chromium real)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --extra dev --frozen
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - run: npm install --global chrome-devtools-axi@0.1.46
+      - name: pytest (asistente en Chromium real)
+        env:
+          PRED_BROWSER_TESTS: "1"
+          CHROME_BIN: google-chrome
+        run: uv run --frozen pytest -rs --no-cov tests/test_wizard_browser.py
+
   # Boots the real server with runtime dependencies only (no dev extras), so a runtime import of
   # a dev-only package, a broken uvicorn install or a startup crash fails here.
   smoke:

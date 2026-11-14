@@ -14,6 +14,7 @@ caller asks the operator, then repeats with ``confirm_overwrite`` (the engine ke
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import subprocess
 import tempfile
@@ -111,14 +112,18 @@ def submit_csv(
         shutil.rmtree(folder, ignore_errors=True)
 
     report = root / "ingestas" / f"{sha256}.json"
-    # A report older than this launch belongs to an earlier ingestion of the same file: the
-    # engine died before writing the new one.
-    if not report.is_file() or report.stat().st_mtime < started - 2:
-        detail = _tail(done.stderr or done.stdout)
-        raise IngestLaunchError(
-            f"El motor terminó con código {done.returncode} sin dejar el informe de la ingesta."
-            + (f" {detail}" if detail else "")
-        )
+    if not report.is_file():
+        raise IngestLaunchError(_no_report_message(done))
+    if report.stat().st_mtime < started - 2:
+        # A report older than this launch belongs to an earlier ingestion of the same file. The
+        # engine keeps an accepted one when a retry of the same bytes fails.
+        if _report_status(report) == "accepted":
+            detail = _tail(done.stderr or done.stdout)
+            raise IngestLaunchError(
+                "El nuevo intento falló; la ingesta aceptada de este archivo sigue vigente."
+                + (f" {detail}" if detail else "")
+            )
+        raise IngestLaunchError(_no_report_message(done))
     try:
         result = import_reports(settings.db_path, settings.data_root)
     except ReportImportError as exc:
@@ -126,6 +131,21 @@ def submit_csv(
     if result.failed:
         raise IngestLaunchError(f"El informe de la ingesta no es válido: {result.failed[0]}")
     return sha256
+
+
+def _no_report_message(done: subprocess.CompletedProcess[str]) -> str:
+    detail = _tail(done.stderr or done.stdout)
+    return f"El motor terminó con código {done.returncode} sin dejar el informe de la ingesta." + (
+        f" {detail}" if detail else ""
+    )
+
+
+def _report_status(report: Path) -> object:
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data.get("status") if isinstance(data, dict) else None
 
 
 def make_submitter(settings: Settings) -> Submitter:
