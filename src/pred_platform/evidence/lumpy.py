@@ -66,6 +66,9 @@ class LumpyEvidence:
     cause: str | None = None
 
 
+# Visible names of the rivals; causes reach the page and must not show family codes.
+_RIVALS = {"seasonal_naive": "la línea base", "classical": "SARIMA"}
+
 # (run_id, sku, candidate_id) -> origin -> RMSE, all from m3_metricas.
 Windows = Mapping[tuple[str, str, str], Mapping[str, float]]
 # (run_id, comparison family) -> (published count, published median).
@@ -144,12 +147,16 @@ def calculate_lumpy(
             full_median, _ = _center(full)
             common_median, common_cause = _center(shared)
             if (run.run_id, comparison) not in published:
-                raise EvidenceInvalid(f"Falta el efecto publicado de {comparison} en {run.run_id}.")
+                raise EvidenceInvalid(
+                    f"Falta el efecto publicado frente a {_RIVALS[comparison]} "
+                    f"en la semilla {run.seed}."
+                )
             count, stored = published[run.run_id, comparison]
             if count != len(full) or not _same(stored, full_median):
                 raise EvidenceInvalid(
-                    f"Las ventanas no reproducen el efecto publicado de {comparison} "
-                    f"en {run.run_id}; no se atribuye una diferencia sin reconciliarla."
+                    f"Las ventanas no reproducen el efecto publicado frente a "
+                    f"{_RIVALS[comparison]} en la semilla {run.seed}; "
+                    "no se atribuye una diferencia sin reconciliarla."
                 )
             seeds.append(
                 SeedEffect(

@@ -403,7 +403,10 @@ def test_invalid_lumpy_evidence_preserves_significance(lumpy_db: Path, damage: s
         assert page.status_code == 200
         assert "Significancia del grupo por clase" in page.text
         assert "La evidencia de la demanda grumosa no es válida:" in page.text
-        assert "lumpy" not in page.text.split('id="lumpy-del-grupo"')[1].split("</section>")[0]
+        section = page.text.split('id="lumpy-del-grupo"')[1].split("</section>")[0]
+        # Neither internal family codes nor run IDs reach the visible cause.
+        for code in ("lumpy", "classical", "seasonal_naive", "seed-2"):
+            assert code not in section
         response = browser.get("/resultados/grupo.json", params=CHOICES)
         assert response.status_code == 200
         assert response.json()["significance"]["complete"] is True

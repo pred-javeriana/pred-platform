@@ -160,7 +160,11 @@ def test_full_population_reconciliation_refuses_unexplained_differences(lumpy_db
     sql(lumpy_db, "UPDATE m3_confirmaciones SET efecto_mediana_r=.1 WHERE run_id='seed-2'")
     result = read_group(lumpy_db, RUNS)
     assert result.significance.complete is True
-    assert result.lumpy.cause is not None and "reproducen" in result.lumpy.cause
+    assert result.lumpy.cause == (
+        "La evidencia de la demanda grumosa no es válida: Las ventanas no reproducen el efecto "
+        "publicado frente a la línea base en la semilla 2; no se atribuye una diferencia sin "
+        "reconciliarla."
+    )
     assert result.lumpy.effects == ()
 
 
