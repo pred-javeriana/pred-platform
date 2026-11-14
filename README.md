@@ -255,6 +255,11 @@ For a provisional two-seed check, pass only seeds 0 and 1 and add `--preview`.
 The result then carries a top-level `complete: false`, which covers every number in the file;
 it is not a final-group result.
 
+`complete` covers the set of seeds, not the lumpy evidence. When `lumpy.cause` is present, the lumpy
+numbers are at most the medians published per run, without ranges; `common_count` is 0 with
+`common_cause` `campeona_distinta` when no common population was formed, not a count of zero
+shared products.
+
 ## Importing ingest reports
 
 M1 ingestion remains a file-based handoff. Every ingestion (`pred-engine classify`/`ingest`/`run`) leaves
