@@ -104,8 +104,10 @@ class Worker:
     def drain(self) -> bool:
         """Run the queued runs until none is left and no claim is left unsettled (``--once``).
 
-        Returns whether every run was settled: a failed final result import, or an engine that
-        outlived its stop, leaves its run recoverable and the caller exits non-zero.
+        Returns whether every run of this call was settled: a failed final result import, or an
+        engine that outlived its stop, leaves its run recoverable and the caller exits non-zero.
+        A failure of an earlier call on the same worker does not count: a later call that
+        recovers that run reports its own outcome.
 
         While another worker holds the database, this one exits without running anything;
         queued work waits for that worker or the next one. A read-only database is left alone.
@@ -129,6 +131,7 @@ class Worker:
             )
             return True
         try:
+            self._failed.clear()
             self.recover()
             while self.run_next() or self._unsettled is not None:
                 if self._unsettled is not None:

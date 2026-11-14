@@ -907,3 +907,19 @@ def test_a_rejected_final_result_exits_non_zero_and_waits_for_an_explicit_resume
     assert resumed.returncode == 0, resumed.stderr
     assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
     assert env.rows("SELECT COUNT(*) FROM selecciones") == [(3,)]
+
+
+def test_a_second_drain_of_the_same_worker_reports_its_own_recovered_import(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+):
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    monkeypatch.setenv("FAKE_ENGINE_SCENARIO", "publishes_before_exit")
+    monkeypatch.setenv("FAKE_ENGINE_UNITS", "bad_line")
+    worker = Worker(env.settings)
+    assert not worker.drain()
+    _assert_import_failed(env, intento=1)
+
+    # The producer is repaired; the same worker recovers and imports the run.
+    monkeypatch.setenv("FAKE_ENGINE_UNITS", "ok")
+    assert worker.drain()
+    _assert_imported(env, intento=2)
