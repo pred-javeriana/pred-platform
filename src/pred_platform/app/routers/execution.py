@@ -116,6 +116,7 @@ from pred_platform.dal.ejecuciones import RunRequestError
 from pred_platform.data.deps import get_repository
 from pred_platform.data.query import LATEST, MAX_SIZE
 from pred_platform.data.repository import DataRepository
+from pred_platform.data.run_status import CauseSnapshot
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.control import ControlUnavailable, RunControl
 from pred_platform.worker.service import PARAMETERS_SCHEMA_VERSION, run_id_for
@@ -301,25 +302,50 @@ def _render_execution(
     action_error: str | None = None,
     status_code: int = 200,
 ) -> HTMLResponse:
-    facts = run_facts(repository, corrida)
-    if facts is None:
+    number = lectura.run_number(corrida)
+    if number is None:
         return render_missing_run(request, corrida)
-    context = _context(
-        request,
-        repository,
-        ejecucion=facts.id,
-        action_error=action_error,
-        published=facts.published,
-    )
-    context["wizard"] = run_wizard("ejecucion", facts)
+    context = _context(request, repository, ejecucion=str(number), action_error=action_error)
+    status = context["status"]
+    if status is None or status.ejecucion is None:
+        return render_missing_run(request, corrida)
+    run_id = status.ejecucion.id
+    # La barra de pasos reutiliza el estado, la ingesta y el resultado que la página ya leyó.
+    context["wizard"] = run_wizard("ejecucion", _execution_facts(repository, context))
     try:
-        references = repository.get_run_stage_history(facts.id)
+        references = repository.get_run_stage_history(run_id)
     except DataLayerError:
         references = []
     add_stage_references(context, references)
-    with suppress(DataLayerError):
-        add_cause_snapshot(context, repository.get_run_causes(facts.id))
+    counts = context["progress"].tareas_por_estado if context["progress"] else {}
+    if counts.get("fallida", 0) + counts.get("no_ejecutable", 0) == 0:
+        # Sin tareas fallidas ni no ejecutables no hay causas: los conteos ya leídos lo dicen.
+        add_cause_snapshot(context, CauseSnapshot(read_at=datetime.now(UTC), causes=[]))
+    else:
+        with suppress(DataLayerError):
+            add_cause_snapshot(context, repository.get_run_causes(run_id))
     return _render(request, "pages/execution.html", context, status_code)
+
+
+def _execution_facts(repository: DataRepository, context: dict[str, Any]) -> RunFacts:
+    """Los hechos de la barra de pasos desde lo que ya leyó :func:`_context`, sin leer de nuevo
+    el estado ni la lista de ingestas. Una ejecución que no terminó no tiene resumen de lo que
+    dejó: si está publicada, lo dice ``published_evaluation`` en :func:`_context`."""
+    status = context["status"]
+    run = status.ejecucion
+    # ``_context`` ya aplicó la regla de publicación (``published_evaluation``).
+    published = context["published"]
+    ingest = context["run_ingest"]
+    return facts_from_status(
+        status,
+        published=published,
+        resumable=context["actions"].offers_resume,
+        file_name=ingest.file_name if ingest else None,
+        n_skus=ingest.n_skus if ingest else None,
+        publicada_en=(
+            publication_time(repository.get_stage_timings(run.id)) if published else None
+        ),
+    )
 
 
 @router.get("/ejecucion")

@@ -86,3 +86,26 @@ def test_polling_a_run_reads_its_row_once(env: Env, monkeypatch: pytest.MonkeyPa
     assert reads.count(_RUN_ROW) == 2
     assert reads.connections <= 10 and len(reads.statements) <= 26, reads
     assert reads.files.count("progreso.jsonl") <= 1
+
+
+def test_the_page_of_a_completed_run_reuses_its_status_for_the_steps_and_causes(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _completed(env, monkeypatch)
+
+    reads = _get(client, env, monkeypatch, "/corridas/1/ejecucion")
+
+    # Una sola lectura del estado sirve a la página, a la barra de pasos y a las causas: antes la
+    # barra leía el estado, las ingestas y las publicaciones otra vez (20 conexiones y 51
+    # sentencias en frío). Las filas de ejecuciones: el estado, el error guardado y, en frío, la
+    # lista de corridas anteriores de «Antes», que se guarda un minuto.
+    assert reads.count(_RUN_ROW) == 3
+    assert reads.count("FROM tareas WHERE") == 3  # la página, su total y los conteos
+    assert reads.count("GROUP BY estado") == 1
+    assert not reads.count("FROM ingestas ORDER BY")  # la lista de ingestas no hace falta
+    # Sin tareas fallidas ni no ejecutables, los conteos ya dicen que no hay causas.
+    assert not reads.count("estado IN ('fallida', 'no_ejecutable')")
+    assert reads.connections <= 11 and len(reads.statements) <= 28, reads
+    assert reads.files.count("progreso.jsonl") <= 1
+    again = _get(client, env, monkeypatch, "/corridas/1/ejecucion")
+    assert again.count(_RUN_ROW) == 2 and again.connections <= 10, again
