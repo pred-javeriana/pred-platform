@@ -67,8 +67,8 @@ from pred_platform.app.ejecucion import (
     focus_state,
     focus_tasks,
     history_needed,
-    parse_execution_query,
     parse_launch_form,
+    read_execution_query,
     refusal_text,
     run_actions,
     run_compares_nothing,
@@ -169,11 +169,7 @@ def _context(
     capabilities = repository.get_capabilities()
     orchestration = next(item for item in capabilities.items if item.id == "run_orchestration")
 
-    query_error: str | None = None
-    try:
-        query = parse_execution_query(params)
-    except InvalidQuery as exc:
-        query, query_error = ExecutionQuery(ejecucion=ejecucion or LATEST), str(exc)
+    query, query_error = read_execution_query(params)
     status: RunStatus | None = None
     status_error: dict[str, object] | None = None
     try:

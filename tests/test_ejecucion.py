@@ -677,6 +677,41 @@ def test_unknown_filter_keeps_the_run_and_all_tasks(parameter: str) -> None:
     assert "Valor desconocido" not in response.text
 
 
+@pytest.mark.parametrize(
+    "paging, wanted, said",
+    [
+        ("page=abc", {"page": 1, "size": 50}, "Se muestra la primera página."),
+        ("page=0&size=10", {"page": 1, "size": 10}, "Se muestra la primera página."),
+        ("page=2&size=9999", {"page": 2, "size": 50}, "Se muestran 50 tareas por página."),
+    ],
+)
+def test_an_invalid_page_or_size_keeps_the_valid_filters(
+    paging: str, wanted: dict[str, int], said: str
+) -> None:
+    client, repo = _fixture_client()
+    response = client.get(f"/corridas/1/ejecucion?estado=fallida&family=ml&{paging}")
+    assert response.status_code == 200
+    assert repo.status_calls[-1] == (
+        "1",
+        {"estado": "fallida", "sku": None, "family": "ml", **wanted},
+    )
+    text = _text(response.text)
+    assert said in text
+    assert "Ese filtro no existe" not in text
+    # The links and the poll keep the filters, without the invalid value.
+    assert "estado=fallida&amp;family=ml" in response.text
+    assert "abc" not in response.text.split('id="ejecucion-cuerpo"')[1].split(">")[0]
+
+
+def test_an_invalid_page_keeps_the_polled_run(env: Env) -> None:
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    assert _launch(client, env, seed="18").status_code == 303
+    response = client.get("/ejecucion/estado?ejecucion=1&page=abc")
+    assert 'data-pred-run-summary="Ejecución 1:' in response.text
+    assert 'Ejecución <span class="mono">#1</span>' in response.text
+
+
 @pytest.mark.parametrize("failure", [ArtifactMissing, InvalidQuery])
 def test_failed_focus_read_falls_back_to_complete_task_list(
     env: Env, monkeypatch: pytest.MonkeyPatch, failure: type[Exception]

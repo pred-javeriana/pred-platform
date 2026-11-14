@@ -43,7 +43,7 @@ from pred_platform.contract.models import (
     TopologyMetrics,
 )
 from pred_platform.dal.lectura import SQLITE_MAX_INTEGER
-from pred_platform.data.query import DEFAULT_SIZE, LATEST, int_param
+from pred_platform.data.query import DEFAULT_SIZE, LATEST, PageRequest, int_param
 from pred_platform.data.repository import DataRepository
 from pred_platform.fallas import Falla, describir_falla
 from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS
@@ -142,16 +142,54 @@ class ExecutionQuery:
         return urlencode([(k, str(v)) for k, v in values.items() if v not in ("", None)])
 
 
-def parse_execution_query(params: Mapping[str, str]) -> ExecutionQuery:
-    return ExecutionQuery(
+def _paging(params: Mapping[str, str], name: str, default: int) -> int:
+    """La página o el tamaño pedido, un entero en el rango que acepta el repositorio."""
+    value = int_param(params.get(name), default, name)
+    if name == "page":
+        PageRequest(value, DEFAULT_SIZE)
+    else:
+        PageRequest(1, value)
+    return value
+
+
+# Lo que se muestra en lugar de una página o un tamaño inválido, dicho junto a la causa.
+_PAGING_RESET = {
+    "page": "Se muestra la primera página.",
+    "size": f"Se muestran {DEFAULT_SIZE} tareas por página.",
+}
+
+
+def read_execution_query(params: Mapping[str, str]) -> tuple[ExecutionQuery, str | None]:
+    """La consulta de Ejecución y, si la página o el tamaño no eran válidos, qué se muestra.
+
+    La página y el tamaño se validan por separado: uno inválido vuelve a su valor por omisión y
+    la consulta conserva la corrida pedida y los filtros. Un filtro con una opción desconocida lo
+    rechaza el repositorio, que es quien conoce las opciones.
+    """
+    paging = {"page": 1, "size": DEFAULT_SIZE}
+    problems = []
+    for name, default in tuple(paging.items()):
+        try:
+            paging[name] = _paging(params, name, default)
+        except InvalidQuery as exc:
+            problems.append(f"{exc} {_PAGING_RESET[name]}")
+    query = ExecutionQuery(
         ejecucion=(params.get("ejecucion") or "").strip() or LATEST,
         estado=params.get("estado") or None,
         sku=(params.get("sku") or "").strip() or None,
         family=params.get("family") or None,
-        page=int_param(params.get("page"), 1, "page"),
-        size=int_param(params.get("size"), DEFAULT_SIZE, "size"),
+        page=paging["page"],
+        size=paging["size"],
         todas=params.get("tareas") == "todas",
     )
+    return query, " ".join(problems) or None
+
+
+def parse_execution_query(params: Mapping[str, str]) -> ExecutionQuery:
+    """La consulta de Ejecución; ``InvalidQuery`` si la página o el tamaño no son válidos."""
+    for name, default in (("page", 1), ("size", DEFAULT_SIZE)):
+        _paging(params, name, default)
+    return read_execution_query(params)[0]
 
 
 # Mientras la ejecución avanza, la página muestra a lo sumo estas tareas bajo el avance.
