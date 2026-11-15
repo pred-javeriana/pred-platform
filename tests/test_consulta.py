@@ -8,8 +8,10 @@ desconocido se muestra como aviso en vez de ignorarse.
 from __future__ import annotations
 
 import re
+import sqlite3
+from contextlib import closing
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -356,3 +358,31 @@ def test_the_old_consulta_link_still_opens_the_verdict_list(
     html = _client(env).get("/resultados?vista=consulta").text
 
     assert 'id="filtros-consulta"' in html and 'aria-current="page">Veredictos<' in html
+
+
+# ------------------------------------------------------------------- un SKU de solo puntos
+@pytest.mark.parametrize("sku", ["..", "."])
+def test_a_sku_named_with_dots_only_has_a_link_that_opens_its_page(
+    env: Env, monkeypatch: pytest.MonkeyPatch, sku: str
+) -> None:
+    _run(env, monkeypatch)
+    _publish_for_the_run(env, verdicts={sku: ("smooth", "VALIDADO")}, late=())
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        # The run's first product is the one named with dots: it has a saved selection too.
+        conn.execute("UPDATE selecciones SET sku = ? WHERE sku = 'FIL-0001'", (sku,))
+    client = _client(env)
+
+    html = client.get("/resultados?vista=sku").text
+    link = re.search(r'<a class="mono" href="([^"]+)" aria-label="Ver evidencia del SKU', html)
+    assert link is not None
+    href = link.group(1).replace("&amp;", "&")
+    # A browser removes a dot-only segment, so the id cannot travel in the path.
+    path = urlsplit(href).path
+    assert path == "/resultados/sku/"
+    assert parse_qs(urlsplit(href).query)["producto"] == [sku]
+
+    # Following the link, as a browser does, reaches the page of that product.
+    page = client.get(href, follow_redirects=True)
+    assert page.status_code == 200
+    assert urlsplit(str(page.url)).path.endswith("/resultados/producto/")
+    assert f"Producto {sku} · Resultados · PRED" in page.text

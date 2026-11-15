@@ -1118,6 +1118,9 @@ def _act(request: Request, repository: DataRepository, ejecucion: str, action: s
         done = control.stop(number) if action == "stop" else control.resume(number)
     except (ControlUnavailable, RunRequestError) as exc:
         return _render_action_error(request, repository, str(number), str(exc))
+    # Nada se aplicó: si es porque la ejecución no existe, no hay un paso al que volver.
+    if not done and resolve_run_id(repository, str(number)) is None:
+        return render_missing_run(request, str(number))
     aviso = ("detenida" if action == "stop" else "reanudada") if done else "no_aplica"
     return RedirectResponse(
         f"{step_href(str(number), 'ejecucion')}?{urlencode({'aviso': aviso})}", status_code=303

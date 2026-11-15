@@ -21,12 +21,12 @@
   </header>
 
   {% if report.status == "needs_confirmation" and pending_token %}
-    {{ alert("Ya existe un archivo con este nombre en el destino. Confirme si desea sobrescribirlo o cancele la carga.", variant="warning") }}
+    {{ alert("Ya hay un archivo cargado con este nombre y otro contenido. Si confirma, se conservan los dos: el nuevo se guarda con otro nombre.", variant="warning") }}
     <div class="pred-actions">
       <form method="post" action="/datos/cargar">
         <input type="hidden" name="pendiente" value="{{ pending_token }}">
         <input type="hidden" name="confirm_overwrite" value="true">
-        {{ button("Confirmar carga", variant="danger", type="submit") }}
+        {{ button("Conservar los dos", variant="primary", type="submit") }}
       </form>
       <form method="post" action="/datos/cancelar">
         <input type="hidden" name="pendiente" value="{{ pending_token }}">

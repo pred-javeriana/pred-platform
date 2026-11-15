@@ -10,7 +10,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from pred_platform import fallas, mensajes
-from pred_platform.app import presentation, resultados_m3, seleccion
+from pred_platform.app import pasos, presentation, resultados_m3, seleccion
 from pred_platform.data.deps import get_repository
 
 
@@ -74,6 +74,7 @@ def build_templates(directory: Path, static_url: Callable[[str], str]) -> Jinja2
         "window_metric_names",
     ):
         templates.env.globals[name] = getattr(seleccion, name)
+    templates.env.globals["sku_href"] = pasos.sku_href
     templates.env.globals["CHAMPION_FAMILIES"] = resultados_m3.CHAMPION_FAMILIES
     templates.env.globals["CHAMPION_HEADERS"] = [
         presentation.family_label(family) for family in resultados_m3.CHAMPION_FAMILIES

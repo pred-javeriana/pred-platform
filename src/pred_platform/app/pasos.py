@@ -12,13 +12,15 @@ solo lectura de lo que se eligió.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
+from urllib.parse import quote, urlencode
 
 from pred_platform.app.presentation import (
     STAGE_ORDER,
-    format_count,
+    count_noun,
     format_decimal,
     format_duration,
 )
@@ -105,6 +107,27 @@ _UNFINISHED = ("pendiente", "ejecutando", "detenida")
 
 def step_href(corrida: str, key: str) -> str:
     return f"/corridas/{corrida}/{key}"
+
+
+# Ids que una ruta no puede llevar: el navegador los quita como segmentos de punto.
+DOT_SEGMENTS = frozenset({".", ".."})
+
+
+def sku_href(base: str, sku_id: str, query: str = "") -> str:
+    """La dirección de la página de un producto bajo ``base`` (``/resultados/sku`` o el paso
+    Resultados de una corrida), con su consulta ya codificada.
+
+    Un id de solo puntos («.», «..») no cabe en un segmento de ruta: el navegador lo quita. Va
+    entonces en el parámetro ``producto``; ``requested_sku`` lo lee.
+    """
+    if sku_id in DOT_SEGMENTS:
+        return f"{base}/?" + "&".join(filter(None, (urlencode({"producto": sku_id}), query)))
+    return f"{base}/{quote(sku_id, safe='')}" + (f"?{query}" if query else "")
+
+
+def requested_sku(path_sku: str, params: Mapping[str, str]) -> str:
+    """El id pedido: el de la ruta o, si la ruta no trae ninguno, el parámetro ``producto``."""
+    return path_sku or params.get("producto", "")
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,7 +277,11 @@ def _rail(
 def _data_sub(file_name: str | None, n_skus: int | None) -> str:
     if file_name is None:
         return "Elegir o cargar un archivo"
-    return f"{file_name} · {format_count(n_skus)} productos" if n_skus is not None else file_name
+    return (
+        f"{file_name} · {count_noun(n_skus, 'producto', 'productos')}"
+        if n_skus is not None
+        else file_name
+    )
 
 
 def _settings_sub(families: int | None, seed: object) -> str:

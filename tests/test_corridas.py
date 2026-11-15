@@ -281,6 +281,26 @@ def test_the_home_groups_the_seeds_that_share_data_and_settings(env: Env) -> Non
     assert text.count("En cola") >= 3
 
 
+def test_the_home_does_not_group_runs_that_differ_in_trials(env: Env) -> None:
+    client = _dal_client(env)
+    for seed, trials in (("0", "1"), ("1", "1"), ("2", "3")):
+        launched = client.post(
+            "/ejecucion/lanzar",
+            data={"ingest_id": env.ingest_id, **FORM, "seed": seed, "trials": trials},
+            follow_redirects=False,
+        )
+        assert launched.status_code == 303
+
+    text = _main(client.get("/").text)
+    group = text.split("Grupo de la tesis", 1)[1].split("Todas las corridas", 1)[0]
+
+    assert "Semilla 0 · #1 En cola" in group
+    assert "Semilla 1 · #2 En cola" in group
+    # The seed-group page refuses runs with another number of trials: the home does not join them.
+    assert "Semilla 2 Sin lanzar" in group
+    assert "#3" not in group
+
+
 def test_the_home_does_not_call_the_span_of_a_resumed_run_its_duration(env: Env) -> None:
     client = _dal_client(env)
     launched = client.post(

@@ -44,7 +44,7 @@ def comparison_key(ingest_id: str | None, settings: Mapping[str, Any]) -> tuple[
         tuple(sorted(settings.get("families") or ())),
         *(
             settings.get(field)
-            for field in ("metric", "min_train", "horizon", "step", "seasonality")
+            for field in ("metric", "min_train", "horizon", "step", "seasonality", "trials")
         ),
     )
 
@@ -77,6 +77,9 @@ class DisplayRunStatus(RunStatus):
     family_states: dict[str, dict[str, FamilyTaskState]] = Field(default_factory=dict, exclude=True)
     # The stored attempt (``ejecuciones.intento``) from the same row: more than 1 means resumed.
     attempt: int | None = Field(default=None, exclude=True)
+    # The trials per SKU and family the person asked for; ``RunSettings`` is the contract's
+    # document and does not carry them, but a seed group needs them to be comparable.
+    trials: int | None = Field(default=None, exclude=True)
 
 
 def _timestamp(value: object) -> datetime | None:

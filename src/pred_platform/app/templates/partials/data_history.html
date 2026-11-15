@@ -24,7 +24,7 @@
   </td>
   <td class="num">{{ format_count(item.rows) if item.rows is not none else "—" }}</td>
   <td class="num">{{ format_count(item.n_skus) if item.n_skus is not none else "—" }}</td>
-  <td class="pred-nowrap">{{ when(item.published_at) }}</td>
+  <td class="pred-nowrap">{{ when(item.published_at) if item.status == "accepted" and item.published_at else "—" }}</td>
 </tr>
 {% else %}
 {{ table_empty(5, "Página sin archivos cargados", "Vuelva a la primera página del historial.") }}

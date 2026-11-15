@@ -36,10 +36,10 @@
       <p class="pred-review__file"><span class="pred-review__icon">{{ icon("i-file") }}</span><span>
         {% if record %}
         <strong>{{ facts.file_name or abbreviate_id(facts.ingest_id or "") }}</strong>
-        {% if facts.n_skus is not none %}<span>{{ format_count(facts.n_skus) }} productos</span>{% endif %}
+        {% if facts.n_skus is not none %}<span>{{ count_noun(facts.n_skus, "producto", "productos") }}</span>{% endif %}
         {% else %}
         <strong>{{ ingest.name if ingest else abbreviate_id(ingest_id) }}</strong>
-        {% if ingest %}<span>{% if ingest.n_skus is not none %}{{ format_count(ingest.n_skus) }} productos{% endif %}{% if ingest.rows is not none %} · {{ format_count(ingest.rows) }} filas{% endif %}{% if ingest.published_at %} · cargado el {{ when(ingest.published_at) }}{% endif %}</span>{% endif %}
+        {% if ingest %}<span>{% if ingest.n_skus is not none %}{{ count_noun(ingest.n_skus, "producto", "productos") }}{% endif %}{% if ingest.rows is not none %} · {{ format_count(ingest.rows) }} filas{% endif %}{% if ingest.published_at %} · cargado el {{ when(ingest.published_at) }}{% endif %}</span>{% endif %}
         {% if form_errors.get("ingest_id") %}<span class="pred-cause">{{ form_errors["ingest_id"] }}</span>{% endif %}
         {% endif %}
       </span></p>
@@ -103,7 +103,7 @@
   <section class="pred-panel pred-action-card" aria-labelledby="titulo-lanzar">
     <div>
       <h2 id="titulo-lanzar">Lanzar</h2>
-      <p class="pred-launch-sum">{{ "Una familia" if form.families | length == 1 else form.families | length ~ " familias" }}{% if ingest and ingest.n_skus is not none %} · {{ format_count(ingest.n_skus) }} productos{% endif %} · semilla {{ form.seed }}</p>
+      <p class="pred-launch-sum">{{ "Una familia" if form.families | length == 1 else form.families | length ~ " familias" }}{% if ingest and ingest.n_skus is not none %} · {{ count_noun(ingest.n_skus, "producto", "productos") }}{% endif %} · semilla {{ form.seed }}</p>
       <p class="pred-lead">Al lanzar, la corrida entra en cola y el procesador la empieza. Puede cerrar el navegador: la corrida sigue, y en Corridas la encontrará en este recorrido.</p>
       {% set last = earlier_runs | last if earlier_runs else none %}
       {% if last and last.stages | length == stage_choices | length %}<p class="pred-meta pred-launch-time">{{ icon("i-clock") }}La corrida #{{ last.run.id }} con estos datos tardó {{ format_duration(last.stages.values() | sum(attribute="seconds")) }}. Con otros ajustes puede tardar distinto.</p>{% endif %}
