@@ -337,8 +337,24 @@ def test_cli_migrates_then_imports(
 
     assert main([]) == 0
 
-    assert "imported 1 report(s)" in capsys.readouterr().out
+    assert "imported 1 new report(s)" in capsys.readouterr().out
     assert _rows(db_path, "SELECT estado FROM ingestas") == [("accepted",)]
+
+
+def test_cli_importing_again_says_no_report_was_new(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _place(tmp_path, "accepted")
+    monkeypatch.setenv("PRED_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("PRED_DB_PATH", str(tmp_path / "cli.db"))
+    assert main([]) == 0
+    capsys.readouterr()
+
+    assert main([]) == 0
+
+    out = capsys.readouterr().out
+    assert "imported 0 new report(s)" in out
+    assert "1 already in the database were refreshed" in out
 
 
 def test_cli_status_compares_without_changing_anything(

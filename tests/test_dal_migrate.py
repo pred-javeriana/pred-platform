@@ -1,6 +1,9 @@
 """The migration runner (ADR-05-002), exercised with small fake migration folders."""
 
+import os
 import sqlite3
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from contextlib import closing
@@ -553,3 +556,44 @@ def test_the_concurrent_start_is_stable(tmp_path: Path) -> None:
         assert user_version(db) == 1
 
     run_repeatedly(25, once)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["pred_platform.dal.migrate"],  # make migrate
+        ["pred_platform.dal.migrate", "--status"],  # make status
+        ["pred_platform.worker", "--status"],  # make status, make worker ARGS=--status
+        ["pred_platform.worker", "--once"],  # make worker
+        ["pred_platform.worker", "--launch", "--ingest", "0" * 64],  # make launch
+        ["pred_platform.dal.importacion"],  # make import
+    ],
+    ids=lambda command: " ".join(command[:2]),
+)
+def test_a_file_that_is_no_database_is_one_error_line_for_every_command(
+    tmp_path: Path, command: list[str]
+) -> None:
+    db = tmp_path / "pred.db"
+    db.write_bytes(b"basura\n")
+    (tmp_path / "ingestas").mkdir()
+    (tmp_path / "ingestas" / f"{'0' * 64}.json").write_text("{}")
+    environ = {k: v for k, v in os.environ.items() if not k.startswith("PRED_")}
+
+    done = subprocess.run(  # noqa: S603 - the test's own interpreter
+        [sys.executable, "-m", *command],
+        env={**environ, "PRED_DATA_ROOT": str(tmp_path), "PRED_DB_PATH": str(db)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert done.returncode == 1, done.stderr
+    assert "Traceback" not in done.stderr
+    errors = [line for line in done.stderr.splitlines() if line.startswith("error: ")]
+    assert errors == [
+        f"error: {db} is not a SQLite database (file is not a database); check PRED_DB_PATH "
+        "and PRED_DATA_ROOT, or restore its backup (<name>.antes-de-vNNNN.bak). Nothing was "
+        "changed"
+    ]
+    assert db.read_bytes() == b"basura\n"

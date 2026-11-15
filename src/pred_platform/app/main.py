@@ -118,8 +118,8 @@ def _import_engine_reports(settings: Settings) -> None:
         return
     for failure in result.failed:
         _logger.warning("Informe de ingesta omitido: %s", failure)
-    if result.imported:
-        _logger.info("Informes de ingesta importados: %d", result.imported)
+    if result.new:
+        _logger.info("Informes de ingesta nuevos importados: %d", result.new)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -167,8 +167,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lambda path: f"{application.url_path_for('static', path=path)}?v={_static_version(path)}",
     )
 
-    # HEAD también: las sondas de disponibilidad suelen preguntar sin cuerpo.
-    @application.api_route("/health", methods=["GET", "HEAD"])
+    # HEAD también: las sondas de disponibilidad suelen preguntar sin cuerpo. Cada método se
+    # declara aparte para que OpenAPI le dé su propio operationId.
+    @application.head("/health")
+    @application.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
 

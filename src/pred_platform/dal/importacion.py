@@ -194,8 +194,9 @@ class EngineIngestFile(_Format):
 
 @dataclass(frozen=True, slots=True)
 class ImportResult:
-    imported: int = 0
+    imported: int = 0  # every report written, new or refreshed
     failed: tuple[ReportImportError, ...] = field(default=())
+    new: int = 0  # the imported reports whose ingestion was not in the database before
 
     @property
     def ok(self) -> bool:
@@ -347,7 +348,7 @@ def import_reports(db_path: Path, data_root: Path) -> ImportResult:
     if not db_path.is_file():
         raise ReportImportError(None, f"no existe la base de datos {db_path}; migre primero")
 
-    imported = 0
+    imported = new = 0
     failed: list[ReportImportError] = []
     with closing(sqlite3.connect(db_path, timeout=30)) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -359,6 +360,9 @@ def import_reports(db_path: Path, data_root: Path) -> ImportResult:
             try:
                 report = parse_report(path)
                 with conn:  # one transaction per report
+                    known = conn.execute(
+                        "SELECT 1 FROM ingestas WHERE sha256 = ?", (report.ingest_id,)
+                    ).fetchone()
                     _upsert(conn, report)
             except ReportImportError as exc:
                 if exc.path is None:
@@ -369,7 +373,8 @@ def import_reports(db_path: Path, data_root: Path) -> ImportResult:
                 failed.append(ReportImportError(path, f"error de base de datos: {exc}"))
                 continue
             imported += 1
-    return ImportResult(imported=imported, failed=tuple(failed))
+            new += known is None
+    return ImportResult(imported=imported, failed=tuple(failed), new=new)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -413,7 +418,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (MigrationError, ReportImportError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(f"imported {result.imported} report(s) from {folder}")
+    refreshed = result.imported - result.new
+    print(
+        f"imported {result.new} new report(s) from {folder}"
+        + (f"; {refreshed} already in the database were refreshed" if refreshed else "")
+    )
     for failure in result.failed:
         print(f"skipped: {failure}", file=sys.stderr)
     return 0 if result.ok else 1

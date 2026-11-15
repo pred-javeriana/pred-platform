@@ -12,6 +12,7 @@ import logging
 import os
 import queue
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -1576,7 +1577,9 @@ def test_el_estado_de_la_ejecucion_informa_la_etapa_en_curso(env: Env) -> None:
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
 
     def etapa() -> str | None:
         progress = env.repo().get_run_status(queued.run_id).progress
@@ -1615,7 +1618,9 @@ def test_el_estado_de_la_ejecucion_cuenta_los_sku_terminados_en_m3(env: Env) -> 
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
 
     def m3() -> tuple[int | None, int | None]:
         progress = env.repo().get_run_status(queued.run_id).progress
@@ -1658,7 +1663,9 @@ def test_el_contador_de_m3_cuenta_sku_distintos(env: Env) -> None:
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
     # El motor anuncia M3 por SKU x candidato: dos SKU con dos candidatos cada uno.
     unidades = [{"sku_id": s, "family": f} for s in "AB" for f in ("classical", "ml")]
     _escribir_progreso(
@@ -1685,7 +1692,9 @@ def test_el_contador_cuenta_un_sku_de_m2_solo_cuando_terminan_todas_sus_familias
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
     a_clasica, a_ml, b_clasica, b_ml = (
         {"sku_id": s, "family": f} for s in "AB" for f in ("classical", "ml")
     )
@@ -1946,9 +1955,9 @@ def test_a_locked_database_after_launch_stops_the_run_and_reaps_the_engine(
         holder.execute("BEGIN IMMEDIATE")  # another writer holds the lock past the timeout
         return process
 
-    def set_launch(*args: Any, **kwargs: Any) -> None:
+    def set_launch(*args: Any, **kwargs: Any) -> bool:
         try:
-            real_set_launch(*args, **kwargs)
+            return real_set_launch(*args, **kwargs)
         finally:
             holder.rollback()
 
@@ -2103,9 +2112,10 @@ def _strand_a_launched_run(
     real_set_launch = dal.set_launch
     children: list[Any] = []
 
-    def set_launch(*args: Any, **kwargs: Any) -> None:
-        real_set_launch(*args, **kwargs)
+    def set_launch(*args: Any, **kwargs: Any) -> bool:
+        recorded = real_set_launch(*args, **kwargs)
         lock.take()  # the next write (a progress event) fails, and so does its diagnostic
+        return recorded
 
     def launcher(command: list[str], **kwargs: Any) -> Any:
         process = engine.launch(command, **kwargs)
@@ -2147,8 +2157,13 @@ def test_a_stale_settlement_leaves_the_claim_of_a_resumed_run_alone(
     env: Env, lock: _LockUntilGivenUp, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stale, _ = _strand_a_launched_run(env, lock, monkeypatch)
-    with closing(dal.connect(env.db)) as conn:  # the operator stops and resumes the run
+    with closing(dal.connect(env.db)) as conn:  # the operator stops the run
         assert dal.request_stop(conn, 1, error=run_stopped_error())
+        # Its recorded engine is not confirmed stopped yet, so it cannot be resumed.
+        with pytest.raises(dal.EngineNotReaped):
+            dal.resume_run(conn, 1)
+    env.worker().recover()  # another worker confirms the stop and releases the process
+    with closing(dal.connect(env.db)) as conn:  # the operator resumes the run
         assert dal.resume_run(conn, 1)
     stop = threading.Event()
     replacement = threading.Thread(target=env.worker().run_next, args=(stop,))
@@ -2321,3 +2336,84 @@ def test_missing_input_parquet_records_platform_input_missing(env: Env) -> None:
     ]
     err = env.repo().get_run_error(str(run.ejecucion_id))
     assert err is not None and err.code == "platform.input_missing"
+
+
+def _break_before_launch(env: Env, cause: str) -> Settings:
+    """Leave the queued run unable to reach the engine; return the settings the worker uses."""
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        if cause == "no_parquet_recorded":
+            conn.execute("UPDATE ingestas SET ruta_parquet = NULL")
+        elif cause == "no_origin":
+            conn.execute(
+                "UPDATE configuraciones "
+                "SET parametros = json_remove(parametros, '$.datos_sinteticos')"
+            )
+    if cause == "parquet_missing":
+        (env.settings.data_root / "processed" / "demo_canonico.parquet").unlink()
+    if cause == "engine_unavailable":
+        return replace(env.settings, engine_command=("/no/such/pred-engine",))
+    return env.settings
+
+
+@pytest.mark.parametrize(
+    ("cause", "code"),
+    [
+        ("no_parquet_recorded", "platform.input_missing"),
+        ("parquet_missing", "platform.input_missing"),
+        ("no_origin", "pipeline.stage_failed"),
+        ("engine_unavailable", "platform.engine_unavailable"),
+    ],
+)
+def test_a_resumed_run_stopped_before_its_engine_starts_leaves_no_task_open(
+    env: Env, monkeypatch: pytest.MonkeyPatch, cause: str, code: str
+) -> None:
+    _scenario(monkeypatch, "crash")
+    run = enqueue_run(env.settings, env.ingest_id, SMALL)
+    env.worker().run_next()
+    with closing(dal.connect(env.db)) as conn:
+        assert dal.resume_run(conn, run.ejecucion_id)
+    assert env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'pendiente'")[0][0] > 0
+    settings = _break_before_launch(env, cause)
+
+    assert Worker(settings, poll_interval=0.05).run_next()
+
+    ((estado, error_json, pid),) = env.rows("SELECT estado, error_json, pid FROM ejecuciones")
+    assert (estado, json.loads(error_json)["code"], pid) == ("detenida", code, None)
+    states = dict(env.rows("SELECT estado, COUNT(*) FROM tareas GROUP BY estado"))
+    assert "pendiente" not in states and "ejecutando" not in states
+    closed = env.rows("SELECT detalle_error FROM tareas WHERE estado = 'no_ejecutable'")
+    assert closed and {json.loads(d)["code"] for (d,) in closed} == {code}
+
+
+def test_tasks_left_by_an_engine_that_was_killed_name_the_engine_exit(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    enqueue_run(env.settings, env.ingest_id, SMALL)
+    thread = threading.Thread(target=env.worker().run_next)
+    thread.start()
+    _wait(
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'ejecutando'")[0][0] > 0,
+        what="a unit in flight",
+    )
+    ((pid,),) = env.rows("SELECT pid FROM ejecuciones")
+    os.kill(pid, signal.SIGKILL)  # an out-of-memory kill or `kill -9` of the engine
+    thread.join(timeout=20)
+
+    assert not thread.is_alive()
+    ((estado, error_json),) = env.rows("SELECT estado, error_json FROM ejecuciones")
+    run_error = json.loads(error_json)
+    assert (estado, run_error["code"]) == ("detenida", "platform.artifact_missing")
+    assert "código -9" in run_error["detail"]
+    tasks = {
+        estado: json.loads(detalle)
+        for estado, detalle in env.rows("SELECT estado, detalle_error FROM tareas")
+    }
+    assert set(tasks) == {"fallida", "no_ejecutable"}
+    cut_off, never_started = tasks["fallida"], tasks["no_ejecutable"]
+    assert {cut_off["code"], never_started["code"]} == {"platform.artifact_missing"}
+    assert cut_off["detail"].startswith("La unidad quedó a medias: el motor terminó con código -9")
+    assert never_started["detail"].startswith(
+        "La unidad no llegó a empezar: el motor terminó con código -9"
+    )
+    assert "etapa" not in cut_off["detail"] + never_started["detail"]

@@ -54,6 +54,17 @@ class SchemaTooNew(MigrationError):
         )
 
 
+class NotADatabase(MigrationError):
+    """The database file exists but SQLite cannot read it (a damaged file, or another file)."""
+
+    def __init__(self, path: Path, cause: sqlite3.DatabaseError) -> None:
+        self.path = path
+        super().__init__(
+            f"{path} is not a SQLite database ({cause}); check PRED_DB_PATH and PRED_DATA_ROOT, "
+            "or restore its backup (<name>.antes-de-vNNNN.bak). Nothing was changed"
+        )
+
+
 class MigrationFailed(MigrationError):
     """A migration raised while running; it was rolled back as a whole."""
 
@@ -189,6 +200,20 @@ def _user_version(conn: sqlite3.Connection) -> int:
     return int(conn.execute("PRAGMA user_version").fetchone()[0])
 
 
+def _file_version(conn: sqlite3.Connection, path: Path) -> int:
+    """The version of the file just opened; the first read is where SQLite checks its header.
+
+    ``OperationalError`` (a folder, a file it cannot open) passes through for the caller to
+    explain; any other ``DatabaseError`` means the file is no database.
+    """
+    try:
+        return _user_version(conn)
+    except sqlite3.OperationalError:
+        raise
+    except sqlite3.DatabaseError as error:
+        raise NotADatabase(path, error) from None
+
+
 def _has_tables(conn: sqlite3.Connection) -> bool:
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
@@ -309,6 +334,7 @@ def migrate(
     database newer than this code is rejected untouched.
 
     Raises:
+        NotADatabase: the file exists but is no SQLite database; it is left untouched.
         SchemaTooNew, MigrationFailed, MigrationError: see ``apply_migrations``.
     """
     available = list(load_migrations() if migrations is None else migrations)
@@ -316,7 +342,7 @@ def migrate(
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(path, timeout=30)) as conn:
-        current = _user_version(conn)
+        current = _file_version(conn, path)
         if current > latest:
             raise SchemaTooNew(current, latest)
         if current == latest:
@@ -327,14 +353,18 @@ def migrate(
 
 
 def status(db_path: str | Path, migrations: Sequence[Migration] | None = None) -> SchemaStatus:
-    """Where the database stands, read-only. A missing file is reported, never created."""
+    """Where the database stands, read-only. A missing file is reported, never created.
+
+    Raises:
+        NotADatabase: the file exists but is no SQLite database.
+    """
     available = list(load_migrations() if migrations is None else migrations)
     latest = available[-1].version
     path = Path(db_path)
     if not path.is_file():
         return SchemaStatus(False, 0, latest, tuple(m.version for m in available))
     with closing(sqlite3.connect(readonly_uri(path), uri=True)) as conn:
-        current = _user_version(conn)
+        current = _file_version(conn, path)
     return SchemaStatus(
         True, current, latest, tuple(m.version for m in available if m.version > current)
     )

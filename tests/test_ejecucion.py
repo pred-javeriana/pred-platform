@@ -40,7 +40,17 @@ from pred_platform.worker.bucle import Worker
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
-from tests.test_worker import _FAKE, Env, _escribir_progreso, _guardar_origen, _scenario, _wait
+from tests.test_worker import (
+    _FAKE,
+    Env,
+    _claimed_by,
+    _escribir_progreso,
+    _guardar_origen,
+    _orphan_engine,
+    _run_state,
+    _scenario,
+    _wait,
+)
 from tests.test_worker import env as env  # noqa: F401  (the fixture)
 
 
@@ -807,7 +817,9 @@ def test_ejecutar_muestra_la_etapa_y_el_avance_de_m3(env: Env) -> None:
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
     assert run.run_id is not None
 
     def fragmento() -> str:
@@ -1361,6 +1373,196 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     done = client.get("/ejecucion").text
     assert "Completada" in _text(done) and 'href="/corridas/1/resultados"' in done
     assert env.rows("SELECT COUNT(*) FROM tareas") == [(9,)]  # the same rows, no duplicates
+
+
+def _left_running_by_a_gone_worker(env: Env) -> subprocess.Popen[bytes]:
+    """The run is ``ejecutando`` with one unit in flight and one planned, its engine alive and
+    its worker gone (stopped with Ctrl-C, or killed): nobody follows the engine."""
+    child = _orphan_engine(env.db)
+    _claimed_by(env, child)
+    with closing(dal.connect(env.db)) as conn:
+        run = dal.get_run(conn, 1)
+        assert run is not None and run.t_star is not None
+        unit = {"corte": run.t_star, "seed": run.seed}
+        dal.plan_tasks(
+            conn, 1, **unit, units=[("FIL-0001", "ml:lightgbm"), ("FIL-0002", "ml:lightgbm")]
+        )
+        dal.task_started(
+            conn, 1, sku="FIL-0001", modelo="ml:lightgbm", **unit, iniciada_en=dal.now_iso()
+        )
+    return child
+
+
+@pytest.mark.parametrize("engine_alive", [True, False], ids=["engine-alive", "engine-gone"])
+def test_a_stop_while_no_worker_runs_is_completed_when_a_worker_starts(
+    env: Env, monkeypatch: pytest.MonkeyPatch, engine_alive: bool
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    child = _left_running_by_a_gone_worker(env)
+    try:
+        if not engine_alive:
+            child.kill()
+            _wait(lambda: child.poll() is not None, what="the engine to die")
+        stopped = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+        assert stopped.headers["location"] == "/corridas/1/ejecucion?aviso=detenida"
+        ((stopped_at,),) = env.rows("SELECT finalizada_en FROM ejecuciones")
+
+        env.worker().drain()  # `make worker` again: it recovers the database before the queue
+
+        _wait(lambda: child.poll() is not None, timeout=10, what="the orphan engine to stop")
+        ((estado, error_json, pid, finalizada_en),) = env.rows(
+            "SELECT estado, error_json, pid, finalizada_en FROM ejecuciones"
+        )
+        assert (estado, json.loads(error_json)["code"], pid) == (
+            "detenida",
+            "platform.run_stopped",
+            None,
+        )
+        assert finalizada_en == stopped_at  # the operator's stop keeps its time
+        tasks = env.rows("SELECT sku, estado, detalle_error FROM tareas ORDER BY sku")
+        assert [(sku, estado) for sku, estado, _ in tasks] == [
+            ("FIL-0001", "fallida"),
+            ("FIL-0002", "no_ejecutable"),
+        ]
+        assert {json.loads(d)["code"] for _, _, d in tasks} == {"platform.run_stopped"}
+        assert env.worker().run_next() is False  # the stop is kept: nothing was queued again
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_stop_then_resume_at_once_keeps_the_run_until_its_engine_is_stopped(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    child = _left_running_by_a_gone_worker(env)
+    try:
+        client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+        refused = client.post(
+            "/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False
+        )
+
+        # The engine of the stop may still run: the run keeps it, so a crash now still finds it.
+        assert refused.status_code == 200
+        assert "todavía se está deteniendo" in _text(refused.text)
+        assert child.poll() is None
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [
+            ("detenida", 1, child.pid)
+        ]
+
+        env.worker().drain()  # a worker confirms the stop: the engine is stopped, then released
+        _wait(lambda: child.poll() is not None, timeout=10, what="the engine of the stop to end")
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [("detenida", None)]
+
+        resumed = client.post(
+            "/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False
+        )
+        assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
+        env.worker().run_next()
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_a_run_published_before_its_worker_imported_it_is_not_resumed_beside_its_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "ok")
+    client = _dal_client(env)
+    assert _launch(client, env).status_code == 303
+    child = _left_running_by_a_gone_worker(env)
+    try:
+        with closing(dal.connect(env.db)) as conn, conn:
+            # The engine records its result in the database before it writes its files and exits.
+            conn.execute("UPDATE ejecuciones SET estado = 'completada_con_fallos'")
+
+        refused = client.post(
+            "/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False
+        )
+
+        assert refused.status_code == 200
+        assert "todavía se está cerrando" in _text(refused.text)
+        assert env.rows("SELECT estado, pid FROM ejecuciones") == [
+            ("completada_con_fallos", child.pid)
+        ]
+        env.worker().drain()  # the next worker stops that engine and runs the attempt again
+        _wait(lambda: child.poll() is not None, timeout=10, what="the engine to stop")
+        assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_stop_then_resume_at_once_beside_a_live_worker_never_releases_a_live_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow")
+    client = _dal_client(env)
+    _launch(client, env)
+    thread = threading.Thread(target=env.worker().run_next)
+    thread.start()
+    _wait(
+        lambda: env.rows("SELECT COUNT(*) FROM tareas WHERE estado = 'ejecutando'")[0][0] > 0,
+        what="a unit running",
+    )
+    ((pid,),) = env.rows("SELECT pid FROM ejecuciones")
+
+    client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+    resumed = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
+
+    # Whichever comes first, the worker's look or the resume, a resumed run has no engine left.
+    if resumed.status_code == 303:
+        assert not engine.is_alive(pid)
+    else:
+        assert "todavía se está deteniendo" in _text(resumed.text)
+    thread.join(timeout=20)
+    assert not thread.is_alive() and not engine.is_alive(pid)
+    assert env.rows("SELECT pid FROM ejecuciones") == [(None,)]
+
+
+def test_a_resume_before_the_engine_is_recorded_does_not_keep_that_engine(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _scenario(monkeypatch, "slow_ok")
+    launching, launch = threading.Event(), threading.Event()
+    started: list[subprocess.Popen[bytes]] = []
+
+    def slow_launch(command: list[str], **kwargs: Any) -> subprocess.Popen[bytes]:
+        if not started:
+            launching.set()  # claimed, the engine pid not recorded yet
+            assert launch.wait(timeout=30)
+        process = engine.launch(command, **kwargs)
+        started.append(process)
+        return process
+
+    client = _dal_client(env)
+    _launch(client, env)
+    stop = threading.Event()
+    worker = Worker(env.settings, poll_interval=0.05, launcher=slow_launch)
+    thread = threading.Thread(target=worker.run_forever, args=(stop,))
+    thread.start()
+    try:
+        assert launching.wait(timeout=10)
+        client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
+        resumed = client.post(
+            "/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False
+        )
+        assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
+        launch.set()
+
+        _wait(lambda: _run_state(env)[0] == "completada", what="the resumed run to finish")
+    finally:
+        launch.set()
+        stop.set()
+        thread.join(timeout=30)
+    # The engine launched for the stopped attempt was stopped; the resume ran as a new attempt.
+    assert len(started) == 2 and started[0].poll() is not None
+    assert env.rows("SELECT estado, intento, pid FROM ejecuciones") == [("completada", 2, None)]
 
 
 def test_resuming_a_legacy_run_lets_the_engine_report_its_evaluation(

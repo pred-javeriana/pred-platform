@@ -19,7 +19,7 @@ trabajo actual y la importación final marcaba temporalmente tareas exitosas com
 | Interrumpir el worker con Ctrl-C, SIGTERM o SIGHUP | El worker detiene el motor y la ejecución queda `ejecutando`; el siguiente worker la vuelve a encolar, también con `--once`. Si otro worker espera, retoma el trabajo inmediatamente, fuera del guardián del primero. Un worker que arrancó con SIGHUP ignorado (por ejemplo con `nohup`) lo sigue ignorando y continúa al cerrarse la terminal. |
 | El lanzador del motor termina y deja vivo al motor que inició | Antes de importar el final, el worker detiene el grupo de procesos registrado y confirma que salió; solo entonces libera el pid. Si el grupo sigue vivo, la ejecución queda `ejecutando` con su pid para el siguiente arranque, que lo detiene antes de volver a lanzarla. |
 | Iniciar un segundo worker sobre la misma base | No toca ninguna ejecución. `make worker` y el worker de la aplicación esperan a que el primero termine y luego siguen la cola. `--once` sale sin ejecutar nada: la cola queda para ese worker o para el siguiente, sin garantizar que alguno la ejecute. |
-| Detener desde la interfaz | Permanece detenida hasta que el operador solicita reanudar. |
+| Detener desde la interfaz | Permanece detenida hasta que el operador solicita reanudar. Conserva el pid de su motor hasta que un worker lo detiene y cierra sus tareas abiertas: el que la sigue, o el siguiente que arranca si ninguno la seguía. Mientras tanto «Reanudar» no se aplica y dice que la parada todavía no terminó. Una ejecución detenida y reanudada antes de que el worker registrara su motor no conserva ese motor: el worker lo detiene y la ejecución corre como un intento nuevo. |
 | Reanudar o reintentar fallidos | Conserva `run_id`, parámetros, filas de tareas, tareas exitosas y tareas en `finalizo_m2` (el motor restaura su M2 y solo falta M3); solo las demás vuelven a pendiente. Una corrida que guardó datos sintéticos o un origen sin declarar no se reanuda: la interfaz muestra el motivo. |
 
 En el motor actualizado, cada unidad exitosa de L2/L3 guarda su resultado en un checkpoint
@@ -38,7 +38,8 @@ dentro del mismo segundo sin depender de la precisión reducida de la tupla `sta
 La publicación M3 puede cambiar el estado global antes de que la CLI termine de escribir los
 archivos. Ese cambio no es una orden de detener: el worker espera y finaliza la importación.
 Si la aplicación cae en esa ventana, el PID aún registrado identifica una posesión sin finalizar
-y permite recuperarla. Una ejecución finalizada cuyo PID ya se liberó no se vuelve a encolar.
+y permite recuperarla. Mientras ese PID siga registrado, «Reanudar» no se aplica. Una ejecución
+finalizada cuyo PID ya se liberó no se vuelve a encolar.
 Esta carrera también corresponde al diagnóstico de
 [#32](https://github.com/pred-javeriana/pred-platform/issues/32).
 

@@ -44,7 +44,9 @@ def _running(env: Env):
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
     return client, run
 
 
@@ -188,7 +190,9 @@ def test_polled_navigation_follows_a_resumed_run_from_queue_to_its_stage(env: En
     with closing(dal.connect(env.db)) as conn:
         run = dal.claim_pending(conn)
         assert run is not None
-        dal.set_launch(conn, run.id, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}")
+        dal.set_launch(
+            conn, run.id, intento=run.intento, pid=os.getpid(), ruta_corrida=f"runs/{run.run_id}"
+        )
     _escribir_progreso(env, run.run_id, {"event": "stage_started", "stage": "L2"})
     polled = client.get("/ejecucion/estado?ejecucion=1")
     assert polled.status_code == 200

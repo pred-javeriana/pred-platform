@@ -23,6 +23,7 @@ from pred_platform.config import Settings
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.importacion import import_reports
 from pred_platform.dal.migrate import MigrationError, migrate
+from pred_platform.dal.migrate import status as schema_status
 from pred_platform.worker.bucle import Worker
 from pred_platform.worker.control import ControlUnavailable, DalRunControl
 from pred_platform.worker.service import LaunchSettings, RunRequestError, enqueue_run
@@ -32,6 +33,11 @@ def _status(db_path: Path) -> int:
     if not db_path.is_file():
         print(f"{db_path}: no existe la base de datos")
         return 0
+    try:
+        schema_status(db_path)  # a file that is no database: one line, not a traceback
+    except MigrationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     with closing(sqlite3.connect(db_path)) as conn:
         runs = conn.execute(
             "SELECT id, run_id, estado, intento FROM ejecuciones ORDER BY id"
