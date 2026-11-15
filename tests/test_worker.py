@@ -12,7 +12,6 @@ import logging
 import os
 import queue
 import shutil
-import signal
 import sqlite3
 import subprocess
 import sys
@@ -24,6 +23,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+import psutil
 import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
@@ -2397,14 +2397,17 @@ def test_tasks_left_by_an_engine_that_was_killed_name_the_engine_exit(
         what="a unit in flight",
     )
     ((pid,),) = env.rows("SELECT pid FROM ejecuciones")
-    os.kill(pid, signal.SIGKILL)  # an out-of-memory kill or `kill -9` of the engine
+    # An out-of-memory kill or `kill -9` of the engine (TerminateProcess on Windows).
+    psutil.Process(pid).kill()
     thread.join(timeout=20)
 
     assert not thread.is_alive()
     ((estado, error_json),) = env.rows("SELECT estado, error_json FROM ejecuciones")
     run_error = json.loads(error_json)
     assert (estado, run_error["code"]) == ("detenida", "platform.artifact_missing")
-    assert "código -9" in run_error["detail"]
+    # "El motor terminó con código N sin publicar corrida.json de este intento. Su salida…"
+    exit_cause = run_error["detail"].split(". ")[0]
+    assert exit_cause.startswith("El motor terminó con código ")
     tasks = {
         estado: json.loads(detalle)
         for estado, detalle in env.rows("SELECT estado, detalle_error FROM tareas")
@@ -2412,8 +2415,7 @@ def test_tasks_left_by_an_engine_that_was_killed_name_the_engine_exit(
     assert set(tasks) == {"fallida", "no_ejecutable"}
     cut_off, never_started = tasks["fallida"], tasks["no_ejecutable"]
     assert {cut_off["code"], never_started["code"]} == {"platform.artifact_missing"}
-    assert cut_off["detail"].startswith("La unidad quedó a medias: el motor terminó con código -9")
-    assert never_started["detail"].startswith(
-        "La unidad no llegó a empezar: el motor terminó con código -9"
-    )
+    cause = "e" + exit_cause[1:]
+    assert cut_off["detail"] == f"La unidad quedó a medias: {cause}."
+    assert never_started["detail"] == f"La unidad no llegó a empezar: {cause}."
     assert "etapa" not in cut_off["detail"] + never_started["detail"]
