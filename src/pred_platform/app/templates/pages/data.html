@@ -76,7 +76,7 @@
       {% for item in listing.items if item.status == 'accepted' %}
       <label class="pred-file-choice{% if report and report.ingest_id == item.ingest_id %} is-selected{% endif %}">
         <input type="radio" name="ingest_id" value="{{ item.ingest_id }}"{% if report and report.ingest_id == item.ingest_id %} checked{% endif %}{% if item.ingest_id in synthetic_ids %} disabled{% endif %} required>
-        <span><strong>{{ item.name }}</strong><span class="pred-subvalue">{{ format_count(item.n_skus) }} productos · {{ format_count(item.rows) }} filas{% if item.published_at %} · validado el {{ when(item.published_at) }}{% endif %}{% if item.ingest_id in synthetic_ids %} · declara datos sintéticos: no ejecutable{% endif %}</span></span>
+        <span><strong>{{ item.name }}</strong><span class="pred-subvalue">{{ count_noun(item.n_skus, "producto", "productos") }} · {{ format_count(item.rows) }} filas{% if item.published_at %} · validado el {{ when(item.published_at) }}{% endif %}{% if item.ingest_id in synthetic_ids %} · declara datos sintéticos: no ejecutable{% endif %}</span></span>
         {{ status_indicator(describe_status('ingest', item.status)) }}
       </label>
       {% endfor %}

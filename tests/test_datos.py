@@ -1,7 +1,9 @@
 """Superficie /datos: carga C1, topología C3 y degradación honesta en DAL."""
 
 import re
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -195,7 +197,8 @@ def test_needs_confirmation_then_confirm_overwrite(tmp_path: Path) -> None:
     token = parse_qs(urlparse(location).query)["pendiente"][0]
     html = client.get(location).text
     assert "Se requiere confirmación" in html
-    assert "Confirmar carga" in html
+    assert "Conservar los dos" in html
+    assert "Confirmar carga" not in html
     assert "Cancelar" in html
     assert "Clases de demanda" not in html
     assert repo.submit_calls[0]["confirm_overwrite"] is False
@@ -214,6 +217,55 @@ def test_needs_confirmation_then_confirm_overwrite(tmp_path: Path) -> None:
     assert "La fila 43 tiene un valor inválido en lead_time_days." in failed
     assert "Corríjalo en el archivo y vuelva a cargarlo." in failed
     assert "Clases de demanda" not in failed
+
+
+def test_the_same_name_warning_says_that_both_files_are_kept(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path, "errores")
+    first = client.post("/datos/cargar", files={"archivo": _CSV}, follow_redirects=False)
+    html = client.get(first.headers["location"]).text
+
+    assert (
+        "Ya hay un archivo cargado con este nombre y otro contenido. Si confirma, se conservan "
+        "los dos: el nuevo se guarda con otro nombre." in html
+    )
+    assert "sobrescrib" not in html.lower()
+    button = re.search(r'<button class="([^"]*)"[^>]*>\s*Conservar los dos', html)
+    assert button is not None and "danger" not in button.group(1)
+
+
+def test_an_expired_confirmation_is_not_reported_as_a_missing_artifact(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+    html = client.get("/corridas/nueva/datos?pendiente=desconocido").text
+
+    assert "Se requiere confirmar de nuevo." in html
+    assert "platform.confirmation_expired" in html
+    assert "platform.artifact_missing" not in html
+
+
+class PublishedRejected(FixtureRepository):
+    """Un historial cuyo archivo rechazado también trae la fecha de su carga."""
+
+    def list_ingests(self, **kwargs: Any):
+        listing = super().list_ingests(**kwargs)
+        stamp = datetime(2026, 11, 14, 18, 42, tzinfo=UTC)
+        items = [item.model_copy(update={"published_at": stamp}) for item in listing.items]
+        return listing.model_copy(update={"items": items})
+
+
+def test_the_history_shows_no_publication_date_for_a_rejected_file(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+    client.app.state.repository = PublishedRejected("normal")  # type: ignore[attr-defined]
+    html = client.get("/datos", follow_redirects=True).text
+
+    rows = {
+        re.search(r">([\w.]+\.csv)</a>", row).group(1): row  # type: ignore[union-attr]
+        for row in re.findall(r"<tr[^>]*>.*?</tr>", html, re.S)
+        if ".csv</a>" in row
+    }
+    accepted, rejected = rows["demo_canonico.csv"], rows["ventas_2025.csv"]
+    assert "<time" in accepted.rsplit("<td", 1)[1]
+    assert "<time" not in rejected.rsplit("<td", 1)[1]
+    assert "—" in rejected.rsplit("<td", 1)[1]
 
 
 def test_cancel_drops_the_pending_upload_so_it_can_no_longer_be_confirmed(

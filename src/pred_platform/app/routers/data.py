@@ -282,11 +282,11 @@ def _render_page(
         report = peek_pending(request, pending_token)
         if report is None and report_error is None:
             report_error = {
-                "code": "platform.artifact_missing",
+                "code": "platform.confirmation_expired",
                 "detail": "La confirmación ya no está disponible. Vuelva a cargar el archivo.",
                 "field": None,
                 "column": None,
-                "retryable": True,
+                "retryable": False,
                 "blocked_by": [],
                 "title": "Se requiere confirmar de nuevo.",
             }

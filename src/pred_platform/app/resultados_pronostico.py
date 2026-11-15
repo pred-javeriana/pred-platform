@@ -166,16 +166,30 @@ def best_other_model(verdict: models_v2.M3Verdict) -> models_v2.EvaluatedModel |
     return None
 
 
+# Veredictos de un producto que llegó a la comparación final.
+_EVALUATED_VERDICTS = frozenset({"VALIDADO", "EXPLORATORIO"})
+
+
 def product_outcome_sentence(verdict: models_v2.M3Verdict | None) -> str:
     """Frase concluyente sobre el desempeño del campeón frente a la línea base.
 
     Reporte 9.1 ítem 6: los productos peores que la línea base muestran todos sus datos
     sin añadir frases explicativas ni causas especulativas.
     """
-    if verdict is None or verdict.razon_sn is None:
+    if verdict is None or verdict.veredicto not in _EVALUATED_VERDICTS:
         status = describe_status("verdict", verdict.veredicto) if verdict else None
         hint = status.hint.lower() if status and status.hint else "no se pudo evaluar"
         return f"Este producto no se pudo evaluar: {hint}"
+    if verdict.razon_sn is None:
+        # Evaluado, pero sin razón de error calculable: no es un producto sin evaluar.
+        fam = family_label(verdict.familia_campeona)
+        text = f"No se pudo calcular la razón de error de {fam} frente a la línea base."
+        if verdict.dm_significativa and verdict.dm_estadistico is not None:
+            if verdict.dm_estadistico < 0:
+                text += " La prueba confirma que se equivocó menos que ella."
+            elif verdict.dm_estadistico > 0:
+                text += " La prueba confirma que se equivocó más que ella."
+        return text
 
     fam = family_label(verdict.familia_campeona)
     r = verdict.razon_sn

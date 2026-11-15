@@ -43,12 +43,15 @@ from pred_platform.app.datos import error_view, ingest_name, page_meta
 from pred_platform.app.ejecucion import run_resumable
 from pred_platform.app.execution_display import task_rows
 from pred_platform.app.pasos import (
+    DOT_SEGMENTS,
     NEW,
     RunFacts,
     Wizard,
     draft_resume,
     draft_wizard,
+    requested_sku,
     run_wizard,
+    sku_href,
     step_href,
 )
 from pred_platform.app.presentation import (
@@ -718,6 +721,7 @@ def producto_detalle(
     sku_id: str,
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> HTMLResponse:
+    sku_id = requested_sku(sku_id, request.query_params)
     return _producto_detalle_page(request, repository, corrida, sku_id)
 
 
@@ -755,6 +759,7 @@ def sku_detalle(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
 ) -> RedirectResponse:
     params = request.query_params
+    sku_id = requested_sku(sku_id, params)
     wanted = (params.get("ejecucion") or "").strip()
     target = resolve_run_id(repository, wanted) if wanted else _resolve_sku_run(repository, sku_id)
     if target is None and wanted and wanted != LATEST:
@@ -762,12 +767,12 @@ def sku_detalle(
     if target is None:
         target = default_execution(repository)
     quoted_target = quote(target, safe="")
-    quoted_sku = quote(sku_id, safe="")
-    return redirect_with_query(
-        f"/corridas/{quoted_target}/resultados/producto/{quoted_sku}",
-        params.multi_items(),
-        drop=("ejecucion",),
-    )
+    items = [(k, v) for k, v in params.multi_items() if not (k == "producto" and sku_id)]
+    base = f"/corridas/{quoted_target}/resultados/producto"
+    if sku_id in DOT_SEGMENTS:
+        # Un id de solo puntos no cabe en la ruta: viaja en ``producto``.
+        return redirect_with_query(f"{base}/", [("producto", sku_id), *items], drop=("ejecucion",))
+    return redirect_with_query(f"{base}/{quote(sku_id, safe='')}", items, drop=("ejecucion",))
 
 
 def _producto_detalle_page(
@@ -924,6 +929,7 @@ def _producto_detalle_page(
     results_href = "/resultados" + (f"?{urlencode(scope)}" if scope else "")
     list_href = "/resultados?" + (back or urlencode({"vista": "sku", **scope}))
     base = {**scope, **({"volver": back} if back else {})}
+    product_base = f"/corridas/{corrida}/resultados/producto"
 
     reserve = None
     if params.get("reserva") == "1" and m3.run is not None and sku_id in m3.verdicts:
@@ -954,16 +960,9 @@ def _producto_detalle_page(
         family_task_reasons=family_task_reasons,
         with_windows=with_windows,
         reserve=reserve,
-        windows_href=(
-            f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
-            f"?{urlencode({**base, 'ventanas': 1})}"
-        ),
-        reserve_href=(
-            f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
-            f"?{urlencode({**base, 'reserva': 1})}"
-        ),
-        hide_windows_href=f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
-        + (f"?{urlencode(base)}" if base else ""),
+        windows_href=sku_href(product_base, sku_id, urlencode({**base, "ventanas": 1})),
+        reserve_href=sku_href(product_base, sku_id, urlencode({**base, "reserva": 1})),
+        hide_windows_href=sku_href(product_base, sku_id, urlencode(base)),
         topology=selection.topology if selection else None,
         detail_error=detail_error,
         not_found=status == 404,
@@ -998,10 +997,7 @@ def _producto_detalle_page(
         interval=interval_obj,
         interval_error=interval_error,
         m3_hrefs={
-            other.run_id: (
-                f"/corridas/{corrida}/resultados/producto/{quote(sku_id, safe='')}"
-                f"?{urlencode({**base, 'm3': other.run_id})}"
-            )
+            other.run_id: sku_href(product_base, sku_id, urlencode({**base, "m3": other.run_id}))
             for other in m3.others
         },
     )

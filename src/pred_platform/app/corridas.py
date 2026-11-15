@@ -271,7 +271,9 @@ def group_key(status: RunStatus) -> tuple[object, ...] | None:
     run, settings = status.ejecucion, status.settings
     if run is None or settings is None:
         return None
-    return comparison_key(run.ingest_id, settings.model_dump())
+    return comparison_key(
+        run.ingest_id, {**settings.model_dump(), "trials": getattr(status, "trials", None)}
+    )
 
 
 def _thesis_group(

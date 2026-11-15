@@ -1608,15 +1608,17 @@ def test_a_failed_stage_is_named_and_can_be_resumed(
     assert _resume_button(page) == "enabled"
 
 
-def _stopped_in_l2(env: Env, monkeypatch: pytest.MonkeyPatch, message: str) -> TestClient:
-    """A run stopped because its whole L2 stage failed with the engine's ``message``."""
+def _stopped_in_l2(
+    env: Env, monkeypatch: pytest.MonkeyPatch, message: str, stage: str = "L2"
+) -> TestClient:
+    """A run stopped because its whole ``stage`` failed with the engine's ``message``."""
     _scenario(monkeypatch, "stage_fails")
     client = _dal_client(env)
     _launch(client, env)
     env.worker().run_next()
     error = {
         "code": "pipeline.stage_failed",
-        "stage": "L2",
+        "stage": stage,
         "severity": "error",
         "detail": message,
         "retryable": False,
@@ -1644,6 +1646,54 @@ def test_an_l2_failure_that_a_resume_repeats_is_not_offered_again(
     # Resultados reads the same rule: the run is not shown as one that could be resumed.
     assert _run_state_tone(page) == "err"
     assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "err"
+
+
+def test_an_l4_failure_with_no_sku_reaching_the_final_evaluation_is_not_offered_again(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    message = (
+        "ningun SKU llega a M3: 8 SKU excluidos antes de M3 "
+        "(eligibility.fewer_than_two_families, eligibility.no_reserved_observations)"
+    )
+    client = _stopped_in_l2(env, monkeypatch, message, stage="L4")
+    page = client.get("/ejecucion?ejecucion=1").text
+
+    assert 'id="accion-reanudar"' not in page
+    assert "Reanudar no se ofrece: la ejecución fallaría igual." in _text(page)
+    assert "Ningún producto llega a la evaluación final con estos datos y ajustes." in _text(page)
+    assert _run_state_tone(page) == "err"
+    assert _run_state_tone(client.get("/resultados?ejecucion=1").text) == "err"
+
+
+def test_an_l4_failure_of_another_kind_can_still_be_resumed(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = _stopped_in_l2(env, monkeypatch, "MemoryError al evaluar", stage="L4")
+    page = client.get("/ejecucion?ejecucion=1").text
+
+    assert _resume_button(page) == "enabled"
+    assert "fallaría igual" not in page
+
+
+def test_stopping_or_resuming_a_run_that_does_not_exist_says_so(env: Env) -> None:
+    client = _dal_client(env)
+    for action in ("detener", "reanudar"):
+        response = client.post(f"/ejecucion/{action}", data={"ejecucion": "999"})
+
+        assert response.status_code == 404, action
+        assert "No existe la corrida «999»." in response.text, action
+        assert not response.history, action
+
+
+def test_revisar_counts_one_product_in_the_singular(env: Env) -> None:
+    client = _dal_client(env)
+    with closing(sqlite3.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ingestas SET skus = 1")
+
+    text = _text(_review(client, env))
+
+    assert "1 producto ·" in text
+    assert "1 productos" not in text
 
 
 def test_an_l2_failure_of_some_units_can_still_be_resumed(

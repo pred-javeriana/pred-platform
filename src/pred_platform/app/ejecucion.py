@@ -603,19 +603,21 @@ def run_error(info: ErrorInfo | None) -> RunError | None:
     )
 
 
-# Fallas de L2 que dependen solo de la política del motor, de la ingesta y de los ajustes, así
-# que reanudar las repite: la política no da decisiones para una clase, o no quedó ninguna unidad
-# que correr (``_no_results_message`` del motor con 0 unidades).
-_L2_SAME_ON_RESUME = re.compile(r"no produjo decisiones|L2 sin resultados \(0 unidades")
+# Fallas que dependen solo de la política del motor, de la ingesta y de los ajustes, así que
+# reanudar las repite. En L2: la política no da decisiones para una clase, o no quedó ninguna
+# unidad que correr (``_no_results_message`` del motor con 0 unidades). En L4: ningún SKU llega a
+# la evaluación final (ninguno conserva observaciones reservadas).
+_SAME_ON_RESUME = {
+    "L2": re.compile(r"no produjo decisiones|L2 sin resultados \(0 unidades"),
+    "L4": re.compile(r"ningun SKU llega a M3"),
+}
 
 
 def _same_on_resume(error: RunError | None) -> bool:
-    return (
-        error is not None
-        and error.code == "pipeline.stage_failed"
-        and error.stage == "L2"
-        and _L2_SAME_ON_RESUME.search(error.detail or "") is not None
-    )
+    if error is None or error.code != "pipeline.stage_failed":
+        return False
+    pattern = _SAME_ON_RESUME.get(error.stage or "")
+    return pattern is not None and pattern.search(error.detail or "") is not None
 
 
 @dataclass(frozen=True, slots=True)

@@ -475,3 +475,56 @@ def test_el_pronostico_se_lee_con_puntero_y_flechas() -> None:
     client, _ = _client(repo=SeriesRepository())
     page = client.get(f"/resultados/sku/{SKU}").text
     assert re.search(r'<script src="/static/js/charts\.js\?v=\w+" defer></script>', page)
+
+
+class NoRatioRepository(SeriesRepository):
+    """Un producto evaluado cuya razón de error frente a la línea base no se pudo calcular."""
+
+    verdict = "EXPLORATORIO"
+    dm_statistic: float | None = 2.4
+
+    def get_m3_evidence(self, run_id: str, **kwargs: Any) -> models_v2.M3Evidence:
+        doc = super().get_m3_evidence(run_id, **kwargs)
+        update: dict[str, Any] = {"veredicto": self.verdict, "razon_sn": None}
+        if self.dm_statistic is None:
+            update["dm_significativa"] = False
+        else:
+            update.update(dm_estadistico=self.dm_statistic, dm_significativa=True)
+        return doc.model_copy(
+            update={"items": [row.model_copy(update=update) for row in doc.items]}
+        )
+
+
+@pytest.mark.parametrize(
+    ("statistic", "reading"),
+    [
+        (2.4, "La prueba confirma que se equivocó más que ella."),
+        (-2.4, "La prueba confirma que se equivocó menos que ella."),
+        (None, ""),
+    ],
+)
+def test_un_producto_evaluado_sin_r_no_dice_que_no_se_pudo_evaluar(
+    statistic: float | None, reading: str
+) -> None:
+    repo = NoRatioRepository()
+    repo.dm_statistic = statistic
+    client, _ = _client(repo=repo)
+
+    text = _text(client.get(f"/resultados/sku/{SKU}?m3={RUN}", follow_redirects=True).text)
+
+    assert "No se pudo calcular la razón de error" in text
+    assert "frente a la línea base." in text
+    assert reading in text
+    assert "no se pudo evaluar" not in text
+
+
+@pytest.mark.parametrize("verdict", ["NO_EVALUABLE", "EVIDENCIA_INSUFICIENTE", "FALLO_TECNICO"])
+def test_un_producto_sin_evaluar_sigue_diciendo_que_no_se_pudo_evaluar(verdict: str) -> None:
+    repo = NoRatioRepository()
+    repo.verdict = verdict
+    client, _ = _client(repo=repo)
+
+    text = _text(client.get(f"/resultados/sku/{SKU}?m3={RUN}", follow_redirects=True).text)
+
+    assert "Este producto no se pudo evaluar" in text
+    assert "No se pudo calcular la razón de error" not in text
