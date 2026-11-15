@@ -13,6 +13,13 @@ from tests.test_worker import Env, _escribir_progreso
 from tests.test_worker import env as env  # noqa: F401
 
 
+def _finished_with_failures(env: Env) -> None:
+    """The worker settled the run: its engine is reaped, so it keeps no process."""
+    _set_run(env, "completada_con_fallos", None)
+    with closing(dal.connect(env.db)) as conn, conn:
+        conn.execute("UPDATE ejecuciones SET pid = NULL")
+
+
 @pytest.mark.parametrize("worker", ["off", "embedded"])
 def test_queued_resume_waits_for_new_stage_timings_without_deleting_logs(
     env: Env, worker: str
@@ -45,7 +52,7 @@ def test_queued_resume_waits_for_new_stage_timings_without_deleting_logs(
             finished_at="2026-11-04T20:02:00Z",
             error={"code": "model.fit_failed"},
         )
-    _set_run(env, "completada_con_fallos", None)
+    _finished_with_failures(env)
     path = env.settings.data_root / "runs" / run.run_id / "progreso.jsonl"
     artifacts = path.read_bytes()
     client = _dal_client(env, worker=worker)
@@ -104,7 +111,7 @@ def _completed_with_failures(env: Env, *, worker: str = "off"):
             },
         )
     _escribir_progreso(env, run.run_id, {"event": "run_finished", "state": "completed"})
-    _set_run(env, "completada_con_fallos", None)
+    _finished_with_failures(env)
     return _dal_client(env, worker=worker), run
 
 
@@ -190,7 +197,7 @@ def test_stages_after_a_failed_stage_that_never_ran_do_not_show_as_done(
                 "t": "2026-11-04T20:02:00Z",
             },
         )
-    _set_run(env, "completada_con_fallos", None)
+    _finished_with_failures(env)
     for route in ("/corridas/1/ejecucion", "/ejecucion/estado?ejecucion=1"):
         body = client.get(route).text
         states = {row["code"]: row["state"] for row in _snapshot(body)["stages"]}

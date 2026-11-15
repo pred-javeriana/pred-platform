@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import warnings
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -15,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from pred_platform.app.main import DatabaseUnavailable, create_app
 from pred_platform.config import Settings
-from pred_platform.dal.migrate import SchemaTooNew, load_migrations
+from pred_platform.dal.migrate import MigrationError, SchemaTooNew, load_migrations
 from pred_platform.data.deps import get_repository
 from pred_platform.data.repository import DataRepository
 
@@ -31,6 +32,30 @@ def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_openapi_gives_each_health_method_its_own_operation_id(client: TestClient) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # FastAPI warns of a duplicate operationId
+        spec = client.get("/openapi.json").json()
+
+    ids = [op["operationId"] for path in spec["paths"].values() for op in path.values()]
+    assert sorted(spec["paths"]["/health"]) == ["get", "head"]
+    assert len(ids) == len(set(ids))
+
+
+def test_a_database_file_that_is_no_sqlite_stops_startup_naming_it(tmp_path: Path) -> None:
+    db = tmp_path / "pred.db"
+    db.write_bytes(b"basura\n")
+
+    with (
+        pytest.raises(MigrationError, match=f"{db} is not a SQLite database") as raised,
+        TestClient(create_app(Settings(data_root=tmp_path, db_path=db))),
+    ):
+        pass
+
+    assert "PRED_DB_PATH" in str(raised.value)
+    assert db.read_bytes() == b"basura\n"
 
 
 def test_health_answers_head_without_body(client: TestClient) -> None:

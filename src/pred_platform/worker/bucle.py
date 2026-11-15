@@ -55,6 +55,11 @@ def _unimported(error: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _operator_stop(state: str, error: dict[str, Any] | None) -> bool:
+    """Whether the run's state is the operator's stop (``request_stop``)."""
+    return state == "detenida" and (error or {}).get("code") == "platform.run_stopped"
+
+
 class Worker:
     """Runs queued engine runs for one database."""
 
@@ -189,6 +194,11 @@ class Worker:
     def recover(self) -> None:
         """Queue again the runs left ``ejecutando`` by a worker that is gone.
 
+        A run the operator stopped while no worker followed it keeps its engine process until a
+        worker reaps it: here that engine is stopped like any orphan, and the stop is settled as
+        the follower would have (process released, open tasks closed with the stop's error),
+        without queueing the run again.
+
         Only the worker that holds the database lock may call it: no other worker is alive to
         own those runs, so an engine still running for one of them is an orphan and is stopped.
         A live engine of another database is left alone with its run: this database is a copy
@@ -232,6 +242,17 @@ class Worker:
                             continue
                 if dal.requeue(conn, run.id):
                     _logger.info("Corrida %s retomada tras una caída", run.run_id)
+                elif _operator_stop(*dal.run_estado(conn, run.id)):
+                    # Stopped before or during this recovery: its engine is gone, so settle it.
+                    stop_error = run_stopped_error()
+                    dal.stop_claimed(
+                        conn,
+                        run.id,
+                        intento=run.intento,
+                        error=stop_error,
+                        unimported=_unimported(stop_error),
+                    )
+                    _logger.info("Corrida %s: se confirmó la parada del operador", run.run_id)
 
     def run_next(self, stop: threading.Event | None = None) -> bool:
         """Claim and run one pending run to the end. Returns whether there was one.
@@ -310,14 +331,24 @@ class Worker:
         return True
 
     # ------------------------------------------------------------------- one run
+    def _stop_before_launch(
+        self, conn: sqlite3.Connection, run: Ejecucion, error: dict[str, Any]
+    ) -> None:
+        """Stop a claimed run whose engine never started, closing its open tasks with ``error``.
+
+        A resumed run already has its unfinished tasks back in ``pendiente``; no engine will run
+        them in this attempt, so they close like those of any other stop.
+        """
+        dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
+        dal.finish_run(conn, run.id, estado="detenida", error=error)
+
     def _execute(self, conn: sqlite3.Connection, run: Ejecucion, stop: threading.Event) -> None:
         corte = run.t_star
         if run.ruta_parquet is None or corte is None:
-            dal.finish_run(
+            self._stop_before_launch(
                 conn,
-                run.id,
-                estado="detenida",
-                error=platform_error(
+                run,
+                platform_error(
                     "platform.input_missing",
                     "La ingesta no tiene Parquet publicado ni corte t*; vuelva a ingerirla.",
                 ),
@@ -327,11 +358,8 @@ class Worker:
         folder = engine.run_dir(self.settings, run)
         log_path = folder / "motor.log"
         if not parquet.is_file():
-            dal.finish_run(
-                conn,
-                run.id,
-                estado="detenida",
-                error=platform_error("platform.input_missing", f"No existe {parquet}."),
+            self._stop_before_launch(
+                conn, run, platform_error("platform.input_missing", f"No existe {parquet}.")
             )
             return
 
@@ -349,24 +377,16 @@ class Worker:
             process = self._launch(command, settings=self.settings, log_path=log_path)
         except engine.OrigenNoReal as exc:
             # Otra configuración no la vuelve real: la siguiente lanzada abre una corrida nueva.
-            error = platform_error("run.incompatible_config", str(exc))
-            dal.close_open_tasks(conn, run.id, interrupted=error, skipped=error)
-            dal.finish_run(conn, run.id, estado="detenida", error=error)
+            self._stop_before_launch(conn, run, platform_error("run.incompatible_config", str(exc)))
             return
         except ValueError as exc:
-            dal.finish_run(
-                conn,
-                run.id,
-                estado="detenida",
-                error=platform_error("pipeline.stage_failed", str(exc)),
-            )
+            self._stop_before_launch(conn, run, platform_error("pipeline.stage_failed", str(exc)))
             return
         except OSError as exc:
-            dal.finish_run(
+            self._stop_before_launch(
                 conn,
-                run.id,
-                estado="detenida",
-                error=platform_error(
+                run,
+                platform_error(
                     "platform.engine_unavailable",
                     f"No se pudo lanzar el motor ({' '.join(self.settings.engine_command)}): {exc}",
                     retryable=True,
@@ -377,12 +397,21 @@ class Worker:
         stopped = False
         stopped_by_user: dict[str, Any] | None = None
         try:
-            dal.set_launch(
+            if not dal.set_launch(
                 conn,
                 run.id,
+                intento=run.intento,
                 pid=process.pid,
                 ruta_corrida=folder.relative_to(self.settings.data_root.resolve()).as_posix(),
-            )
+            ):
+                # The operator stopped and resumed the run before its engine was recorded: this
+                # attempt no longer holds it, so its engine stops and the run waits in the queue.
+                engine.terminate(process.pid)
+                process.wait()
+                _logger.info(
+                    "Corrida %s: se reanudó antes de arrancar; vuelve a la cola", run.run_id
+                )
+                return
             while process.poll() is None:
                 follower.poll()
                 if stop.is_set():
@@ -390,7 +419,7 @@ class Worker:
                     engine.terminate(process.pid)
                     break
                 state, error = dal.run_estado(conn, run.id)
-                if state == "detenida" and error and error.get("code") == "platform.run_stopped":
+                if _operator_stop(state, error):
                     # The operator stopped the run from the interface (`request_stop`).
                     stopped_by_user = error
                     engine.terminate(process.pid)

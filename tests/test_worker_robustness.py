@@ -692,7 +692,9 @@ def test_recovery_leaves_alone_a_group_whose_processes_name_different_databases(
         with closing(dal.connect(env.db)) as conn:
             run = dal.claim_pending(conn)
             assert run is not None
-            dal.set_launch(conn, run.id, pid=leader, ruta_corrida=f"runs/{run.run_id}")
+            dal.set_launch(
+                conn, run.id, intento=run.intento, pid=leader, ruta_corrida=f"runs/{run.run_id}"
+            )
 
         Worker(env.settings).recover()
 
@@ -767,7 +769,13 @@ def test_recovery_keeps_the_run_of_an_engine_that_outlives_its_stop(
         with closing(dal.connect(env.db)) as conn:
             run = dal.claim_pending(conn)
             assert run is not None
-            dal.set_launch(conn, run.id, pid=process.pid, ruta_corrida=f"runs/{run.run_id}")
+            dal.set_launch(
+                conn,
+                run.id,
+                intento=run.intento,
+                pid=process.pid,
+                ruta_corrida=f"runs/{run.run_id}",
+            )
         launched: list[list[str]] = []
 
         def launcher(command, **kwargs):

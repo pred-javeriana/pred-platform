@@ -168,3 +168,21 @@ def test_up_refuses_a_port_in_use_and_names_another(workdir: Path) -> None:
     assert done.returncode == 1
     assert f"make up PORT={port + 1}" in done.stderr
     assert not (workdir / "data" / "servidor.json").exists()
+
+
+def test_up_names_a_database_file_that_is_no_sqlite_in_one_line(workdir: Path) -> None:
+    data = workdir / "data"
+    data.mkdir()
+    (data / "pred.db").write_bytes(b"basura\n")
+    env = {"PRED_DATA_ROOT": str(data), "PRED_DATA_SOURCE": "dal", "PRED_WORKER": "off"}
+
+    done = _run(workdir, "up", "--port", str(_free_port()), **env)
+
+    assert done.returncode == 1
+    assert done.stderr.splitlines() == [
+        f"error: el servidor terminó al iniciar: {data / 'pred.db'} is not a SQLite database "
+        "(file is not a database); check PRED_DB_PATH and PRED_DATA_ROOT, or restore its backup "
+        "(<name>.antes-de-vNNNN.bak). Nothing was changed"
+    ]
+    assert not (data / "servidor.json").exists()
+    assert (data / "pred.db").read_bytes() == b"basura\n"

@@ -56,6 +56,21 @@ class RunRequestError(Exception):
     """The run cannot be created (unknown or unaccepted ingestion)."""
 
 
+class EngineNotReaped(RunRequestError):
+    """The run cannot be resumed yet: the engine of its last attempt may still be running."""
+
+    def __init__(self, estado: str) -> None:
+        why = (
+            "todavía se está deteniendo: el worker aún no confirma que su motor terminó"
+            if estado == "detenida"
+            else "todavía se está cerrando: el worker aún no importa el resultado de su motor"
+        )
+        super().__init__(
+            f"La ejecución {why}. Vuelva a reanudarla en unos segundos; si no hay un worker en "
+            "marcha, arránquelo primero."
+        )
+
+
 def _row_to_run(row: tuple[Any, ...]) -> Ejecucion:
     return Ejecucion(
         id=row[0],
@@ -91,6 +106,36 @@ def _unimported(table: str = "") -> str:
         f"({t}pid IS NOT NULL AND ({t}estado IN ('completada', 'completada_con_fallos') OR "
         f"({t}estado = 'detenida' AND "
         f"json_extract({t}error_json, '$.code') = 'platform.result_import_failed')))"
+    )
+
+
+def _unconfirmed_stop(table: str = "") -> str:
+    """SQL condition of a run the operator stopped whose engine the worker has not reaped yet.
+
+    ``request_stop`` keeps the recorded process of a running run; the worker that follows it, or
+    the next worker start when none does, stops that engine and only then releases the process
+    (``stop_claimed``). Until then the run is still owned: it is not resumed, and recovery finds it.
+    """
+    t = f"{table}." if table else ""
+    return (
+        f"({t}estado = 'detenida' AND {t}pid IS NOT NULL AND "
+        f"json_extract({t}error_json, '$.code') = 'platform.run_stopped')"
+    )
+
+
+def _engine_not_reaped(table: str = "") -> str:
+    """SQL condition of a run whose recorded engine no worker has reaped yet.
+
+    Two cases: an operator's stop not confirmed (``_unconfirmed_stop``), and a run the engine
+    published before the worker imported its files (the engine may still be writing them and
+    exiting). A worker settles both: the one following the engine, or the next one that starts.
+    A ``platform.result_import_failed`` run keeps its process only as the mark to import again;
+    its engine was reaped before the import.
+    """
+    t = f"{table}." if table else ""
+    return (
+        f"({_unconfirmed_stop(table)} OR ({t}pid IS NOT NULL AND "
+        f"{t}estado IN ('completada', 'completada_con_fallos')))"
     )
 
 
@@ -180,6 +225,9 @@ def current_run_id(conn: sqlite3.Connection, run_id: str) -> str:
 def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
     """Queue again a run that was stopped or ended with failures (inside a transaction).
 
+    A run whose engine is not reaped yet (``_engine_not_reaped``) is not queued: clearing its
+    process would let a second engine start beside one that may still run.
+
     The tasks that ended badly (``fallida`` or ``no_ejecutable``, including the ones the stop or
     the failure closed) go back to ``pendiente``: the engine starts them again, and until it does
     the screen must not show them as finished. Successful tasks keep their result, and the ones
@@ -191,7 +239,8 @@ def _resume(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
             "UPDATE ejecuciones SET estado = 'pendiente', error_json = NULL, "
             "finalizada_en = NULL, pid = NULL WHERE id = ? "
             "AND estado IN ('detenida', 'completada_con_fallos') "
-            "AND COALESCE(json_extract(error_json, '$.code'), '') != 'run.incompatible_config'",
+            "AND COALESCE(json_extract(error_json, '$.code'), '') != 'run.incompatible_config' "
+            f"AND NOT {_engine_not_reaped()}",
             (ejecucion_id,),
         ).rowcount
         == 1
@@ -210,21 +259,33 @@ def resume_run(conn: sqlite3.Connection, ejecucion_id: int) -> bool:
 
     It keeps its parameters and engine ``run_id``, so the engine reuses its stored HPO studies and
     the same task rows are updated. Returns whether the run was queued.
+
+    Raises:
+        EngineNotReaped: the engine of its last attempt is not reaped yet.
     """
     with conn:
         _begin_immediate(conn)
-        return _resume(conn, ejecucion_id)
+        if _resume(conn, ejecucion_id):
+            return True
+        owned = conn.execute(
+            f"SELECT estado FROM ejecuciones WHERE id = ? AND {_engine_not_reaped()}",
+            (ejecucion_id,),
+        ).fetchone()
+    if owned is not None:
+        raise EngineNotReaped(str(owned[0]))
+    return False
 
 
 def request_stop(conn: sqlite3.Connection, ejecucion_id: int, *, error: dict[str, Any]) -> bool:
     """Ask a run that is queued or running to stop. Returns whether it was still in progress.
 
-    The run becomes ``detenida`` right away. A running one has a worker following its engine
-    process: the worker sees the new state on its next look (``run_estado``), terminates the
-    process and closes the open tasks with the same ``error``. A queued one has no worker, and a
-    retry keeps the tasks it was resumed with, so they are closed here, in the same step, with the
-    same ``error``. A run that has just finished is left alone (the ``WHERE`` makes the check and
-    the change one step).
+    The run becomes ``detenida`` right away. A running one keeps its engine process: the worker
+    following it sees the new state on its next look (``run_estado``), terminates the process and
+    closes the open tasks with the same ``error``; with no worker following it, the next worker
+    start does the same (``interrupted_runs``). Until then it cannot be resumed. A queued one has
+    no worker, and a retry keeps the tasks it was resumed with, so they are closed here, in the
+    same step, with the same ``error``. A run that has just finished is left alone (the ``WHERE``
+    makes the check and the change one step).
     """
     with conn:
         _begin_immediate(conn)
@@ -273,9 +334,11 @@ def claim_pending(conn: sqlite3.Connection) -> Ejecucion | None:
 
 
 def interrupted_runs(conn: sqlite3.Connection) -> list[Ejecucion]:
-    """Claims left unfinished, including published runs whose final files are not imported."""
+    """Claims left unfinished: runs left ``ejecutando``, published runs whose final files are not
+    imported, and operator stops whose engine nobody reaped (``_unconfirmed_stop``)."""
     rows = conn.execute(
-        f"{_SELECT_RUN} WHERE e.estado = 'ejecutando' OR {_unimported('e')} ORDER BY e.id"
+        f"{_SELECT_RUN} WHERE e.estado = 'ejecutando' OR {_unimported('e')} "
+        f"OR {_unconfirmed_stop('e')} ORDER BY e.id"
     ).fetchall()
     return [_row_to_run(r) for r in rows]
 
@@ -353,11 +416,23 @@ def stop_claimed(
         return published
 
 
-def set_launch(conn: sqlite3.Connection, ejecucion_id: int, *, pid: int, ruta_corrida: str) -> None:
+def set_launch(
+    conn: sqlite3.Connection, ejecucion_id: int, *, intento: int, pid: int, ruta_corrida: str
+) -> bool:
+    """Record the engine of the claim ``intento``. Returns whether that claim still holds the run.
+
+    It holds it while it is ``ejecutando``, or ``detenida`` by the operator (the worker then stops
+    the engine it records). A run the operator stopped and resumed before this, back in the queue,
+    is no longer this claim's.
+    """
     with conn:
-        conn.execute(
-            "UPDATE ejecuciones SET pid = ?, ruta_corrida = ? WHERE id = ?",
-            (pid, ruta_corrida, ejecucion_id),
+        return (
+            conn.execute(
+                "UPDATE ejecuciones SET pid = ?, ruta_corrida = ? WHERE id = ? AND intento = ? "
+                "AND estado IN ('ejecutando', 'detenida')",
+                (pid, ruta_corrida, ejecucion_id, intento),
+            ).rowcount
+            == 1
         )
 
 

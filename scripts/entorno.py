@@ -204,6 +204,26 @@ def _log_tail(settings: Settings, lines: int = 15) -> str:
     return "\n".join(text.splitlines()[-lines:])
 
 
+def _startup_error(settings: Settings, start: int) -> str:
+    """Why the server stopped at startup: the error its log ends with since ``start``, or the
+    log's tail when it ended some other way. A startup error (a database that cannot be opened or
+    migrated) is the last line of the traceback uvicorn logs before "Application startup failed".
+    """
+    with (settings.data_root / LOG_FILE).open("rb") as log:
+        log.seek(start)
+        lines = log.read().decode("utf-8", errors="replace").splitlines()
+    failed = [i for i, line in enumerate(lines) if "Application startup failed" in line]
+    if failed:
+        for line in reversed(lines[: failed[-1]]):
+            if line.strip():
+                # "package.module.Error: message": the message says what failed and what to do.
+                name, separator, message = line.partition(": ")
+                if separator and not line[0].isspace() and " " not in name:
+                    return message
+                break
+    return "\n" + _log_tail(settings)
+
+
 def _stop(pid: int) -> bool:
     try:
         process = psutil.Process(pid)
@@ -233,6 +253,7 @@ def up(settings: Settings, port: int) -> int:
     settings.data_root.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, "-m", "uvicorn", APP, "--host", HOST, "--port", str(port)]
     with (settings.data_root / LOG_FILE).open("ab") as log:
+        start = log.tell()
         server = subprocess.Popen(  # noqa: S603 - fixed command line
             command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True
         )
@@ -242,7 +263,10 @@ def up(settings: Settings, port: int) -> int:
     while time.monotonic() < deadline:
         if server.poll() is not None:
             _state_path(settings).unlink(missing_ok=True)
-            print(f"error: el servidor terminó al iniciar:\n{_log_tail(settings)}", file=sys.stderr)
+            print(
+                f"error: el servidor terminó al iniciar: {_startup_error(settings, start)}",
+                file=sys.stderr,
+            )
             return 1
         if _healthy(port):
             print(f"PRED está listo: {_url(port)}")

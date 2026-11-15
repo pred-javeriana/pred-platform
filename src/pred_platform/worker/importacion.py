@@ -103,25 +103,35 @@ def finalize(
         incompatible = INCOMPATIBLE_RUN in log_tail(log_path)
         # La salida cruda del motor queda en motor.log; el detalle que ve la página es una frase.
         code = "" if returncode is None else f" con código {returncode}"
+        cause = (
+            f"el motor rechazó el run_id ({INCOMPATIBLE_RUN})"
+            if incompatible
+            else f"el motor terminó{code} sin publicar corrida.json de este intento"
+        )
         detail = (
             f"error: {INCOMPATIBLE_RUN}"
             if incompatible
             else f"El motor terminó{code} sin publicar corrida.json de este intento. "
             f"Su salida está en {log_path.name}, en la carpeta de la corrida."
         )
-        dal.close_open_tasks(conn, run.id, interrupted=interrupted, skipped=skipped)
-        dal.finish_run(
+
+        # Un motor que murió sin publicar (OOM, kill, caída) se puede reanudar: el motor
+        # retoma sus unidades confirmadas. Solo una identidad incompatible fallaría igual.
+        def stopped(text: str) -> dict[str, Any]:
+            return platform_error(
+                "run.incompatible_config" if incompatible else "platform.artifact_missing",
+                text,
+                retryable=not incompatible,
+            )
+
+        # Ninguna etapa falló: las tareas abiertas dicen lo mismo que la corrida.
+        dal.close_open_tasks(
             conn,
             run.id,
-            estado="detenida",
-            # Un motor que murió sin publicar (OOM, kill, caída) se puede reanudar: el motor
-            # retoma sus unidades confirmadas. Solo una identidad incompatible fallaría igual.
-            error=platform_error(
-                "run.incompatible_config" if incompatible else "platform.artifact_missing",
-                detail,
-                retryable=not incompatible,
-            ),
+            interrupted=stopped(f"La unidad quedó a medias: {cause}."),
+            skipped=stopped(f"La unidad no llegó a empezar: {cause}."),
         )
+        dal.finish_run(conn, run.id, estado="detenida", error=stopped(detail))
         return "detenida"
 
     try:
