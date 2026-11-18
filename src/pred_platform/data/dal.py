@@ -205,25 +205,9 @@ class DalRepository(M3DalSource):
             )
         header = json.loads(detail.diagnostico_json) if detail.diagnostico_json else None
         error = json.loads(detail.error_json) if detail.error_json else None
-        excluded_count = 0
-        exclusions: list[models.IngestExclusion] = []
-        if self.data_root is not None:
-            raw_path = self.data_root / "ingestas" / f"{ingest_id}.json"
-            if raw_path.is_file():
-                try:
-                    data = json.loads(raw_path.read_text(encoding="utf-8"))
-                    if isinstance(data, dict):
-                        raw_count = data.get("excluded_count")
-                        excluded_count = int(raw_count) if raw_count is not None else 0
-                        raw_exclusions = data.get("exclusions") or []
-                        exclusions = [
-                            models.IngestExclusion(**item)
-                            for item in raw_exclusions
-                            if isinstance(item, dict)
-                        ]
-                except (OSError, ValueError, TypeError):
-                    excluded_count = 0
-                    exclusions = []
+        exclusions_raw = json.loads(detail.exclusiones_json) if detail.exclusiones_json else []
+        exclusions = [models.IngestExclusion(**item) for item in exclusions_raw]
+        excluded_count = detail.excluded_count or 0
         return models.IngestReport(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ingest_id=detail.sha256,

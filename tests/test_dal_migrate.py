@@ -125,7 +125,7 @@ def test_la_migracion_0011_conserva_las_tareas_y_admite_finalizo_m2(tmp_path: Pa
         conn.commit()
         antes = conn.execute("SELECT * FROM tareas").fetchall()
 
-    assert migrate(db).applied == (12,)
+    assert migrate(db, load_migrations()[:12]).applied == (12,)
 
     with closing(sqlite3.connect(db)) as conn:
         assert conn.execute("SELECT * FROM tareas").fetchall() == antes
@@ -134,6 +134,34 @@ def test_la_migracion_0011_conserva_las_tareas_y_admite_finalizo_m2(tmp_path: Pa
             conn.execute("UPDATE tareas SET estado = 'inventado' WHERE id = 7")
         indices = {fila[1] for fila in conn.execute("PRAGMA index_list(tareas)")}
         assert "ix_tareas_ejecucion_estado" in indices
+
+
+def test_la_migracion_0013_agrega_columnas_de_exclusiones(tmp_path: Path) -> None:
+    db = tmp_path / "pred.db"
+    migrate(db, load_migrations()[:12])
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "INSERT INTO ingestas (id, sha256, nombre_archivo, filas, skus) "
+            "VALUES (1, 'a', 'v.csv', 1, 1)"
+        )
+        conn.commit()
+
+    assert migrate(db, load_migrations()[:13]).applied == (13,)
+
+    with closing(sqlite3.connect(db)) as conn:
+        row = conn.execute(
+            "SELECT excluded_count, exclusiones_json FROM ingestas WHERE id = 1"
+        ).fetchone()
+        assert row == (None, None)
+        conn.execute(
+            "UPDATE ingestas SET excluded_count = 1, exclusiones_json = ? WHERE id = 1",
+            ('[{"sku_id": "1368480", "cause": "corte"}]',),
+        )
+        conn.commit()
+        row2 = conn.execute(
+            "SELECT excluded_count, exclusiones_json FROM ingestas WHERE id = 1"
+        ).fetchone()
+        assert row2 == (1, '[{"sku_id": "1368480", "cause": "corte"}]')
 
 
 # ----------------------------------------------------------------------- legacy database

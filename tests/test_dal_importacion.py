@@ -83,6 +83,22 @@ def test_an_accepted_ingestion_fills_the_ingestion_and_its_series(tmp_path: Path
     assert _rows(db, "SELECT COUNT(*) FROM bitacora_calidad") == [(0,)]
 
 
+def test_an_accepted_report_with_exclusions_persists_them(tmp_path: Path, db: Path) -> None:
+    _place(
+        tmp_path,
+        "accepted",
+        excluded_count=1,
+        exclusions=[{"sku_id": "1368480", "cause": "lanzado despues del corte"}],
+    )
+
+    result = import_reports(db, tmp_path)
+
+    assert (result.imported, result.failed) == (1, ())
+    (row,) = _rows(db, "SELECT excluded_count, exclusiones_json FROM ingestas")
+    assert row[0] == 1
+    assert json.loads(row[1]) == [{"sku_id": "1368480", "cause": "lanzado despues del corte"}]
+
+
 def test_importing_twice_leaves_the_same_rows(tmp_path: Path, db: Path) -> None:
     _place(tmp_path, "accepted")
     import_reports(db, tmp_path)
@@ -223,6 +239,12 @@ def test_a_repeated_sku_is_rejected(tmp_path: Path, db: Path) -> None:
     data["topology"]["metrics"].append(dict(data["topology"]["metrics"][0]))
     path = _place(tmp_path, "accepted", topology=data["topology"])
     assert "repite un SKU" in str(_failure(tmp_path, db, path))
+
+
+def test_an_invalid_exclusion_is_rejected_at_import(tmp_path: Path, db: Path) -> None:
+    path = _place(tmp_path, "accepted", exclusions=[{"sku_id": "123"}])
+    failure = _failure(tmp_path, db, path)
+    assert "cause" in str(failure)
 
 
 def test_an_accepted_report_without_topology_is_rejected(tmp_path: Path, db: Path) -> None:
