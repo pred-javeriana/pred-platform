@@ -106,6 +106,28 @@ def test_the_accepted_report_rebuilds_from_the_dal(repo: DalRepository) -> None:
     _conforms("ingest_report", report)
 
 
+def test_the_accepted_report_preserves_exclusions_from_file(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    _place(root, "accepted")
+    db = tmp_path / "pred.db"
+    create_db(db).close()
+    import_reports(db, root)
+    repo = DalRepository(db, root)
+
+    report_file = root / "ingestas" / f"{ACCEPTED}.json"
+    data = json.loads(report_file.read_text(encoding="utf-8"))
+    data["excluded_count"] = 1
+    data["exclusions"] = [{"sku_id": "1368480", "cause": "lanzado despues del corte"}]
+    report_file.write_text(json.dumps(data), encoding="utf-8")
+
+    report = repo.get_ingest_report(ACCEPTED)
+    assert report.excluded_count == 1
+    assert len(report.exclusions) == 1
+    assert report.exclusions[0].sku_id == "1368480"
+    assert report.exclusions[0].cause == "lanzado despues del corte"
+    _conforms("ingest_report", report)
+
+
 def test_the_rejected_report_keeps_the_actionable_header_diagnostic(repo: DalRepository) -> None:
     report = repo.get_ingest_report(REJECTED)
 

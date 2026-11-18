@@ -176,6 +176,41 @@ def test_accepted_upload_delegates_and_exposes_ingest_id(tmp_path: Path) -> None
     assert "Continuar a Ajustes" in html
 
 
+def test_upload_with_exclusions_shows_dropped_products_and_diagnostico_list(
+    tmp_path: Path,
+) -> None:
+    client, _ = _client(tmp_path, "normal")
+    response = client.post("/datos/cargar", files={"archivo": _CSV}, follow_redirects=False)
+    assert response.status_code == 303
+    html = client.get(response.headers["location"]).text
+    assert "1 producto quedó fuera: lanzado despues del corte" in html
+    assert "Productos que quedaron fuera" in html
+    assert "1368480" in html
+    assert "lanzado despues del corte" in html
+
+
+def test_upload_without_exclusions_shows_no_dropped_products_line(tmp_path: Path) -> None:
+    client, repo = _client(tmp_path, "normal")
+    orig_submit = repo.submit_ingest
+    orig_get = repo.get_ingest_report
+
+    def clean_report(report: models.IngestReport) -> models.IngestReport:
+        return report.model_copy(update={"excluded_count": 0, "exclusions": []})
+
+    repo.submit_ingest = lambda file_name, content, **kw: clean_report(  # type: ignore[assignment]
+        orig_submit(file_name, content, **kw)
+    )
+    repo.get_ingest_report = lambda ingest_id: clean_report(orig_get(ingest_id))  # type: ignore[assignment]
+
+    response = client.post("/datos/cargar", files={"archivo": _CSV}, follow_redirects=False)
+    assert response.status_code == 303
+    html = client.get(response.headers["location"]).text
+    assert "quedó fuera" not in html
+    assert "quedaron fuera" not in html
+    assert "Productos que quedaron fuera" not in html
+    assert "1368480" not in html
+
+
 def test_rejected_history_shows_actionable_diagnosis_without_topology(tmp_path: Path) -> None:
     client, repo = _client(tmp_path, "normal")
     html = client.get(f"/datos?ingest_id={REJECTED}").text
