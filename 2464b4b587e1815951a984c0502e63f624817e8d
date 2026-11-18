@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "summary": "Runs the existing platform integration case against current engine main in CI.",
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "summary": "Adds an independent real-engine integration job.",
+      "annotations": [
+        {
+          "newRange": [
+            110,
+            156
+          ],
+          "summary": "The integration job rejects skipped tests and records the engine revision.",
+          "rationale": "Pytest exits successfully when the engine is missing, so the job checks the JUnit report. Hosted CI passed all 11 cases in 25.03 seconds before rebase. The guard rejected the local missing-engine run. CI on the rebased commit remains to be checked.",
+          "author": "fm/pred-ci-real-engine"
+        }
+      ]
+    }
+  ]
+}
