@@ -228,4 +228,7 @@ def test_the_summary_of_three_published_seeds_reads_each_run_and_evaluation_once
     assert calls.count("get_run_status") == 3
     assert calls.count("list_m3_runs") == 4  # las publicadas, la abierta y una por semilla
     assert calls.count("get_m3_run") == 1  # la evaluación de la corrida abierta
-    assert len(reads.statements) <= 159, len(reads.statements)
+    # El RMSE mediano por clase y familia (cartera de M3) se lee una vez para el cuadro resumen:
+    # una lectura nueva de 9 sentencias. Antes de mostrar el RMSE: 159 sentencias.
+    assert reads.count("name = 'm3_cartera'") == 1, reads
+    assert len(reads.statements) <= 168, len(reads.statements)

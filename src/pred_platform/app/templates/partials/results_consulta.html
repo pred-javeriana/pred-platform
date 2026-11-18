@@ -60,9 +60,9 @@
   {% endif %}
   {% if evidence.items %}{{ verdict_legend() }}{% endif %}
   {{ key([('dot', 'r de la campeona; el color indica el resultado de la prueba'), ('interval', 'intervalo de r sin ajuste BH'), ('reference', '1 = línea base; escala logarítmica de 0,4 a 2,5')]) }}
-  <p class="pred-meta">El intervalo de r corresponde a la prueba sin ajuste BH. La prueba y el p ajustado se muestran aparte; un intervalo bajo 1 no equivale a una mejora verificada tras BH.</p>
+  <p class="pred-meta">El intervalo de r corresponde a la prueba sin ajuste BH. La prueba y el p ajustado se muestran aparte; un intervalo bajo 1 no equivale a una mejora verificada tras BH. RMSE: el error del modelo campeón y el de la línea base en el bloque de prueba, en unidades de demanda; r es su cociente.</p>
   {% if product_intervals_error %}<p class="pred-note">No fue posible leer los intervalos de r: {{ product_intervals_error }}</p>{% endif %}
-  {{ table_start(["Producto", "Tipo", "Modelo campeón", "Veredicto", "Razón de error frente a la línea base", "r", "Ventanas de prueba", "Prueba"], "Veredictos publicados") }}
+  {{ table_start(["Producto", "Tipo", "Modelo campeón", "Veredicto", "Razón de error frente a la línea base", "r", "RMSE", "Ventanas de prueba", "Prueba"], "Veredictos publicados") }}
   {% if evidence.items %}
     {% for row in evidence.items %}
     <tr>
@@ -73,6 +73,7 @@
       <td class="pred-verdict-cell">{{ status_indicator(describe_status("verdict", row.veredicto)) }}</td>
       <td>{{ ratio_svgs.get(row.sku, '') | safe }}</td>
       <td class="num"{% if row.razon_sn is not none %} title="{{ exact_text(row.razon_sn) }}"{% endif %}>{{ ratio_text(row.razon_sn) }}{% set interval = product_intervals.get(row.sku) %}{% if interval %}<span class="pred-subvalue" title="{{ r_interval_text(interval.inferior, interval.superior, interval.inferior_cola, exact=true) }}">{{ r_interval_text(interval.inferior, interval.superior, interval.inferior_cola) }}</span>{% else %}<span class="pred-subvalue">Intervalo no publicado</span>{% endif %}</td>
+      {% set rmse = product_errors.champion(row) %}{% set rmse_base = product_errors.baseline(row) %}<td class="num"{% if rmse is not none %} title="{{ exact_text(rmse) }}"{% endif %}>{% if product_errors.unread %}No se pudo leer{% else %}{{ format_decimal(rmse, 3) if rmse is not none else '—' }}<span class="pred-subvalue"{% if rmse_base is not none %} title="{{ exact_text(rmse_base) }}"{% endif %}>línea base: {{ format_decimal(rmse_base, 3) if rmse_base is not none else '—' }}</span>{% endif %}</td>
       <td class="num">{{ format_count(row.n_ventanas) }}<span class="pred-subvalue">mínimo {{ format_count(row.n_min) }}</span></td>
       <td class="pred-significance">
         {% if row.dm_causa %}
@@ -92,7 +93,7 @@
     </tr>
     {% endfor %}
   {% else %}
-    {{ table_empty(8, "Sin coincidencias", "No hay SKU con veredicto que coincidan con los filtros seleccionados.") }}
+    {{ table_empty(9, "Sin coincidencias", "No hay SKU con veredicto que coincidan con los filtros seleccionados.") }}
   {% endif %}
   {{ table_end() }}
 

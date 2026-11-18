@@ -920,14 +920,20 @@ def _by_window(
     return {row.ventana: row for row in rows if row.ventana != AGGREGATED_WINDOW}
 
 
+def baseline_candidate(verdict: models_v2.M3Verdict) -> str | None:
+    """El candidato de Seasonal Naive, la línea base, entre los modelos evaluados del SKU."""
+    return next(
+        (m.candidato_id for m in verdict.modelos_evaluados if m.familia == "seasonal_naive"),
+        None,
+    )
+
+
 def reserve_windows(
     repository: DataRepository, run_id: str, verdict: models_v2.M3Verdict
 ) -> M3Reserve:
     """Las ventanas de la reserva del campeón publicado frente a Seasonal Naive, por fecha."""
     champion = verdict.candidato_campeon or ""
-    baseline = next(
-        m.candidato_id for m in verdict.modelos_evaluados if m.familia == "seasonal_naive"
-    )
+    baseline = baseline_candidate(verdict) or ""
     rmse = _by_window(repository, run_id, verdict.sku, champion, "rmse")
     rmse_base = _by_window(repository, run_id, verdict.sku, baseline, "rmse")
     ratio = _by_window(repository, run_id, verdict.sku, champion, "razon_sn")
@@ -943,6 +949,123 @@ def reserve_windows(
     ]
     causes = Counter(w.causa for w in windows if w.causa is not None)
     return M3Reserve(windows, dict(sorted(causes.items())))
+
+
+@dataclass(frozen=True, slots=True)
+class ClassErrors:
+    """El RMSE de cada familia por clase, tal como M3 lo publicó en su cartera (``m3_cartera``).
+
+    Es la distribución del bloque de prueba, el mismo de r y de la confirmación del campeón.
+    ``unread`` dice que la cartera no se pudo leer; una clase o familia sin fila no tiene RMSE
+    publicado.
+    """
+
+    rows: Mapping[tuple[str, str], models_v2.M3PortfolioRow] = field(default_factory=dict)
+    unread: bool = False
+
+    def median(self, sku_class: str, familia: str) -> float | None:
+        """La mediana publicada del RMSE de ``familia`` en ``sku_class``, o ``None``."""
+        row = self.rows.get((sku_class, familia))
+        return row.mediana if row is not None else None
+
+    def text(self, sku_class: str, familia: str) -> str:
+        """El RMSE mediano de ``familia`` y el de la línea base en ``sku_class``, en una frase."""
+        if self.unread:
+            return "No se pudo leer el RMSE"
+        value = self.median(sku_class, familia)
+        if value is None:
+            return "Sin RMSE publicado"
+        baseline = self.median(sku_class, "seasonal_naive")
+        shown = "sin publicar" if baseline is None else format_decimal(baseline, 3)
+        return f"RMSE mediano {format_decimal(value, 3)}; línea base {shown}"
+
+
+def class_errors(repository: DataRepository, run: models_v2.M3Run | None) -> ClassErrors:
+    """Lee el RMSE que M3 publicó por clase y familia para la corrida ``run``."""
+    if run is None:
+        return ClassErrors()
+    try:
+        portfolio = repository.get_m3_portfolio(run.run_id, metrica="rmse", size=MAX_SIZE)
+    except (InvalidQuery, DataLayerError):
+        return ClassErrors(unread=True)
+    if portfolio.availability.status != "available":
+        return ClassErrors(unread=True)
+    return ClassErrors({(row.sku_class, row.familia): row for row in portfolio.items})
+
+
+@dataclass(frozen=True, slots=True)
+class ProductErrors:
+    """El RMSE agregado de cada candidato de cada SKU leído, como lo publicó M3 (``m3_metricas``).
+
+    Es la ventana ``agregada``: el bloque de prueba, el mismo de r. ``unread`` dice que las
+    métricas no se pudieron leer.
+    """
+
+    values: Mapping[tuple[str, str], float | None] = field(default_factory=dict)
+    unread: bool = False
+
+    def of(self, sku: str, candidato_id: str | None) -> float | None:
+        """El RMSE publicado de un candidato de ``sku``, o ``None`` si no se publicó."""
+        return None if candidato_id is None else self.values.get((sku, candidato_id))
+
+    def champion(self, verdict: models_v2.M3Verdict) -> float | None:
+        return self.of(verdict.sku, verdict.candidato_campeon)
+
+    def baseline(self, verdict: models_v2.M3Verdict) -> float | None:
+        return self.of(verdict.sku, baseline_candidate(verdict))
+
+    def text(self, verdict: models_v2.M3Verdict) -> str:
+        """El RMSE del campeón y el de la línea base de un SKU, en una frase."""
+        if self.unread:
+            return "No se pudo leer el RMSE"
+        champion, baseline = self.champion(verdict), self.baseline(verdict)
+        if champion is None and baseline is None:
+            return "RMSE no publicado"
+        shown = ["—" if v is None else format_decimal(v, 3) for v in (champion, baseline)]
+        return f"RMSE {shown[0]}; línea base {shown[1]}"
+
+
+def product_errors(repository: DataRepository, run_id: str, skus: Sequence[str]) -> ProductErrors:
+    """Lee, en una consulta paginada, el RMSE agregado de todos los candidatos de ``skus``."""
+    if not skus:
+        return ProductErrors()
+    rows: list[models_v2.M3Metric] = []
+    page = 1
+    try:
+        while True:
+            found = repository.get_m3_metrics(
+                run_id,
+                skus=skus,
+                ventana=AGGREGATED_WINDOW,
+                metrica="rmse",
+                page=page,
+                size=MAX_SIZE,
+            )
+            if found.availability.status != "available":
+                return ProductErrors(unread=True)
+            rows += found.items
+            if page * MAX_SIZE >= found.page.total:
+                break
+            page += 1
+    except (InvalidQuery, DataLayerError):
+        return ProductErrors(unread=True)
+    return ProductErrors({(row.sku, row.candidato_id): row.valor for row in rows})
+
+
+def confirmation_answer(confirmation: M3ClassConfirmation) -> tuple[str, str]:
+    """Si la ventaja de la campeona de una clase es significativa, y la regla publicada que lo
+    decide: la prueba de Wilcoxon con IUT y Holm y el intervalo de la mediana de r."""
+    if confirmation.estado == "confirmado" and confirmation.p_holm is not None:
+        p = p_text(confirmation.p_holm, confirmation.alfa)
+        return "Sí", (
+            f"Wilcoxon con IUT y Holm: p Holm {p if p.startswith('<') else '= ' + p} "
+            f"≤ α = {exact_text(confirmation.alfa)}, y el intervalo de la mediana queda bajo 1 "
+            "frente a cada competidora"
+        )
+    reason = cause_text(confirmation.causa) if confirmation.causa else ""
+    if confirmation.estado == "no_confirmado":
+        return "No", f"Wilcoxon con IUT y Holm: {reason}" if reason else "Wilcoxon con IUT y Holm"
+    return "Sin prueba", reason or CONFIRMATION_STATES[confirmation.estado]
 
 
 # ----------------------------------------------------------------------------- textos

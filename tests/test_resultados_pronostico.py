@@ -134,7 +134,9 @@ class SeriesRepository(FixtureRepository):
         return self.blocks
 
     def get_m3_metrics(self, run_id: str, **kwargs: Any) -> models_v2.M3Metrics:
-        raise AssertionError("El gráfico no necesita métricas ni clasificaciones")
+        # La página lee el RMSE de los modelos; el gráfico del pronóstico no lee métricas.
+        self.calls.append(("metrics", run_id, kwargs))
+        return super().get_m3_metrics(run_id, **kwargs)
 
 
 # Las marcas de las series, sin la capa de lectura con puntero.
@@ -163,6 +165,7 @@ def test_consulta_corrida_sku_candidato_publicado_h1_y_todas_las_paginas() -> No
             if operation == "forecasts":
                 assert args["candidato_id"] == repo.candidate and args["h"] == 1
     assert [call for call in repo.calls if call[0] == "blocks"] == [("blocks", RUN, {})]
+    assert all(op != "metrics" for op, _, _ in repo.calls)
     assert [p.valor for p in series.observed] == [10, None, 0, 14]
     assert [p.valor for p in series.forecast] == [11, 9, None, 13]
 
@@ -285,7 +288,8 @@ def test_sin_veredicto_sin_candidato_y_excluidos_no_cargan_series() -> None:
         and "La evaluación final no publicó un modelo campeón para este SKU." in page.text
     )
     assert "M3 no publicó" not in page.text
-    assert '<svg role="img"' not in page.text and all(op == "blocks" for op, _, _ in repo.calls)
+    assert '<svg role="img"' not in page.text
+    assert all(op in ("blocks", "metrics") for op, _, _ in repo.calls)
 
 
 @pytest.mark.parametrize("absent", [False, True])

@@ -328,6 +328,7 @@ class M3DalSource:
         run_id: str,
         *,
         sku: str | None = None,
+        skus: Sequence[str] | None = None,
         candidato_id: str | None = None,
         ventana: str | None = None,
         metrica: str | None = None,
@@ -336,6 +337,7 @@ class M3DalSource:
     ) -> models_v2.M3Metrics:
         query = m3_query.metrics_query(
             sku=sku,
+            skus=skus,
             candidato_id=candidato_id,
             ventana=ventana,
             metrica=metrica,

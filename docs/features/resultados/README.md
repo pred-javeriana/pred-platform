@@ -47,7 +47,22 @@ SKU launched after the cut says so; a run that is not PUBLICADA, or a publicatio
 exclusion metadata, explains why there is no verdict.
 
 Each chapter keeps the same resolved M3 run. Resumen quotes the thesis research question,
-answers by demand type, and shows the three coverage figures from the published funnel.
+answers by demand type, and shows the three coverage figures from the published funnel. Its
+summary table has one row per demand type: the champion family, its median r against Seasonal
+Naive with the published interval, the median RMSE of the champion family and of the baseline,
+whether the win is significant with the rule that decides it (Wilcoxon with IUT and Holm, and the
+median interval below 1 against each competitor, or the published cause), and the products with a
+verified improvement.
+
+**RMSE beside r.** r is a ratio, so wherever a page shows r for a champion or a model it also shows
+the RMSE that M3 published for the same test block, in demand units. A demand type reads the
+median of `m3_cartera` (metric `rmse`) for the champion family, the baseline and, in chapter 1,
+each competitor (`class_errors` in `app/resultados_m3.py`). A product reads the `agregada` window
+of `m3_metricas` for its candidates; the Productos list reads every product of the page in one
+paginated `get_m3_metrics(skus=...)` call (`product_errors`). The platform computes no RMSE. An
+unreadable read says «No se pudo leer»; a missing row says it was not published. The selection
+table of chapter 1 shows each family's median r in the selection block only: M3 publishes no RMSE
+for that block.
 Chapter 1 has the reserve timeline, selection dot plot, confirmation forest plots and
 median-with-quartiles error profiles (`m3_cartera`), with the same metric switch. Its closed
 tables preserve the selection reason, comparable and excluded products, excluded families,
@@ -89,7 +104,7 @@ HLN-DM significance and the sign of its statistic. It does not use r or the desc
 The view reads the matching SKU set and delegates its intersection, sort and page to
 `get_m3_evidence(skus=...)`; CSV uses the same predicate. These filters combine with a SKU search, and the list
 sorts by SKU, class, verdict, r, windows or BH-adjusted p. Each row shows the champion family and
-model, the verdict, r, windows with `n_min` under them and, apart from the verdict, the significance
+model, the verdict, r, the RMSE of the champion and of the baseline, windows with `n_min` under them and, apart from the verdict, the significance
 category or the cause M3 published when there is no test. The full test, including the statistic,
 raw p and BH-adjusted p, opens on demand. The count is the filtered total, while the funnel line (SKU with a verdict out of all the
 products) is the whole run's and does not change with the filters. The M2 family state is not a

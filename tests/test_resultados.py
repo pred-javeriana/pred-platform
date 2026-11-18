@@ -986,8 +986,8 @@ def test_the_ranking_marks_the_published_champion_even_if_another_model_has_lowe
     ranking = _ranking(_text(_dal_client(env).get("/resultados/sku/FIL-0001").text))
 
     assert re.search(
-        r"Aprendizaje automático LightGBM 0,700 .*Clásica SARIMA 0,800 Campeón "
-        r".*Línea base estacional Ingenuo estacional 1,000 Línea base",
+        r"Aprendizaje automático LightGBM 0,700 — .*Clásica SARIMA 0,800 1,500 Campeón "
+        r".*Línea base estacional Ingenuo estacional 1,000 1,500 Línea base",
         ranking,
     )
     assert ranking.count("Campeón") == 1
@@ -1001,8 +1001,8 @@ def test_a_model_without_r_goes_last_as_not_computable(
     ranking = _ranking(_text(_dal_client(env).get("/resultados/sku/FIL-0001").text))
 
     assert (
-        "Línea base estacional Ingenuo estacional 1,000 Línea base Aprendizaje profundo MLP no "
-        "calculable"
+        "Línea base estacional Ingenuo estacional 1,000 1,500 Línea base Aprendizaje profundo MLP "
+        "no calculable — —"
     ) in ranking
     assert "MLP 0,000" not in ranking
 
@@ -1662,12 +1662,14 @@ def test_by_class_shows_each_class_confirmation_state_holm_p_and_effect(
     )
     assert (
         "Clase Campeona Estado p IUT p Holm Mediana de r frente a la línea base (IC) "
-        "SKU comparados "
-        "Suave Clásica Confirmado < 0,001 < 0,001 0,842 [0,801; 0,889] 412 "
+        "RMSE mediano SKU comparados "
+        "Suave Clásica Confirmado < 0,001 < 0,001 0,842 [0,801; 0,889] "
+        "1,500 línea base: 1,500 412 "
         "Errática Clásica Sin comparables pocos SKU frente a Aprendizaje automático — — "
-        "0,913 [0,861; 0,968] 40 "
+        "0,913 [0,861; 0,968] 1,500 línea base: 1,500 40 "
         "Intermitente Clásica No confirmado p Holm > 0,05; "
-        "intervalo no bajo 1 frente a Aprendizaje automático 0,081 0,162 0,874 [0,812; 0,947] 96 "
+        "intervalo no bajo 1 frente a Aprendizaje automático 0,081 0,162 0,874 [0,812; 0,947] "
+        "1,500 línea base: 1,500 96 "
         "Grumosa Clásica Sin confirmación publicada para esta clase."
     ) in text
 
@@ -1758,11 +1760,12 @@ def test_a_fundacional_champion_names_the_best_family_without_it_and_reads_every
     assert (
         "Suave Fundacional No confirmado p Holm > 0,05; "
         "intervalo no bajo 1 frente a Clásica y Aprendizaje automático 0,081 0,162 0,842 [0,801; "
-        "0,889] 412 "
-        "Errática Línea base estacional No aplica la campeona es la línea base — — — — "
+        "0,889] — línea base: 1,500 412 "
+        "Errática Línea base estacional No aplica la campeona es la línea base — — — "
+        "1,500 línea base: 1,500 — "
         "Intermitente Clásica Sin comparables pocos SKU frente a Aprendizaje profundo, "
         "Fundacional y Aprendizaje automático — — — sin mediana de r e intervalo de la mediana "
-        "por pérdidas cero "
+        "por pérdidas cero 1,500 línea base: 1,500 "
         "96 "
     ) in text
     smooth = text.split("Suave: Fundacional frente a cada competidora", 1)[1]
@@ -1884,7 +1887,8 @@ def test_values_near_one_or_alpha_keep_the_decimals_that_show_their_side(
 
     # Rounded to three decimals, 0,9996 and 0,9999 would read 1,000 and 0,0496 would read 0,050.
     assert (
-        "Suave Clásica No confirmado p Holm > 0,05 0,0496 0,0504 0,9998 [0,9996; 1,0003] 412"
+        "Suave Clásica No confirmado p Holm > 0,05 0,0496 0,0504 0,9998 [0,9996; 1,0003] "
+        "1,500 línea base: 1,500 412"
     ) in text
     # 0,9992 y 0,9999 comparten los cuatro decimales del par.
     assert (
@@ -2011,17 +2015,28 @@ def test_by_class_reads_the_rows_a_real_engine_run_wrote(
     assert "No fue posible leer" not in _text(html)
     assert (
         "Suave Fundacional Sin comparables pocos SKU frente a Clásica — — "
-        "0,718 [0,688; 0,758] 12 "
+        "0,718 [0,688; 0,758] — línea base: 1,500 12 "
         "Errática Fundacional Sin comparables pocos SKU frente a Clásica, Aprendizaje profundo y "
         "Aprendizaje automático — — "
-        "0,689 [0,643; 0,775] 3 "
+        "0,689 [0,643; 0,775] — línea base: 1,500 3 "
         "Intermitente Fundacional Sin comparables pocos SKU frente a Clásica — — "
-        "0,777 [0,713; 0,811] 12 "
+        "0,777 [0,713; 0,811] — línea base: 1,500 12 "
         "Grumosa Clásica Sin comparables pocos SKU frente a Fundacional — — "
-        "0,901 [0,825; 1,050] 3"
+        "0,901 [0,825; 1,050] 1,500 línea base: 1,500 3"
     ) in text
     assert _table_rows(html, "Campeona de Suave frente a cada competidora") == [
-        ["Clásica 9 SKU (mínimo 10)", "9", "0,835", "—", "9 (100,0 %)", "—", "—", "—", "—", "—"],
+        [
+            "Clásica RMSE mediano 1,500 9 SKU (mínimo 10)",
+            "9",
+            "0,835",
+            "—",
+            "9 (100,0 %)",
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+        ],
         [
             "Aprendizaje automático",
             "12",
