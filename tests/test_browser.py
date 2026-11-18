@@ -45,7 +45,34 @@ def _serve(app: FastAPI) -> tuple[uvicorn.Server, threading.Thread, str]:
     return server, thread, f"http://127.0.0.1:{port}"
 
 
-def test_execution_javascript_in_a_real_browser(env: Env) -> None:
+def _load_chrome(chrome: str, profile: Path) -> None:
+    """Abre y cierra Chromium una vez para que el arranque cronometrado no lea el disco.
+
+    En un runner nuevo de GitHub, Chromium todavía no está en la caché de páginas: el primer
+    arranque lee el binario y sus bibliotecas desde un disco frío y tarda de 7 a 13 s en dejar la
+    página lista, más con el resto del job leyendo disco. El hook ``before`` de pred.test.mjs
+    tiene 15 s, así que todas las subpruebas fallaban con "failed running before hook". Después
+    de esta carga el mismo arranque tarda menos de 1 s. La carga fría más lenta medida tardó 43 s.
+    """
+    subprocess.run(
+        [
+            chrome,
+            "--headless",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            f"--user-data-dir={profile}",
+            "--dump-dom",
+            "about:blank",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+        timeout=90,
+    )
+
+
+def test_execution_javascript_in_a_real_browser(env: Env, tmp_path: Path) -> None:
     chrome = os.environ.get("CHROME_BIN") or next(
         (
             path
@@ -59,6 +86,7 @@ def test_execution_javascript_in_a_real_browser(env: Env) -> None:
         if os.environ.get("PRED_BROWSER_REQUIRED"):
             pytest.fail("CI requiere Chromium y Node >= 22 para ejecutar pred.js")
         pytest.skip("Requiere Chromium y Node >= 22")
+    _load_chrome(chrome, tmp_path / "chrome-load")
 
     live = _dal_client(env)
     assert _launch(live, env).status_code == 303
