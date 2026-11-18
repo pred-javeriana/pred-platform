@@ -5,7 +5,7 @@ of a run.
 
 ## What
 
-The home (`/`, Corridas) lists every run where it stands and starts a new one. Each run walks
+The home (`/`, Análisis de pronóstico) lists every run where it stands and starts a new one. Each run walks
 five steps: Datos, Ajustes, Revisar y lanzar, Ejecución and Resultados, at
 `/corridas/nueva/<step>` until it is launched and at `/corridas/<id>/<step>` after. A fixed rail
 on the left shows the steps with their state and opens over the page on hover or focus; below

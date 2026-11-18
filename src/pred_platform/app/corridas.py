@@ -204,19 +204,19 @@ class Home:
     error: dict[str, object] | None = None
 
 
-_RESULTS_READY = StatusPresentation("i-check", "Completada · resultados listos", "ok")
+_RESULTS_READY = StatusPresentation("i-check", "Completado · resultados listos", "ok")
 _RESULTS_READY_WITH_FAILURES = StatusPresentation(
-    "i-warn", "Completada con fallos · resultados listos", "warn"
+    "i-warn", "Completado con fallos · resultados listos", "warn"
 )
-_NOT_PUBLISHED = StatusPresentation("i-check", "Completada · sin evaluación final publicada", "ok")
+_NOT_PUBLISHED = StatusPresentation("i-check", "Completado · sin evaluación final publicada", "ok")
 _NOT_PUBLISHED_WITH_FAILURES = StatusPresentation(
-    "i-warn", "Completada con fallos · sin evaluación final publicada", "warn"
+    "i-warn", "Completado con fallos · sin evaluación final publicada", "warn"
 )
 _QUEUED = StatusPresentation("i-clock", "En cola", "neutral")
 _NOT_LAUNCHED = StatusPresentation("i-clock", "Sin lanzar", "neutral")
-_SLOT_PUBLISHED = StatusPresentation("i-check", "Publicada", "ok")
+_SLOT_PUBLISHED = StatusPresentation("i-check", "Publicado", "ok")
 _SLOT_RUNNING = StatusPresentation("i-play", "En curso", "info")
-_SLOT_DONE = StatusPresentation("i-check", "Terminada, sin publicar", "ok")
+_SLOT_DONE = StatusPresentation("i-check", "Terminado, sin publicar", "ok")
 
 
 def _row(facts: RunFacts, now: datetime, outcome: str | None = None) -> RunRow:
@@ -237,7 +237,7 @@ def _row(facts: RunFacts, now: datetime, outcome: str | None = None) -> RunRow:
             if facts.estado == "completada_con_fallos"
             else _NOT_PUBLISHED
         )
-        return RunRow(facts, status, None, 4, 4, False, "Ver la corrida", execution, False)
+        return RunRow(facts, status, None, 4, 4, False, "Ver el análisis", execution, False)
     if facts.estado == "ejecutando":
         stage = f" · {stage_label(facts.etapa)}" if facts.etapa else ""
         running = describe_run("ejecutando", resumable=True)
@@ -248,15 +248,15 @@ def _row(facts: RunFacts, now: datetime, outcome: str | None = None) -> RunRow:
             parts.append(f"lleva {format_duration((now - facts.iniciada_en).total_seconds())}")
         status = StatusPresentation(running.icon, running.label + stage, running.modifier)
         return RunRow(
-            facts, status, " · ".join(parts) or None, 3, 3, True, "Seguir la corrida",
+            facts, status, " · ".join(parts) or None, 3, 3, True, "Seguir el análisis",
             execution, True,
         )  # fmt: skip
     if facts.estado == "pendiente":
-        return RunRow(facts, _QUEUED, None, 3, 3, False, "Seguir la corrida", execution, True)
+        return RunRow(facts, _QUEUED, None, 3, 3, False, "Seguir el análisis", execution, True)
     stopped = describe_run(facts.estado, resumable=facts.resumable)
-    label = "Detenida · puede reanudarse" if facts.resumable else stopped.label
+    label = "Detenido · puede reanudarse" if facts.resumable else stopped.label
     status = StatusPresentation(stopped.icon, label, stopped.modifier, stopped.hint)
-    return RunRow(facts, status, None, 3, 3, False, "Seguir la corrida", execution, True)
+    return RunRow(facts, status, None, 3, 3, False, "Seguir el análisis", execution, True)
 
 
 def _slot_status(facts: RunFacts) -> StatusPresentation:

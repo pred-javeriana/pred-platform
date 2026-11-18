@@ -35,7 +35,7 @@ def inicio(
         {
             "home": home(repository),
             "at_home": True,
-            "page_title": "Corridas",
+            "page_title": "Análisis de pronóstico",
             "source": repository.source,
         },
     )
@@ -77,11 +77,11 @@ def render_missing_run(request: Request, corrida: str) -> HTMLResponse:
     return render_locked(
         request,
         Locked(
-            title="Corrida no encontrada",
-            heading=f"No existe la corrida «{corrida}».",
-            text="Puede que el enlace sea de otra instalación o que la corrida se haya borrado. "
-            "En Corridas están todas las que existen.",
-            actions=(("Ir a Corridas", "/", True),),
+            title="Análisis no encontrado",
+            heading=f"No existe el análisis «{corrida}».",
+            text="Puede que el enlace sea de otra instalación o que el análisis se haya borrado. "
+            "En el inicio están todos los análisis que existen.",
+            actions=(("Ver todos los análisis", "/", True),),
         ),
         status_code=404,
     )

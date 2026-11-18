@@ -219,7 +219,7 @@ def test_without_any_run_the_page_says_so() -> None:
 
 # ------------------------------------------------------------------------- la acción
 def _launch_action(html: str) -> str:
-    """The «Nueva corrida con estos datos» link of the step header: secondary, because
+    """The «Nuevo análisis con estos datos» link of the step header: secondary, because
     Revisar y lanzar owns launching."""
     found = re.search(
         r'<a class="pred-btn pred-btn--secondary"[^>]*>\s*<svg[^>]*><use href="#i-play">', html
@@ -235,7 +235,7 @@ def test_the_action_is_enabled_when_all_three_capabilities_are_available() -> No
     action = _launch_action(html)
     # It opens Ajustes of a new run with the ingest of the run shown.
     assert re.search(r'href="/corridas/nueva/ajustes\?ingest_id=[0-9a-f]+"', action)
-    assert "Nueva corrida con estos datos" in html
+    assert "Nuevo análisis con estos datos" in html
     assert "aria-disabled" not in action
     assert "Por qué no se puede lanzar" not in html
 
@@ -460,15 +460,15 @@ def test_a_missing_run_is_named_and_offers_the_runs_with_results(
 ) -> None:
     empty = _dal_client(env).get("/resultados?ejecucion=99")
     assert empty.url.path == "/corridas/99/resultados/productos" and empty.status_code == 404
-    assert "No existe la corrida «99»." in _text(empty.text)
-    assert '<a class="pred-btn pred-btn--primary" href="/">Ir a Corridas</a>' in empty.text
+    assert "No existe el análisis «99»." in _text(empty.text)
+    assert '<a class="pred-btn pred-btn--primary" href="/">Ver todos los análisis</a>' in empty.text
 
     _run(env, monkeypatch)
     _publish_for_the_run(env)
     client = _dal_client(env)
     html = client.get("/resultados?vista=clase&ejecucion=99").text
     # Corridas, where it points, lists the run with results and opens them.
-    assert "No existe la corrida «99»." in _text(html)
+    assert "No existe el análisis «99»." in _text(html)
     assert 'href="/corridas/1/resultados"' in client.get("/").text
 
 
@@ -484,8 +484,8 @@ def test_the_real_dal_feeds_the_table_and_the_detail(
     for sku in ("FIL-0001", "FIL-0002", "FIL-0003"):
         assert sku in text
     # A run whose model tasks partly failed still finished: the state says so with the name the
-    # Corridas home uses, and the line beside it says what failed.
-    assert "Ejecución #1" in text and "Completada con fallos" in text
+    # Análisis de pronóstico home uses, and the line beside it says what failed.
+    assert "Ejecución #1" in text and "Completado con fallos" in text
     assert re.search(r"(Falló|Fallaron) \d+ de \d+ tareas de modelos\.", text)
     assert "La acción está deshabilitada" not in text  # the DAL has all three capabilities
 

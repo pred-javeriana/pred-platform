@@ -60,7 +60,7 @@ def test_a_run_with_failed_tasks_reads_as_completed_not_as_a_failure() -> None:
     with_failures = describe_status("run", "completada_con_fallos")
     completed = describe_status("run", "completada")
     # One state has one name: the Corridas home names it the same way.
-    assert with_failures.label == "Completada con fallos"
+    assert with_failures.label == "Completado con fallos"
     assert (with_failures.icon, with_failures.modifier) == (completed.icon, completed.modifier)
     assert with_failures.hint and "fallaron" in with_failures.hint
     # The stored code stays available for traceability.
@@ -70,8 +70,8 @@ def test_a_run_with_failed_tasks_reads_as_completed_not_as_a_failure() -> None:
 def test_a_stopped_run_is_a_warning_while_it_can_resume_and_an_error_when_it_cannot() -> None:
     resumable = describe_run("detenida", resumable=True)
     final = describe_run("detenida", resumable=False)
-    assert (resumable.label, resumable.modifier) == ("Detenida", "warn")
-    assert (final.label, final.modifier) == ("Detenida", "err")
+    assert (resumable.label, resumable.modifier) == ("Detenido", "warn")
+    assert (final.label, final.modifier) == ("Detenido", "err")
     assert final.hint and "ejecución nueva" in final.hint and final.code == "detenida"
     # Only a stop depends on whether it can resume.
     assert describe_run("completada", resumable=False) == describe_status("run", "completada")

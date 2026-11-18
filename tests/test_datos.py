@@ -100,7 +100,7 @@ def test_initial_render_replaces_placeholder_and_keeps_navigation(tmp_path: Path
     assert "Iniciar sesión" not in html
     assert "Datos de prueba" in html
     # Sin elegir ingesta, el paso ofrece archivos validados y la carga con sus columnas.
-    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in html
+    assert 'id="titulo-elegir-datos">¿Qué datos usa este análisis?<' in html
     assert "Cargar un archivo nuevo" in html
     for column in ("sku_id", "timestamp", "demand_qty", "lead_time_days"):
         assert f'<span class="mono">{column}</span>' in html
@@ -147,7 +147,7 @@ def test_vacio_distinguishes_empty_history_from_missing_topology(tmp_path: Path)
     client, _ = _client(tmp_path, "vacio")
     html = client.get("/datos").text
     assert "Todavía no hay archivos cargados." in html
-    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in html
+    assert 'id="titulo-elegir-datos">¿Qué datos usa este análisis?<' in html
     assert 'id="carga" open' in html
     assert "No hay SKU que coincidan" not in html
     assert "La caracterización todavía no está disponible." not in html

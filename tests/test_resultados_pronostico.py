@@ -361,7 +361,7 @@ def test_origenes_sobreviven_y_el_embargo_solo_se_informa_en_texto() -> None:
     assert 'title="2026-06-27"' in html
     assert 'class="pred-forecast__embargo"' not in html
     assert "ajuste BH dentro de cada clase de demanda" in text
-    assert "ajuste BH de toda la corrida" not in text
+    assert "ajuste BH de todo el análisis" not in text
 
 
 def test_svg_accesible_y_escape_seguro_de_identificadores() -> None:

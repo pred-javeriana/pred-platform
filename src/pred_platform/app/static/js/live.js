@@ -216,7 +216,7 @@
     const leyenda = raiz.querySelector(".pred-stage-legend");
     if (leyenda) {
       leyenda.replaceChildren();
-      ["Esta corrida"].concat(referencias.map(function (ref) { return "Semilla " + ref.seed; })).forEach(function (texto, i) {
+      ["Este análisis"].concat(referencias.map(function (ref) { return "Semilla " + ref.seed; })).forEach(function (texto, i) {
         const item = document.createElement("li");
         const marca = document.createElement("i");
         if (i) marca.className = "is-reference-" + (i - 1);
@@ -336,7 +336,7 @@
       }
     });
     if (antes.state !== ahora.state) {
-      cambios.push("Estado actual: " + (ahora.stateLabel || ({ pendiente: "En cola", ejecutando: "Ejecutando", detenida: "Detenida" })[ahora.state] || ahora.state) + ".");
+      cambios.push("Estado actual: " + (ahora.stateLabel || ({ pendiente: "En cola", ejecutando: "Ejecutando", detenida: "Detenido" })[ahora.state] || ahora.state) + ".");
     } else if (antes.stage !== ahora.stage && ahora.stage) {
       const etapa = ahora.stages.find(function (s) { return s.code === ahora.stage; });
       if (etapa) cambios.push("Ahora trabaja en " + etapa.label + ".");

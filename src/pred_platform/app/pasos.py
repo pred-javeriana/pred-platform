@@ -76,8 +76,8 @@ STEPS: tuple[StepDef, ...] = (
         "ejecucion",
         "Ejecución",
         "Ejecución",
-        "El motor recorre cuatro etapas. La corrida sigue aunque cierre esta página; al volver, "
-        "PRED la abre en este paso.",
+        "El motor recorre cuatro etapas. El análisis sigue aunque cierre esta página; al volver, "
+        "PRED lo abre en este paso.",
         "Después: Resultados.",
         "Se abren cuando la evaluación final publique.",
     ),
@@ -88,7 +88,7 @@ STEPS: tuple[StepDef, ...] = (
         "Qué familia pronostica mejor cada tipo de demanda, en cuántos productos se verifica la "
         "mejora y si se sostiene con otra semilla.",
         None,
-        "Último paso. Puede exportar los resultados o empezar una corrida nueva con estos ajustes.",
+        "Último paso. Puede exportar los resultados o empezar un análisis nuevo con estos ajustes.",
     ),
 )
 STEP_KEYS: tuple[StepKey, ...] = tuple(step.key for step in STEPS)
@@ -96,8 +96,8 @@ _BY_KEY = {step.key: step for step in STEPS}
 
 # Lo que dice el encabezado de Datos, Ajustes y Revisar de una corrida ya lanzada.
 LAUNCHED_PURPOSE = (
-    "Esta corrida ya se lanzó. Este paso muestra lo que se eligió y no se puede cambiar; para "
-    "usar otros valores, empiece una corrida nueva con estos ajustes."
+    "Este análisis ya se lanzó. Este paso muestra lo que se eligió y no se puede cambiar; para "
+    "usar otros valores, empiece un análisis nuevo con estos ajustes."
 )
 LAUNCHED_AFTER = "El avance está en Ejecución y los resultados, en Resultados."
 _RECORD_STEPS = ("datos", "ajustes", "revisar")
@@ -251,7 +251,7 @@ class Wizard:
 
     @property
     def page_title(self) -> str:
-        who = "Corrida nueva" if self.corrida == NEW else f"Corrida #{self.corrida}"
+        who = "Análisis nuevo" if self.corrida == NEW else f"Análisis #{self.corrida}"
         return f"{self.step.label} · {who} · PRED"
 
 
@@ -320,14 +320,14 @@ def draft_wizard(
                 else ("locked", "Primero elija los datos", None)
             ),
             ("locked", "Se abre al lanzar", None),
-            ("locked", "Se abre cuando la corrida publique", None),
+            ("locked", "Se abre cuando el análisis publique", None),
         ],
     )
     step = _BY_KEY[current]
     back: NavLink | None
     nxt: NavNext | None
     if current == "datos":
-        back = NavLink("Corridas", "/")
+        back = NavLink("Todos los análisis", "/")
         nxt = (
             NavNext(
                 "Continuar a Ajustes",
@@ -369,7 +369,7 @@ def draft_wizard(
         nxt = None
     return Wizard(
         corrida=NEW,
-        title="Corrida nueva (sin lanzar)",
+        title="Análisis nuevo (sin lanzar)",
         steps=rail,
         step=step,
         purpose=step.purpose,
@@ -390,7 +390,7 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
         pct = f" · {format_decimal(run.avance_pct, 1)} %" if run.avance_pct is not None else ""
         execution = ("live", stage + pct, None)
     elif run.estado == "detenida":
-        execution = ("todo", "Detenida · puede reanudarse" if run.resumable else "Detenida", None)
+        execution = ("todo", "Detenido · puede reanudarse" if run.resumable else "Detenido", None)
     else:
         # Desde el primer inicio: en una corrida reanudada incluye el tiempo detenida.
         span = f"Terminó {run.duration} después de iniciar" if run.duration else "Terminó"
@@ -407,7 +407,7 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
         [
             ("done", _data_sub(run.file_name, run.n_skus), None),
             ("done", _settings_sub(run.families, run.seed), None),
-            ("done", "Lanzada" if run.iniciada_en else "Lanzada · en cola", run.iniciada_en),
+            ("done", "Lanzado" if run.iniciada_en else "Lanzado · en cola", run.iniciada_en),
             execution,
             results,
         ],
@@ -415,7 +415,7 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
     step = _BY_KEY[current]
     navigation: dict[StepKey, tuple[NavLink | None, NavNext | None]] = {
         "datos": (
-            NavLink("Corridas", "/"),
+            NavLink("Todos los análisis", "/"),
             NavNext("Continuar a Ajustes", step_href(run.id, "ajustes")),
         ),
         "ajustes": (
@@ -454,7 +454,7 @@ def run_wizard(current: StepKey, run: RunFacts) -> Wizard:
         after_lead, after_text = None, LAUNCHED_AFTER
     return Wizard(
         corrida=run.id,
-        title=f"Corrida #{run.id} · semilla {run.seed}",
+        title=f"Análisis #{run.id} · semilla {run.seed}",
         steps=rail,
         step=step,
         purpose=LAUNCHED_PURPOSE if current in _RECORD_STEPS else step.purpose,

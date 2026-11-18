@@ -92,7 +92,7 @@ def finalize(
     """Settle ``run`` after its engine process ended and return its final ``estado``."""
     corrida_path = run_dir / "corrida.json"
     interrupted = platform_error(
-        "pipeline.stage_failed", "La unidad quedó a medias: la corrida terminó antes de acabarla."
+        "pipeline.stage_failed", "La unidad quedó a medias: el análisis terminó antes de acabarla."
     )
     skipped = platform_error(
         "pipeline.stage_failed", "La unidad no llegó a empezar: una etapa anterior falló."
@@ -112,7 +112,7 @@ def finalize(
             f"error: {INCOMPATIBLE_RUN}"
             if incompatible
             else f"El motor terminó{code} sin publicar corrida.json de este intento. "
-            f"Su salida está en {log_path.name}, en la carpeta de la corrida."
+            f"Su salida está en {log_path.name}, en la carpeta del análisis."
         )
 
         # Un motor que murió sin publicar (OOM, kill, caída) se puede reanudar: el motor
@@ -266,7 +266,7 @@ def finalize(
             conn,
             run,
             reserve,
-            platform_error("pipeline.stage_failed", "La corrida no produjo ninguna tarea."),
+            platform_error("pipeline.stage_failed", "El análisis no produjo ninguna tarea."),
         )
     estado = (
         "completada_con_fallos"

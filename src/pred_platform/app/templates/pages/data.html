@@ -67,7 +67,7 @@
 
   {% if not record %}
   <section class="pred-panel" aria-labelledby="titulo-elegir-datos">
-    <h2 id="titulo-elegir-datos">¿Qué datos usa esta corrida?</h2>
+    <h2 id="titulo-elegir-datos">¿Qué datos usa este análisis?</h2>
     <p class="pred-lead">Elija un archivo que PRED ya validó. Si sus datos cambiaron, cargue el archivo nuevo.</p>
     {% if listing and listing.items | selectattr('status', 'equalto', 'accepted') | list %}
     <form method="post" action="/corridas/nueva/datos" class="pred-file-choices" data-auto-choice>

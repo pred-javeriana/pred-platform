@@ -7,7 +7,7 @@
    Un botón oculto va antes que todos: el primer botón de envío del formulario en el documento es
    el que usa Enter en un campo, y debe ser Continuar, que valida, no el paso Datos. #}
 {% from "components/step_sub.html" import step_sub %}
-<nav class="pred-rail" id="barra-pasos" aria-label="Pasos de la corrida"{% if swap_oob %} hx-swap-oob="true"{% endif %}>
+<nav class="pred-rail" id="barra-pasos" aria-label="Pasos del análisis"{% if swap_oob %} hx-swap-oob="true"{% endif %}>
   <p class="pred-rail__head" aria-hidden="true">Pasos</p>
   {% if wizard.rail_submits %}<button type="submit" form="{{ wizard.rail_submits }}" class="pred-sr-only" tabindex="-1" aria-hidden="true">Continuar a Revisar y lanzar</button>{% endif %}
   <ol>

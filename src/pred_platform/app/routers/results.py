@@ -521,7 +521,7 @@ def _fill_m3_view(
             evidence = group["group"]
             if evidence and exact_m3 not in {run.run_id for run in evidence.significance.runs}:
                 group["group"] = None
-                group["problem"] = "El grupo debe incluir la evaluación de la corrida mostrada."
+                group["problem"] = "El grupo debe incluir la evaluación del análisis mostrado."
             context["seed_group"] = group
     _fill_charts(context)
     if resolved is not None:

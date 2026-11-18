@@ -111,13 +111,13 @@ def require_real_origin(parametros: dict[str, Any]) -> None:
     origen = parametros.get("datos_sinteticos")
     if "datos_sinteticos" not in parametros or (origen is not None and type(origen) is not bool):
         raise ValueError(
-            "procedencia ausente o invalida; vuelva a encolar la corrida para registrar el origen"
+            "procedencia ausente o invalida; vuelva a encolar el análisis para registrar el origen"
         )
     if origen is not False:
         guardado = "datos sintéticos" if origen else "un origen sin declarar"
         raise OrigenNoReal(
-            f"La plataforma solo ejecuta datos reales y esta corrida guardó {guardado}. "
-            "Lance una corrida nueva sobre una ingesta de datos reales."
+            f"La plataforma solo ejecuta datos reales y este análisis guardó {guardado}. "
+            "Lance un análisis nuevo sobre una ingesta de datos reales."
         )
 
 

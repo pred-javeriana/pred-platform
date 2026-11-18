@@ -143,7 +143,7 @@ VERDICT_ORDER: tuple[str, ...] = (
 )
 
 # Ejecución: claves de EstadoEjecucion. sin_ejecucion es estado de página, no de chip. Una
-# ejecución completada con tareas fallidas terminó bien: el chip dice «Completada» y la página
+# ejecución completada con tareas fallidas terminó bien: el chip dice «Completado» y la página
 # dice al lado cuántas tareas fallaron y cuántos productos tienen veredicto (``run_outcome``).
 # Una detenida es una advertencia mientras pueda reanudarse; ``describe_run`` la vuelve error
 # cuando reanudarla fallaría igual.
@@ -155,23 +155,23 @@ _RUN: dict[str, StatusPresentation] = {
         "i-play", "Ejecutando", "info", "El motor está trabajando en esta ejecución."
     ),
     "completada": StatusPresentation(
-        "i-check", "Completada", "ok", "Terminó y todas sus tareas se completaron."
+        "i-check", "Completado", "ok", "Terminó y todas sus tareas se completaron."
     ),
     "completada_con_fallos": StatusPresentation(
         "i-check",
-        "Completada con fallos",
+        "Completado con fallos",
         "ok",
         "Terminó; algunas tareas de modelos fallaron o no se pudieron ejecutar.",
     ),
     "detenida": StatusPresentation(
-        "i-stop", "Detenida", "warn", "Se detuvo antes de terminar; puede reanudarse."
+        "i-stop", "Detenido", "warn", "Se detuvo antes de terminar; puede reanudarse."
     ),
 }
 _RUN_STOPPED_FOR_GOOD = StatusPresentation(
     "i-stop",
-    "Detenida",
+    "Detenido",
     "err",
-    "Se detuvo y reanudarla fallaría igual: corrija la causa y lance una ejecución nueva.",
+    "Se detuvo y reanudarlo fallaría igual: corrija la causa y lance una ejecución nueva.",
     code="detenida",
 )
 

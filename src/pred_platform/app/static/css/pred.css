@@ -241,7 +241,7 @@ button.pred-sr-only {
   background: var(--canvas);
 }
 
-/* Barra superior: el inicio (Corridas), la corrida que se ve y «Nueva corrida». */
+/* Barra superior: el inicio (Análisis de pronóstico), el análisis que se ve y «Nuevo análisis». */
 .pred-topbar {
   display: flex;
   align-items: center;
@@ -645,6 +645,10 @@ nav.pred-rail li.is-locked .pred-rail__mini {
   margin: 0;
   color: var(--ink-soft);
   font-size: 16px;
+}
+
+.pred-stephead__what + .pred-stephead__what {
+  margin-top: var(--space-2);
 }
 
 .pred-stephead__next {

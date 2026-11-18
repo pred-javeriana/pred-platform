@@ -70,7 +70,7 @@ def test_an_unknown_address_is_a_pred_page_in_a_browser_and_json_elsewhere(
     page = client.get("/no-existe", headers={"Accept": "text/html,application/xhtml+xml"})
     assert page.status_code == 404
     assert "<h1>Página no encontrada</h1>" in page.text
-    assert re.search(r'href="/">\s*Ir a Corridas\s*</a>', page.text)
+    assert re.search(r'href="/">\s*Ver todos los análisis\s*</a>', page.text)
     assert "Not Found" not in page.text
     # A probe or a script that does not ask for HTML keeps the JSON answer.
     probe = client.get("/no-existe")
@@ -80,7 +80,7 @@ def test_an_unknown_address_is_a_pred_page_in_a_browser_and_json_elsewhere(
 def test_root_is_the_corridas_home(client: TestClient) -> None:
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 200
-    assert "<title>Corridas · PRED</title>" in response.text
+    assert "<title>Análisis de pronóstico · PRED</title>" in response.text
 
 
 def test_datos_is_spanish_light_themed_page(client: TestClient) -> None:

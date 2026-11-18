@@ -231,7 +231,7 @@ def answers(
         selection,
         verification,
         "ok" if supported else "warn" if concluded else "neutral",
-        "Respaldada en esta corrida"
+        "Respaldada en este análisis"
         if supported
         else "No concluyente"
         if concluded

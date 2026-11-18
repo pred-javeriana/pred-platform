@@ -16,12 +16,12 @@ plataforma.
         → Monitorear y recuperar la ejecución
         → Consultar resultados
 
-La plataforma se recorre por corridas. El inicio (`/`, Corridas) lista cada corrida con su estado
+La plataforma se recorre por corridas. El inicio (`/`, Análisis de pronóstico) lista cada corrida con su estado
 y su siguiente acción, la que está en cola o en curso primero, y el grupo de la tesis: las
 corridas con los mismos datos y ajustes y semillas 0, 1 y 2, con un enlace a su evidencia
 conjunta (`/resultados/grupo`). Cada corrida recorre cinco pasos:
 1 Datos, 2 Ajustes, 3 Revisar y lanzar, 4 Ejecución y 5 Resultados. La barra superior lleva al
-inicio, nombra la corrida que se ve y ofrece «Nueva corrida».
+inicio, nombra la corrida que se ve y ofrece «Nuevo análisis».
 
 Una corrida nueva vive en `/corridas/nueva/<paso>` hasta que se lanza. Su borrador (el archivo
 y los ajustes elegidos) se guarda en una cookie de sesión del navegador (`app/borrador.py`). El
@@ -50,7 +50,7 @@ y Siguiente.
 
 | Ruta | Superficie |
 | --- | --- |
-| `/` | Corridas: el inicio |
+| `/` | Análisis de pronóstico: el inicio |
 | `/corridas/nueva/datos` | Paso 1 de una corrida nueva. `POST` elige el archivo y lleva a Ajustes |
 | `/corridas/nueva/ajustes` | Paso 2. `POST` valida y guarda los ajustes y lleva a Revisar y lanzar; con `destino` guarda lo escrito sin validar y va a ese paso. `?ingest_id=` llega con el archivo ya elegido (si es otro que el del borrador, lo guarda y redirige, 303, a Ajustes) y `?copiar_de=` copia los ajustes de una corrida, los guarda y redirige a `?aviso=copiado&corrida=<id>`, que solo muestra el aviso: recargar o volver con Atrás no vuelve a escribir el borrador |
 | `/corridas/nueva/revisar` | Paso 3: resumen por secciones (Datos, Familias de modelos, Evaluación) con «Cambiar» por sección, duraciones publicadas de corridas anteriores y Lanzar (`POST /ejecucion/lanzar`). Un duplicado deshabilita Lanzar y enlaza a la corrida existente. Sin archivo elegido está bloqueado |
@@ -61,7 +61,7 @@ y Siguiente.
 | `/corridas/{id}/ejecucion` | Paso 4: avance, acciones y tareas de la corrida |
 | `/corridas/{id}/resultados` | Paso 5: abre el capítulo Resumen cuando hay una evaluación publicada. Mientras una corrida sigue sin publicar, muestra «Los resultados todavía no existen». Una corrida terminada sin evaluación conserva la lectura de M2 en Productos |
 | `/corridas/{id}/resultados/{resumen,p1,p2,estabilidad,productos}` | Resumen, selección y confirmación por tipo, prueba producto por producto, comparación entre semillas y Productos. Los filtros, el orden, la página y la evaluación exacta quedan en la consulta. `?lista=familias` abre «Ver por familia» |
-| `/corridas/{id}/…` de una corrida que no existe | 404 con el enlace a Corridas |
+| `/corridas/{id}/…` de una corrida que no existe | 404 con el enlace «Ver todos los análisis» |
 | `/datos`, `/ejecucion`, `/resultados` | Rutas anteriores: redirigen (307) al paso que corresponde con la misma consulta. `/datos` va a Datos de la corrida nueva. `/ejecucion?ingest_id=` va a Ajustes de la corrida nueva; `?lanzar=1`, a su Datos; `?ejecucion=<id>` o, sin ella, la corrida más reciente, al paso Ejecución. `/resultados?ejecucion=<id>` o, sin ella, la corrida más nueva con evidencia publicada (o la más reciente), al paso Resultados. Sin corridas, a la corrida nueva |
 | `/ejecucion/estado` | El cuerpo de Ejecución para el sondeo HTMX |
 | `/ejecucion/configuracion.json` | Descarga JSON de la configuración de una ejecución (ajustes, ingesta, versiones) para reproducirla |
@@ -112,7 +112,7 @@ Ver `docs/features/ejecucion/README.md`.
 
 **Estados de corrida:** `sin_ejecucion` (página; `ejecucion is None`), y los de
 `EstadoEjecucion`: `pendiente`, `ejecutando`, `completada`, `completada_con_fallos`,
-`detenida`. `completada_con_fallos` se lee «Completada con fallos», como en el inicio de Corridas,
+`detenida`. `completada_con_fallos` se lee «Completado con fallos», como en el inicio de Análisis de pronóstico,
 con la marca de terminada: una frase calculada con los conteos publicados dice cuántas tareas
 fallaron y cuántos productos tienen veredicto
 (`resultados_m3.run_outcome`). `detenida` y su aviso de error son una advertencia mientras la
@@ -211,7 +211,7 @@ campeón frente a la demanda observada, con los bloques de selección y prueba.
 
 Una barra de contexto, arriba y a lo ancho, muestra la ejecución, el archivo de datos, la
 evaluación final, el origen de los datos y una frase con lo que pasó en la ejecución, y permite elegir otra ejecución con evidencia publicada. La acción secundaria
-«Nueva corrida con estos datos» del encabezado del paso abre Ajustes de una corrida nueva con la
+«Nuevo análisis con estos datos» del encabezado del paso abre Ajustes de una corrida nueva con la
 misma ingesta (`/corridas/nueva/ajustes?ingest_id=…`). Se habilita solo con `parquet_read`,
 `family_comparison` y `selection_results_persisted`; si falta alguna, se explica cuál. Ver
 `docs/features/resultados/README.md`.

@@ -378,8 +378,8 @@ def test_missing_cutoff_metadata_is_not_zero_exclusions(root: Path) -> None:
     _conforms(observations, "m3_observations")
     assert observations.availability.reason_code == "metadata_missing"
     assert observations.availability.detail == (
-        "La corrida se publicó antes de que M3 publicara la demanda observada; "
-        "vuelva a ejecutarla para ver el gráfico."
+        "El análisis se publicó antes de que M3 publicara la demanda observada; "
+        "vuelva a ejecutarlo para ver el gráfico."
     )
     assert observations.items == [] and observations.page.total == 0
     assert repo.get_m3_champions(RUN).availability.status == "available"
@@ -576,7 +576,7 @@ def test_an_unpublished_run_shows_its_progress_and_metadata_but_no_evidence(root
         assert doc.run is not None and doc.run.run_id == RUN
         assert (
             doc.availability.detail
-            == f"La corrida M3 {RUN} está EN_CURSO; su evidencia aparece al publicarse."
+            == f"La evaluación M3 {RUN} está EN_CURSO; su evidencia aparece al publicarse."
         )
 
     _sql(root, "UPDATE m3_corridas SET estado = 'PUBLICADA'")
@@ -589,7 +589,7 @@ def test_a_rejected_run_names_its_cause_and_never_its_rows(root: Path) -> None:
     assert doc.availability.reason_code == "not_published" and doc.items == []
     assert doc.run is not None and doc.run.causa_rechazo == "manifiesto incompatible con la ingesta"
     assert doc.availability.detail == (
-        f"La corrida M3 {RUN} fue RECHAZADA: manifiesto incompatible con la ingesta"
+        f"La evaluación M3 {RUN} fue RECHAZADA: manifiesto incompatible con la ingesta"
     )
 
 

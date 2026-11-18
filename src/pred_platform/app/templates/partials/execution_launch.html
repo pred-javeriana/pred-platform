@@ -11,21 +11,21 @@
 </div>
 <section class="pred-panel pred-action-card pred-copy-card" aria-labelledby="titulo-copiar">
   <div>
-    <h2 id="titulo-copiar">Partir de una corrida anterior</h2>
+    <h2 id="titulo-copiar">Partir de un análisis anterior</h2>
     <p class="pred-lead">Copie sus ajustes y cambie la semilla para repetir la comparación. También puede importar un archivo de configuración.</p>
   </div>
   <div class="pred-action-card__do pred-copy-actions">
     {% if copy_runs %}
     <form method="post" action="/corridas/nueva/copiar" class="pred-copy-form" data-auto-choice data-replaces-draft>
       <input type="hidden" name="draft_rev" value="{{ draft_rev|default("") }}">
-      <label class="pred-sr-only" for="copiar">Copiar una corrida</label>
+      <label class="pred-sr-only" for="copiar">Copiar un análisis</label>
       <select id="copiar" name="copiar" class="pred-field__control" required>
-        <option value="">Elija una corrida para copiar sus ajustes</option>
+        <option value="">Elija un análisis para copiar sus ajustes</option>
         {% for previous in copy_runs %}<option value="{{ previous.id }}"{% if previous.id|string == copy_run %} selected{% endif %}{% if previous.iniciada_en %} title="{{ exact_when(previous.iniciada_en) }}"{% endif %}>#{{ previous.id }} · semilla {{ previous.seed }}{% if previous.iniciada_en %} · {{ format_when(previous.iniciada_en) }}{% endif %}</option>{% endfor %}
       </select>
       {{ button("Copiar ajustes", variant="secondary", type="submit") }}
     </form>
-    {% else %}<p class="pred-meta">Todavía no hay corridas que copiar.</p>{% endif %}
+    {% else %}<p class="pred-meta">Todavía no hay análisis que copiar.</p>{% endif %}
     <details class="pred-details pred-copy-import" id="importar"{% if import_error %} open{% endif %}>
       <summary>Importar un archivo de configuración</summary>
       {% if import_error %}{{ alert(import_error, variant="error") }}{% endif %}
