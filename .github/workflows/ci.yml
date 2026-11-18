@@ -107,6 +107,53 @@ jobs:
           CHROME_BIN: google-chrome
         run: uv run --frozen pytest -ra
 
+  engine-integration:
+    name: Integration (real engine main)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PRED_ENGINE_CMD: ${{ github.workspace }}/.ci-engine/.venv/bin/pred-engine
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: pred-javeriana/pred-engine
+          ref: main
+          path: .ci-engine
+          persist-credentials: false
+      - name: Record engine revision
+        run: git -C .ci-engine rev-parse HEAD
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            .ci-engine/uv.lock
+      - name: Install platform and engine
+        run: |
+          uv sync --frozen --extra dev
+          uv sync --project .ci-engine --frozen
+      - name: Run six-series integration case without skips
+        run: |
+          uv run --frozen pytest tests/test_integracion_motor.py --no-cov -ra \
+            --junitxml="$RUNNER_TEMP/engine-integration.xml"
+          python - "$RUNNER_TEMP/engine-integration.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).iter("testcase"))
+          assert cases, "No integration tests ran"
+          assert not any(case.find("skipped") is not None for case in cases), "Integration tests skipped"
+          PY
+
   # The wizard browser regressions drive Chromium through the chrome-devtools-axi CLI, which the
   # test job does not install, so they only run here.
   wizard-browser:
