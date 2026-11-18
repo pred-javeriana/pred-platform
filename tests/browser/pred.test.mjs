@@ -69,7 +69,7 @@ before(async () => {
     chrome.on("exit", code => reject(new Error(`Chromium terminó: ${code}: ${output}`)));
     chrome.stderr.on("data", chunk => {
       output += chunk;
-      const match = output.match(/DevTools listening on (ws:\/\/[^\s]+)/);
+      const match = output.match(/DevTools listening on (ws:\/\/\S+)\s/);
       if (match) resolve(match[1]);
     });
   });
