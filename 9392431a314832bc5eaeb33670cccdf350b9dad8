@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "summary": "The browser test loads Chromium once before pred.test.mjs times its start, so a cold runner disk no longer fails the before hook.",
+  "files": [
+    {
+      "path": "tests/test_browser.py",
+      "summary": "Owns the one-time Chromium load before the timed node test.",
+      "annotations": [
+        {
+          "newRange": [48, 75],
+          "summary": "_load_chrome runs a headless --dump-dom of about:blank with a temporary profile, limited to 90 s like the node run.",
+          "rationale": "A fresh GitHub runner reads Chromium from a cold disk, so the first launch took up to 12.8 s idle and over 15 s inside the test job. After this load the hook finished in 0.26-0.63 s on 20 runners. Runner matrix 44392722738: 3/15 hook failures without the load, 0/15 with it. Slowest measured load: 43.2 s.",
+          "author": "fm/pred-ci-browser-hook"
+        },
+        {
+          "newRange": [89, 89],
+          "summary": "The test calls _load_chrome after the skip check and before the servers and node start.",
+          "rationale": "The load runs only when Chromium and Node exist, so machines without a browser still skip. The 15 s limits in pred.test.mjs stay unchanged.",
+          "author": "fm/pred-ci-browser-hook"
+        }
+      ]
+    },
+    {
+      "path": "tests/browser/pred.test.mjs",
+      "summary": "Reads the DevTools endpoint from Chromium stderr.",
+      "annotations": [
+        {
+          "newRange": [72, 72],
+          "summary": "The endpoint regex now requires whitespace after the ws:// URL.",
+          "rationale": "Without the trailing whitespace, a stderr chunk that ends mid-URL could resolve a truncated address. \\s also accepts \\r on Windows line ends. Verified locally with pytest tests/test_browser.py and in PR CI.",
+          "author": "fm/pred-ci-browser-hook"
+        }
+      ]
+    }
+  ]
+}
