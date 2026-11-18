@@ -101,8 +101,8 @@ def test_polled_navigation_moves_from_queue_to_published_without_reloading(
     assert unpublished.status_code == 286
     assert "Sin evaluación final publicada" in _navigation(unpublished.text, "barra-pasos")
     # Only the data step, which polling does not reread, keeps its old markup.
-    assert "Lanzada · en cola" in _navigation(queued, "barra-pasos")
-    assert "Lanzada · en cola" not in _navigation(unpublished.text, "barra-pasos")
+    assert "Lanzado · en cola" in _navigation(queued, "barra-pasos")
+    assert "Lanzado · en cola" not in _navigation(unpublished.text, "barra-pasos")
     assert re.search(r'id="paso-revisar"(?! hx-preserve)', unpublished.text)
     assert re.search(r'id="paso-datos" hx-preserve="true"', unpublished.text)
     assert "Parciales" not in _navigation(unpublished.text, "navegacion-pasos")
@@ -183,7 +183,7 @@ def test_polled_navigation_follows_a_resumed_run_from_queue_to_its_stage(env: En
     assert _launch(client, env).status_code == 303
     stop = client.post("/ejecucion/detener", data={"ejecucion": "1"}, follow_redirects=False)
     assert stop.status_code == 303
-    assert "Detenida" in _navigation(client.get("/corridas/1/ejecucion").text, "barra-pasos")
+    assert "Detenido" in _navigation(client.get("/corridas/1/ejecucion").text, "barra-pasos")
     resume = client.post("/ejecucion/reanudar", data={"ejecucion": "1"}, follow_redirects=False)
     assert resume.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
     assert "En cola" in _navigation(client.get(resume.headers["location"]).text, "barra-pasos")
@@ -199,7 +199,7 @@ def test_polled_navigation_follows_a_resumed_run_from_queue_to_its_stage(env: En
     for element_id in ("barra-pasos", "resumen-paso"):
         navigation = _navigation(polled.text, element_id)
         assert "Etapa 2 de 4" in navigation
-        assert "En cola" not in navigation and "Detenida" not in navigation
+        assert "En cola" not in navigation and "Detenido" not in navigation
 
 
 def test_grouped_causes_drop_the_advice_when_nothing_can_be_compared(env: Env) -> None:
@@ -388,7 +388,7 @@ def test_global_cause_groups_are_not_the_first_five_failures_or_the_filter(
     ("exclusion", "label"),
     [
         ("not_in_policy_matrix", "No elegida para esta clase"),
-        ("not_configured", "No elegida en esta corrida"),
+        ("not_configured", "No elegida en este análisis"),
     ],
 )
 def test_execution_distinguishes_unchosen_families_from_failure_and_comparison_stop(

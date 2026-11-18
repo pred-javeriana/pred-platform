@@ -78,7 +78,7 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
     copied = client.post("/corridas/nueva/copiar", data={"copiar": "1"})
 
     assert copied.status_code == 200
-    assert "Ajustes copiados de la corrida #1" in _text(copied.text)
+    assert "Ajustes copiados del análisis #1" in _text(copied.text)
     assert "Cambie la semilla y continúe" in copied.text
     assert env.rows("SELECT estado, finalizada_en FROM ejecuciones") == before
     # The copy survives navigation without pressing Continuar first.
@@ -104,8 +104,8 @@ def test_copy_keeps_every_stored_setting_and_never_launches_or_resumes(env: Env)
         "workers": "7",
         "seed": "1",
     }
-    assert "Estos ajustes son los de la corrida #1" in _text(review)
-    assert re.search(r"<button[^>]*disabled[^>]*>.*?Lanzar la corrida", review, re.S)
+    assert "Estos ajustes son los del análisis #1" in _text(review)
+    assert re.search(r"<button[^>]*disabled[^>]*>.*?Lanzar el análisis", review, re.S)
     assert 'href="/corridas/1/ejecucion"' in review
 
 
@@ -115,7 +115,7 @@ def test_copying_a_missing_run_does_not_replace_the_draft(env: Env) -> None:
     missing = client.post(
         "/corridas/nueva/copiar", data={"copiar": "999", "draft_rev": _stamp(client)}
     )
-    assert "No se pudieron copiar los ajustes de la corrida #999: no existe esa corrida." in (
+    assert "No se pudieron copiar los ajustes del análisis #999: no existe ese análisis." in (
         _text(missing.text)
     )
     assert _launch_payload(client.get("/corridas/nueva/revisar").text)["seed"] == "123"
@@ -139,8 +139,8 @@ def test_duplicate_review_and_replayed_launch_do_not_change_an_existing_run(
     before = env.rows("SELECT * FROM ejecuciones")
     # workers does not belong to a run's identity.
     review = _review(client, env, workers="7")
-    assert "Estos ajustes son los de la corrida #1" in _text(review)
-    assert re.search(r"<button[^>]*disabled[^>]*>.*?Lanzar la corrida", review, re.S)
+    assert "Estos ajustes son los del análisis #1" in _text(review)
+    assert re.search(r"<button[^>]*disabled[^>]*>.*?Lanzar el análisis", review, re.S)
 
     replayed = client.post(
         "/ejecucion/lanzar", data=_launch_payload(review), follow_redirects=False
@@ -225,7 +225,7 @@ def test_import_populates_the_draft_but_does_not_launch(env: Env) -> None:
     assert response.status_code == 200
     review = client.get("/corridas/nueva/revisar").text
     assert _launch_payload(review)["seed"] == "2"
-    assert "Estos ajustes son los de la corrida" not in _text(review)
+    assert "Estos ajustes son los del análisis" not in _text(review)
     assert env.rows("SELECT COUNT(*) FROM ejecuciones") == [(1,)]
 
 
@@ -234,7 +234,7 @@ def test_records_include_trials_workers_and_seed_without_edit_or_launch_controls
     _launch(client, env, trials="6", workers="7", seed="2")
     for step in ("ajustes", "revisar"):
         html = client.get(f"/corridas/1/{step}").text
-        assert "Esta corrida ya se lanzó" in _text(html)
+        assert "Este análisis ya se lanzó" in _text(html)
         for name, label, value in (
             ("seed", "Semilla", "2"),
             ("workers", "Procesos en paralelo", "7"),
@@ -321,9 +321,9 @@ def test_review_of_a_launched_run_does_not_list_the_run_as_an_earlier_run(env: E
     )
     text = _text(client.get("/corridas/1/revisar").text)
     assert "Datos y ajustes lanzados" in text
-    assert "Cómo fueron las corridas anteriores" in text
+    assert "Cómo fueron los análisis anteriores" in text
     assert "Qué va a pasar" not in text
-    assert "Todavía no hay corridas terminadas con estos datos" in text
+    assert "Todavía no hay análisis terminados con estos datos" in text
     assert "2 h 30 min" not in text
     # The draft still shows it: from a new draft, run #1 is an earlier run.
     assert "2 h 30 min" in _text(_review(client, env, seed="2"))
@@ -344,7 +344,7 @@ def test_review_shows_how_long_the_last_run_on_these_data_took_only_when_all_sta
     )
     text = _text(_review(client, env, seed="2"))
     assert (
-        "La corrida #1 con estos datos tardó 4 s. Con otros ajustes puede tardar distinto." in text
+        "El análisis #1 con estos datos tardó 4 s. Con otros ajustes puede tardar distinto." in text
     )
     (env.settings.data_root / "runs/earlier/progreso.jsonl").write_text(
         _event("stage_started", "L2", "2026-11-02T23:00:00Z")
@@ -690,7 +690,7 @@ def test_reloading_a_copy_link_keeps_the_later_edits(env: Env) -> None:
     )
     assert COOKIE in linked.headers["set-cookie"]
     page = client.get(linked.headers["location"])
-    assert "Ajustes copiados de la corrida #1" in _text(page.text)
+    assert "Ajustes copiados del análisis #1" in _text(page.text)
     assert "set-cookie" not in page.headers
     stamp = re.search(r'name="draft_rev" value="([^"]+)"', page.text)
     assert stamp is not None
@@ -715,7 +715,7 @@ def test_copy_and_import_answer_with_a_redirect_that_writes_nothing(env: Env, ac
             follow_redirects=False,
         )
         target = "/corridas/nueva/ajustes?aviso=copiado&corrida=1"
-        notice = "Ajustes copiados de la corrida #1"
+        notice = "Ajustes copiados del análisis #1"
     else:
         document = client.get("/ejecucion/configuracion.json?ejecucion=1").json()
         sent = client.post(

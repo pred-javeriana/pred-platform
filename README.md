@@ -17,8 +17,8 @@ preparan y manejan una instalación local completa:
 ```bash
 make setup    # revisa lo necesario, instala las dos copias, crea .env, migra y carga el ejemplo
 make up       # arranca PRED en segundo plano, espera a que responda e imprime la dirección
-make status   # dice si PRED corre, la versión de la base y las corridas
-make down     # detiene PRED (la corrida en curso queda para reanudarse al volver a arrancar)
+make status   # dice si PRED corre, la versión de la base y los análisis de pronóstico
+make down     # detiene PRED (el análisis en curso queda para reanudarse al volver a arrancar)
 ```
 
 - **`make setup`** se puede repetir. Instala esta copia (`uv sync --extra dev --locked`) y el
@@ -40,7 +40,7 @@ make down     # detiene PRED (la corrida en curso queda para reanudarse al volve
 
 El archivo de ejemplo tiene 6 productos sintéticos y 400 días: alcanza para que la evaluación
 final tenga las 30 ventanas de prueba que exige por producto. Con los ajustes por defecto (las
-cuatro familias) su corrida tardó menos de dos minutos con 2 procesos.
+cuatro familias) su análisis de pronóstico tardó menos de dos minutos con 2 procesos.
 
 ## Quick start
 
@@ -396,7 +396,7 @@ make format      # apply ruff fixes and formatting
 
 CI (`.github/workflows/ci.yml`) runs each check as its own job, so a red job names what broke:
 Lockfile, Lint, Format, Types, Tests (coverage >= 80%), and Smoke, which boots the server with
-runtime dependencies only and requests `/health` and `/` (the Corridas home).
+runtime dependencies only and requests `/health` and `/` (the Análisis de pronóstico home).
 
 The test suite also runs `pred.js` and HTMX in real headless Chromium through Node's built-in
 runner. Install Chromium and Node >= 22 and run `uv run pytest` locally to include it; run alone,

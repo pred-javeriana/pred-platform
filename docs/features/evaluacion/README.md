@@ -59,7 +59,7 @@ de agregación ni recorte. Por eso cambia la identidad de las corridas nuevas.
 Al terminar, la plataforma guarda `corrida.json.evaluation` en la misma
 transacción que el estado final. Si el motor anterior no publica ese campo,
 los ajustes no cambian. Mientras no haya valores publicados, la interfaz indica
-«Lo informa el motor al terminar la corrida».
+«Lo informa el motor al terminar la ejecución».
 
 ## Lectura para M4 (contrato v2)
 

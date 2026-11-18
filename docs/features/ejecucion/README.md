@@ -42,7 +42,7 @@ ingestion, the nine parameters (`min_train`, `horizon`, `step`, `seasonality`, `
 `trials`, `seed`, `workers`) and the versions that read it (platform, contract v1 and v2, format of
 `parametros`). Nothing local travels (no execution id, no dates). Importing **fills the draft**:
 it validates with the same rule as a launch (`parse_launch_form`), never writes to the database
-and never launches. The operator reviews and presses "Lanzar la corrida". A file that is
+and never launches. The operator reviews and presses "Lanzar el análisis". A file that is
 empty, over 64 KB, not JSON, of another format or major version, with unknown or missing fields, a
 wrong type or a value the launch rejects is refused (400) with its cause. If the file's ingestion is
 not accepted here, its settings are imported but no ingestion is chosen and the notice names the

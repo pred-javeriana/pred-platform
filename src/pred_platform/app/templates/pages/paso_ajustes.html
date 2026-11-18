@@ -17,7 +17,7 @@
   {% include "partials/settings_evaluation.html" %}
   {% else %}
   <section class="pred-panel" aria-labelledby="titulo-ajustes">
-    <h2 id="titulo-ajustes">Ajustes de esta corrida</h2>
+    <h2 id="titulo-ajustes">Ajustes de este análisis</h2>
     {% if record_error %}{{ alert(record_error, variant="error") }}{% endif %}
     <dl class="pred-check">
       {% for label, value in review_rows %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}

@@ -115,7 +115,7 @@
   {% if progress %}</div></div>{% endif %}
   {% if stage_rows %}
   <p class="pred-meta pred-stage-key">{% if stage_caption %}{{ stage_caption }}{% else %}Duración por etapa del intento actual · barras desde cero, en la misma escala. No es una estimación de lo que falta.{% endif %}</p>
-  <ul class="pred-stage-legend" aria-label="Referencia de las barras"><li><i></i>Esta corrida</li>{% for reference in stage_history | default([]) %}<li><i class="is-reference-{{ loop.index0 }}"></i>Semilla {{ reference.seed }}</li>{% endfor %}</ul>
+  <ul class="pred-stage-legend" aria-label="Referencia de las barras"><li><i></i>Este análisis</li>{% for reference in stage_history | default([]) %}<li><i class="is-reference-{{ loop.index0 }}"></i>Semilla {{ reference.seed }}</li>{% endfor %}</ul>
   <ol class="pred-live-stages{% if not poll %} is-fija{% endif %}" aria-label="Etapas del motor">
     {% for step in stage_rows %}
     <li class="is-{{ step.state }}" data-stage-code="{{ step.code }}" data-stage-seconds="{{ step.seconds if step.seconds is not none else '' }}">
@@ -131,8 +131,8 @@
 
 {% if run.estado in ("pendiente", "ejecutando") %}
 <section class="pred-panel pred-action-card pred-close-page">
-  <div><h2>Puede cerrar esta página</h2><p>La corrida sigue en el procesador aunque cierre el navegador. Al volver, abra esta corrida en Corridas para ver lo que pasó mientras no estaba.</p></div>
-  <div class="pred-action-card__do">{{ button("Ir a Corridas", variant="secondary", href="/") }}</div>
+  <div><h2>Puede cerrar esta página</h2><p>El análisis sigue en el procesador aunque cierre el navegador. Al volver, ábralo desde el inicio para ver lo que pasó mientras no estaba.</p></div>
+  <div class="pred-action-card__do">{{ button("Ver todos los análisis", variant="secondary", href="/") }}</div>
 </section>
 {% endif %}
 
@@ -180,7 +180,7 @@
     </dl>
     {% if source != "fixture" %}
     <p class="pred-actions">{{ button("Exportar configuración (JSON)", variant="subtle", href="/ejecucion/configuracion.json?ejecucion=" ~ run.id, icon="i-download") }}</p>
-    <p class="pred-meta">El archivo reproduce esta ejecución: impórtelo en Ajustes de una corrida nueva para lanzar los mismos ajustes.</p>
+    <p class="pred-meta">El archivo reproduce esta ejecución: impórtelo en Ajustes de un análisis nuevo para lanzar los mismos ajustes.</p>
     {% endif %}
 {% endcall %}
 

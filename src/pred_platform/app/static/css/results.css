@@ -1,6 +1,6 @@
 /* Capítulos de la evaluación publicada. */
 .pred-results { min-width: 0; }
-/* Los hechos y «Detalles de la corrida» comparten la línea de base del texto. Bajo el encabezado del
+/* Los hechos y «Detalles del análisis» comparten la línea de base del texto. Bajo el encabezado del
    paso, que ya cierra con una línea, la barra no repite la suya. */
 .pred-context--chapters { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 24px; }
 .pred-stephead + .pred-results > .pred-context:first-child { padding-top: 0; border-top: 0; }

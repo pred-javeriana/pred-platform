@@ -129,7 +129,7 @@ def execution_display(status: RunStatus | None, now: datetime) -> dict[str, Any]
             "id": run.id,
             "identity": run.configuracion_id,
             "state": run.estado,
-            "stateLabel": "Completada" if run.estado in FINISHED_STATES else None,
+            "stateLabel": "Completado" if run.estado in FINISHED_STATES else None,
             "started": run.iniciada_en.isoformat() if run.iniciada_en else None,
             "stage": current,
             "stages": stage_rows,
@@ -190,7 +190,7 @@ def task_rows(status: RunStatus) -> list[dict[str, Any]]:
                 describe_status("family", "excluida"),
                 label="No elegida para esta clase"
                 if family.exclusion_code == "not_in_policy_matrix"
-                else "No elegida en esta corrida"
+                else "No elegida en este análisis"
                 if family.exclusion_code == "not_configured"
                 else "Excluida",
                 hint=reason,

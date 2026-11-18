@@ -424,7 +424,7 @@ def test_stability_group_must_include_the_current_exact_publication(lumpy_db: Pa
             "/corridas/1/resultados/estabilidad", params={"m3": "other-current", **CHOICES}
         )
         assert response.status_code == 200
-        assert "El grupo debe incluir la evaluación de la corrida mostrada" in response.text
+        assert "El grupo debe incluir la evaluación del análisis mostrado" in response.text
         assert "Significancia del grupo por clase" not in response.text
 
 
@@ -511,7 +511,7 @@ def test_sources_list_all_publications_and_mark_the_selected_one(lumpy_db: Path)
     )
     with client(lumpy_db) as browser:
         page = browser.get("/resultados/grupo", params=CHOICES).text
-        assert "La plataforma no distingue una corrida final de una de desarrollo." in page
+        assert "La plataforma no distingue un análisis final de uno de desarrollo." in page
         sources = page.split("Evaluaciones y fuentes de cada número", 1)[1].split("</details>")[0]
         assert "development-0" in sources and "seed-0</span> (elegida)" in sources
 

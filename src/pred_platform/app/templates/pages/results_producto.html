@@ -408,7 +408,7 @@
         <dt>Identificador de la evaluación final</dt><dd class="mono">{{ m3.run.run_id if m3.run else "No informada" }}</dd>
         <dt>Huella del archivo de datos (SHA-256)</dt><dd class="mono">{{ m3.run.ingesta_sha256 if m3.run else run.ejecucion.ingest_id if run and run.ejecucion and run.ejecucion.ingest_id else "No informada" }}</dd>
         <dt>Versión de la política de selección</dt><dd class="mono">{{ selection.policy_version or "No informada" }}</dd>
-        <dt>Ajuste por multiplicidad</dt><dd>Prueba HLN-DM con ajuste BH dentro de cada clase de demanda (no de toda la corrida).</dd>
+        <dt>Ajuste por multiplicidad</dt><dd>Prueba HLN-DM con ajuste BH dentro de cada clase de demanda (no de todo el análisis).</dd>
       </dl>
       {% if selection.topology %}
       <h3>Patrón de demanda</h3>

@@ -9,8 +9,9 @@
   <header class="pred-stephead">
     <div>
       <p class="pred-stephead__eyebrow">Inicio</p>
-      <h1>Corridas</h1>
-      <p class="pred-stephead__what">Cada corrida recorre cinco pasos: datos, ajustes, revisión, ejecución y resultados. Abra una para seguir donde quedó, o empiece una nueva.</p>
+      <h1>Análisis de pronóstico</h1>
+      <p class="pred-stephead__what">Un análisis de pronóstico es el proceso completo sobre un archivo de ventas: se leen los datos, se arma la venta diaria de cada producto, se clasifica su patrón de demanda, se comparan los modelos con días que no vieron al entrenar y se elige el modelo campeón con sus pruebas e intervalos.</p>
+      <p class="pred-stephead__what">Cada análisis recorre cinco pasos: datos, ajustes, revisión, ejecución y resultados. Abra uno para seguir donde quedó, o empiece uno nuevo.</p>
     </div>
     <div class="pred-stephead__actions">
       {% with new_run_class="pred-btn pred-btn--primary pred-btn--large" %}{% include "partials/new_run.html" %}{% endwith %}
@@ -21,7 +22,7 @@
   <p class="pred-meta">Datos de prueba</p>
   {% endif %}
   {% if not new_run.enabled %}
-  <details class="pred-details" id="nueva-corrida-razon"><summary>Por qué no se puede empezar una corrida nueva</summary>
+  <details class="pred-details" id="nueva-corrida-razon"><summary>Por qué no se puede empezar un análisis nuevo</summary>
   <ul class="pred-reasons">
     {% for reason in new_run.missing %}<li>{{ reason }}</li>{% endfor %}
   </ul>
@@ -31,7 +32,7 @@
   {% if home.group %}
   <section class="pred-panel pred-home-group" aria-labelledby="titulo-grupo">
     <h2 id="titulo-grupo">Grupo de la tesis</h2>
-    <p class="pred-lead">Tres corridas con los mismos datos y ajustes, que solo cambian la semilla. La pregunta 3 se responde cuando las tres publiquen.</p>
+    <p class="pred-lead">Tres análisis con los mismos datos y ajustes, que solo cambian la semilla. La pregunta 3 se responde cuando los tres publiquen.</p>
     <ul class="pred-group">
       {% for slot in home.group %}
       <li><strong>Semilla {{ slot.seed }}{% if slot.facts %} · #{{ slot.facts.id }}{% endif %}</strong>{{ status_indicator(slot.status) }}</li>
@@ -42,11 +43,11 @@
   {% endif %}
 
   <section class="pred-panel" aria-labelledby="titulo-corridas">
-    <h2 id="titulo-corridas">Todas las corridas</h2>
+    <h2 id="titulo-corridas">Todos los análisis</h2>
     {% if home.error %}
-      {{ unavailable_state(home.error.title, home.error.detail or "No fue posible leer las corridas.", home.error.code, home.error.blocked_by, support=home.error.support) }}
+      {{ unavailable_state(home.error.title, home.error.detail or "No fue posible leer los análisis.", home.error.code, home.error.blocked_by, support=home.error.support) }}
     {% elif not home.rows %}
-      {{ empty_state("Todavía no hay corridas.", "Empiece una nueva: elija los datos, los ajustes y lance la corrida." if new_run.enabled else "Todavía no se puede empezar una: vea por qué arriba.", "Nueva corrida" if new_run.enabled else none, "/corridas/nueva/datos") }}
+      {{ empty_state("Todavía no hay análisis de pronóstico.", "Empiece uno nuevo: elija los datos, los ajustes y lance el análisis." if new_run.enabled else "Todavía no se puede empezar uno: vea por qué arriba.", "Nuevo análisis" if new_run.enabled else none, "/corridas/nueva/datos") }}
     {% else %}
     <ul class="pred-runs">
       {% for row in home.rows %}
@@ -54,7 +55,7 @@
       <li>
         <div>
           <p class="pred-runs__name">#{{ run.id }} · semilla {{ run.seed }}</p>
-          <p class="pred-runs__meta">{% if run.file_name %}{{ run.file_name }} · {% endif %}{% if run.finished %}{{ when(run.iniciada_en) }}{% if run.duration %} · terminó {{ run.duration }} después de iniciar{% endif %}{% elif run.iniciada_en %}lanzada {{ when(run.iniciada_en) }}{% else %}en cola, todavía sin empezar{% endif %}</p>
+          <p class="pred-runs__meta">{% if run.file_name %}{{ run.file_name }} · {% endif %}{% if run.finished %}{{ when(run.iniciada_en) }}{% if run.duration %} · terminó {{ run.duration }} después de iniciar{% endif %}{% elif run.iniciada_en %}lanzado {{ when(run.iniciada_en) }}{% else %}en cola, todavía sin empezar{% endif %}</p>
           <span class="pred-minirail" aria-hidden="true">{% for index in range(5) %}<i class="{{ 'is-done' if index < row.done else ('is-current' ~ (' is-live' if row.live else '') if index == row.current else '') }}"></i>{% endfor %}</span>
         </div>
         <div>

@@ -33,7 +33,7 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
   situación, debajo, pestañas de detalle con la evidencia bajo demanda y, al pie, Atrás y
   Siguiente. A anchos de 390 px y 320 px no hay desborde de página; las tablas se desplazan
   localmente y las cifras no se parten.
-- **Navegación.** La barra superior lleva a Corridas (marcada con `aria-current="page"` en el
+- **Navegación.** La barra superior lleva a Análisis de pronóstico (marcada con `aria-current="page"` en el
   inicio) y nombra la corrida que se ve. La barra de pasos es una lista ordenada de los cinco
   pasos: el actual lleva `aria-current="step"`, cada paso dice su estado en texto para lectores
   de pantalla y un paso bloqueado no es un enlace. Se abre con el puntero o con el foco del
@@ -76,7 +76,7 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
   es 20/18/16/14 px.
 - **Etiquetas.** Todo nombre visible sale de `app/presentation.py`. Las tareas se muestran como
   Pendiente, Ejecutando, Por evaluar, Exitosa, Fallida y No ejecutable; una ejecución terminada
-  dice Completada y, al lado, cuántas tareas fallaron y cuántos productos tienen veredicto. Los
+  dice Completado (Completado con fallos si alguna falló) y, al lado, cuántas tareas fallaron y cuántos productos tienen veredicto. Los
   veredictos, las clases de demanda (Suave, Errática, Intermitente y Grumosa), las familias y los
   modelos usan su nombre en español; el código queda en `title` o en el detalle técnico. Las
   claves contractuales, filtros, CSV, colores e iconos no cambian.
@@ -86,7 +86,7 @@ en `docs/EVALUACION_UX.md`. Capturas de la interfaz en `docs/ui-review/`:
   porqué (`fallas.describir_motivo`); el texto que guardó el motor queda en el detalle para
   soporte bajo la tabla de ensayos. `podada` tiene icono y representación propios, distintos de
   `fallida`.
-- **Nueva corrida desde Resultados.** La acción secundaria «Nueva corrida con estos datos» abre
+- **Nuevo análisis desde Resultados.** La acción secundaria «Nuevo análisis con estos datos» abre
   Ajustes de una corrida nueva con la ingesta de la corrida mostrada y respeta las
   comprobaciones de capacidad.
 

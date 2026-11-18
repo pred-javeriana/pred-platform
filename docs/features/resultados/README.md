@@ -127,7 +127,7 @@ records) and a null is an empty cell, with `dm_causa` as the cause when there is
 
 **Grupo de semillas** is a separate compact view at `/resultados/grupo`, linked from the
 header of the Resultados step (also while it is locked) and from the thesis group on the
-Corridas home. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2; on a first
+Análisis de pronóstico home. The reader explicitly chooses the PUBLICADA runs for seeds 0, 1 and 2; on a first
 visit, a seed with exactly one publication has it already chosen in the form, and the group is
 read only after «Mostrar grupo».
 Each option reads «Creada el …» from `GroupRunOption.creado_en` in Bogotá time (the start of L4,
@@ -159,7 +159,7 @@ no inline script. `include_windows` is only requested with `?ventanas=1`.
   run id; it resolves to the run with the highest id. Resultados uses it only when no execution has
   a PUBLICADA M3 run; otherwise it opens the newest one that has. `?ejecucion=3` shows another one,
   and an execution that does not exist says so instead of showing an empty panel.
-- **"Nueva corrida con estos datos".** Secondary action in the step header that opens Ajustes of a
+- **"Nuevo análisis con estos datos".** Secondary action in the step header that opens Ajustes of a
   new run (`/corridas/nueva/ajustes?ingest_id=…`) with the ingest of the execution shown. It is enabled only when
   `parquet_read`, `family_comparison` and `selection_results_persisted` are available
   (contract 7.8); otherwise it is disabled and "Por qué no se puede lanzar" lists what is missing.

@@ -8,7 +8,7 @@
 {% set counts = format_count(completed) ~ " de " ~ format_count(total) ~ " tareas" %}
 <div class="pred-progress{% if circular %} pred-progress--circular{% endif %}" data-pred-progress="{{ percent }}"{% if status_label %} data-pred-progress-status="{{ status_label }}"{% endif %}>
   {% if circular %}
-  <div class="pred-progress__ring{% if percent >= 100 %} is-complete{% endif %}{% if working %} is-working{% endif %}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}" aria-valuetext="{{ counts }} · {{ shown }} %">
+  <div class="pred-progress__ring{% if percent >= 100 %} is-complete{% endif %}{% if working %} is-working{% endif %}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso del análisis' }}" aria-valuetext="{{ counts }} · {{ shown }} %">
     <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
       <circle class="pred-progress__ring-track" cx="60" cy="60" r="52" />
       <circle class="pred-progress__arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="{{ percent }} 100" transform="rotate(-90 60 60)" />
@@ -26,7 +26,7 @@
     <span class="pred-progress__counts">{{ format_count(completed) }} / {{ format_count(total) }} tareas</span>
     <span class="pred-progress__pct">{{ shown }} %</span>
   </div>
-  <div class="pred-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso de la corrida' }}" aria-valuetext="{{ counts }} · {{ shown }} %">
+  <div class="pred-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label or 'Progreso del análisis' }}" aria-valuetext="{{ counts }} · {{ shown }} %">
     <span class="pred-progress__fill"></span>
   </div>
   {% endif %}

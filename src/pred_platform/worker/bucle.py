@@ -50,7 +50,7 @@ def _unimported(error: dict[str, Any]) -> dict[str, Any]:
     if error["code"] == "platform.result_import_failed":
         return error
     return result_import_error(
-        f"El motor publicó la corrida, pero sus archivos finales no se importaron: "
+        f"El motor publicó el análisis, pero sus archivos finales no se importaron: "
         f"{error['detail']}"
     )
 
@@ -294,7 +294,7 @@ class Worker:
                 conn.rollback()
                 error = platform_error(
                     "platform.database_busy",
-                    f"No se pudo registrar el estado de la corrida en la base de datos: {exc}",
+                    f"No se pudo registrar el estado del análisis en la base de datos: {exc}",
                     retryable=True,
                 )
                 self._unsettled = (run, error)

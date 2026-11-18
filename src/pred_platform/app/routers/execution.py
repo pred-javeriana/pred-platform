@@ -385,7 +385,7 @@ def paso_ejecucion(
             request,
             Locked(
                 title="Ejecución",
-                heading="Todavía no hay corrida",
+                heading="Todavía no hay análisis",
                 text="Este paso se abre al lanzar. Antes, revise los datos y los ajustes.",
                 actions=((resume.label, resume.href, True),),
             ),
@@ -803,11 +803,11 @@ def _shown_notice(request: Request) -> tuple[str, str] | None:
     return {
         "copiado": (
             "info",
-            f"Ajustes copiados de la corrida #{corrida}. Cambie la semilla y continúe.",
+            f"Ajustes copiados del análisis #{corrida}. Cambie la semilla y continúe.",
         ),
         "copiado_sin_datos": (
             "warning",
-            f"Ajustes copiados de la corrida #{corrida}, pero el archivo de esa corrida no está "
+            f"Ajustes copiados del análisis #{corrida}, pero el archivo de ese análisis no está "
             "disponible. Elija otros datos y cambie la semilla antes de continuar.",
         ),
         "importado": (
@@ -830,7 +830,7 @@ def copiar_ajustes(
     repository: DataRepository = Depends(get_repository),  # noqa: B008
     draft_rev: Annotated[str | None, Form()] = None,
 ) -> HTMLResponse | RedirectResponse:
-    """«Partir de una corrida anterior» en Ajustes."""
+    """«Partir de un análisis anterior» en Ajustes."""
     if is_stale(request, draft_rev):
         return _render_ajustes(request, repository, conflict=True, status_code=409)
     return _copy_settings(request, repository, copiar.strip().lstrip("#"))
@@ -852,7 +852,7 @@ def _copy_settings(
     def refused(reason: str) -> HTMLResponse:
         notice = (
             "warning",
-            f"No se pudieron copiar los ajustes de la corrida #{reference}: {reason}.",
+            f"No se pudieron copiar los ajustes del análisis #{reference}: {reason}.",
         )
         return _render_ajustes(request, repository, ingest_id=ingest_id, imported=notice, save=save)
 
@@ -861,7 +861,7 @@ def _copy_settings(
         return refused("la plataforma funciona con datos de prueba")
     detail = lectura.get_run(settings.db_path, reference)
     if detail is None:
-        return refused("no existe esa corrida")
+        return refused("no existe ese análisis")
     try:
         values = form_values(detail)
     except ConfigExportError as exc:
@@ -1100,7 +1100,7 @@ def _render_action_error(
     if target is None:
         return render_locked(
             request,
-            Locked(title="Ejecución", heading=message, text="Todavía no hay corridas."),
+            Locked(title="Ejecución", heading=message, text="Todavía no hay análisis."),
             status_code=status_code,
         )
     return _render_execution(

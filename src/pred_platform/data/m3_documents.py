@@ -16,25 +16,25 @@ from pred_platform.data.m3_query import M3Query
 
 Reason = Literal["no_data", "not_published", "metadata_missing"]
 
-NO_RUN = "No hay ninguna corrida M3 con ese identificador."
-NO_RUNS = "No hay corridas M3 que coincidan con la consulta."
+NO_RUN = "No hay ninguna evaluación M3 con ese identificador."
+NO_RUNS = "No hay evaluaciones M3 que coincidan con la consulta."
 METADATA_MISSING = (
     "La publicación no conserva los metadatos de exclusión de la ingesta (corte t* y productos "
     "lanzados después del corte): sin ellos no hay embudo ni veredictos. La falta de metadatos no "
-    "significa cero exclusiones; vuelva a ejecutar la corrida con un motor que los publique."
+    "significa cero exclusiones; vuelva a ejecutar el análisis con un motor que los publique."
 )
 
 OBSERVATIONS_MISSING = (
-    "La corrida se publicó antes de que M3 publicara la demanda observada; "
-    "vuelva a ejecutarla para ver el gráfico."
+    "El análisis se publicó antes de que M3 publicara la demanda observada; "
+    "vuelva a ejecutarlo para ver el gráfico."
 )
 
 
 def not_published(run: models_v2.M3Run) -> str:
     """Detail of a run that exists but is not PUBLICADA: its state, and the cause if rejected."""
     if run.estado == "RECHAZADA":
-        return f"La corrida M3 {run.run_id} fue RECHAZADA: {run.causa_rechazo}"
-    return f"La corrida M3 {run.run_id} está {run.estado}; su evidencia aparece al publicarse."
+        return f"La evaluación M3 {run.run_id} fue RECHAZADA: {run.causa_rechazo}"
+    return f"La evaluación M3 {run.run_id} está {run.estado}; su evidencia aparece al publicarse."
 
 
 def available() -> models_v2.Availability:

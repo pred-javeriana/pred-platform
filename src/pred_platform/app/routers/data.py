@@ -76,7 +76,7 @@ def paso_datos(
                 request,
                 Locked(
                     title="Datos",
-                    heading="Esta corrida no registró su archivo de datos",
+                    heading="Este análisis no registró su archivo de datos",
                     text="Los pasos siguientes muestran lo que sí quedó guardado.",
                     actions=(("Ir a Ajustes", step_href(facts.id, "ajustes"), True),),
                 ),

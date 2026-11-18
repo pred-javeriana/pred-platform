@@ -83,10 +83,10 @@ def _text(html: str) -> str:
 
 
 def _run_state_tone(html: str) -> str:
-    """The colour modifier of the run's «Detenida» state, in Ejecución or in Resultados."""
+    """The colour modifier of the run's «Detenido» state, in Ejecución or in Resultados."""
     found = re.findall(
         r'<span class="pred-status pred-status--(\w+)"[^>]*>\s*<svg[^>]*><use href="#i-stop">'
-        r'</use></svg>\s*<span class="pred-status__label">Detenida</span>',
+        r'</use></svg>\s*<span class="pred-status__label">Detenido</span>',
         html,
     )
     assert len(set(found)) == 1, found
@@ -171,7 +171,7 @@ def test_an_invalid_filter_is_a_warning_and_an_unknown_run_is_not_a_500() -> Non
     missing = client.get("/ejecucion?ejecucion=99")
     assert missing.url.path == "/corridas/99/ejecucion"
     assert missing.status_code == 404 and "Traceback" not in missing.text
-    assert "No existe la corrida «99»." in missing.text
+    assert "No existe el análisis «99»." in missing.text
 
 
 def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
@@ -179,7 +179,7 @@ def test_without_runs_or_ingestions_the_screen_guides_the_next_step() -> None:
     # Without runs, the old Ejecución link starts a new run at Datos, with the upload first.
     first = client.get("/ejecucion")
     assert first.url.path == "/corridas/nueva/datos"
-    assert 'id="titulo-elegir-datos">¿Qué datos usa esta corrida?<' in first.text
+    assert 'id="titulo-elegir-datos">¿Qué datos usa este análisis?<' in first.text
     assert 'id="carga" open' in first.text
     assert 'action="/datos/cargar"' in first.text
     # Ajustes says what is missing and cannot continue.
@@ -193,7 +193,7 @@ def test_the_write_actions_are_disabled_and_explained_with_fixtures() -> None:
     client, repo = _fixture_client("normal")
     html = client.get("/ejecucion").text
 
-    assert 'href="/corridas/nueva/datos"' in html and "Nueva corrida" in html
+    assert 'href="/corridas/nueva/datos"' in html and "Nuevo análisis" in html
     ingest_id = next(
         item.ingest_id
         for item in repo.list_ingests().items
@@ -641,7 +641,7 @@ def test_terminal_run_stops_polling_after_its_separate_worker_and_engine_exit(
                 shown = re.search(region, response.text, re.S)
                 assert shown is not None
                 labels = re.findall(r'pred-status__label">\s*([^<]+)', shown.group(1))
-                assert labels and all(label.startswith("Completada") for label in labels), path
+                assert labels and all(label.startswith("Completado") for label in labels), path
             assert env.db.read_bytes() == before
 
         assert_terminal_without_writes()
@@ -1361,7 +1361,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
 
     after = client.get(stopped.headers["location"])
     text = _text(after.text)
-    assert "Detenida" in text and "Se pidió detener la ejecución." in text
+    assert "Detenido" in text and "Se pidió detener la ejecución." in text
     assert "Reanude la ejecución cuando quiera." in text  # the next step for platform.run_stopped
     assert "La ejecución se detuvo a petición del operador." in text
     assert client.get("/ejecucion/estado").status_code == 286  # nothing left to poll
@@ -1371,7 +1371,7 @@ def test_a_run_followed_stopped_and_resumed_from_the_screen(
     assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
     env.worker().run_next()
     done = client.get("/ejecucion").text
-    assert "Completada" in _text(done) and 'href="/corridas/1/resultados"' in done
+    assert "Completado" in _text(done) and 'href="/corridas/1/resultados"' in done
     assert env.rows("SELECT COUNT(*) FROM tareas") == [(9,)]  # the same rows, no duplicates
 
 
@@ -1604,7 +1604,7 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
     text = _text(client.get("/ejecucion").text)
     # The run reads as completed with failures, the name the Corridas home uses, and a sentence
     # says how many tasks failed.
-    assert "Completada con fallos" in text and "Reintentar las tareas con fallos" in text
+    assert "Completado con fallos" in text and "Reintentar las tareas con fallos" in text
     assert re.search(r"(Falló|Fallaron) \d+ de \d+ tareas de modelos\.", text)
     # A finished run is not working any more: no pulse, no moving ring.
     html = client.get("/ejecucion").text
@@ -1779,7 +1779,7 @@ def test_an_edited_run_number_is_never_a_server_error(
     for old in ("/ejecucion", "/resultados"):
         page = client.get(old, params=query)
         assert page.status_code == 404 and "Ejecución #1" not in page.text
-        assert "No existe la corrida" in page.text
+        assert "No existe el análisis" in page.text
     assert client.get("/ejecucion/estado", params=query).status_code in (200, 286)
     assert client.get("/ejecucion/configuracion.json", params=query).status_code == 404
     assert client.get("/resultados/exportar.csv", params=query).status_code == 404
@@ -1883,7 +1883,7 @@ def test_stopping_or_resuming_a_run_that_does_not_exist_says_so(env: Env) -> Non
         response = client.post(f"/ejecucion/{action}", data={"ejecucion": "999"})
 
         assert response.status_code == 404, action
-        assert "No existe la corrida «999»." in response.text, action
+        assert "No existe el análisis «999»." in response.text, action
         assert not response.history, action
 
 
@@ -1988,7 +1988,7 @@ def test_with_the_launch_form_open_launching_is_the_one_primary_action(
     assert primary(client.get("/ejecucion").text) == ["Ver resultados"]
     assert primary(client.get("/ejecucion/estado").text) == ["Ver resultados"]
     # A new run is launched from Revisar, where Lanzar is the one primary action.
-    assert primary(_review(client, env, seed="18")) == ["Lanzar la corrida"]
+    assert primary(_review(client, env, seed="18")) == ["Lanzar el análisis"]
 
 
 def test_the_first_queued_run_waits_for_the_worker_not_for_an_earlier_run(
@@ -2098,7 +2098,7 @@ def test_a_worker_that_cannot_open_its_lock_is_the_reason_given_for_the_wait(
             assert "empezará cuando el procesador de ejecuciones la tome" not in text
             assert "termine la ejecución anterior" not in text
         assert "no puede abrir su archivo de bloqueo" in form
-        assert "Puede lanzar; la corrida esperará en cola" in form
+        assert "Puede lanzar; el análisis esperará en cola" in form
         refused.clear()
         _wait(lambda: app.state.worker.lock_problem is None)
         _wait(lambda: env.rows("SELECT estado FROM ejecuciones") == [("completada",)])
@@ -2371,7 +2371,7 @@ def test_a_run_whose_engine_is_killed_offers_to_resume_and_resumes(
     assert resumed.headers["location"] == "/corridas/1/ejecucion?aviso=reanudada"
     env.worker().run_next()
     assert env.rows("SELECT estado FROM ejecuciones") == [("completada",)]
-    assert "Completada" in _text(client.get("/ejecucion").text)
+    assert "Completado" in _text(client.get("/ejecucion").text)
 
 
 def test_a_run_stopped_by_the_operator_shows_why_and_offers_to_resume(

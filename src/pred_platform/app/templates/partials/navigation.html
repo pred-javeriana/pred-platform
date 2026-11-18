@@ -1,8 +1,8 @@
-{# La barra superior: el inicio (Corridas), la corrida que se está viendo y «Nueva corrida». #}
+{# La barra superior: el inicio (Análisis de pronóstico), el análisis que se está viendo y «Nuevo análisis». #}
 <header class="pred-topbar">
   <nav class="pred-topbar__nav" aria-label="Principal">
     <a class="pred-topbar__brand" href="/">PRED</a>
-    <a class="pred-topbar__link" href="/"{% if at_home %} aria-current="page"{% endif %}>Corridas</a>
+    <a class="pred-topbar__link" href="/"{% if at_home %} aria-current="page"{% endif %}>Análisis de pronóstico</a>
     {% if wizard %}<span class="pred-topbar__crumb"><span aria-hidden="true">›</span><strong>{{ wizard.title }}</strong></span>{% endif %}
   </nav>
   {% with new_run_class="pred-btn pred-btn--subtle pred-btn--small pred-topbar__new" %}{% include "partials/new_run.html" %}{% endwith %}

@@ -41,7 +41,7 @@
 
   <section class="pred-section" id="alertas">
     <h2>Alertas</h2>
-    {{ alert("La corrida continúa en segundo plano.", variant="info") }}
+    {{ alert("El análisis continúa en segundo plano.", variant="info") }}
     {{ alert("Ingesta aceptada.", variant="success") }}
     {{ alert("Hay series demasiado cortas.", variant="warning") }}
     {{ alert("No se pudo leer el informe.", variant="error") }}
@@ -70,7 +70,7 @@
 
   <section class="pred-section" id="progreso">
     <h2>Progreso</h2>
-    {{ progress_bar(completed=progress_completed, total=progress_total, percent=progress_percent, label="Corrida activa") }}
+    {{ progress_bar(completed=progress_completed, total=progress_total, percent=progress_percent, label="Análisis activo") }}
   </section>
 
   <section class="pred-section" id="metricas">
@@ -106,7 +106,7 @@
     <h2>Estados de página</h2>
     {{ empty_state("Aún no se han cargado datos.", "Cargue un archivo de transacciones para continuar.", "Ir a Datos", "/datos") }}
     {{ loading_state() }}
-    {{ error_state("No se pudo leer la corrida.", "El repositorio rechazó el documento.", "platform.contract_invalid", "Reintentar", "/ejecucion") }}
+    {{ error_state("No se pudo leer el análisis.", "El repositorio rechazó el documento.", "platform.contract_invalid", "Reintentar", "/ejecucion") }}
     {{ unavailable_state("La orquestación todavía no está disponible.", "El worker no escribe ejecuciones ni tareas.", "not_implemented", ["G3"]) }}
   </section>
 {% endblock %}

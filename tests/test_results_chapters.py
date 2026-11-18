@@ -267,7 +267,7 @@ def test_an_unknown_chapter_returns_to_the_step_entry_with_its_query(
     assert response.headers["location"] == f"/corridas/{number}/resultados?m3=m3-ui-0&tag=a&tag=b"
     page = client.get(response.headers["location"])
     assert page.url.path == f"/corridas/{number}/resultados/resumen"
-    assert "No existe la corrida" not in _text(page.text)
+    assert "No existe el análisis" not in _text(page.text)
 
 
 def test_export_is_the_last_chapter_with_one_footer_and_links_bound_to_the_evaluation(
@@ -308,7 +308,7 @@ def test_the_summary_answers_from_published_rows_and_keeps_the_counts_visible(
     assert "Pregunta de investigación · Tesis, «Introducción»" in text
     assert "de una empresa a partir de sus datos históricos" in text
     assert "No concluyente" in text  # only one of three types has a confirmation
-    assert "Respaldada en esta corrida" not in text
+    assert "Respaldada en este análisis" not in text
     assert 'aria-label="Respuesta por tipo de demanda"' in html
     assert "1 de 4 productos probados (25,0 %)" in text
     assert "20,0 a 20,0 % menos" in text
@@ -431,14 +431,14 @@ def test_stability_requires_all_three_seeds_and_only_compares_the_same_settings(
     _publish(env, client, 1, only_smooth=True)
     path = f"/corridas/{first}/resultados/estabilidad"
     text = _text(client.get(path).text)
-    assert "Sin responder: faltan corridas publicadas" in text
+    assert "Sin responder: faltan análisis publicados" in text
     assert "2 de 3 confirmadas" in text
     _publish(env, client, 2, only_smooth=True)
     html = client.get(path).text
     text = _text(html)
     # The context row picks the run by seed and day, named as the prototype names it.
     picker = re.search(r'<select[^>]*id="ejecucion-mostrada"[^>]*>', html)
-    assert picker is not None and 'aria-label="Elegir la corrida"' in picker.group()
+    assert picker is not None and 'aria-label="Elegir el análisis"' in picker.group()
     assert re.search(r">#\d+ · semilla 2 · \d+ \w+ \d{4}</option>", html)
     assert "La misma campeona gana y se confirma en las tres semillas" in text
     assert "3 de 3 confirmadas" in text
@@ -748,7 +748,7 @@ def test_stability_needs_runs_the_final_group_accepts_not_only_the_same_settings
     summary = _text(client.get(f"/corridas/{first}/resultados/resumen").text)
     for text in (stability, summary):
         assert "La misma campeona gana y se confirma en las tres semillas" not in text
-    assert "Sin responder: faltan corridas publicadas" in stability
+    assert "Sin responder: faltan análisis publicados" in stability
     assert "2 de 3 confirmadas" in stability
     assert "Semillas con resultados 2 de 3" in summary
     assert "Pendiente" in stability
@@ -912,7 +912,7 @@ def test_a_baseline_kept_by_default_is_not_called_the_best_forecast(
     text = _text(client.get(f"/corridas/{number}/resultados/{chapter}").text)
     assert not re.search(r"pronostica mejor (los|\d)", text)
     assert wording in text
-    assert "Respaldada en esta corrida" not in text
+    assert "Respaldada en este análisis" not in text
 
 
 def _second_evaluation(
@@ -1010,10 +1010,10 @@ def test_published_seed_without_a_class_champion_is_not_pending(env: Env) -> Non
     html = client.get(f"/corridas/{first}/resultados/estabilidad").text
     text = _text(html)
     row = next(row for row in re.findall(r"<tr>.*?</tr>", html, re.S) if "Errática" in row)
-    assert "Semilla 1 · #2 Publicada" in text
+    assert "Semilla 1 · #2 Publicado" in text
     assert "Sin campeona publicada" in _text(row)
     assert "Pendiente" not in row
-    assert "Faltan corridas" not in row
+    assert "Faltan análisis" not in row
     assert "No confirmada en las tres" in _text(row)
     assert "No concluyente" in text
 
@@ -1042,7 +1042,7 @@ def test_a_malformed_stored_publication_does_not_break_the_home(
     # An unreadable publication that is not the one shown is a read problem, not an HTTP 500.
     response = client.get("/")
     assert response.status_code == 200
-    assert "Ver la corrida" in _text(response.text)
+    assert "Ver el análisis" in _text(response.text)
     with closing(sqlite3.connect(env.db)) as conn, conn:
         conn.execute(f"UPDATE {table} SET {name} = ? WHERE run_id = 'm3-ui-old'", (original,))
     restored = _text(client.get("/").text)

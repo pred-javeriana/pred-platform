@@ -18,8 +18,11 @@ def test_home_renders_with_corridas_highlighted() -> None:
     response = TestClient(create_app()).get("/")
     assert response.status_code == 200
     html = response.text
-    assert "<title>Corridas · PRED</title>" in html
-    assert '<a class="pred-topbar__link" href="/" aria-current="page">Corridas</a>' in html
+    assert "<title>Análisis de pronóstico · PRED</title>" in html
+    assert (
+        '<a class="pred-topbar__link" href="/" aria-current="page">Análisis de pronóstico</a>'
+        in html
+    )
     assert 'href="/corridas/nueva/datos"' in html
     # El inicio no es un paso: no tiene barra de pasos ni pie de navegación.
     assert "pred-rail" not in html
@@ -41,17 +44,17 @@ def test_each_step_of_a_new_run_renders_inside_the_shell() -> None:
         response = client.get(f"/corridas/nueva/{key}")
         assert response.status_code == 200, key
         html = response.text
-        assert f"<title>{label} · Corrida nueva · PRED</title>" in html, key
-        assert (
-            '<nav class="pred-rail" id="barra-pasos" aria-label="Pasos de la corrida">' in html
-        ), key
+        assert f"<title>{label} · Análisis nuevo · PRED</title>" in html, key
+        assert '<nav class="pred-rail" id="barra-pasos" aria-label="Pasos del análisis">' in html, (
+            key
+        )
         # Below 900 px this summary replaces the rail.
         assert '<nav class="pred-rail-compact" id="resumen-paso" ' in html, key
-        assert 'aria-label="Paso actual de la corrida">' in html, key
+        assert 'aria-label="Paso actual del análisis">' in html, key
         assert eyebrow in html, key
         assert f"<h1>{label}</h1>" in html, key
         # La barra superior nombra la corrida y no marca Corridas como página actual.
-        assert "Corrida nueva (sin lanzar)" in html, key
+        assert "Análisis nuevo (sin lanzar)" in html, key
         assert 'aria-current="page"' not in html, key
         for text in _FORBIDDEN:
             assert text not in html, key
