@@ -143,8 +143,9 @@ VERDICT_ORDER: tuple[str, ...] = (
 )
 
 # Ejecución: claves de EstadoEjecucion. sin_ejecucion es estado de página, no de chip. Una
-# ejecución completada con tareas fallidas terminó bien: el chip dice «Completado» y la página
-# dice al lado cuántas tareas fallaron y cuántos productos tienen veredicto (``run_outcome``).
+# ejecución completada con tareas fallidas terminó bien: el chip dice «Completado con fallos» y
+# la página dice al lado cuántas tareas fallaron y cuántos productos tienen veredicto
+# (``run_outcome``).
 # Una detenida es una advertencia mientras pueda reanudarse; ``describe_run`` la vuelve error
 # cuando reanudarla fallaría igual.
 _RUN: dict[str, StatusPresentation] = {
