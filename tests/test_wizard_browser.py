@@ -170,9 +170,10 @@ def test_chosen_settings_survive_an_earlier_autosave(browser: Browser, env: Env,
     else:
         browser.run("await page.click('#importar-configuracion button[type=submit]');")
     # A native navigation can finish before the earlier keepalive response arrives.
-    browser.run("await page.wait(300);")
+    # Keep the waits outside the page: navigation destroys its JavaScript context.
+    time.sleep(0.3)
     browser.release.set()
-    browser.run("await page.wait(1000);")
+    time.sleep(1)
     browser.open("/corridas/nueva/ajustes")
     expected = "61" if choice == "copy" else "62"
     browser.run(f"""
