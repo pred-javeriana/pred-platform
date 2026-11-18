@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "summary": "Counts excluded tasks only for configured families admitted by the demand class.",
+  "files": [
+    {
+      "path": "src/pred_platform/worker/progreso.py",
+      "summary": "Uses topology classes to settle excluded tasks.",
+      "annotations": [
+        {
+          "newRange": [
+            148,
+            152
+          ],
+          "summary": "Progress defers excluded tasks until the engine publishes topology.",
+          "rationale": "The engine writes topology at publication, so early exclusion events cannot safely synthesize family tasks. Final import reads the same topology and settles exclusions. Worker regression cases cover delayed topology and missing progress.",
+          "author": "fm/pred-worker-335"
+        }
+      ]
+    }
+  ]
+}
