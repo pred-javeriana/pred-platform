@@ -483,9 +483,9 @@ def test_the_real_dal_feeds_the_table_and_the_detail(
     assert page.status_code == 200
     for sku in ("FIL-0001", "FIL-0002", "FIL-0003"):
         assert sku in text
-    # A run whose model tasks partly failed still finished: the state says so, and the line
-    # beside it says what failed.
-    assert "Ejecución #1" in text and "Completada" in text and "Completada con fallos" not in text
+    # A run whose model tasks partly failed still finished: the state says so with the name the
+    # Corridas home uses, and the line beside it says what failed.
+    assert "Ejecución #1" in text and "Completada con fallos" in text
     assert re.search(r"(Falló|Fallaron) \d+ de \d+ tareas de modelos\.", text)
     assert "La acción está deshabilitada" not in text  # the DAL has all three capabilities
 

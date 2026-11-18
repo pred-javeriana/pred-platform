@@ -63,6 +63,19 @@ def test_env_creates_the_file_for_real_data_and_the_engine_checkout(workdir: Pat
     assert "PRED_WORKER=embedded" in lines
 
 
+def test_env_writes_the_data_root_given_in_the_shell(workdir: Path) -> None:
+    # `make setup` includes the new .env, which then overrides the shell value.
+    root = workdir / "raiz"
+
+    done = _run(workdir, "env", "--motor", "../pred-engine", PRED_DATA_ROOT=str(root))
+
+    assert done.returncode == 0, done.stderr
+    lines = (workdir / ".env").read_text(encoding="utf-8").splitlines()
+    assert f"PRED_DATA_ROOT={root}" in lines
+    assert "PRED_DATA_ROOT=data" not in lines
+    assert f"PRED_DATA_ROOT={root}" in done.stdout
+
+
 def test_env_keeps_an_existing_file_and_warns_about_sample_data(workdir: Path) -> None:
     (workdir / ".env").write_text("PRED_DATA_SOURCE=fixture\n", encoding="utf-8")
 
@@ -155,6 +168,44 @@ def test_up_right_after_down_reuses_the_same_port(workdir: Path) -> None:
         assert again.returncode == 0, again.stderr
     finally:
         _run(workdir, "down", **env)
+
+
+def test_up_serves_the_host_it_is_given(workdir: Path) -> None:
+    port = str(_free_port())
+    env = {"PRED_DATA_ROOT": str(workdir / "data"), "PRED_DATA_SOURCE": "fixture"}
+    try:
+        started = _run(workdir, "up", "--host", "0.0.0.0", "--port", port, **env)  # noqa: S104
+        assert started.returncode == 0, started.stderr
+        assert f"PRED está listo: http://0.0.0.0:{port}" in started.stdout
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as answer:
+            assert answer.status == 200
+        running = _run(workdir, "status", **env)
+        pid = json.loads((workdir / "data" / "servidor.json").read_text())["pid"]
+        listening = {
+            (c.laddr.ip, c.laddr.port)
+            for c in psutil.Process(pid).net_connections(kind="tcp")
+            if c.status == psutil.CONN_LISTEN
+        }
+    finally:
+        _run(workdir, "down", **env)
+
+    assert f"corriendo en http://0.0.0.0:{port} (PID {pid}), responde" in running.stdout
+    assert listening == {("0.0.0.0", int(port))}  # noqa: S104
+
+
+def test_make_up_passes_host_and_ignores_one_from_the_environment() -> None:
+    def command(*args: str, **env: str) -> str:
+        done = subprocess.run(
+            ["make", "-n", "-C", str(REPO), "up", *args],  # noqa: S607
+            env={**os.environ, **env},
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return done.stdout
+
+    assert "up --host 127.0.0.1 --port 8000" in command(HOST="otra-maquina")
+    assert "up --host 0.0.0.0 --port 8001" in command("HOST=0.0.0.0", "PORT=8001")
 
 
 def test_up_refuses_a_port_in_use_and_names_another(workdir: Path) -> None:

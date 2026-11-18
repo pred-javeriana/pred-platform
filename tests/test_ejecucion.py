@@ -1602,9 +1602,9 @@ def test_a_run_with_failures_offers_to_retry_and_each_failure_has_a_next_step(
     env.worker().run_next()
 
     text = _text(client.get("/ejecucion").text)
-    # Failed tasks do not make the run read as a failure: it completed, and a sentence says
-    # how many tasks failed.
-    assert "Completada con fallos" not in text and "Reintentar las tareas con fallos" in text
+    # The run reads as completed with failures, the name the Corridas home uses, and a sentence
+    # says how many tasks failed.
+    assert "Completada con fallos" in text and "Reintentar las tareas con fallos" in text
     assert re.search(r"(Falló|Fallaron) \d+ de \d+ tareas de modelos\.", text)
     # A finished run is not working any more: no pulse, no moving ring.
     html = client.get("/ejecucion").text

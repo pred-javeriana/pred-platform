@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -178,6 +179,26 @@ def test_publications_are_not_silently_declared_to_be_the_final_group(lumpy_db: 
         assert browser.get("/resultados/grupo.json").status_code == 400
 
 
+def test_a_first_visit_chooses_the_only_publication_of_each_seed_without_reading_the_group(
+    lumpy_db: Path,
+) -> None:
+    with client(lumpy_db) as browser:
+        html = browser.get("/resultados/grupo").text
+        for seed in range(3):
+            assert f'<option value="seed-{seed}" title="Evaluación final seed-{seed} ' in html
+            chosen = re.search(rf'<option value="seed-{seed}"[^>]*>', html)
+            assert chosen and chosen.group(0).endswith(" selected>"), seed
+        assert "Significancia del grupo por clase" not in html
+        # A seed with two publications waits for the person to choose one.
+        _add_publication(lumpy_db, "seed-1b", seed=1)
+        html = browser.get("/resultados/grupo").text
+        for run_id in ("seed-1", "seed-1b"):
+            option = re.search(rf'<option value="{run_id}"[^>]*>', html)
+            assert option and not option.group(0).endswith(" selected>"), run_id
+        option = re.search(r'<option value="seed-0"[^>]*>', html)
+        assert option and option.group(0).endswith(" selected>")
+
+
 def test_fixture_mode_does_not_invent_a_final_group(tmp_path: Path) -> None:
     application = create_app(
         Settings(
@@ -254,30 +275,37 @@ def test_common_population_causes_presentation(lumpy_db: Path) -> None:
         assert 'title="sin_productos_comparables"' in html
 
 
-def test_seed_options_same_minute_disambiguation_and_utc_title(lumpy_db: Path) -> None:
-    # Insert another run for seed 2 in the same minute but 40 seconds later
+def _add_publication(
+    db: Path, run_id: str, seed: int, created: str = "2026-10-27 10:00:40"
+) -> None:
+    """Another PUBLICADA run of ``seed`` with the same data and a matching protocol."""
     sql(
-        lumpy_db,
+        db,
         "INSERT INTO m3_corridas (run_id, ingesta_sha256, run_id_m2, identidad, datos_sinteticos, "
         "origen_declarado, estado, creado_en) VALUES "
-        "('seed-2-bis', '288827faec31379965d21e86095066dbf0e9f1a098c46440db7f97858c2e6462', "
-        "'m2-2-bis', 'identidad-seed-2-bis', 0, 1, 'PUBLICADA', '2026-10-27 10:00:40')",
+        "(?, '288827faec31379965d21e86095066dbf0e9f1a098c46440db7f97858c2e6462', "
+        "?, ?, 0, 1, 'PUBLICADA', ?)",
+        (run_id, f"m2-{run_id}", f"identidad-{run_id}", created),
     )
-    # Give it a matching protocol for seed 2
     protocol = {
-        "configuracion_m2": {"seed": 2},
+        "configuracion_m2": {"seed": seed},
         "bloques": {
             "origenes_seleccion": {"primero": "2026-01-01", "ultimo": "2026-02-01"},
             "origenes_prueba": {"primero": "2026-03-01", "ultimo": "2026-04-01"},
         },
     }
     sql(
-        lumpy_db,
+        db,
         "INSERT INTO m3_protocolos (run_id, protocolo, manifiesto, procedencia, "
-        "reserva_abierta_en, n_unidades_previstas) VALUES ('seed-2-bis', ?, '{}', '{}', "
+        "reserva_abierta_en, n_unidades_previstas) VALUES (?, ?, '{}', '{}', "
         "'2026-03-13 10:00:00', 100)",
-        (json.dumps(protocol),),
+        (run_id, json.dumps(protocol)),
     )
+
+
+def test_seed_options_same_minute_disambiguation_and_utc_title(lumpy_db: Path) -> None:
+    # Another run for seed 2 in the same minute but 40 seconds later.
+    _add_publication(lumpy_db, "seed-2-bis", seed=2)
     with client(lumpy_db) as browser:
         html = browser.get("/resultados/grupo").text
         # Both options for seed 2 should have distinct text with seconds

@@ -8,13 +8,16 @@ endif
 
 # One-command install and lifecycle (README, «Instalar y arrancar con make»):
 #   make setup    check prerequisites, install both checkouts, create .env, migrate, load the sample
-#   make up       start PRED in the background and wait until it answers (PORT=8000)
+#   make up       start PRED in the background and wait until it answers (HOST=127.0.0.1 PORT=8000)
 #   make status   whether PRED runs, the database version and the runs
 #   make down     stop PRED
 # pred-engine sits next to this checkout (MOTOR=path to override); its own `make setup` installs it,
 # and `make setup FUNDACIONAL=no` passes through to skip Chronos-2.
 MOTOR ?= ../pred-engine
 PORT ?= 8000
+# Plain `=`, not `?=`: some systems export HOST as the machine name, and it must not change the
+# address. Set it on the command line, for example make up HOST=0.0.0.0 to serve other machines.
+HOST = 127.0.0.1
 ENTORNO = uv run python scripts/entorno.py
 
 setup:
@@ -32,7 +35,7 @@ datos-demo:
 	@$(ENTORNO) cargar-demo
 
 up:
-	@$(ENTORNO) up --port $(PORT)
+	@$(ENTORNO) up --host $(HOST) --port $(PORT)
 
 down:
 	@$(ENTORNO) down

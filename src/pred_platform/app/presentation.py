@@ -159,7 +159,7 @@ _RUN: dict[str, StatusPresentation] = {
     ),
     "completada_con_fallos": StatusPresentation(
         "i-check",
-        "Completada",
+        "Completada con fallos",
         "ok",
         "Terminó; algunas tareas de modelos fallaron o no se pudieron ejecutar.",
     ),
