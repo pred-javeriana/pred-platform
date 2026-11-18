@@ -1,7 +1,8 @@
 # Verificación local del motor (`make motor-local`)
 
-CI no corre el motor real: la corrida pesa demasiado para cada PR. Antes de
-pedir revisión, quien abre un PR que toca la frontera con el motor corre
+CI corre el caso de seis series con el motor real de `pred-engine` main en el
+trabajo Integration. Ese trabajo falla si se omite alguna prueba. Antes de
+pedir revisión, quien abre un PR que toca la frontera con el motor también corre
 `make motor-local` en su equipo y publica el recibo como comentario del PR. El
 control `motor-local` de CI lee ese comentario, no corre el motor y tarda
 segundos.

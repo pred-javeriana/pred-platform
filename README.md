@@ -402,8 +402,11 @@ The browser checks fixed demo pages, pause/resume, connection loss, request time
 
 Run the tests as a regular user, as CI does: root may write a file without write permission, so
 the read-only database tests fail under root.
-CI does not run the engine, so the integration case is skipped there. Instead, a PR that touches
-the engine boundary carries a receipt from `make motor-local`, and the `motor-local` check reads it;
+CI also runs `tests/test_integracion_motor.py` in the Integration job against current
+`pred-engine` main, using the existing six-series synthetic panel. The job records the engine
+revision and fails if any integration test is skipped. The separate Tests job keeps its coverage
+check. A PR that touches the engine boundary also carries a receipt from `make motor-local`,
+and the `motor-local` check reads it;
 see [the local engine check](docs/features/motor-local/README.md).
 
 ## Pre-commit hooks
