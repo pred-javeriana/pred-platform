@@ -65,8 +65,8 @@ figura de la tesis cuenta al menos como 3, porque la defensa se presenta con est
 ## Resultado
 
 Se encontraron 49 hallazgos: 1 de severidad 4, 15 de severidad 3, 19 de severidad 2 y 14 de
-severidad 1. Este cambio corrige 47. E9 lo corrige el cambio del worker de #101, y E7 queda
-pendiente en #335 (antes #98) hasta después de la tesis.
+severidad 1. Este cambio corrige 47. E9 lo corrige el cambio del worker de #101, y E7 se
+corrige en el worker al filtrar las familias por la clase del SKU (#335, antes #98).
 El hallazgo de mayor alcance es la composición: una columna lateral fija le quitaba cerca de un
 tercio del ancho a cada tabla, y en Por clase las tablas de confirmación no cabían a 1280 px. La
 composición nueva es una sola columna:
@@ -225,10 +225,12 @@ mitad de palabra; un rótulo de varias palabras pasa a otra línea entre palabra
 
 **E7. Hay tareas `no_ejecutable` de familias que la clase no usa.** H1 y H2, severidad 2 (#335, antes #98).
 Un SKU excluido recibía una tarea por cada familia de la corrida, incluidas las que su clase
-nunca planifica, e inflaba el total. Sin corregir por ahora: las corridas de la tesis cuentan
-así sus tareas, y la semilla 2 debe contarse con la misma regla que las semillas 0 y 1. Un SKU
-excluido sigue recibiendo una tarea por cada familia de la corrida; queda pendiente en #335
-(antes #98) para después de la tesis.
+nunca planifica, e inflaba el total. Corrección: el worker lee la clase en `topologia.json`
+y solo crea tareas para las familias configuradas que la política admite para esa clase.
+Una unidad fallida conserva su estado y su error. Las pruebas recorren las cuatro clases,
+una selección restringida de familias y la exclusión después de L2, con y sin avance en vivo.
+Las tareas ya guardadas de las corridas de la tesis no se reescriben. Un motor anterior sin
+topología válida conserva el conteo histórico por familia configurada.
 
 **E8. Exportar la configuración compite con el seguimiento.** H8, severidad 1. «Exportar
 configuración (JSON)» (sección 4.5) estaba en el encabezado de una corrida en curso. Corrección:

@@ -19,10 +19,31 @@ from typing import Any
 
 from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
-from pred_platform.worker.engine import MODELO_POR_FAMILIA, model_id
+from pred_platform.worker.engine import FAMILIES_BY_SKU_CLASS, MODELO_POR_FAMILIA, model_id
 from pred_platform.worker.errores import error_info, exclusion_info
 
 SUPPORTED_MAJOR = 1
+
+
+def read_sku_classes(run_dir: Path) -> dict[str, str]:
+    """Read known demand classes from the engine's L1 topology artifact."""
+    try:
+        topology = json.loads((run_dir / "topologia.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(topology, dict) or topology.get("schema") != "pred-engine.topologia/1":
+        return {}
+    metrics = topology.get("metrics")
+    if not isinstance(metrics, list):
+        return {}
+    return {
+        row["sku_id"]: row["sku_class"]
+        for row in metrics
+        if isinstance(row, dict)
+        and isinstance(row.get("sku_id"), str)
+        and isinstance(row.get("sku_class"), str)
+        and row["sku_class"] in FAMILIES_BY_SKU_CLASS
+    }
 
 
 def exclude_sku(
@@ -33,14 +54,18 @@ def exclude_sku(
     corte: str,
     families: list[str],
     error: dict[str, Any],
+    sku_class: str | None = None,
 ) -> None:
-    """Settle a SKU the engine excluded: one ``no_ejecutable`` task per family of the run.
+    """Settle only configured families routed to the SKU's known demand class.
 
-    The rows include the families its class never routes (for example ML and DL of a lumpy
-    product). Every run counts an excluded SKU this way, so task counts stay comparable across
-    runs. A stored family selection supplies its own exclusion reason instead of the SKU's.
+    An older engine without topology keeps the historical per-run-family count. Progress
+    defers exclusions until topology is available, so it cannot create phantom tasks first.
+    A unit that failed keeps its state and error through ``task_excluded``.
     """
+    admitted = FAMILIES_BY_SKU_CLASS[sku_class] if sku_class else families
     for family in families:
+        if family not in admitted:
+            continue
         dal.task_excluded(
             conn,
             run.id,
@@ -69,6 +94,7 @@ class ProgressFollower:
         self._path = path
         self._corte = corte
         self._offset = path.stat().st_size if skip_history and path.exists() else 0
+        self._classes: dict[str, str] = {}
         self.finished: dict[str, Any] | None = None
         self.failed_stages: list[str] = []
 
@@ -89,6 +115,8 @@ class ProgressFollower:
         if end < 0:
             return 0
         self._offset += end + 1
+        if not self._classes:
+            self._classes = read_sku_classes(self._path.parent)
         applied = 0
         for raw in chunk[: end + 1].splitlines():
             if not raw.strip():
@@ -117,12 +145,18 @@ class ProgressFollower:
             ]
             dal.plan_tasks(self._conn, run.id, corte=corte, seed=run.seed, units=units)
         elif kind == "excluded":
+            sku = str(event["sku_id"])
+            sku_class = self._classes.get(sku)
+            if sku_class is None:
+                # The engine writes topology at publication; finalize replays its exclusions.
+                return
             exclude_sku(
                 self._conn,
                 run,
-                sku=str(event["sku_id"]),
+                sku=sku,
                 corte=corte,
                 families=self.families,
+                sku_class=sku_class,
                 error=exclusion_info(
                     str(event.get("cause", "")), event.get("code"), event.get("facts")
                 ),

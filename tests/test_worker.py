@@ -476,34 +476,40 @@ def test_a_failed_unit_does_not_stop_the_others(env: Env, monkeypatch: pytest.Mo
     assert error["source_exception"] == "AjusteModeloError"
 
 
-def test_a_skipped_sku_becomes_one_not_runnable_task_per_run_family(
-    env: Env, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("sku_class", "expected"),
+    [
+        ("smooth", ["classical:sarima", "dl:mlp", "foundation:chronos2", "ml:lightgbm"]),
+        ("erratic", ["classical:sarima", "dl:mlp", "foundation:chronos2", "ml:lightgbm"]),
+        ("intermittent", ["classical:sarima", "foundation:chronos2", "ml:lightgbm"]),
+        ("lumpy", ["classical:sarima", "foundation:chronos2"]),
+    ],
+)
+@pytest.mark.parametrize("families", [("classical", "ml", "dl", "foundation"), ("foundation",)])
+def test_a_skipped_sku_only_counts_families_routed_to_its_class(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+    sku_class: str,
+    expected: list[str],
+    families: tuple[str, ...],
 ) -> None:
     _scenario(monkeypatch, "excluded")
-    enqueue_run(env.settings, env.ingest_id, SMALL)
+    monkeypatch.setenv("FAKE_ENGINE_SKU_CLASS", sku_class)
+    enqueue_run(env.settings, env.ingest_id, replace(SMALL, families=families))
 
-    env.worker().run_next()
+    assert env.worker().drain()
 
     assert _run_state(env)[0] == "completada_con_fallos"
     skipped = env.rows(
-        "SELECT sku, modelo, detalle_error FROM tareas "
-        "WHERE estado = 'no_ejecutable' ORDER BY modelo"
+        "SELECT modelo, detalle_error FROM tareas "
+        "WHERE sku = 'FIL-0003' AND estado = 'no_ejecutable' ORDER BY modelo"
     )
-    # FIL-0003 is lumpy: the policy never routes ML or DL to it, and it still gets their rows, so
-    # every run counts an excluded SKU the same way.
-    assert [(s[0], s[1]) for s in skipped] == [
-        ("FIL-0003", "classical:sarima"),
-        ("FIL-0003", "dl:mlp"),
-        ("FIL-0003", "foundation:chronos2"),
-        ("FIL-0003", "ml:lightgbm"),
+    assert [model for model, _ in skipped] == [
+        model for model in expected if model.split(":")[0] in families
     ]
-    assert json.loads(skipped[0][2])["code"] == "eligibility.no_reserved_observations"
-    assert [(model, json.loads(detail)["code"]) for _, model, detail in skipped] == [
-        ("classical:sarima", "eligibility.no_reserved_observations"),
-        ("dl:mlp", "not_in_policy_matrix"),
-        ("foundation:chronos2", "eligibility.no_reserved_observations"),
-        ("ml:lightgbm", "not_in_policy_matrix"),
-    ]
+    assert {json.loads(detail)["code"] for _, detail in skipped} == {
+        "eligibility.no_reserved_observations"
+    }
     env.repo().get_run_status("1")
 
 
@@ -527,9 +533,7 @@ def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(
     )
     assert [(m, e, json.loads(d)["code"]) for m, e, d in tasks] == [
         ("classical:sarima", "fallida", "model.fit_failed"),
-        ("dl:mlp", "no_ejecutable", "not_in_policy_matrix"),
         ("foundation:chronos2", "no_ejecutable", "eligibility.fewer_than_two_families"),
-        ("ml:lightgbm", "no_ejecutable", "not_in_policy_matrix"),
     ]
     families = env.rows(
         "SELECT f.familia, f.estado FROM seleccion_familias f "
@@ -565,7 +569,7 @@ def test_a_sku_excluded_after_l2_keeps_the_error_of_its_failed_units(
             conn,
             run.id,
             sku="FIL-0003",
-            modelo="dl:mlp",
+            modelo="foundation:chronos2",
             corte="2026-03-13",
             seed=run.seed,
             error=exclusion_info("causa general", "eligibility.fewer_than_two_families"),
