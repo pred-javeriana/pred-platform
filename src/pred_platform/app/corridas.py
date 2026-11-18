@@ -209,6 +209,9 @@ _RESULTS_READY_WITH_FAILURES = StatusPresentation(
     "i-warn", "Completada con fallos · resultados listos", "warn"
 )
 _NOT_PUBLISHED = StatusPresentation("i-check", "Completada · sin evaluación final publicada", "ok")
+_NOT_PUBLISHED_WITH_FAILURES = StatusPresentation(
+    "i-warn", "Completada con fallos · sin evaluación final publicada", "warn"
+)
 _QUEUED = StatusPresentation("i-clock", "En cola", "neutral")
 _NOT_LAUNCHED = StatusPresentation("i-clock", "Sin lanzar", "neutral")
 _SLOT_PUBLISHED = StatusPresentation("i-check", "Publicada", "ok")
@@ -229,7 +232,12 @@ def _row(facts: RunFacts, now: datetime, outcome: str | None = None) -> RunRow:
             step_href(facts.id, "resultados"), False,
         )  # fmt: skip
     if facts.finished:
-        return RunRow(facts, _NOT_PUBLISHED, None, 4, 4, False, "Ver la corrida", execution, False)
+        status = (
+            _NOT_PUBLISHED_WITH_FAILURES
+            if facts.estado == "completada_con_fallos"
+            else _NOT_PUBLISHED
+        )
+        return RunRow(facts, status, None, 4, 4, False, "Ver la corrida", execution, False)
     if facts.estado == "ejecutando":
         stage = f" · {stage_label(facts.etapa)}" if facts.etapa else ""
         running = describe_run("ejecutando", resumable=True)
@@ -313,6 +321,16 @@ def _newest_first(statuses: Iterable[RunStatus]) -> list[RunStatus]:
     )
 
 
+def _home_order(row: RunRow) -> tuple[int, int]:
+    """La corrida en curso va primero y las que esperan turno, después: son las que la persona
+    vuelve a mirar. Las que esperan van en el orden en que el worker las toma (la más antigua
+    primero, ``dal.ejecuciones``); las demás conservan su orden, la más nueva primero.
+    """
+    rank = {"ejecutando": 0, "pendiente": 1}.get(row.facts.estado, 2)
+    turn = int(row.facts.id) if rank == 1 and row.facts.id.isdigit() else 0
+    return rank, turn
+
+
 def _failure_outcome(repository: DataRepository, status: RunStatus, facts: RunFacts) -> str | None:
     """Qué dejó una corrida publicada que terminó con tareas fallidas; sin fallos, no hay frase."""
     if not (facts.published and facts.estado == "completada_con_fallos"):
@@ -346,7 +364,5 @@ def home(repository: DataRepository, now: datetime | None = None) -> Home:
         for s in statuses
         if s.ejecucion is not None
     ]
-    # La corrida en curso va primero y la que espera turno, después: son las que la persona
-    # vuelve a mirar.
-    rows.sort(key=lambda row: {"ejecutando": 0, "pendiente": 1}.get(row.facts.estado, 2))
+    rows.sort(key=_home_order)
     return Home(tuple(rows), _thesis_group(statuses, facts))

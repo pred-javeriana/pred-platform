@@ -30,6 +30,18 @@ def read_group(
     return repository.get_m3_group(selected)
 
 
+def _preselected(
+    by_seed: dict[int, list[GroupRunOption]], selected: tuple[str, ...]
+) -> tuple[str, ...]:
+    """The form's choices: on a first visit, the only publication of a seed is already chosen.
+
+    The choice is only shown in the form; the group is read once the person submits it.
+    """
+    if any(selected):
+        return selected
+    return tuple(options[0].run_id if len(options) == 1 else "" for options in by_seed.values())
+
+
 def group_context(repository: DataRepository, params: Mapping[str, str]) -> dict[str, Any]:
     context: dict[str, Any] = {
         "active_surface": "resultados",
@@ -45,7 +57,7 @@ def group_context(repository: DataRepository, params: Mapping[str, str]) -> dict
     }
     try:
         by_seed, selected = group_selection(params, repository.list_m3_group_runs())
-        context.update(options=by_seed, selected=selected)
+        context.update(options=by_seed, selected=_preselected(by_seed, selected))
         if all(selected):
             group = read_group(repository, by_seed, selected)
             context["group"] = group

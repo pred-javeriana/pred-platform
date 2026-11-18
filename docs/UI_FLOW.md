@@ -112,8 +112,9 @@ Ver `docs/features/ejecucion/README.md`.
 
 **Estados de corrida:** `sin_ejecucion` (página; `ejecucion is None`), y los de
 `EstadoEjecucion`: `pendiente`, `ejecutando`, `completada`, `completada_con_fallos`,
-`detenida`. `completada_con_fallos` se lee «Completada»: una frase calculada con los conteos
-publicados dice cuántas tareas fallaron y cuántos productos tienen veredicto
+`detenida`. `completada_con_fallos` se lee «Completada con fallos», como en el inicio de Corridas,
+con la marca de terminada: una frase calculada con los conteos publicados dice cuántas tareas
+fallaron y cuántos productos tienen veredicto
 (`resultados_m3.run_outcome`). `detenida` y su aviso de error son una advertencia mientras la
 página ofrece Reanudar, y un error solo cuando reanudar fallaría igual (`run.incompatible_config`,
 familias que no dan a ninguna clase dos que comparar, o una falla de L2 que solo depende de la

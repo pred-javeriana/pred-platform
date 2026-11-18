@@ -59,7 +59,8 @@ def test_task_states_are_five_and_distinguishable_without_sharing_icons() -> Non
 def test_a_run_with_failed_tasks_reads_as_completed_not_as_a_failure() -> None:
     with_failures = describe_status("run", "completada_con_fallos")
     completed = describe_status("run", "completada")
-    assert with_failures.label == "Completada"
+    # One state has one name: the Corridas home names it the same way.
+    assert with_failures.label == "Completada con fallos"
     assert (with_failures.icon, with_failures.modifier) == (completed.icon, completed.modifier)
     assert with_failures.hint and "fallaron" in with_failures.hint
     # The stored code stays available for traceability.

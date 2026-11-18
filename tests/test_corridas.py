@@ -269,8 +269,8 @@ def test_the_home_groups_the_seeds_that_share_data_and_settings(env: Env) -> Non
     html = client.get("/").text
     text = _main(html)
 
-    # Every run is listed, newest first.
-    order = [text.index(f"#{run} · semilla {run - 1}") for run in (3, 2, 1)]
+    # Every run is listed; the queued ones in the order they will run.
+    order = [text.index(f"#{run} · semilla {run - 1}") for run in (1, 2, 3)]
     assert order == sorted(order)
     group = text.split("Grupo de la tesis", 1)[1].split("Todas las corridas", 1)[0]
     assert "Semilla 0 · #1 En cola" in group
@@ -1093,8 +1093,25 @@ def test_the_home_lists_the_run_in_progress_before_the_queued_ones(env: Env) -> 
 
     text = _main(client.get("/").text)
 
-    order = [text.index(f"#{run} · semilla {run - 1}") for run in (2, 3, 1)]
+    # The queued runs follow in the order the worker takes them.
+    order = [text.index(f"#{run} · semilla {run - 1}") for run in (2, 1, 3)]
     assert order == sorted(order)
+
+
+def test_the_home_lists_queued_runs_in_the_order_the_worker_runs_them(env: Env) -> None:
+    client = _dal_client(env)
+    _launch(client, env, "0", "1", "2")
+
+    def listed() -> list[str]:
+        runs = _main(client.get("/").text).split("Todas las corridas")[1]
+        return re.findall(r"#(\d) · semilla", runs)
+
+    assert listed() == ["1", "2", "3"]
+    env.worker().run_next()
+    # The first one listed is the one the worker ran; the finished run goes after the queue.
+    states = dict(env.rows("SELECT id, estado FROM ejecuciones"))
+    assert states[1] != "pendiente" and states[2] == states[3] == "pendiente"
+    assert listed() == ["2", "3", "1"]
 
 
 def test_the_home_says_when_a_published_run_had_failed_tasks(env: Env) -> None:
@@ -1127,8 +1144,10 @@ def test_the_home_says_when_a_published_run_had_failed_tasks(env: Env) -> None:
     assert "Falló 1 de 2 tareas de modelos. Aun así, el producto tiene veredicto." in text
     assert "Completada · resultados listos" not in text
     assert "pred-status--warn" in published
-    # The run whose evaluation is not published keeps its own wording.
-    assert "Completada · sin evaluación final publicada" in _text(html.split("#2", 1)[1])
+    # The run whose evaluation is not published says so, with the same name for its state.
+    unpublished = html.split("#2 · semilla 1", 1)[1]
+    assert "Completada con fallos · sin evaluación final publicada" in _text(unpublished)
+    assert "pred-status--warn" in unpublished.split("Ver la corrida", 1)[0]
 
 
 @pytest.mark.parametrize("step", ["datos", "ajustes", "revisar"])

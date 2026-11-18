@@ -24,14 +24,17 @@ make down     # detiene PRED (la corrida en curso queda para reanudarse al volve
 - **`make setup`** se puede repetir. Instala esta copia (`uv sync --extra dev --locked`) y el
   motor con su propio `make setup`, que incluye Chronos-2 y deja sus pesos en la caché
   (`make setup FUNDACIONAL=no` lo omite). Si no existe `.env`, lo crea desde `.env.example` con
-  `PRED_DATA_SOURCE=dal` y `PRED_ENGINE_CMD=uv run --project ../pred-engine pred-engine`; un
-  `.env` que ya existe no se toca. Después corre `make migrate` y carga
-  `ejemplos/panel_demo.csv` con el mismo camino que la carga del navegador (`make datos-demo`), así
-  Datos ya lo muestra. Ninguna clave secreta hace falta: la plataforma solo usa archivos con las
-  cuatro columnas canónicas.
-- **`make up`** sirve en `http://127.0.0.1:8000` (`make up PORT=8001` para otro puerto), sin
-  recarga automática y con el worker dentro de la app. Guarda el PID en
-  `<PRED_DATA_ROOT>/servidor.json` y el registro en `<PRED_DATA_ROOT>/servidor.log`.
+  `PRED_DATA_SOURCE=dal` y `PRED_ENGINE_CMD=uv run --project ../pred-engine pred-engine`, y con
+  el `PRED_DATA_ROOT` de la terminal si tiene uno (`PRED_DATA_ROOT=/ruta make setup`); un `.env`
+  que ya existe no se toca. Desde entonces `.env` decide `PRED_DATA_ROOT`: `make` lo lee y su
+  valor gana sobre el de la terminal, así que para cambiarlo se edita `.env`. Después corre
+  `make migrate` y carga `ejemplos/panel_demo.csv` con el mismo camino que la carga del navegador
+  (`make datos-demo`), así Datos ya lo muestra. Ninguna clave secreta hace falta: la plataforma
+  solo usa archivos con las cuatro columnas canónicas.
+- **`make up`** sirve en `http://127.0.0.1:8000` (`make up PORT=8001` para otro puerto, y
+  `make up HOST=0.0.0.0` para atender a otras máquinas; PRED no pide contraseña, así que hágalo
+  solo en una red de confianza), sin recarga automática y con el worker dentro de la app. Guarda
+  el PID en `<PRED_DATA_ROOT>/servidor.json` y el registro en `<PRED_DATA_ROOT>/servidor.log`.
 - **`make down`** envía SIGTERM a ese PID y espera hasta 60 s a que la app detenga el motor.
 - `MOTOR=ruta` usa una copia de pred-engine en otro lugar.
 

@@ -8,7 +8,7 @@ in the background with a PID file so it can be stopped and checked later.
     uv run python scripts/entorno.py revisar --motor ../pred-engine
     uv run python scripts/entorno.py env --motor ../pred-engine
     uv run python scripts/entorno.py cargar-demo
-    uv run python scripts/entorno.py up --port 8000
+    uv run python scripts/entorno.py up --host 127.0.0.1 --port 8000
     uv run python scripts/entorno.py status
     uv run python scripts/entorno.py down
 
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import shutil
 import socket
@@ -29,11 +30,12 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
 
-from pred_platform.config import DATA_SOURCE_VAR, ENGINE_COMMAND_VAR, Settings
+from pred_platform.config import DATA_ROOT_VAR, DATA_SOURCE_VAR, ENGINE_COMMAND_VAR, Settings
 from pred_platform.worker.ingesta import IngestLaunchError, submit_csv
 
 REPO = Path(__file__).resolve().parent.parent
@@ -43,7 +45,9 @@ ENV_FILE = Path(".env")
 DEMO_CSV = REPO / "ejemplos" / "panel_demo.csv"
 ENGINE_REPO = "https://github.com/pred-javeriana/pred-engine.git"
 APP = "pred_platform.app.main:app"
-HOST = "127.0.0.1"
+DEFAULT_HOST = "127.0.0.1"
+# A server bound to every interface still answers the health check on the loopback.
+WILDCARD_HOSTS = {"0.0.0.0": "127.0.0.1", "::": "::1"}
 STATE_FILE = "servidor.json"
 LOG_FILE = "servidor.log"
 START_TIMEOUT_S = 60.0
@@ -103,7 +107,11 @@ def _with_value(text: str, key: str, value: str) -> str:
 
 
 def env(motor: Path) -> int:
-    """Create `.env` from `.env.example` for real data and the engine at ``motor``."""
+    """Create `.env` from `.env.example` for real data and the engine at ``motor``.
+
+    A ``PRED_DATA_ROOT`` from the shell goes into the new `.env`: once `.env` exists, the
+    Makefile's ``include .env`` overrides the shell value, so it would be lost otherwise.
+    """
     if ENV_FILE.exists():
         print(f"Se conserva {ENV_FILE.name}, que ya existía.")
         try:
@@ -121,8 +129,13 @@ def env(motor: Path) -> int:
     text = ENV_EXAMPLE.read_text(encoding="utf-8")
     text = _with_value(text, DATA_SOURCE_VAR, "dal")
     text = _with_value(text, ENGINE_COMMAND_VAR, engine)
+    data_root = os.environ.get(DATA_ROOT_VAR, "").strip()
+    if data_root:
+        text = _with_value(text, DATA_ROOT_VAR, data_root)
     ENV_FILE.write_text(text, encoding="utf-8")
     print(f"Se creó {ENV_FILE.name} desde {ENV_EXAMPLE.name}:")
+    if data_root:
+        print(f"  {DATA_ROOT_VAR}={data_root}")
     print(f"  {DATA_SOURCE_VAR}=dal")
     print(f"  {ENGINE_COMMAND_VAR}={engine}")
     return 0
@@ -157,13 +170,22 @@ def _state_path(settings: Settings) -> Path:
     return settings.data_root / STATE_FILE
 
 
-def _read_state(settings: Settings) -> dict[str, int] | None:
+@dataclass(frozen=True, slots=True)
+class _Server:
+    pid: int
+    host: str
+    port: int
+
+
+def _read_state(settings: Settings) -> _Server | None:
     """The recorded server, or ``None`` when no PRED server from this data root is alive."""
     path = _state_path(settings)
     try:
         recorded = json.loads(path.read_text(encoding="utf-8"))
-        state = {"pid": int(recorded["pid"]), "port": int(recorded["port"])}
-        process = psutil.Process(state["pid"])
+        state = _Server(
+            int(recorded["pid"]), str(recorded.get("host", DEFAULT_HOST)), int(recorded["port"])
+        )
+        process = psutil.Process(state.pid)
         # The command line guards against a PID the system gave to another process.
         if process.is_running() and APP in process.cmdline():
             return state
@@ -173,26 +195,28 @@ def _read_state(settings: Settings) -> dict[str, int] | None:
     return None
 
 
-def _url(port: int) -> str:
-    return f"http://{HOST}:{port}"
+def _url(host: str, port: int) -> str:
+    return f"http://[{host}]:{port}" if ":" in host else f"http://{host}:{port}"
 
 
-def _healthy(port: int) -> bool:
+def _healthy(host: str, port: int) -> bool:
+    url = _url(WILDCARD_HOSTS.get(host, host), port)
     try:
-        with urllib.request.urlopen(f"{_url(port)}/health", timeout=2) as response:
+        with urllib.request.urlopen(f"{url}/health", timeout=2) as response:
             return response.status == 200
     except (OSError, urllib.error.URLError):
         return False
 
 
-def _port_free(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+def _port_free(host: str, port: int) -> bool:
+    family, kind, protocol, _, address = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)[0]
+    with socket.socket(family, kind, protocol) as probe:
         # Bind as uvicorn does: a port left in TIME_WAIT by a stopped server is still usable.
         # On Windows the same option would let the probe share a port another server holds.
         if sys.platform != "win32":
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            probe.bind((HOST, port))
+            probe.bind(address)
         except OSError:
             return False
     return True
@@ -236,28 +260,34 @@ def _stop(pid: int) -> bool:
     return True
 
 
-def up(settings: Settings, port: int) -> int:
-    """Start the server in the background and wait until `/health` answers."""
+def up(settings: Settings, host: str, port: int) -> int:
+    """Start the server on ``host`` in the background and wait until `/health` answers."""
     state = _read_state(settings)
     if state is not None:
-        print(f"PRED ya está corriendo en {_url(state['port'])} (PID {state['pid']}).")
+        print(f"PRED ya está corriendo en {_url(state.host, state.port)} (PID {state.pid}).")
         return 0
     if not ENV_FILE.exists():
         print(f"  aviso: no hay {ENV_FILE.name}; corra make setup para preparar la instalación.")
-    if not _port_free(port):
+    try:
+        free = _port_free(host, port)
+    except OSError as exc:
+        print(f"error: no se puede usar la dirección {host}: {exc}", file=sys.stderr)
+        return 1
+    if not free:
         print(
             f"error: el puerto {port} ya está en uso; elija otro: make up PORT={port + 1}",
             file=sys.stderr,
         )
         return 1
     settings.data_root.mkdir(parents=True, exist_ok=True)
-    command = [sys.executable, "-m", "uvicorn", APP, "--host", HOST, "--port", str(port)]
+    command = [sys.executable, "-m", "uvicorn", APP, "--host", host, "--port", str(port)]
     with (settings.data_root / LOG_FILE).open("ab") as log:
         start = log.tell()
         server = subprocess.Popen(  # noqa: S603 - fixed command line
             command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True
         )
-    _state_path(settings).write_text(json.dumps({"pid": server.pid, "port": port}) + "\n")
+    recorded = {"pid": server.pid, "host": host, "port": port}
+    _state_path(settings).write_text(json.dumps(recorded) + "\n")
     print(f"Iniciando PRED (PID {server.pid}); registro en {settings.data_root / LOG_FILE}")
     deadline = time.monotonic() + START_TIMEOUT_S
     while time.monotonic() < deadline:
@@ -268,8 +298,8 @@ def up(settings: Settings, port: int) -> int:
                 file=sys.stderr,
             )
             return 1
-        if _healthy(port):
-            print(f"PRED está listo: {_url(port)}")
+        if _healthy(host, port):
+            print(f"PRED está listo: {_url(host, port)}")
             print("Ábralo en el navegador. Para detenerlo: make down")
             return 0
         time.sleep(0.5)
@@ -288,8 +318,8 @@ def down(settings: Settings) -> int:
     if state is None:
         print("PRED no está corriendo.")
         return 0
-    print(f"Deteniendo PRED (PID {state['pid']})...")
-    if not _stop(state["pid"]):
+    print(f"Deteniendo PRED (PID {state.pid})...")
+    if not _stop(state.pid):
         print(
             f"error: PRED no se detuvo en {STOP_TIMEOUT_S:.0f} s; revise "
             f"{settings.data_root / LOG_FILE} y repita make down",
@@ -307,8 +337,8 @@ def status(settings: Settings) -> int:
     if state is None:
         print("Servidor: detenido. Para iniciarlo: make up")
         return 0
-    answer = "responde" if _healthy(state["port"]) else "no responde todavía"
-    print(f"Servidor: corriendo en {_url(state['port'])} (PID {state['pid']}), {answer}")
+    answer = "responde" if _healthy(state.host, state.port) else "no responde todavía"
+    print(f"Servidor: corriendo en {_url(state.host, state.port)} (PID {state.pid}), {answer}")
     return 0
 
 
@@ -322,6 +352,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sub.add_argument("--motor", type=Path, required=True, help="the pred-engine checkout")
     commands.add_parser("cargar-demo")
     sub = commands.add_parser("up")
+    sub.add_argument("--host", default=DEFAULT_HOST)
     sub.add_argument("--port", type=int, default=8000)
     commands.add_parser("down")
     commands.add_parser("status")
@@ -341,7 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "cargar-demo":
         return cargar_demo(settings)
     if args.command == "up":
-        return up(settings, args.port)
+        return up(settings, args.host, args.port)
     if args.command == "down":
         return down(settings)
     return status(settings)
