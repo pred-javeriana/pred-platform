@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "summary": "Preserves and renders products dropped during file ingestion on the Datos page.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/templates/partials/data_diagnosis.html",
+      "summary": "Displays dropped products under Productos and lists excluded SKUs in the diagnosis panel.",
+      "annotations": [
+        {
+          "newRange": [
+            60,
+            60
+          ],
+          "summary": "Renders the dropped-product note and cause summary under Productos.",
+          "rationale": "Displays singular or plural product counts and unique causes when excluded_count > 0, so that omitted products are visible.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        },
+        {
+          "newRange": [
+            83,
+            94
+          ],
+          "summary": "Renders the table of excluded products with SKU and cause in Diagn\u00f3stico del archivo.",
+          "rationale": "Shows each excluded SKU and cause in the expanded diagnosis panel, verified in browser and HTTP unit tests.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/dal.py",
+      "summary": "Loads excluded_count and exclusions from the engine report file on disk.",
+      "annotations": [
+        {
+          "newRange": [
+            208,
+            226
+          ],
+          "summary": "Recovers excluded_count and exclusions from ingestas/<sha256>.json when rebuilding IngestReport.",
+          "rationale": "The engine writes exclusions to its report JSON; loading them here ensures DAL mode retains exclusion data without altering the SQLite schema.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        }
+      ]
+    }
+  ]
+}
