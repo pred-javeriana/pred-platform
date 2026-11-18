@@ -328,7 +328,9 @@ and tasks. Without `--once`, the command only queues the run for the worker.
   app runs only queues the run. Do not delete the lock file while a worker runs.
 - **One task per engine unit** (SKU × model, decision D6): `modelo` is `familia:algoritmo`, `corte`
   is the reserve cut t\*. A SKU the engine skips becomes one `no_ejecutable` task per configured
-  family, with the cause.
+  family routed to its demand class, with the cause. The worker reads that class from
+  `topologia.json`. An older engine without valid topology keeps the historical per-family
+  count. Progress defers exclusions until topology is available or final import settles them.
 - **Run state.** `completada` when every task is `exitosa`; `completada_con_fallos` when some are
   `fallida` or `no_ejecutable`; `detenida` when the engine process died, the operator stopped it or a
   stage left no results (see the table in section 7.4 of the contract).

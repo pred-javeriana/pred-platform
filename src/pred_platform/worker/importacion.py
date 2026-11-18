@@ -19,7 +19,7 @@ from pred_platform.dal import ejecuciones as dal
 from pred_platform.dal.ejecuciones import Ejecucion
 from pred_platform.worker.engine import log_tail, model_id
 from pred_platform.worker.errores import error_info, exclusion_info, platform_error
-from pred_platform.worker.progreso import exclude_sku
+from pred_platform.worker.progreso import exclude_sku, read_sku_classes
 from pred_platform.worker.seleccion import import_selection
 
 # El mensaje con que el motor rechaza un run_id cuya identidad guardada cambió (run_artifacts.py).
@@ -218,6 +218,7 @@ def finalize(
                 finished_at=finished_at,
                 error=None,
             )
+    classes = read_sku_classes(run_dir)
     for exclusion in summary.get("exclusions", []):
         exclude_sku(
             conn,
@@ -225,6 +226,7 @@ def finalize(
             sku=str(exclusion["sku_id"]),
             corte=corte,
             families=families,
+            sku_class=classes.get(str(exclusion["sku_id"])),
             error=exclusion_info(
                 str(exclusion.get("cause", "")), exclusion.get("code"), exclusion.get("facts")
             ),

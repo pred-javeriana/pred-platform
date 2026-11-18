@@ -413,6 +413,8 @@ def main() -> int:
 
     scenario = os.environ.get("FAKE_ENGINE_SCENARIO", "ok")
     skus = os.environ.get("FAKE_ENGINE_SKUS", "FIL-0001,FIL-0002,FIL-0003").split(",")
+    if sku_class := os.environ.get("FAKE_ENGINE_SKU_CLASS"):
+        CLASS_BY_SKU["FIL-0003"] = sku_class
     folder = Path(args.data_root) / "runs" / args.run_id
     folder.mkdir(parents=True, exist_ok=True)
     if scenario == "incompatible":
@@ -598,6 +600,17 @@ def main() -> int:
         unit_lines.append(json.dumps({"stage": "L3", "state": "completada"}))
     (folder / "unidades.jsonl").write_text(
         "".join(f"{line}\n" for line in unit_lines), encoding="utf-8"
+    )
+    if scenario in ("excluded", "excluded_after_l2"):
+        # Let the follower see exclusions before the final topology exists.
+        time.sleep(0.3)
+    (folder / "topologia.json").write_text(
+        json.dumps(
+            {
+                "schema": "pred-engine.topologia/1",
+                "metrics": [{"sku_id": sku, "sku_class": CLASS_BY_SKU[sku]} for sku in skus],
+            }
+        )
     )
     _write_selection(
         folder,
