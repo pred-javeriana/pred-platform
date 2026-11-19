@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "summary": "Muestra los productos excluidos durante la ingesta en Datos y los persiste en SQLite.",
+  "files": [
+    {
+      "path": "src/pred_platform/app/templates/partials/data_diagnosis.html",
+      "summary": "Muestra el resumen de productos excluidos y la tabla detallada por SKU.",
+      "annotations": [
+        {
+          "newRange": [
+            60,
+            60
+          ],
+          "summary": "Agrega nota bajo el total de productos con la cantidad de productos excluidos y sus causas.",
+          "rationale": "El contrato v1 1.4.0 informa excluded_count y exclusions en el informe de ingesta. La nota solo se dibuja cuando excluded_count es mayor a cero.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        },
+        {
+          "newRange": [
+            83,
+            94
+          ],
+          "summary": "Renderiza la tabla de productos excluidos con SKU y causa dentro del panel de diagnostico.",
+          "rationale": "Permite al usuario identificar que SKU especificos quedaron fuera del corte sin salir del diagnostico del archivo cargado.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/dal/migrations/0013_ingestas_exclusiones.sql",
+      "summary": "Agrega las columnas excluded_count y exclusiones_json a la tabla ingestas.",
+      "annotations": [
+        {
+          "newRange": [
+            1,
+            8
+          ],
+          "summary": "Crea las columnas opcionales en SQLite para persistir las exclusiones de cada ingesta.",
+          "rationale": "Garantiza que el informe reconstruido por el DAL lea siempre las exclusiones de la base de datos sin releer el archivo en disco ni ignorar errores silenciosamente.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/dal/importacion.py",
+      "summary": "Valida y almacena las exclusiones de la ingesta en SQLite.",
+      "annotations": [
+        {
+          "newRange": [
+            161,
+            162
+          ],
+          "summary": "EngineIngestFile incorpora excluded_count y exclusions validadas con IngestExclusion.",
+          "rationale": "Un archivo de ingesta malformado es rechazado en la importacion con un mensaje claro en vez de descartar exclusiones en silencio.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        },
+        {
+          "newRange": [
+            295,
+            300
+          ],
+          "summary": "_upsert persiste excluded_count y el JSON de exclusiones en la fila de ingestas.",
+          "rationale": "Mantiene el mismo patron que diagnostico_json y error_json, permitiendo consultas SQLite consistentes y reproducibles.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        }
+      ]
+    },
+    {
+      "path": "src/pred_platform/data/dal.py",
+      "summary": "get_ingest_report lee las exclusiones directamente de la fila de la base de datos.",
+      "annotations": [
+        {
+          "newRange": [
+            208,
+            210
+          ],
+          "summary": "Reconstruye las instancias IngestExclusion a partir de exclusiones_json y excluded_count.",
+          "rationale": "Evita releer el archivo del disco durante la solicitud y entrega 0 y lista vacia para filas de esquemas anteriores.",
+          "author": "fm/pred-demo-f1-ingest-exclusions"
+        }
+      ]
+    }
+  ]
+}
