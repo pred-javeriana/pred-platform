@@ -80,7 +80,7 @@ metricas = repo.get_m3_metrics(corrida, sku="SKU-1", ventana="agregada")
 | `get_m3_run` | `M3Run` o `None` | solo la fila de `m3_corridas`, sin contar unidades |
 | `get_m3_run_status` | `M3RunStatus` | corrida y avance durable de `m3_unidades` |
 | `get_m3_evidence` | `M3Evidence` | `evidencia_publicada`, conteos de `m3_veredictos`, `m3_cortes`, `m3_lanzamientos_tardios` y `m3_exclusiones` |
-| `get_m3_metrics` | `M3Metrics` | `m3_metricas` |
+| `get_m3_metrics` | `M3Metrics` | `m3_metricas` (un SKU con `sku` o varios con `skus`) |
 | `get_m3_categories` | `M3Categories` | `m3_categorias` |
 | `get_m3_portfolio` | `M3Portfolio` | `m3_cartera` |
 | `get_m3_observations` | `M3Observations` | `m3_observaciones` (filtros SKU y fecha) |

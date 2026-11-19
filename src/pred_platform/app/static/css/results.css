@@ -46,7 +46,14 @@
 .pred-inline-bar .worse { background: var(--err); }
 .pred-results-bytype { table-layout: fixed; }
 .pred-results-bytype th, .pred-results-bytype td { vertical-align: top; padding-top: 12px; padding-bottom: 12px; }
-.pred-results-bytype th { width: 28%; }
+.pred-results-bytype thead th { white-space: normal; }
+.pred-results-bytype thead th:nth-child(1) { width: 15%; }
+.pred-results-bytype thead th:nth-child(2) { width: 13%; }
+.pred-results-bytype thead th:nth-child(3) { width: 15%; }
+.pred-results-bytype thead th:nth-child(4) { width: 12%; }
+.pred-results-bytype thead th:nth-child(5) { width: 26%; }
+.pred-results-bytype thead th:nth-child(6) { width: 19%; }
+.pred-results-bytype__value { font-family: var(--font-mono); }
 .pred-table.pred-results-bytype .pred-subvalue { max-width: 34ch; white-space: normal; }
 .pred-results-bytype th .pred-subvalue { font-weight: 400; }
 .pred-results-bytype__bar { display: flex; gap: 10px; align-items: center; }

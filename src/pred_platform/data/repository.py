@@ -221,6 +221,7 @@ class DataRepository(Protocol):
         run_id: str,
         *,
         sku: str | None = None,
+        skus: Sequence[str] | None = None,
         candidato_id: str | None = None,
         ventana: str | None = None,
         metrica: str | None = None,

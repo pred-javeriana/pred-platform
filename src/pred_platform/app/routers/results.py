@@ -78,18 +78,22 @@ from pred_platform.app.resultados_m3 import (
     CLASS_FAMILIES,
     MOTIVOS,
     PROFILE_METRICS,
+    ClassErrors,
     ExecutionChoice,
     M3Classes,
     M3Consulta,
     M3Decision,
     M3Profiles,
     M3Summary,
+    ProductErrors,
     champion_available,
+    class_errors,
     classes,
     consulta,
     decision,
     default_execution,
     other_publications,
+    product_errors,
     product_tests,
     profiles,
     publication_time,
@@ -361,6 +365,8 @@ def _resultados_page(
         ratio_svgs={},
         product_intervals={},
         product_intervals_error=None,
+        class_errors=ClassErrors(),
+        product_errors=ProductErrors(),
         test_results=TEST_RESULTS,
         test_result=test_result,
         m3_consulta=M3Consulta(),
@@ -523,6 +529,8 @@ def _fill_m3_view(
                 group["group"] = None
                 group["problem"] = "El grupo debe incluir la evaluación del análisis mostrado."
             context["seed_group"] = group
+    if vista in ("resumen", "clase"):
+        context["class_errors"] = class_errors(repository, resolved)
     _fill_charts(context)
     if resolved is not None:
         # El encabezado muestra la misma corrida M3 que la pestaña; la causa de un problema la
@@ -660,6 +668,10 @@ def _fill_consulta(
             except (DataLayerError, InvalidQuery) as exc:
                 context["product_intervals_error"] = str(exc)
         context["product_intervals"] = intervals
+        if found.run is not None:
+            context["product_errors"] = product_errors(
+                repository, found.run.run_id, [row.sku for row in found.evidence.items]
+            )
         context["ratio_svgs"] = {
             row.sku: charts.product_ratio_svg(
                 row.razon_sn,
@@ -844,6 +856,11 @@ def _producto_detalle_page(
 
     resolved_m3 = m3.run.run_id if m3.run is not None else wanted_m3
     verdict = m3.verdicts.get(sku_id)
+    errors = (
+        product_errors(repository, m3.run.run_id, [sku_id])
+        if m3.run is not None and verdict is not None
+        else ProductErrors()
+    )
     fetch_alt = bool(
         verdict
         and (
@@ -975,6 +992,7 @@ def _producto_detalle_page(
         run=run,
         m3=m3,
         verdict=verdict,
+        errors=errors,
         class_label=c_term.label,
         class_hint=c_term.hint,
         outcome_sentence=outcome_sentence,

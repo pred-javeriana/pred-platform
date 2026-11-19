@@ -173,12 +173,14 @@ def evidence_query(
 def metrics_query(
     *,
     sku: str | None = None,
+    skus: Sequence[str] | None = None,
     candidato_id: str | None = None,
     ventana: str | None = None,
     metrica: str | None = None,
     page: int = 1,
     size: int = DEFAULT_SIZE,
 ) -> M3Query:
+    """Metrics by one SKU or a list of exact SKUs, candidate, window and metric."""
     window = ventana if ventana == AGGREGATED_WINDOW else _iso_date("ventana", ventana)
     return M3Query(
         page=PageRequest(page, size),
@@ -188,6 +190,7 @@ def metrics_query(
             ventana=window,
             metrica=check_choice("metrica", metrica, STORED_METRICS),
         ),
+        any_of={} if skus is None else {"sku": tuple(dict.fromkeys(skus))},
         order=(("sku", False), ("candidato_id", False), ("ventana", False), ("metrica", False)),
     )
 

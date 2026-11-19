@@ -54,6 +54,7 @@
           <dt>Razón frente a la línea base</dt>
           <dd>{{ format_decimal(verdict.razon_sn, 3) if verdict.razon_sn is not none else "—" }}
             <small>intervalo de 95 %: {{ interval_text }}</small>
+            <small id="rmse-producto">{{ errors.text(verdict) }}</small>
           </dd>
         </div>
         <div>
@@ -79,7 +80,7 @@
           <dt>Mejor modelo en este producto</dt>
           <dd class="wz-text">
             <span class="wz-fk" style="background: {{ alt_color }}" aria-hidden="true"></span>{{ alt_family_label }}
-            <small>r = {{ format_decimal(best_other.razon_sn, 3) }}</small>
+            <small>r = {{ format_decimal(best_other.razon_sn, 3) }}{% set rmse_other = errors.of(verdict.sku, best_other.candidato_id) %}{% if rmse_other is not none %} · RMSE {{ format_decimal(rmse_other, 3) }}{% endif %}</small>
             <small>la campeona: r = {{ format_decimal(verdict.razon_sn, 3) if verdict.razon_sn is not none else "—" }}</small>
           </dd>
         </div>
@@ -103,7 +104,7 @@
                 {% endif %}
               </span>
             </dd>
-            <dd class="pred-kpis__note">Menos de 1: menos error que la línea base.</dd>
+            <dd class="pred-kpis__note">Menos de 1: menos error que la línea base. {{ errors.text(verdict) }}.</dd>
           </div>
           <div class="pred-kpis__item"><dt>Ventanas de prueba válidas</dt><dd>{{ format_count(verdict.n_ventanas) }} <span class="pred-kpis__note">mínimo {{ format_count(verdict.n_min) }}</span></dd></div>
           <div class="pred-kpis__item"><dt>Cobertura</dt><dd title="{{ exact_text(verdict.cobertura) }}">{{ percent_text(verdict.cobertura) }}</dd><dd class="pred-kpis__note">Parte del periodo de prueba con pronóstico.</dd></div>
@@ -236,7 +237,7 @@
     {% if verdict %}
     <section class="wz-panel pred-section" id="modelos" aria-labelledby="titulo-modelos">
       <h2 id="titulo-modelos">Todos los modelos en este producto</h2>
-      <p class="pred-meta">Modelos evaluados en la reserva: ordenados por r frente a la línea base, tal como los publicó la evaluación final. r menor que 1 significa menos error que la línea base.</p>
+      <p class="pred-meta">Modelos evaluados en la reserva: ordenados por r frente a la línea base, tal como los publicó la evaluación final. r menor que 1 significa menos error que la línea base. {{ gloss("RMSE") }}: el error de cada modelo en el bloque de prueba, en unidades de demanda; r es su RMSE dividido por el de la línea base.</p>
       {% if models_svg and not (forecast and forecast.problem) %}
       {{ models_legend | safe }}
       {{ models_chart_key | safe }}
@@ -246,7 +247,7 @@
       {% endif %}
 
       <div class="pred-evidence-scroll" style="margin-top: 12px;">
-      {{ table_start(["Familia", "Modelo", "r frente a la línea base", "Rol"], "Modelos evaluados de " ~ sku_id) }}
+      {{ table_start(["Familia", "Modelo", "r frente a la línea base", "RMSE", "Rol"], "Modelos evaluados de " ~ sku_id) }}
       {% for model in ranking(verdict) %}
       {% set roles = [] %}
       {% if model.candidato_id == verdict.candidato_campeon %}{% set _ = roles.append("Campeón") %}{% endif %}
@@ -255,6 +256,7 @@
         <td class="pred-nowrap" title="{{ family_term(model.familia).hint }}">{{ family_label(model.familia) }}</td>
         <td title="{{ model_term(model.modelo).hint }}">{{ model_label(model.modelo) }}</td>
         <td class="num"{% if model.razon_sn is not none %} title="{{ exact_text(model.razon_sn) }}"{% endif %}>{% if model.razon_sn is not none %}{{ ratio_text(model.razon_sn) }}{% else %}no calculable{% endif %}</td>
+        {% set rmse = errors.of(verdict.sku, model.candidato_id) %}<td class="num"{% if rmse is not none %} title="{{ exact_text(rmse) }}"{% endif %}>{% if errors.unread %}No se pudo leer{% elif rmse is not none %}{{ format_decimal(rmse, 3) }}{% else %}—{% endif %}</td>
         <td>{{ roles | join(" · ") or "—" }}</td>
       </tr>
       {% endfor %}
