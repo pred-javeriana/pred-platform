@@ -1,4 +1,4 @@
-"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.3.0).
+"""Modelos Pydantic v2 de REFERENCIA de los modelos de lectura de la plataforma (v1.4.0).
 
 Describen lo que leen las vistas de `pred-platform` desde su DAL (SQLite, SRS 3.6).
 Son la fuente de los esquemas de `../schemas/v1/` y de las reglas entre campos que
@@ -308,6 +308,14 @@ class PublishedArtifact(_Base):
     columns: list[str]
 
 
+class IngestExclusion(_Base):
+    """Producto excluido antes de L2 durante la ingesta (desde 1.4.0)."""
+
+    sku_id: str
+    cause: str
+    code: str | None = None
+
+
 class IngestReport(Documento):
     ingest_id: Sha256
     status: Literal["accepted", "rejected", "failed", "needs_confirmation"]
@@ -318,6 +326,8 @@ class IngestReport(Documento):
     published: PublishedArtifact | None = None
     quality_log: list[QualityEntry] = Field(default_factory=list)
     error: ErrorInfo | None = None
+    excluded_count: int = Field(default=0, ge=0)
+    exclusions: list[IngestExclusion] = Field(default_factory=list)
 
 
 class IngestSummary(_Base):

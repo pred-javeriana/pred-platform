@@ -138,8 +138,10 @@ Version 10 adds the published cut, late launches, observed demand and the champi
 Version 11 adds M3's split-reserve evidence: significance per class, the champion confirmation
 and its comparisons, the pre-cut robustness selection, the r intervals and the products M2
 excluded. Version 12, which belongs to the platform alone, adds the task state `finalizo_m2`: the
-unit finished M2 (L2 and L3) and waits for M3 to store its candidate.
-The current schema is version 12. The platform runs on real data only: uploading a file declares
+unit finished M2 (L2 and L3) and waits for M3 to store its candidate. Version 13 persists dropped
+products and their count (`excluded_count` and `exclusiones_json` on `ingestas`) from the engine's
+ingest report (v1 1.4.0).
+The current schema is version 13. The platform runs on real data only: uploading a file declares
 no origin, and every launch declares the data real (`--datos-reales`). The engine refuses a launch
 on an ingest declared synthetic. A run saved with synthetic data or an undeclared origin is never
 started or resumed: the worker stops it with `run.incompatible_config`, and launching the same

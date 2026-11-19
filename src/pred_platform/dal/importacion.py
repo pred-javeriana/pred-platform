@@ -26,12 +26,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from pred_platform.contract.errors import first_problem
-from pred_platform.contract.models import Severidad, SkuClass
+from pred_platform.contract.models import IngestExclusion, Severidad, SkuClass
 
 REPORTS_DIR = "ingestas"
 SUPPORTED_MAJOR = 1
-# First schema version that has the report and topology columns (migration 0002).
-REQUIRED_SCHEMA_VERSION = 2
+# First schema version that has the exclusions columns (migration 0013).
+REQUIRED_SCHEMA_VERSION = 13
 # The published Parquet columns of the engine's output contract 1.4.
 PANEL_COLUMNS = ["sku_id", "timestamp", "demand_qty", "lead_time_days", "sku_class"]
 
@@ -158,6 +158,8 @@ class EngineIngestFile(_Format):
     error: ErrorDetail | None = None
     reserve: Reserve | None = None
     topology: Topology | None = None
+    excluded_count: int = Field(default=0, ge=0)
+    exclusions: list[IngestExclusion] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
@@ -290,6 +292,12 @@ def _upsert(conn: sqlite3.Connection, report: EngineIngestFile) -> None:
         ),
         "error_json": report.error.model_dump_json() if report.error else None,
         "publicada_en": report.written_at,
+        "excluded_count": report.excluded_count,
+        "exclusiones_json": (
+            json.dumps([e.model_dump(exclude_none=True) for e in report.exclusions])
+            if report.exclusions
+            else None
+        ),
     }
     columns = ", ".join(values)
     marks = ", ".join(f":{name}" for name in values)

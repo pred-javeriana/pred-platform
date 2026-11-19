@@ -57,7 +57,7 @@
 
   {% if report.validation %}
   <dl class="pred-kpis pred-kpis--compact pred-file-figures">
-    <div class="pred-kpis__item"><dt>Productos</dt><dd>{{ format_count(report.validation.n_skus) }}</dd></div>
+    <div class="pred-kpis__item"><dt>Productos</dt><dd>{{ format_count(report.validation.n_skus) }}</dd>{% if report.excluded_count %}<dd class="pred-kpis__note">{% if report.excluded_count == 1 %}1 producto quedó fuera{% else %}{{ format_count(report.excluded_count) }} productos quedaron fuera{% endif %}{% set causes = report.exclusions | map(attribute='cause') | select | unique | list %}{% if causes %}: {{ causes | join(', ') }}{% endif %}</dd>{% endif %}</div>
     <div class="pred-kpis__item"><dt>Filas validadas</dt><dd>{{ format_count(report.validation.rows_validated) }}</dd></div>
     <div class="pred-kpis__item"><dt>Panel diario</dt><dd>{{ format_count(report.validation.rows_daily_panel) }}</dd><dd class="pred-kpis__note">Filas publicadas: una por SKU y día del calendario.</dd></div>
     <div class="pred-kpis__item"><dt>Fecha de corte</dt><dd class="pred-kpis__text">{{ day(topology.t_star) if topology and topology.t_star else 'Sin fecha publicada' }}</dd><dd class="pred-kpis__note">Después de esta fecha, los datos se reservan para probar.</dd></div>
@@ -78,6 +78,18 @@
       <dt>Columnas</dt><dd>{{ report.published.columns | join(", ") }}</dd>
     </dl>
     <details class="pred-details pred-details--inline"><summary>Detalle técnico</summary><p class="pred-meta">Identificador del archivo (SHA-256): <span class="mono">{{ report.ingest_id }}</span></p></details>
+  {% endif %}
+
+  {% if report.exclusions %}
+    <h4>Productos que quedaron fuera</h4>
+    {{ table_start(["SKU", "Causa"], "Productos que quedaron fuera") }}
+    {% for exclusion in report.exclusions %}
+    <tr>
+      <td><span class="mono">{{ exclusion.sku_id }}</span></td>
+      <td{% if exclusion.code %} title="{{ exclusion.code }}"{% endif %}>{{ exclusion.cause }}</td>
+    </tr>
+    {% endfor %}
+    {{ table_end() }}
   {% endif %}
 
   {% if report.header_diagnostic %}

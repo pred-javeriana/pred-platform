@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -31,12 +30,15 @@ REJECTED = json.loads((_FIXTURES / "ingesta.rejected.json").read_text())["ingest
 CONFLICT = json.loads((_FIXTURES / "ingesta.needs_confirmation.json").read_text())["ingest_id"]
 
 
-def _place(root: Path, label: str) -> None:
+def _place(root: Path, label: str, **changes: Any) -> Path:
     source = _FIXTURES / f"ingesta.{label}.json"
-    ingest_id = json.loads(source.read_text())["ingest_id"]
+    data = json.loads(source.read_text(encoding="utf-8"))
+    data.update(changes)
     folder = root / "ingestas"
     folder.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, folder / f"{ingest_id}.json")
+    target = folder / f"{data['ingest_id']}.json"
+    target.write_text(json.dumps(data), encoding="utf-8")
+    return target
 
 
 @pytest.fixture
@@ -104,6 +106,44 @@ def test_the_accepted_report_rebuilds_from_the_dal(repo: DalRepository) -> None:
     assert report.published.columns[-1] == "sku_class"
     assert report.quality_log == [] and report.error is None
     _conforms("ingest_report", report)
+
+
+def test_the_accepted_report_preserves_exclusions_from_file(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    _place(
+        root,
+        "accepted",
+        excluded_count=1,
+        exclusions=[{"sku_id": "1368480", "cause": "lanzado despues del corte"}],
+    )
+    db = tmp_path / "pred.db"
+    create_db(db).close()
+    import_reports(db, root)
+    repo = DalRepository(db, root)
+
+    # Prove the exclusions are read from the stored database row, not re-read from the file:
+    (root / "ingestas" / f"{ACCEPTED}.json").unlink()
+
+    report = repo.get_ingest_report(ACCEPTED)
+    assert report.excluded_count == 1
+    assert len(report.exclusions) == 1
+    assert report.exclusions[0].sku_id == "1368480"
+    assert report.exclusions[0].cause == "lanzado despues del corte"
+    _conforms("ingest_report", report)
+
+
+def test_older_row_without_exclusions_defaults_to_zero_and_empty(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    _place(root, "accepted")
+    db = tmp_path / "pred.db"
+    create_db(db).close()
+    import_reports(db, root)
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE ingestas SET excluded_count = NULL, exclusiones_json = NULL")
+    repo = DalRepository(db, root)
+    report = repo.get_ingest_report(ACCEPTED)
+    assert report.excluded_count == 0
+    assert report.exclusions == []
 
 
 def test_the_rejected_report_keeps_the_actionable_header_diagnostic(repo: DalRepository) -> None:

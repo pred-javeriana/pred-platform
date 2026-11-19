@@ -205,6 +205,9 @@ class DalRepository(M3DalSource):
             )
         header = json.loads(detail.diagnostico_json) if detail.diagnostico_json else None
         error = json.loads(detail.error_json) if detail.error_json else None
+        exclusions_raw = json.loads(detail.exclusiones_json) if detail.exclusiones_json else []
+        exclusions = [models.IngestExclusion(**item) for item in exclusions_raw]
+        excluded_count = detail.excluded_count or 0
         return models.IngestReport(
             **_envelope(models.Availability(status="available")),  # type: ignore[arg-type]
             ingest_id=detail.sha256,
@@ -259,6 +262,8 @@ class DalRepository(M3DalSource):
                 for row in lectura.quality_log(self.db_path, detail.id)
             ],
             error=models.ErrorInfo(**error) if error is not None else None,
+            excluded_count=excluded_count,
+            exclusions=exclusions,
         )
 
     def submit_ingest(

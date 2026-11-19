@@ -24,6 +24,8 @@ from pred_platform.data.query import LATEST
 
 # First schema version with the ingest report and topology columns (migration 0002).
 _REPORT_SCHEMA_VERSION = 2
+# First schema version with ingest product exclusions (migration 0013).
+_EXCLUSIONS_SCHEMA_VERSION = 13
 
 _TOPOLOGY_SORT_COLUMNS = {"sku_id": "sku", "adi": "adi", "cv2": "cv2", "n_positive": "n_positive"}
 
@@ -63,6 +65,8 @@ class IngestDetail:
     diagnostico_json: str | None
     error_json: str | None
     publicada_en: str | None
+    excluded_count: int | None = 0
+    exclusiones_json: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,20 +187,31 @@ def get_ingesta(db_path: Path, sha256: str) -> IngestDetail | None:
             return None
         row: tuple[Any, ...] | None
         try:
-            if _has_report_columns(conn):
+            version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+            if version >= _EXCLUSIONS_SCHEMA_VERSION:
                 row = conn.execute(
                     "SELECT id, sha256, nombre_archivo, filas, skus, estado, estado_deposito, "
                     "deposito_colision, ruta_raw, ruta_parquet, filas_validadas, filas_panel, "
-                    "t_star, umbral_adi, umbral_cv2, diagnostico_json, error_json, publicada_en "
+                    "t_star, umbral_adi, umbral_cv2, diagnostico_json, error_json, "
+                    "publicada_en, excluded_count, exclusiones_json "
                     "FROM ingestas WHERE sha256 = ?",
                     (sha256,),
                 ).fetchone()
+            elif version >= _REPORT_SCHEMA_VERSION:
+                legacy = conn.execute(
+                    "SELECT id, sha256, nombre_archivo, filas, skus, estado, estado_deposito, "
+                    "deposito_colision, ruta_raw, ruta_parquet, filas_validadas, filas_panel, "
+                    "t_star, umbral_adi, umbral_cv2, diagnostico_json, error_json, "
+                    "publicada_en FROM ingestas WHERE sha256 = ?",
+                    (sha256,),
+                ).fetchone()
+                row = None if legacy is None else (*legacy, 0, None)
             else:
                 basic = conn.execute(
                     "SELECT id, sha256, nombre_archivo, filas, skus FROM ingestas WHERE sha256 = ?",
                     (sha256,),
                 ).fetchone()
-                row = None if basic is None else (*basic, *((None,) * 13))
+                row = None if basic is None else (*basic, *((None,) * 13), 0, None)
         except sqlite3.OperationalError as error:
             if _is_missing_table(error):
                 return None
