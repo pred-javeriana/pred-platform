@@ -23,6 +23,7 @@ from pred_platform.app.routers import (
     execution,
     exportar,
     group_results,
+    manual,
     results,
 )
 from pred_platform.app.templating import build_templates
@@ -190,6 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(results.router)
     application.include_router(group_results.router)
     application.include_router(exportar.router)
+    application.include_router(manual.router)
     application.include_router(catalog.router)
     return application
 

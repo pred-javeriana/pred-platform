@@ -94,7 +94,7 @@ def test_datos_links_only_host_relative_local_assets(client: TestClient) -> None
     assert references, "the page should link its stylesheets and script"
     for ref in references:
         url = urlparse(ref)
-        if url.path == "/" or url.path.startswith("/corridas/"):
+        if url.path in ("/", "/manual") or url.path.startswith("/corridas/"):
             assert not url.scheme and not url.netloc, f"{ref} is not host-relative"
             continue
         if url.path.startswith("#") or not url.path:

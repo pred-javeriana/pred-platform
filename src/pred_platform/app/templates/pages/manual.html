@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% from "components/alerts.html" import alert %}
+
+{# Manual de usuario: la guía de quien opera PRED. Va en su propia página para no cargar las
+   pantallas de los pasos. El resumen de arriba responde «qué va a pasar» antes de los pasos. #}
+{% block content %}
+  <header class="pred-stephead">
+    <div>
+      <p class="pred-stephead__eyebrow">Ayuda</p>
+      <h1>Manual de usuario</h1>
+      <p class="pred-stephead__what">Un análisis de pronóstico toma su archivo de ventas y, para cada producto, compara varios modelos de pronóstico con días que no vieron al entrenar. Al final le dice qué modelo conviene usar y qué tan confiable es.</p>
+      <p class="pred-stephead__what">Usted solo carga el archivo, revisa los ajustes y lo lanza. PRED hace el resto y puede tardar desde unos minutos hasta más de una hora, según cuántos productos tenga.</p>
+    </div>
+    <div class="pred-stephead__actions">
+      {% with new_run_class="pred-btn pred-btn--primary pred-btn--large" %}{% include "partials/new_run.html" %}{% endwith %}
+    </div>
+  </header>
+
+  <section class="pred-panel" aria-labelledby="titulo-pasos">
+    <h2 id="titulo-pasos">Los cinco pasos</h2>
+    <ol>
+      <li><a href="#datos"><strong>Datos:</strong></a> cargue o elija el archivo de ventas.</li>
+      <li><a href="#ajustes"><strong>Ajustes:</strong></a> elija qué modelos probar y cómo evaluarlos.</li>
+      <li><a href="#revisar"><strong>Revisar y lanzar:</strong></a> compruebe todo y ponga el análisis en marcha.</li>
+      <li><a href="#ejecucion"><strong>Ejecución:</strong></a> siga el avance.</li>
+      <li><a href="#resultados"><strong>Resultados:</strong></a> lea qué modelo ganó para cada producto.</li>
+    </ol>
+    <p class="pred-meta">Dentro de un análisis, los pasos aparecen a la izquierda. En una pantalla angosta, aparece «Paso N de 5» arriba. Cada paso tiene los botones <strong>Atrás</strong> y <strong>Siguiente</strong>.</p>
+  </section>
+
+  <section class="pred-panel" id="datos" aria-labelledby="titulo-datos">
+    <h2 id="titulo-datos">1. Cargar los datos</h2>
+    <ol>
+      <li>En el inicio pulse <strong>Nuevo análisis</strong>.</li>
+      <li>Elija un archivo ya validado de la lista y pulse <strong>Ver archivo elegido</strong>, o abra «Cargar un archivo nuevo», seleccione su CSV y pulse <strong>Cargar y validar</strong>.</li>
+      <li>Si el archivo es válido, verá un resumen y la clasificación de sus productos por tipo de demanda.</li>
+      <li>Pulse <strong>Continuar a Ajustes</strong>.</li>
+    </ol>
+    <p>El archivo debe ser un CSV de hasta 256 MiB, con una fila por producto y día, y estas columnas:</p>
+    <div class="pred-table-wrap">
+      <table class="pred-table">
+        <thead><tr><th scope="col">Columna</th><th scope="col">Qué lleva</th></tr></thead>
+        <tbody>
+          <tr><td><code>sku_id</code></td><td>El identificador del producto.</td></tr>
+          <tr><td><code>timestamp</code></td><td>La fecha, en formato <code>AAAA-MM-DD</code>.</td></tr>
+          <tr><td><code>demand_qty</code></td><td>Las unidades vendidas: un número mayor o igual a 0.</td></tr>
+          <tr><td><code>lead_time_days</code></td><td>Los días que tarda el reabastecimiento: un entero de 1 o más.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="pred-meta">Si el archivo tiene errores, PRED los muestra y no deja continuar: corríjalos en el archivo y cárguelo de nuevo.</p>
+  </section>
+
+  <section class="pred-panel" id="ajustes" aria-labelledby="titulo-ajustes">
+    <h2 id="titulo-ajustes">2. Elegir los ajustes</h2>
+    <p>Los valores por defecto sirven para un primer análisis. Si quiere cambiarlos:</p>
+    <ul>
+      <li><strong>Familias de modelos:</strong> vienen marcadas las cuatro (clásica, aprendizaje automático, aprendizaje profundo y fundacional). Más familias significan una comparación más completa y un análisis más largo.</li>
+      <li><strong>Evaluación:</strong> la métrica con la que se elige el mejor modelo, el mínimo de días de entrenamiento, el horizonte de pronóstico y la semilla.</li>
+      <li><strong>Copiar ajustes:</strong> parta de los de otro análisis.</li>
+    </ul>
+    <p>El formulario guarda solo, sin botón de guardar. Cuando termine, pulse <strong>Continuar a Revisar y lanzar</strong>. Todavía no empieza nada.</p>
+  </section>
+
+  <section class="pred-panel" id="revisar" aria-labelledby="titulo-revisar">
+    <h2 id="titulo-revisar">3. Revisar y lanzar</h2>
+    <ol>
+      <li>Revise las tres secciones: Datos, Familias de modelos y Evaluación. El enlace <strong>Cambiar</strong> de cada una vuelve al paso correspondiente.</li>
+      <li>Lea el mensaje de arriba. «Todo listo para lanzar» significa que no hay nada que corregir. «Puede lanzar, pero lea el aviso» significa que algunos productos quedarán fuera de la comparación.</li>
+      <li>Pulse <strong>Lanzar el análisis</strong>.</li>
+    </ol>
+    <p>El análisis entra en cola y se abre el paso Ejecución. Puede cerrar el navegador: el análisis sigue y lo retoma desde el inicio.</p>
+  </section>
+
+  <section class="pred-panel" id="ejecucion" aria-labelledby="titulo-ejecucion">
+    <h2 id="titulo-ejecucion">4. Seguir la ejecución</h2>
+    <p>La página se actualiza sola cada 2 segundos y dice en qué etapa va PRED y cuántos productos lleva terminados. Un solo análisis corre a la vez; los demás esperan en cola.</p>
+    <div class="pred-table-wrap">
+      <table class="pred-table">
+        <thead><tr><th scope="col">Botón</th><th scope="col">Qué hace</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Detener</strong></td><td>Detiene el análisis y conserva lo que ya terminó.</td></tr>
+          <tr><td><strong>Reanudar</strong></td><td>Sigue desde donde quedó, sin repetir lo terminado.</td></tr>
+          <tr><td><strong>Reintentar las tareas con fallos</strong></td><td>Repite solo las tareas que fallaron.</td></tr>
+          <tr><td><strong>Ver resultados</strong></td><td>Aparece cuando el análisis termina.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="pred-meta">Un análisis «Completada» puede haber terminado con algunas tareas fallidas. La página las agrupa por causa y dice qué hacer en cada caso.</p>
+  </section>
+
+  <section class="pred-panel" id="resultados" aria-labelledby="titulo-resultados">
+    <h2 id="titulo-resultados">5. Leer los resultados</h2>
+    <p>La página de Resultados responde, por tipo de demanda, qué familia de modelos gana y si el resultado se sostiene producto a producto. Cada producto recibe un veredicto:</p>
+    <div class="pred-table-wrap">
+      <table class="pred-table">
+        <thead><tr><th scope="col">Veredicto</th><th scope="col">Qué significa</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Validado</strong></td><td>Se equivoca menos que la línea base, con datos reales y evidencia suficiente. Puede usarlo.</td></tr>
+          <tr><td><strong>Exploratorio</strong></td><td>Sin validar: no mejora a la línea base o la comparación quedó incompleta. Úselo con cautela.</td></tr>
+          <tr><td><strong>Evidencia insuficiente</strong></td><td>Hay muy pocos datos de prueba para concluir.</td></tr>
+          <tr><td><strong>No evaluable</strong></td><td>No hay demanda registrada en el periodo de prueba.</td></tr>
+          <tr><td><strong>Error técnico</strong></td><td>Ningún modelo dio un pronóstico de prueba para este producto.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>La línea base es un pronóstico simple con el que se compara cada modelo. Pulse un producto para ver su pronóstico junto a la demanda observada. En «Exportar y reproducir» puede descargar los veredictos y las exclusiones en CSV; en Excel con configuración en español, ábralos con <strong>Datos &gt; Desde texto/CSV</strong>.</p>
+  </section>
+
+  <section class="pred-panel" id="problemas" aria-labelledby="titulo-problemas">
+    <h2 id="titulo-problemas">Si algo falla</h2>
+    <p>Cada error dice qué pasó y qué hacer. El desplegable «Detalle para soporte» trae el texto técnico y el botón <strong>Copiar detalle</strong>: péguelo en el mensaje cuando pida ayuda.</p>
+    {{ alert("Los botones Lanzar, Detener y Reanudar salen desactivados cuando la plataforma está en modo de solo lectura o con datos de prueba. El aviso de la página dice por qué.", variant="info") }}
+  </section>
+{% endblock %}
