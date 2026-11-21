@@ -7,12 +7,22 @@ single DAL over SQLite, and task-table run orchestration.
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
+- Git para instalar el motor con `make setup`
 - `make` (optional: every target below is a thin wrapper over a `uv run` command)
 
 ## Instalar y arrancar con make
 
-Con `pred-engine` clonado al lado de esta copia (`../pred-engine`), cuatro comandos
-preparan y manejan una instalación local completa:
+Desde la carpeta de `pred-platform`, clone el motor al lado y seleccione la revisión
+que indica [`.github/pred-engine.commit`](.github/pred-engine.commit):
+
+```bash
+git clone https://github.com/pred-javeriana/pred-engine.git ../pred-engine
+git -C ../pred-engine checkout --detach "$(cat .github/pred-engine.commit)"
+```
+
+Si ya tiene el clon, omita el primer comando. En PowerShell, sustituya
+`$(cat .github/pred-engine.commit)` por `(Get-Content .github/pred-engine.commit)`
+sin comillas. A continuación, estos comandos preparan y manejan la instalación local:
 
 ```bash
 make setup    # revisa lo necesario, instala las dos copias, crea .env, migra y carga el ejemplo
@@ -21,12 +31,14 @@ make status   # dice si PRED corre, la versión de la base y los análisis de pr
 make down     # detiene PRED (el análisis en curso queda para reanudarse al volver a arrancar)
 ```
 
-- **`make setup`** se puede repetir. Instala esta copia (`uv sync --extra dev --locked`) y el
-  motor con su propio `make setup`, que incluye Chronos-2 y deja sus pesos en la caché
+- **`make setup`** se puede repetir. Instala esta copia (`uv sync --extra dev --locked`),
+  verifica que la copia del motor esté limpia y en la revisión indicada e instala el motor con
+  su propio `make setup`, que incluye Chronos-2 y deja sus pesos en la caché
   (`make setup FUNDACIONAL=no` lo omite). Si no existe `.env`, lo crea desde `.env.example` con
   `PRED_DATA_SOURCE=dal` y `PRED_ENGINE_CMD=uv run --project ../pred-engine pred-engine`, y con
   el `PRED_DATA_ROOT` de la terminal si tiene uno (`PRED_DATA_ROOT=/ruta make setup`); un `.env`
-  que ya existe no se toca. Desde entonces `.env` decide `PRED_DATA_ROOT`: `make` lo lee y su
+  que ya existe se conserva. Si su `PRED_ENGINE_CMD` apunta a otro motor, la instalación pide
+  corregir ese valor. Desde entonces `.env` decide `PRED_DATA_ROOT`: `make` lo lee y su
   valor gana sobre el de la terminal, así que para cambiarlo se edita `.env`. Después corre
   `make migrate` y carga `ejemplos/panel_demo.csv` con el mismo camino que la carga del navegador
   (`make datos-demo`), así Datos ya lo muestra. Ninguna clave secreta hace falta: la plataforma
@@ -36,7 +48,9 @@ make down     # detiene PRED (el análisis en curso queda para reanudarse al vol
   solo en una red de confianza), sin recarga automática y con el worker dentro de la app. Guarda
   el PID en `<PRED_DATA_ROOT>/servidor.json` y el registro en `<PRED_DATA_ROOT>/servidor.log`.
 - **`make down`** envía SIGTERM a ese PID y espera hasta 60 s a que la app detenga el motor.
-- `MOTOR=ruta` usa una copia de pred-engine en otro lugar.
+- `MOTOR=ruta` usa una copia de la misma revisión de pred-engine en otro lugar.
+- Para instalar el motor y la plataforma en modo no editable con `uv`, defina
+  `UV_NO_EDITABLE=1` en la sesión que ejecuta `make setup` y los comandos de operación.
 
 El archivo de ejemplo tiene 6 productos sintéticos y 400 días: alcanza para que la evaluación
 final tenga las 30 ventanas de prueba que exige por producto. Con los ajustes por defecto (las
@@ -409,8 +423,8 @@ The browser checks fixed demo pages, pause/resume, connection loss, request time
 
 Run the tests as a regular user, as CI does: root may write a file without write permission, so
 the read-only database tests fail under root.
-CI also runs `tests/test_integracion_motor.py` in the Integration job against current
-`pred-engine` main, using the existing six-series synthetic panel. The job records the engine
+CI also runs `tests/test_integracion_motor.py` in the Integration job against the engine
+revision used by `make setup`, using the existing six-series synthetic panel. The job records the engine
 revision and fails if any integration test is skipped. The separate Tests job keeps its coverage
 check. A PR that touches the engine boundary also carries a receipt from `make motor-local`,
 and the `motor-local` check reads it;
@@ -434,7 +448,7 @@ entry together. License texts are in `static/licenses/`.
 
 ## Dependencies
 
-See [DEPENDENCIES.md](DEPENDENCIES.md) for the pred-engine git dependency and why CI does not install it.
+See [DEPENDENCIES.md](DEPENDENCIES.md) for how the platform installs and invokes pred-engine.
 
 ## UI/frontend work
 
