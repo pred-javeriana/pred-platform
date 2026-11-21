@@ -32,6 +32,11 @@ STAGING_DIR = "staging"
 # The headers of the CSV path that needs no LLM (`pred-engine classify`, guide 16.7).
 CANONICAL_HEADERS = ("sku_id", "timestamp", "demand_qty", "lead_time_days")
 
+# ejemplos/panel_demo.csv is synthetic. Match its contents after newline and BOM
+# normalization, including when it is uploaded under a different name.
+_DEMO_SHA256 = "f35cd0368f88ef550097b8ce058a2e9af248fcff34d24d2147524db7aee0dd3d"
+_DEMO_MAX_BYTES = 63_349  # CRLF and a UTF-8 BOM
+
 Submitter = Callable[[str, bytes, bool], str]
 
 
@@ -94,6 +99,13 @@ def submit_csv(
         ]
         if confirm_overwrite:
             command.append("--confirm-overwrite")
+        if len(content) <= _DEMO_MAX_BYTES and (
+            hashlib.sha256(
+                content.removeprefix(b"\xef\xbb\xbf").replace(b"\r\n", b"\n")
+            ).hexdigest()
+            == _DEMO_SHA256
+        ):
+            command.append("--datos-sinteticos")
         started = time.time()
         try:
             done = subprocess.run(  # noqa: S603 - the command comes from trusted settings

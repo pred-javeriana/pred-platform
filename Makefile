@@ -30,7 +30,7 @@ setup:
 	@$(MAKE) --no-print-directory datos-demo
 	@echo "Instalación lista. Siga con: make up"
 
-# Ingest ejemplos/panel_demo.csv as a browser upload would, so Datos already lists it.
+# Ingest the bundled sample with its declared synthetic origin, so Datos lists it.
 datos-demo:
 	@$(ENTORNO) cargar-demo
 

@@ -164,7 +164,7 @@ def test_revisar_requires_the_clean_pinned_engine_checkout(workdir: Path) -> Non
     assert f"checkout --detach {revision}" in wrong.stdout
 
 
-def test_cargar_demo_leaves_the_sample_file_accepted_in_the_database(workdir: Path) -> None:
+def test_cargar_demo_ingests_the_sample_as_synthetic(workdir: Path) -> None:
     data = workdir / "data"
     engine = f"{shlex.quote(sys.executable)} {shlex.quote(str(FAKE_ENGINE))}"
     subprocess.run(
@@ -177,8 +177,11 @@ def test_cargar_demo_leaves_the_sample_file_accepted_in_the_database(workdir: Pa
 
     assert done.returncode == 0, done.stderr
     assert "panel_demo.csv" in done.stdout
+    assert "sintético" in done.stdout
     [report] = (data / "ingestas").glob("*.json")
-    assert json.loads(report.read_text(encoding="utf-8"))["status"] == "accepted"
+    info = json.loads(report.read_text(encoding="utf-8"))
+    assert info["status"] == "accepted"
+    assert info["source_file"]["datos_sinteticos"] is True
 
 
 def test_up_status_and_down_manage_one_background_server(workdir: Path) -> None:
