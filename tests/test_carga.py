@@ -54,6 +54,18 @@ def test_an_accepted_csv_ends_as_a_readable_report_and_leaves_no_temporary_file(
     assert list((env.settings.data_root / "staging").iterdir()) == []
 
 
+def test_the_bundled_demo_keeps_its_origin_when_uploaded_with_another_name(env: Env) -> None:
+    repo = build_repository(env.settings)
+    demo = Path(__file__).resolve().parents[1] / "ejemplos" / "panel_demo.csv"
+    content = b"\xef\xbb\xbf" + demo.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+
+    report = repo.submit_ingest("copia.csv", content)
+
+    assert report.status == "accepted" and report.ingest_id == _sha(content)
+    unrelated = repo.submit_ingest("panel_demo.csv", _csv())
+    assert repo.synthetic_ingests([report.ingest_id, unrelated.ingest_id]) == {report.ingest_id}
+
+
 def test_a_csv_with_wrong_headers_is_a_rejected_report_not_an_error(env: Env) -> None:
     report = build_repository(env.settings).submit_ingest("raro.csv", _csv("BADHEADER"))
 

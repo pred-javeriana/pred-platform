@@ -40,9 +40,9 @@ make down     # detiene PRED (el análisis en curso queda para reanudarse al vol
   que ya existe se conserva. Si su `PRED_ENGINE_CMD` apunta a otro motor, la instalación pide
   corregir ese valor. Desde entonces `.env` decide `PRED_DATA_ROOT`: `make` lo lee y su
   valor gana sobre el de la terminal, así que para cambiarlo se edita `.env`. Después corre
-  `make migrate` y carga `ejemplos/panel_demo.csv` con el mismo camino que la carga del navegador
-  (`make datos-demo`), así Datos ya lo muestra. Ninguna clave secreta hace falta: la plataforma
-  solo usa archivos con las cuatro columnas canónicas.
+  `make migrate` y registra `ejemplos/panel_demo.csv` como sintético (`make datos-demo`).
+  Datos muestra el diagnóstico de la ingesta y su origen. Los archivos con las cuatro
+  columnas canónicas se cargan sin claves de acceso.
 - **`make up`** sirve en `http://127.0.0.1:8000` (`make up PORT=8001` para otro puerto, y
   `make up HOST=0.0.0.0` para atender a otras máquinas; PRED no pide contraseña, así que hágalo
   solo en una red de confianza), sin recarga automática y con el worker dentro de la app. Guarda
@@ -52,9 +52,30 @@ make down     # detiene PRED (el análisis en curso queda para reanudarse al vol
 - Para instalar el motor y la plataforma en modo no editable con `uv`, defina
   `UV_NO_EDITABLE=1` en la sesión que ejecuta `make setup` y los comandos de operación.
 
-El archivo de ejemplo tiene 6 productos sintéticos y 400 días: alcanza para que la evaluación
-final tenga las 30 ventanas de prueba que exige por producto. Con los ajustes por defecto (las
-cuatro familias) su análisis de pronóstico tardó menos de dos minutos con 2 procesos.
+### Demostración técnica con el ejemplo sintético
+
+`panel_demo.csv` contiene seis productos simulados durante 400 días. Puede usarlo en Datos
+para revisar la carga, la validación y la clasificación. Para configurar y lanzar un análisis
+desde el asistente, cargue un histórico real cuyo uso esté autorizado.
+
+Para reproducir una evaluación del ejemplo, después de `make setup` ejecute el motor desde
+esta carpeta y luego arranque la plataforma. Los comandos usan la raíz y la base por
+defecto. Si PRED ya está en marcha, deténgalo primero con `make down`.
+
+```bash
+uv run --project ../pred-engine pred-engine run --csv ejemplos/panel_demo.csv \
+  --data-root data --db-path data/pred.db --datos-sinteticos --run-id demo-sintetico \
+  --no-foundation --horizon 2 --step 14 --trials 2 --seed 149 --workers 2
+make up
+```
+
+En PowerShell, escriba la orden del motor en una línea. El ejemplo también funciona tras
+`make setup FUNDACIONAL=no`. El código de salida 0 indica publicación y el 8 indica
+publicación con fallos aislados. En Resultados puede consultar el resumen y exportar el CSV
+con los veredictos y la causa `datos_sinteticos` de la omisión de HLN-DM. El detalle por producto
+requiere las selecciones que importa el trabajador en los análisis lanzados desde el asistente.
+Si una base de desarrollo ya contiene un análisis de este archivo declarado como real,
+use una raíz de datos nueva con su propia base para la demostración.
 
 ## Quick start
 
