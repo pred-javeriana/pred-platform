@@ -26,7 +26,7 @@ FAKE_ENGINE = REPO / "tests" / "fake_engine.py"
 
 
 def _run(
-    cwd: Path, *args: str, script: Path = SCRIPT, **env: str
+    cwd: Path, *args: str, script: Path | str = SCRIPT, **env: str
 ) -> subprocess.CompletedProcess[str]:
     environ = {k: v for k, v in os.environ.items() if not k.startswith("PRED_")}
     return subprocess.run(
