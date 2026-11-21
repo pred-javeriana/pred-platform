@@ -47,19 +47,17 @@ The font files come from the design reference in `pred-docs/diseno/fonts/`.
 
 ## pred-engine (public repo)
 
-The platform runs the `pred-engine` CLI as a subprocess (`PRED_ENGINE_CMD`) and does not import it; the git dependency stays commented until a module needs the library.
+The platform runs the `pred-engine` CLI as a subprocess (`PRED_ENGINE_CMD`).
+For installation with `make setup`, clone the revision in
+[`.github/pred-engine.commit`](.github/pred-engine.commit) as described in the
+[README](README.md#instalar-y-arrancar-con-make). Setup checks the revision and
+invokes the engine's own setup, which installs from its `uv.lock`.
 
 The engine pulls in heavy scientific dependencies (LightGBM, statsmodels, Optuna), so a
 fresh install gets noticeably larger once it is activated. On macOS, LightGBM needs the OpenMP
 runtime: `brew install libomp`.
 
-### uv git dependency line
-
-```toml
-# Add to [project.dependencies] in pyproject.toml:
-"pred-engine @ git+https://github.com/pred-javeriana/pred-engine.git"
-```
-
 ### CI
 
-`pred-engine` is public, so installing it over HTTPS needs no credential; CI does not install it because the engine runs locally.
+The Integration job clones and installs the same engine revision over HTTPS and
+executes the six-series integration tests with its CLI.

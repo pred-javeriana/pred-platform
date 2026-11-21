@@ -25,10 +25,12 @@ SCRIPT = REPO / "scripts" / "entorno.py"
 FAKE_ENGINE = REPO / "tests" / "fake_engine.py"
 
 
-def _run(cwd: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    cwd: Path, *args: str, script: Path | str = SCRIPT, **env: str
+) -> subprocess.CompletedProcess[str]:
     environ = {k: v for k, v in os.environ.items() if not k.startswith("PRED_")}
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
+        [sys.executable, str(script), *args],
         cwd=cwd,
         env={**environ, **env},
         capture_output=True,
@@ -77,13 +79,27 @@ def test_env_writes_the_data_root_given_in_the_shell(workdir: Path) -> None:
 
 
 def test_env_keeps_an_existing_file_and_warns_about_sample_data(workdir: Path) -> None:
-    (workdir / ".env").write_text("PRED_DATA_SOURCE=fixture\n", encoding="utf-8")
+    existing = (
+        "PRED_DATA_SOURCE=fixture\nPRED_ENGINE_CMD=uv run --project ../pred-engine pred-engine\n"
+    )
+    (workdir / ".env").write_text(existing, encoding="utf-8")
 
     done = _run(workdir, "env", "--motor", "../pred-engine", PRED_DATA_SOURCE="fixture")
 
     assert done.returncode == 0, done.stderr
-    assert (workdir / ".env").read_text(encoding="utf-8") == "PRED_DATA_SOURCE=fixture\n"
+    assert (workdir / ".env").read_text(encoding="utf-8") == existing
     assert "PRED_DATA_SOURCE=dal" in done.stdout
+
+
+def test_env_rejects_a_command_for_a_different_engine(workdir: Path) -> None:
+    existing = "PRED_ENGINE_CMD=uv run --project ../other-engine pred-engine\n"
+    (workdir / ".env").write_text(existing, encoding="utf-8")
+
+    done = _run(workdir, "env", "--motor", "../pred-engine")
+
+    assert done.returncode == 1
+    assert "PRED_ENGINE_CMD=uv run --project ../pred-engine pred-engine" in done.stderr
+    assert (workdir / ".env").read_text(encoding="utf-8") == existing
 
 
 def test_revisar_names_a_missing_engine_checkout_and_how_to_get_it(workdir: Path) -> None:
@@ -91,22 +107,61 @@ def test_revisar_names_a_missing_engine_checkout_and_how_to_get_it(workdir: Path
 
     assert done.returncode == 1
     assert "git clone https://github.com/pred-javeriana/pred-engine.git" in done.stdout
+    assert "checkout --detach" in done.stdout
 
 
-def test_revisar_accepts_an_engine_checkout_with_its_setup_target(workdir: Path) -> None:
+def test_revisar_requires_the_clean_pinned_engine_checkout(workdir: Path) -> None:
     motor = workdir / "pred-engine"
     motor.mkdir()
     (motor / "pyproject.toml").write_text('[project]\nname = "pred-engine"\n', encoding="utf-8")
-    (motor / "Makefile").write_text("test:\n\ttrue\n", encoding="utf-8")
+    makefile = motor / "Makefile"
+    makefile.write_text("setup:\n\ttrue\n", encoding="utf-8")
 
-    old = _run(workdir, "revisar", "--motor", str(motor))
-    (motor / "Makefile").write_text("test:\n\ttrue\n\nsetup:\n\ttrue\n", encoding="utf-8")
-    current = _run(workdir, "revisar", "--motor", str(motor))
+    def git(*args: str) -> str:
+        return subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=PRED test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=.git/hooks",
+                *args,
+            ],
+            cwd=motor,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
 
-    assert old.returncode == 1
-    assert f"git -C {motor} pull" in old.stdout
-    assert f"ok  pred-engine en {motor}" in current.stdout
-    assert "make setup de pred-engine" not in current.stdout
+    git("init")
+    git("add", "pyproject.toml", "Makefile")
+    git("commit", "-m", "Pinned")
+    revision = git("rev-parse", "HEAD")
+    scripts = workdir / "scripts"
+    scripts.mkdir()
+    script = scripts / SCRIPT.name
+    shutil.copy(SCRIPT, script)
+    (workdir / ".github").mkdir()
+    (workdir / ".github" / "pred-engine.commit").write_text(revision + "\n", encoding="ascii")
+
+    good = _run(workdir, "revisar", "--motor", str(motor), script=script)
+    assert good.returncode == 0, good.stdout
+    assert revision in good.stdout
+
+    makefile.write_text("setup:\n\tfalse\n", encoding="utf-8")
+    dirty = _run(workdir, "revisar", "--motor", str(motor), script=script)
+    assert dirty.returncode == 1
+    assert "copia limpia" in dirty.stdout
+
+    git("add", "Makefile")
+    git("commit", "-m", "Different revision")
+    wrong = _run(workdir, "revisar", "--motor", str(motor), script=script)
+    assert wrong.returncode == 1
+    assert f"checkout --detach {revision}" in wrong.stdout
 
 
 def test_cargar_demo_leaves_the_sample_file_accepted_in_the_database(workdir: Path) -> None:

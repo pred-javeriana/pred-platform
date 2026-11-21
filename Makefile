@@ -11,8 +11,8 @@ endif
 #   make up       start PRED in the background and wait until it answers (HOST=127.0.0.1 PORT=8000)
 #   make status   whether PRED runs, the database version and the runs
 #   make down     stop PRED
-# pred-engine sits next to this checkout (MOTOR=path to override); its own `make setup` installs it,
-# and `make setup FUNDACIONAL=no` passes through to skip Chronos-2.
+# pred-engine sits next to this checkout at the pinned revision (MOTOR=path to override).
+# Its own `make setup` installs it. Pass FUNDACIONAL=no to skip Chronos-2.
 MOTOR ?= ../pred-engine
 PORT ?= 8000
 # Plain `=`, not `?=`: some systems export HOST as the machine name, and it must not change the
@@ -23,9 +23,9 @@ ENTORNO = uv run python scripts/entorno.py
 setup:
 	@command -v uv >/dev/null 2>&1 || { echo "Falta uv: instálelo (https://docs.astral.sh/uv/) y repita make setup."; exit 1; }
 	uv sync --extra dev --locked
-	@$(ENTORNO) revisar --motor $(MOTOR)
-	$(MAKE) -C $(MOTOR) setup
-	@$(ENTORNO) env --motor $(MOTOR)
+	@$(ENTORNO) revisar --motor "$(MOTOR)"
+	$(MAKE) -C "$(MOTOR)" setup
+	@$(ENTORNO) env --motor "$(MOTOR)"
 	@$(MAKE) --no-print-directory migrate
 	@$(MAKE) --no-print-directory datos-demo
 	@echo "Instalación lista. Siga con: make up"

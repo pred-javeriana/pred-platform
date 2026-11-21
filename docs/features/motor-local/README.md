@@ -1,6 +1,6 @@
 # Verificación local del motor (`make motor-local`)
 
-CI corre el caso de seis series con el motor real de `pred-engine` main en el
+CI corre el caso de seis series con la revisión del motor que usa `make setup` en el
 trabajo Integration. Ese trabajo falla si se omite alguna prueba. Antes de
 pedir revisión, quien abre un PR que toca la frontera con el motor también corre
 `make motor-local` en su equipo y publica el recibo como comentario del PR. El

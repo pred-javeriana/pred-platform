@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
+from dotenv import load_dotenv
 
 from pred_platform.config import DATA_ROOT_VAR, DATA_SOURCE_VAR, ENGINE_COMMAND_VAR, Settings
 from pred_platform.worker.ingesta import IngestLaunchError, submit_csv
@@ -44,6 +45,7 @@ ENV_EXAMPLE = Path(".env.example")
 ENV_FILE = Path(".env")
 DEMO_CSV = REPO / "ejemplos" / "panel_demo.csv"
 ENGINE_REPO = "https://github.com/pred-javeriana/pred-engine.git"
+ENGINE_REVISION = REPO / ".github" / "pred-engine.commit"
 APP = "pred_platform.app.main:app"
 DEFAULT_HOST = "127.0.0.1"
 # A server bound to every interface still answers the health check on the loopback.
@@ -74,23 +76,41 @@ def revisar(motor: Path) -> int:
         else:
             missing += 1
             _fail("setpriv", "Instale util-linux con el gestor de paquetes del sistema.")
-    pyproject = motor / "pyproject.toml"
-    if pyproject.is_file() and 'name = "pred-engine"' in pyproject.read_text(encoding="utf-8"):
-        _ok(f"pred-engine en {motor}")
-        makefile = motor / "Makefile"
-        if not makefile.is_file() or "\nsetup:" not in makefile.read_text(encoding="utf-8"):
-            missing += 1
-            _fail(
-                "el comando make setup de pred-engine",
-                f"Actualice pred-engine: git -C {shlex.quote(str(motor))} pull",
-            )
-    else:
-        missing += 1
+    revision = ENGINE_REVISION.read_text(encoding="ascii").strip()
+    quoted_motor = shlex.quote(motor.as_posix())
+    checkout = f"git -C {quoted_motor} checkout --detach {revision}"
+    git = shutil.which("git")
+    if git is None:
+        _fail("Git", "Instale Git y repita make setup.")
+        return 1
+    if not (motor / "pyproject.toml").is_file():
         _fail(
             f"pred-engine en {motor}",
-            f"Clónelo al lado de pred-platform: git clone {ENGINE_REPO} {shlex.quote(str(motor))}"
-            "\n         o indique dónde está: make setup MOTOR=/ruta/a/pred-engine",
+            f"Clone el motor: git clone {ENGINE_REPO} {quoted_motor}\n         {checkout}",
         )
+        return 1
+    git_at_motor = [git, "--no-optional-locks", "-C", str(motor)]
+    head = subprocess.run(  # noqa: S603
+        [*git_at_motor, "rev-parse", "--show-prefix", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head.returncode or head.stdout.splitlines() != ["", revision]:
+        _fail(
+            f"pred-engine en la revisión {revision}", f"Use una copia de Git y ejecute: {checkout}"
+        )
+        return 1
+    status = subprocess.run(  # noqa: S603
+        [*git_at_motor, "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status.returncode or status.stdout:
+        _fail(f"copia limpia de pred-engine en {motor}", "Use otra copia limpia del mismo commit.")
+        return 1
+    _ok(f"pred-engine en {motor} ({revision})")
     if missing:
         print("Corrija lo que falta y repita make setup.")
         return 1
@@ -112,12 +132,27 @@ def env(motor: Path) -> int:
     A ``PRED_DATA_ROOT`` from the shell goes into the new `.env`: once `.env` exists, the
     Makefile's ``include .env`` overrides the shell value, so it would be lost otherwise.
     """
+    engine = f"uv run --project {shlex.quote(motor.as_posix())} pred-engine"
     if ENV_FILE.exists():
         print(f"Se conserva {ENV_FILE.name}, que ya existía.")
+        load_dotenv(ENV_FILE)
         try:
             settings = Settings.from_env()
         except ValueError as exc:
             print(f"error en {ENV_FILE.name}: {exc}", file=sys.stderr)
+            return 1
+        command = settings.engine_command
+        if (
+            len(command) != 5
+            or command[:3] != ("uv", "run", "--project")
+            or Path(command[3]).resolve() != motor.resolve()
+            or command[4] != "pred-engine"
+        ):
+            print(
+                f"error: para usar el motor verificado, configure {ENV_FILE.name} con "
+                f"{ENGINE_COMMAND_VAR}={engine}",
+                file=sys.stderr,
+            )
             return 1
         if settings.data_source != "dal":
             print(
@@ -125,7 +160,6 @@ def env(motor: Path) -> int:
                 f"del contrato; para datos reales ponga {DATA_SOURCE_VAR}=dal en {ENV_FILE.name}."
             )
         return 0
-    engine = f"uv run --project {shlex.quote(str(motor))} pred-engine"
     text = ENV_EXAMPLE.read_text(encoding="utf-8")
     text = _with_value(text, DATA_SOURCE_VAR, "dal")
     text = _with_value(text, ENGINE_COMMAND_VAR, engine)

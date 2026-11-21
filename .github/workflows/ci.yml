@@ -108,7 +108,7 @@ jobs:
         run: uv run --frozen pytest -ra
 
   engine-integration:
-    name: Integration (real engine main)
+    name: Integration (real pinned engine)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -121,10 +121,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Read the pinned engine commit
+        id: engine-revision
+        run: |
+          sha=$(cat .github/pred-engine.commit)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: pred-javeriana/pred-engine
-          ref: main
+          ref: ${{ steps.engine-revision.outputs.sha }}
           path: .ci-engine
           persist-credentials: false
       - name: Record engine revision
