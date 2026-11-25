@@ -1,5 +1,7 @@
 """Regresiones del recorrido en Chromium: PRED_BROWSER_TESTS=1 pytest -q --no-cov
 tests/test_wizard_browser.py. Cada prueba usa su servidor, base y sesión de navegador.
+Requiere chrome-devtools-axi y chrome-devtools-mcp en las versiones que instala el trabajo
+wizard-browser de .github/workflows/ci.yml.
 """
 
 from __future__ import annotations
