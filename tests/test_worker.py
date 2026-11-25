@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
 from pred_platform.app.main import create_app
-from pred_platform.config import Settings
+from pred_platform.config import ENGINE_CALL_TIMEOUT_S, Settings
 from pred_platform.contract.errors import ArtifactMissing
 from pred_platform.contract.resources import read_schema
 from pred_platform.dal import ejecuciones as dal
@@ -188,7 +188,7 @@ def test_un_motor_ausente_no_encola(env: Env):
 
 def test_una_consulta_agotada_no_encola(env: Env, monkeypatch):
     def timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(args[0], 60)
+        raise subprocess.TimeoutExpired(args[0], ENGINE_CALL_TIMEOUT_S)
 
     monkeypatch.setattr(engine.subprocess, "run", timeout)
     with pytest.raises(
@@ -215,7 +215,7 @@ def test_consulta_el_origen_sin_bloquear_la_base(env: Env, monkeypatch):
         with closing(sqlite3.connect(env.db, timeout=0)) as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.rollback()
-        assert kwargs["timeout"] == 60 and kwargs["capture_output"] is True
+        assert kwargs["timeout"] == ENGINE_CALL_TIMEOUT_S and kwargs["capture_output"] is True
         return original(command, **kwargs)
 
     monkeypatch.setattr(engine.subprocess, "run", consult)

@@ -27,6 +27,9 @@ DEFAULT_DATA_SOURCE: DataSource = "dal"
 DEFAULT_FIXTURE_SCENARIO = "normal"
 DEFAULT_ENGINE_COMMAND = ("pred-engine",)
 DEFAULT_WORKER: WorkerMode = "embedded"
+# Synchronous pred-engine calls (classify on upload, origen on launch) share one timeout
+# long enough for large catalogs and for waiting behind a shared slot or lock.
+ENGINE_CALL_TIMEOUT_S = 900.0
 
 
 @dataclass(frozen=True, slots=True)

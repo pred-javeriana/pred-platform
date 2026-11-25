@@ -21,6 +21,7 @@ from starlette.datastructures import UploadFile
 
 from pred_platform.app.datos import read_upload
 from pred_platform.app.main import create_app
+from pred_platform.config import ENGINE_CALL_TIMEOUT_S
 from pred_platform.contract.errors import EngineUnavailable, InvalidQuery
 from pred_platform.data.factory import build_repository
 from pred_platform.worker import ingesta
@@ -154,8 +155,8 @@ def test_an_engine_that_hangs_times_out(env: Env) -> None:
 
 def test_the_thesis_catalog_size_is_within_the_upload_limit_and_the_timeout_waits_for_it() -> None:
     assert ingesta.MAX_BYTES == 256 * 1024 * 1024
-    assert ingesta.DEFAULT_TIMEOUT_S == 900.0
-    assert inspect.signature(submit_csv).parameters["timeout"].default == 900.0
+    assert ENGINE_CALL_TIMEOUT_S == 900.0
+    assert inspect.signature(submit_csv).parameters["timeout"].default == ENGINE_CALL_TIMEOUT_S
 
 
 def _padded(size: int) -> bytes:
