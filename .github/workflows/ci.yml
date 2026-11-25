@@ -179,7 +179,11 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
-      - run: npm install --global chrome-devtools-axi@0.1.46
+      # chrome-devtools-axi starts chrome-devtools-mcp@latest through npx unless chrome-devtools-mcp
+      # is on PATH, so the global install pins it too. chrome-devtools-mcp 1.14.0 appends a
+      # "Console errors during this call" section to new_page output, which chrome-devtools-axi
+      # 0.1.46 cannot parse, so it loses the selected page on any page that logs an error.
+      - run: npm install --global chrome-devtools-axi@0.1.46 chrome-devtools-mcp@1.13.0
       - name: pytest (asistente en Chromium real)
         env:
           PRED_BROWSER_TESTS: "1"
