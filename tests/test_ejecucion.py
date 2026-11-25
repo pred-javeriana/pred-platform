@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -30,7 +31,7 @@ from pred_platform.app.ejecucion import (
     run_actions,
 )
 from pred_platform.app.main import create_app
-from pred_platform.config import Settings
+from pred_platform.config import ENGINE_CALL_TIMEOUT_S, Settings
 from pred_platform.contract import models
 from pred_platform.contract.errors import ArtifactMissing, InvalidQuery
 from pred_platform.dal import ejecuciones as dal
@@ -40,6 +41,7 @@ from pred_platform.worker.bucle import Worker
 from pred_platform.worker.candado import WorkerLock
 from pred_platform.worker.engine import build_command
 from pred_platform.worker.errores import run_stopped_error
+from pred_platform.worker.ingesta import submit_csv
 from tests.test_worker import (
     _FAKE,
     Env,
@@ -773,7 +775,7 @@ def test_origin_timeout_does_not_expose_command(env: Env, monkeypatch: pytest.Mo
     client = _dal_client(env)
 
     def timeout(*args: Any, **kwargs: Any) -> None:
-        raise subprocess.TimeoutExpired(["/private/engine", "origen"], 60)
+        raise subprocess.TimeoutExpired(["/private/engine", "origen"], ENGINE_CALL_TIMEOUT_S)
 
     monkeypatch.setattr("pred_platform.worker.engine.subprocess.run", timeout)
     response = _launch(client, env)
@@ -782,6 +784,40 @@ def test_origin_timeout_does_not_expose_command(env: Env, monkeypatch: pytest.Mo
     )
     assert message in response.text
     assert "Command" not in response.text and "/private/engine" not in response.text
+
+
+def test_origin_check_shares_engine_call_timeout_and_enforces_it(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert (
+        inspect.signature(engine.engine_origin).parameters["timeout"].default
+        == inspect.signature(submit_csv).parameters["timeout"].default
+        == ENGINE_CALL_TIMEOUT_S
+    )
+    monkeypatch.setenv("FAKE_ENGINE_ORIGIN_DELAY", "5")
+    with pytest.raises(
+        dal.RunRequestError, match="No se pudo consultar al motor el origen de los datos"
+    ):
+        engine.engine_origin(env.settings, env.ingest_id, False, timeout=0.5)
+
+
+def test_launch_uses_shared_engine_call_timeout_for_origin_check(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = engine.subprocess.run
+    seen_timeouts: list[float | None] = []
+
+    def spy(command: Any, **kwargs: Any) -> Any:
+        seen_timeouts.append(kwargs.get("timeout"))
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(engine.subprocess, "run", spy)
+    response = _launch(_dal_client(env), env)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/corridas/1/ejecucion?aviso=en_cola"
+    assert env.rows("SELECT estado FROM ejecuciones") == [("pendiente",)]
+    assert seen_timeouts == [ENGINE_CALL_TIMEOUT_S]
+    assert ENGINE_CALL_TIMEOUT_S > 60
 
 
 def test_launch_refuses_when_no_sku_has_enough_history(env: Env) -> None:

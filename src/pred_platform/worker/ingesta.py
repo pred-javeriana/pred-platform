@@ -22,11 +22,10 @@ import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from pred_platform.config import Settings
+from pred_platform.config import ENGINE_CALL_TIMEOUT_S, Settings
 from pred_platform.dal.importacion import ReportImportError, import_reports
 
 MAX_BYTES = 256 * 1024 * 1024
-DEFAULT_TIMEOUT_S = 900.0
 # Under the data root: browser uploads wait here for the engine or for a confirmation.
 STAGING_DIR = "staging"
 # The headers of the CSV path that needs no LLM (`pred-engine classify`, guide 16.7).
@@ -68,7 +67,7 @@ def submit_csv(
     content: bytes,
     *,
     confirm_overwrite: bool = False,
-    timeout: float = DEFAULT_TIMEOUT_S,
+    timeout: float = ENGINE_CALL_TIMEOUT_S,
 ) -> str:
     """Ingest ``content`` with the engine and import its report. Returns the file's SHA-256.
 

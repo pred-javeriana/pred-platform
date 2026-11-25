@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 import psutil
 
-from pred_platform.config import Settings
+from pred_platform.config import ENGINE_CALL_TIMEOUT_S, Settings
 from pred_platform.dal.ejecuciones import Ejecucion, RunRequestError
 
 # The concrete algorithm of each engine family (contract 7.4, decision D5).
@@ -43,7 +43,13 @@ FAMILIES_BY_SKU_CLASS: dict[str, tuple[str, ...]] = {
 }
 
 
-def engine_origin(settings: Settings, ingest_id: str, declarada: bool | None) -> bool | None:
+def engine_origin(
+    settings: Settings,
+    ingest_id: str,
+    declarada: bool | None,
+    *,
+    timeout: float = ENGINE_CALL_TIMEOUT_S,
+) -> bool | None:
     """Consulta el veredicto de origen del motor sin abrir una transacción de escritura."""
     command = [
         *settings.engine_command,
@@ -58,7 +64,7 @@ def engine_origin(settings: Settings, ingest_id: str, declarada: bool | None) ->
     if declarada is not None:
         command.append("--datos-sinteticos" if declarada else "--datos-reales")
     try:
-        result = subprocess.run(command, capture_output=True, timeout=60, check=False)
+        result = subprocess.run(command, capture_output=True, timeout=timeout, check=False)
         if result.returncode not in (0, 3):
             cause = result.stderr.decode("utf-8", errors="replace").strip()
             raise ValueError(f"código {result.returncode}: {cause}")

@@ -390,6 +390,8 @@ def main() -> int:
     if args.command == "classify":
         return _classify(args)
     if args.command == "origen":
+        if delay := float(os.environ.get("FAKE_ENGINE_ORIGIN_DELAY", "0")):
+            time.sleep(delay)
         code = int(os.environ.get("FAKE_ENGINE_ORIGIN_EXIT", "0"))
         if "FAKE_ENGINE_ORIGIN_OUTPUT" in os.environ:
             print(os.environ["FAKE_ENGINE_ORIGIN_OUTPUT"])
