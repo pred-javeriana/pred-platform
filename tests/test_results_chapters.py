@@ -305,8 +305,16 @@ def test_the_summary_answers_from_published_rows_and_keeps_the_counts_visible(
     client, number = published
     html = client.get(f"/corridas/{number}/resultados/resumen").text
     text = _text(html)
-    assert "Pregunta de investigación · Tesis, «Introducción»" in text
-    assert "de una empresa a partir de sus datos históricos" in text
+    assert (
+        "¿Cómo apoyar al analista de datos de una organización en la selección informada "
+        "de enfoques de pronóstico para productos con diferentes patrones de demanda, "
+        "mediante una herramienta que integre preparación de datos, comparación reproducible "
+        "y presentación de evidencia sobre su desempeño?"
+    ) in text
+    assert (
+        "Pregunta de investigación · Memoria, sección II «Descripción general», "
+        "1.2 «Formulación del problema»"
+    ) in text
     assert "No concluyente" in text  # only one of three types has a confirmation
     assert "Respaldada en este análisis" not in text
     assert 'aria-label="Respuesta por tipo de demanda"' in html
