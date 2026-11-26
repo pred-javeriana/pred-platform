@@ -24,7 +24,7 @@ Installed with `uv sync --extra dev --locked`.
 
 | Package | Purpose |
 |---------|---------|
-| `pytest`, `pytest-cov` | Tests and the 80% coverage gate |
+| `pytest`, `pytest-cov`, `pytest-xdist` | Tests, parallel execution, and the 80% coverage gate |
 | `httpx` | Client used by FastAPI's `TestClient` |
 | `jsonschema` | Validates the contract's examples against its published JSON Schemas (tests and `scripts/sync_contract.py`) |
 | `ruff` | Lint and formatting |

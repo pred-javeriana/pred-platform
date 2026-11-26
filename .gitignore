@@ -5,6 +5,7 @@ __pycache__/
 dist/
 build/
 .coverage
+.coverage.*
 htmlcov/
 .pytest_cache/
 *.db
