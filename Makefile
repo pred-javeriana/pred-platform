@@ -49,7 +49,7 @@ run:
 	uv run uvicorn pred_platform.app.main:app --reload
 
 test:
-	uv run pytest
+	uv run pytest -n auto --dist worksteal
 
 # The reduced-panel case against the real engine (PRED_ENGINE_CMD, for example
 # "uv run --project ../pred-engine pred-engine"); it is skipped when the engine is not installed.

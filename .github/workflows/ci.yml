@@ -105,7 +105,7 @@ jobs:
         env:
           PRED_BROWSER_REQUIRED: "1"
           CHROME_BIN: google-chrome
-        run: uv run --frozen pytest -ra
+        run: uv run --frozen pytest -n logical --dist worksteal -ra
 
   engine-integration:
     name: Integration (real pinned engine)
